@@ -1,0 +1,15 @@
+<launch>
+  <!-- Lance Recorder Node for ROS 1 -->
+  
+  <arg name="config_path" default="$(find edge_lance_recorder)/config/default_config.yaml" />
+  <arg name="dataset_path" default="/data/recordings/dataset.lance" />
+  <arg name="auto_start" default="true" />
+  
+  <node name="lance_recorder" pkg="edge_lance_recorder" type="lance_recorder_node" output="screen">
+    <param name="config_path" value="$(arg config_path)" />
+    <param name="dataset_path" value="$(arg dataset_path)" />
+    <param name="auto_start" value="$(arg auto_start)" />
+  </node>
+  
+</launch>
+

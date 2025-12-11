@@ -1,0 +1,71 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  rust-tests:
+    name: Rust Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Run Rust tests
+        working-directory: src/bridge
+        run: cargo test --release
+
+  cpp-tests:
+    name: C++ Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libgtest-dev \
+            libgmock-dev \
+            libarrow-dev \
+            libyaml-cpp-dev
+      
+      - name: Build tests
+        run: |
+          mkdir -p build
+          cd build
+          cmake ../test
+          make
+      
+      - name: Run C++ tests
+        run: |
+          cd build
+          ctest --output-on-failure
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust-tests, cpp-tests]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Run integration tests
+        run: |
+          chmod +x test/integration/test_rust_bridge.sh
+          test/integration/test_rust_bridge.sh
+

@@ -1,0 +1,7 @@
+# Request (empty)
+---
+# Response
+bool success
+string message
+int32 flushed_batches
+

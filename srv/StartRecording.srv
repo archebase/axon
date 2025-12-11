@@ -1,0 +1,7 @@
+# Request
+string config_path  # Optional: path to YAML config file (empty to use default)
+---
+# Response
+bool success
+string message
+
