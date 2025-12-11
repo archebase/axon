@@ -1,0 +1,60 @@
+#ifndef MESSAGE_REGISTRY_HPP
+#define MESSAGE_REGISTRY_HPP
+
+#include <string>
+#include <unordered_map>
+#include <memory>
+#include <functional>
+#include <arrow/api.h>
+
+namespace lance_recorder {
+namespace common {
+
+/**
+ * Registry for ROS message type handlers
+ * Maps message types to conversion functions
+ */
+class MessageRegistry {
+public:
+    using ConverterFactory = std::function<std::unique_ptr<class MessageConverter>()>;
+    
+    /**
+     * Register a message type converter
+     */
+    static void register_message_type(const std::string& message_type,
+                                     ConverterFactory factory);
+    
+    /**
+     * Get converter for a message type
+     */
+    static std::unique_ptr<class MessageConverter> get_converter(const std::string& message_type);
+    
+    /**
+     * Check if a message type is registered
+     */
+    static bool has_converter(const std::string& message_type);
+    
+    /**
+     * Get all registered message types
+     */
+    static std::vector<std::string> get_registered_types();
+    
+    /**
+     * Initialize default converters for common ROS message types
+     */
+    static void initialize_default_converters();
+    
+private:
+    static std::unordered_map<std::string, ConverterFactory>& get_registry();
+};
+
+// Forward declaration
+namespace core {
+    class MessageConverter;
+}
+
+} // namespace common
+} // namespace lance_recorder
+
+#endif // MESSAGE_REGISTRY_HPP
+
