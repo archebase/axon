@@ -5,10 +5,15 @@
 #include <unordered_map>
 #include <memory>
 #include <functional>
+#include <vector>
 #include <arrow/api.h>
+#include "../core/message_converter.hpp"
 
 namespace lance_recorder {
 namespace common {
+
+// Use core::MessageConverter
+using MessageConverter = core::MessageConverter;
 
 /**
  * Registry for ROS message type handlers
@@ -16,7 +21,7 @@ namespace common {
  */
 class MessageRegistry {
 public:
-    using ConverterFactory = std::function<std::unique_ptr<class MessageConverter>()>;
+    using ConverterFactory = std::function<std::unique_ptr<MessageConverter>()>;
     
     /**
      * Register a message type converter
@@ -27,7 +32,7 @@ public:
     /**
      * Get converter for a message type
      */
-    static std::unique_ptr<class MessageConverter> get_converter(const std::string& message_type);
+    static std::unique_ptr<MessageConverter> get_converter(const std::string& message_type);
     
     /**
      * Check if a message type is registered
@@ -47,11 +52,6 @@ public:
 private:
     static std::unordered_map<std::string, ConverterFactory>& get_registry();
 };
-
-// Forward declaration
-namespace core {
-    class MessageConverter;
-}
 
 } // namespace common
 } // namespace lance_recorder

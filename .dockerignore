@@ -1,0 +1,44 @@
+# Rust build artifacts (will be mounted as volume for caching)
+src/bridge/target/
+target/
+
+# C++ build artifacts
+build/
+test/build/
+*.so
+*.a
+
+# Git files
+.git/
+.gitignore
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.gcda
+*.gcno
+coverage/
+
+# Documentation builds
+docs/_build/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Docker files (avoid recursive copying)
+docker/*.md
+docker/TROUBLESHOOTING.md
+
+
+

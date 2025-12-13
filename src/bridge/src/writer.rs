@@ -104,7 +104,9 @@ pub fn write_batch_internal(
     // Import Arrow data from C interface (zero-copy)
     // In arrow 56, we need to use from_ffi which returns ArrayData, then convert to RecordBatch
     let record_batch = unsafe {
-        // Read the FFI structures (the caller retains ownership)
+        // Read the FFI structures - from_ffi takes ownership
+        // The caller's Box will be dropped after this function returns, but that's OK
+        // because from_ffi creates a copy of the data
         let ffi_array = std::ptr::read(array);
         let ffi_schema_ref = &*schema;
         let array_data = arrow::ffi::from_ffi(ffi_array, ffi_schema_ref)

@@ -86,14 +86,15 @@ public:
 
 /**
  * Memory pool manager for efficient memory allocation
+ * Note: Arrow memory pools are singletons and should not be wrapped in shared_ptr
  */
 class ArrowMemoryPool {
 public:
-    static std::shared_ptr<arrow::MemoryPool> get_default_pool() {
+    static arrow::MemoryPool* get_default_pool() {
         return arrow::default_memory_pool();
     }
     
-    static std::shared_ptr<arrow::MemoryPool> get_system_pool() {
+    static arrow::MemoryPool* get_system_pool() {
         return arrow::system_memory_pool();
     }
 };

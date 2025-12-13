@@ -1,6 +1,7 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::sync::Arc;
+use std::convert::TryFrom;
 
 use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
 
@@ -122,7 +123,7 @@ pub extern "C" fn close_dataset(dataset_handle: i64) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::Int64Array;
+    use arrow::array::{Array, Int64Array};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
     use std::ffi::CString;
@@ -142,10 +143,12 @@ mod tests {
         ]));
         
         let c_path = CString::new(path_str).unwrap();
-        let mut c_schema = FFI_ArrowSchema::empty();
-        arrow::ffi::export_schema(&schema, &mut c_schema);
+        // In Arrow 56, use FFI_ArrowSchema::try_from to export Schema to FFI
+        let c_schema = FFI_ArrowSchema::try_from(&*schema)
+            .expect("Failed to convert schema to FFI");
+        let mut c_schema_box = Box::new(c_schema);
         
-        let handle = create_or_open_dataset(c_path.as_ptr(), &mut c_schema);
+        let handle = create_or_open_dataset(c_path.as_ptr(), c_schema_box.as_mut() as *mut _);
         assert!(handle > 0, "Failed to create dataset");
         
         // Cleanup
@@ -164,10 +167,12 @@ mod tests {
         ]));
         
         let c_path = CString::new(path_str).unwrap();
-        let mut c_schema = FFI_ArrowSchema::empty();
-        arrow::ffi::export_schema(&schema, &mut c_schema);
+        // In Arrow 56, use FFI_ArrowSchema::try_from to export Schema to FFI
+        let c_schema = FFI_ArrowSchema::try_from(&*schema)
+            .expect("Failed to convert schema to FFI");
+        let mut c_schema_box = Box::new(c_schema);
         
-        let handle = create_or_open_dataset(c_path.as_ptr(), &mut c_schema);
+        let handle = create_or_open_dataset(c_path.as_ptr(), c_schema_box.as_mut() as *mut _);
         assert!(handle > 0);
         
         // Create a batch
@@ -177,13 +182,35 @@ mod tests {
             vec![ids],
         ).unwrap();
         
-        // Export batch
-        let mut c_array = FFI_ArrowArray::empty();
-        let mut c_schema_batch = FFI_ArrowSchema::empty();
-        arrow::ffi::export_record_batch(&batch, &mut c_array, &mut c_schema_batch);
+        // Export batch - In Arrow 56, convert RecordBatch to StructArray, then use to_ffi
+        use arrow::array::StructArray;
+        use std::sync::Arc;
+        let struct_array = StructArray::from(batch);
         
-        // Write batch
-        let result = write_batch(handle, &mut c_array, &mut c_schema_batch);
+        // to_ffi creates FFI structures that point to ArrayData's buffers
+        // We must keep the ArrayData (and its underlying StructArray) alive
+        // until from_ffi completes in write_batch_internal
+        let array_data = struct_array.to_data();
+        
+        // Wrap in Arc to ensure it stays alive (ArrayData is already ref-counted internally,
+        // but keeping a strong reference here ensures the buffers remain valid)
+        let array_data_arc = Arc::new(array_data);
+        let (c_array, c_schema_batch) = arrow::ffi::to_ffi(&array_data_arc)
+            .expect("Failed to convert batch to FFI");
+        
+        // Use ManuallyDrop to prevent the Box from dropping the FFI structures
+        // after from_ffi takes ownership of them in write_batch_internal
+        use std::mem::ManuallyDrop;
+        let mut c_array_box = ManuallyDrop::new(Box::new(c_array));
+        let mut c_schema_batch_box = ManuallyDrop::new(Box::new(c_schema_batch));
+        
+        // Write batch - array_data_arc and struct_array stay alive in this scope
+        // This ensures the data the FFI structures point to remains valid
+        let result = write_batch(handle, c_array_box.as_mut() as *mut _, c_schema_batch_box.as_mut() as *mut _);
+        
+        // After write_batch returns, from_ffi has completed and copied the data
+        // The FFI structures have been consumed by from_ffi, so we don't drop them here
+        // array_data_arc and struct_array can be safely dropped
         assert_eq!(result, LANCE_SUCCESS);
         
         // Cleanup

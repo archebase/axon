@@ -7,6 +7,9 @@
 #include <unordered_map>
 #include <vector>
 
+// Include for full type definition (not just forward declaration)
+#include "message_introspection.hpp"
+
 namespace lance_recorder {
 namespace core {
 
@@ -60,10 +63,6 @@ private:
         std::function<std::unique_ptr<MessageConverter>()>>& get_registry();
 };
 
-// Forward declaration
-class MessageIntrospector;
-struct MessageTypeDescriptor;
-
 /**
  * Generic message converter using ROS message introspection
  * This dynamically converts any ROS message type using introspection
@@ -92,9 +91,15 @@ private:
     std::shared_ptr<arrow::Schema> schema_;
 };
 
+// TypedMessageConverter is only available for ROS1 due to ros::message_traits dependency
+// For ROS2, use IntrospectionMessageConverter or implement platform-specific converters
+#if defined(ROS_VERSION) && ROS_VERSION == 1
+#include <ros/message_traits.h>
+
 /**
  * Template-based converter for specific message types (for optimization)
  * This provides compile-time type safety and better performance
+ * Note: Only available for ROS1
  */
 template<typename MessageType>
 class TypedMessageConverter : public MessageConverter {
@@ -138,6 +143,7 @@ private:
     std::shared_ptr<arrow::Schema> schema_;
     std::string message_type_name_;
 };
+#endif // ROS_VERSION == 1
 
 } // namespace core
 } // namespace lance_recorder

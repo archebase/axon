@@ -9,11 +9,14 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(ARROW arrow)
 find_package(yaml-cpp REQUIRED)
 
+# Project root directory (parent of test directory)
+set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
 # Include directories
 include_directories(
-    ${CMAKE_SOURCE_DIR}/src/cpp
-    ${CMAKE_SOURCE_DIR}/src/cpp/core
-    ${CMAKE_SOURCE_DIR}/src/cpp/common
+    ${PROJECT_ROOT}/src/cpp
+    ${PROJECT_ROOT}/src/cpp/core
+    ${PROJECT_ROOT}/src/cpp/common
     ${GTEST_INCLUDE_DIRS}
     ${ARROW_INCLUDE_DIRS}
     ${yaml-cpp_INCLUDE_DIRS}

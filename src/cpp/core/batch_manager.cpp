@@ -4,6 +4,7 @@
 #include <arrow/array/builder_binary.h>
 #include <arrow/array/builder_nested.h>
 #include <arrow/compute/api.h>
+#include <arrow/array/util.h>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -14,7 +15,7 @@ namespace core {
 BatchManager::BatchManager(size_t batch_size, 
                            int flush_interval_ms, 
                            WriteCallback write_callback,
-                           std::shared_ptr<arrow::MemoryPool> memory_pool)
+                           arrow::MemoryPool* memory_pool)
     : batch_size_(batch_size)
     , flush_interval_ms_(flush_interval_ms)
     , write_callback_(write_callback)
@@ -53,7 +54,7 @@ void BatchManager::create_builders() {
     
     for (int i = 0; i < schema_->num_fields(); ++i) {
         const auto& field = schema_->field(i);
-        auto builder = arrow::MakeBuilder(field->type(), memory_pool_.get());
+        auto builder = arrow::MakeBuilder(field->type(), memory_pool_);
         
         if (!builder.ok()) {
             throw std::runtime_error("Failed to create builder for field " + 
@@ -82,16 +83,23 @@ void BatchManager::add_row(const std::vector<std::shared_ptr<arrow::Array>>& arr
     for (size_t i = 0; i < arrays.size(); ++i) {
         if (!arrays[i]) {
             // Append null
-            builders_[i]->AppendNull();
+            auto status = builders_[i]->AppendNull();
+            if (!status.ok()) {
+                std::cerr << "Warning: Failed to append null: " << status.ToString() << std::endl;
+            }
             continue;
         }
         
-        // Use ArrayBuilder::AppendArraySlice for efficient appending
-        arrow::Status status = builders_[i]->AppendArraySlice(*arrays[i], 0, arrays[i]->length());
+        // Use ArrayData to create ArraySpan for AppendArraySlice
+        arrow::ArraySpan span(*arrays[i]->data());
+        arrow::Status status = builders_[i]->AppendArraySlice(span, 0, arrays[i]->length());
         if (!status.ok()) {
             std::cerr << "Warning: Failed to append to builder " << i 
                       << ": " << status.ToString() << std::endl;
-            builders_[i]->AppendNull();
+            auto null_status = builders_[i]->AppendNull();
+            if (!null_status.ok()) {
+                std::cerr << "Warning: Failed to append null: " << null_status.ToString() << std::endl;
+            }
         }
     }
     
@@ -256,7 +264,7 @@ size_t BatchManager::pending_batches() const {
     return queue_.size();
 }
 
-std::shared_ptr<arrow::MemoryPool> BatchManager::get_memory_pool() const {
+arrow::MemoryPool* BatchManager::get_memory_pool() const {
     return memory_pool_;
 }
 

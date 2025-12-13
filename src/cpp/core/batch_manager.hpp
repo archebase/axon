@@ -28,6 +28,8 @@ public:
         int64_t dataset_handle;
         std::chrono::steady_clock::time_point enqueue_time;
         
+        BatchItem() : dataset_handle(0) {}
+        
         BatchItem(std::shared_ptr<arrow::RecordBatch> b, 
                  const std::string& path, 
                  int64_t handle)
@@ -118,7 +120,7 @@ public:
     BatchManager(size_t batch_size, 
                  int flush_interval_ms, 
                  WriteCallback write_callback,
-                 std::shared_ptr<arrow::MemoryPool> memory_pool = nullptr);
+                 arrow::MemoryPool* memory_pool = nullptr);
     ~BatchManager();
     
     // Disable copy
@@ -181,7 +183,7 @@ public:
     /**
      * Get memory pool
      */
-    std::shared_ptr<arrow::MemoryPool> get_memory_pool() const;
+    arrow::MemoryPool* get_memory_pool() const;
     
 private:
     void writer_thread();
@@ -193,7 +195,7 @@ private:
     
     std::shared_ptr<arrow::Schema> schema_;
     std::vector<std::unique_ptr<arrow::ArrayBuilder>> builders_;
-    std::shared_ptr<arrow::MemoryPool> memory_pool_;
+    arrow::MemoryPool* memory_pool_;
     
     size_t batch_size_;
     int flush_interval_ms_;

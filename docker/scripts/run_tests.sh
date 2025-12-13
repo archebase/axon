@@ -1,94 +1,61 @@
 #!/bin/bash
-# Test runner script for Docker containers
-# Runs all tests (Rust + C++)
-
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_DIR="/workspace/edge_lance_recorder"
+# Run tests script for Docker containers
+# This script is executed inside the Docker container to run all tests
 
-cd "$WORKSPACE_DIR"
+echo "============================================"
+echo "Running tests for ROS ${ROS_VERSION} (${ROS_DISTRO})"
+echo "============================================"
 
-echo "=========================================="
-echo "Running Edge Lance Recorder Tests"
-echo "ROS_VERSION: ${ROS_VERSION:-unknown}"
-echo "ROS_DISTRO: ${ROS_DISTRO:-unknown}"
-echo "=========================================="
-echo ""
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m'
-
-TEST_FAILED=0
-
-# Function to run test and capture result
-run_test() {
-    local test_name=$1
-    shift
-    echo -e "${YELLOW}Running: ${test_name}...${NC}"
-    if "$@"; then
-        echo -e "${GREEN}✓ ${test_name} passed${NC}"
-        echo ""
-        return 0
-    else
-        echo -e "${RED}✗ ${test_name} failed${NC}"
-        echo ""
-        TEST_FAILED=1
-        return 1
-    fi
-}
-
-# 1. Rust tests
-echo "=== Rust Tests ==="
-run_test "Rust Unit Tests" \
-    bash -c "cd src/bridge && cargo test --release"
-
-# 2. C++ tests
-echo "=== C++ Tests ==="
-
-# Build C++ tests
-echo -e "${YELLOW}Building C++ tests...${NC}"
-mkdir -p test/build
-cd test/build
-
-if [ "$ROS_VERSION" = "1" ]; then
+# Source ROS environment
+if [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then
     source /opt/ros/${ROS_DISTRO}/setup.bash
-    cmake ../.. -DROS_VERSION=1
+    echo "Sourced ROS ${ROS_DISTRO} environment"
 else
-    source /opt/ros/${ROS_DISTRO}/setup.bash
-    cmake ../.. -DROS_VERSION=2
-fi
-
-cmake --build . -j$(nproc 2>/dev/null || echo 4)
-echo -e "${GREEN}✓ C++ tests built${NC}"
-echo ""
-
-# Run C++ tests
-run_test "C++ Unit Tests" ctest --output-on-failure
-
-cd "$WORKSPACE_DIR"
-
-# 3. Integration tests (if available)
-if [ -f "test/integration/test_rust_bridge.sh" ]; then
-    echo "=== Integration Tests ==="
-    run_test "Rust Bridge Integration" \
-        bash test/integration/test_rust_bridge.sh
-fi
-
-# Summary
-echo "=========================================="
-if [ $TEST_FAILED -eq 0 ]; then
-    echo -e "${GREEN}All tests passed!${NC}"
-    echo "=========================================="
-    exit 0
-else
-    echo -e "${RED}Some tests failed!${NC}"
-    echo "=========================================="
+    echo "ERROR: ROS setup.bash not found at /opt/ros/${ROS_DISTRO}/setup.bash"
     exit 1
 fi
 
+# Navigate to workspace
+cd /workspace/edge_lance_recorder
 
+# Run Rust tests
+echo ""
+echo "============================================"
+echo "Running Rust tests..."
+echo "============================================"
+cd src/bridge
+cargo test
+cd /workspace/edge_lance_recorder
+echo "✓ Rust tests passed"
 
+# Build and run C++ tests
+echo ""
+echo "============================================"
+echo "Building and running C++ tests..."
+echo "============================================"
+# Clean and recreate test build directory to avoid CMake cache conflicts
+rm -rf test/build
+mkdir -p test/build
+cd test/build
+cmake ..
+cmake --build . -j$(nproc)
+ctest --output-on-failure
+cd /workspace/edge_lance_recorder
+echo "✓ C++ tests passed"
+
+# Run integration tests if they exist
+if [ -f "test/integration/test_rust_bridge.sh" ]; then
+    echo ""
+    echo "============================================"
+    echo "Running integration tests..."
+    echo "============================================"
+    bash test/integration/test_rust_bridge.sh
+    echo "✓ Integration tests passed"
+fi
+
+echo ""
+echo "============================================"
+echo "All tests passed!"
+echo "============================================"
