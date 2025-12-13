@@ -1,5 +1,4 @@
 #include "message_registry.hpp"
-#include "../core/message_converter.hpp"
 #include <iostream>
 
 namespace lance_recorder {
@@ -23,7 +22,7 @@ void MessageRegistry::register_message_type(const std::string& message_type,
     core::MessageConverterFactory::register_converter(message_type, factory);
 }
 
-std::unique_ptr<core::MessageConverter> MessageRegistry::get_converter(const std::string& message_type) {
+std::unique_ptr<MessageConverter> MessageRegistry::get_converter(const std::string& message_type) {
     auto& registry = get_registry();
     auto it = registry.find(message_type);
     if (it != registry.end()) {

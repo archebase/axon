@@ -54,7 +54,7 @@ public:
             static_cast<const rclcpp::SerializedMessage*>(message);
         if (msg) {
             size_bytes = msg->size();
-            return msg->rcl_serialized_message.buffer;
+            return msg->get_rcl_serialized_message().buffer;
         }
         return nullptr;
     }

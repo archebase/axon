@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../src/cpp/core/batch_manager.hpp"
+#include "batch_manager.hpp"
 #include <arrow/api.h>
 #include <arrow/array.h>
 #include <thread>
@@ -28,13 +28,19 @@ protected:
 TEST_F(BatchManagerTest, BasicAddRow) {
     BatchManager manager(10, 1000, write_callback_);
     manager.set_dataset("/tmp/test.lance", 1);
+    
+    // Initialize schema before adding rows
+    auto schema = arrow::schema({arrow::field("value", arrow::int64())});
+    manager.initialize_schema(schema);
     manager.start();
     
     // Create test arrays
     auto builder = std::make_shared<arrow::Int64Builder>();
-    builder->Append(42);
+    auto status = builder->Append(42);
+    ASSERT_TRUE(status.ok());
     std::shared_ptr<arrow::Array> array;
-    builder->Finish(&array);
+    status = builder->Finish(&array);
+    ASSERT_TRUE(status.ok());
     
     std::vector<std::shared_ptr<arrow::Array>> arrays = {array};
     manager.add_row(arrays);
@@ -42,15 +48,24 @@ TEST_F(BatchManagerTest, BasicAddRow) {
     // Wait a bit for async processing
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
+    // Should not have written yet (below batch size, before stop)
+    ASSERT_EQ(write_count_, 0);
+    
     manager.stop();
     
-    // Should not have written yet (below batch size)
-    ASSERT_EQ(write_count_, 0);
+    // After stop(), remaining data is flushed to prevent data loss
+    // So write_count should be 1 (the final flush)
+    ASSERT_EQ(write_count_, 1);
+    ASSERT_EQ(last_batch_size_, 1);  // Verify the flushed batch had 1 row
 }
 
 TEST_F(BatchManagerTest, FlushOnBatchSize) {
     BatchManager manager(5, 10000, write_callback_);
     manager.set_dataset("/tmp/test.lance", 1);
+    
+    // Initialize schema before adding rows
+    auto schema = arrow::schema({arrow::field("value", arrow::int64())});
+    manager.initialize_schema(schema);
     manager.start();
     
     auto builder = std::make_shared<arrow::Int64Builder>();
@@ -59,8 +74,10 @@ TEST_F(BatchManagerTest, FlushOnBatchSize) {
     // Add 5 rows (batch size)
     for (int i = 0; i < 5; ++i) {
         builder->Reset();
-        builder->Append(i);
-        builder->Finish(&array);
+        auto status = builder->Append(i);
+        ASSERT_TRUE(status.ok());
+        status = builder->Finish(&array);
+        ASSERT_TRUE(status.ok());
         std::vector<std::shared_ptr<arrow::Array>> arrays = {array};
         manager.add_row(arrays);
     }
@@ -77,12 +94,18 @@ TEST_F(BatchManagerTest, FlushOnBatchSize) {
 TEST_F(BatchManagerTest, ManualFlush) {
     BatchManager manager(100, 10000, write_callback_);
     manager.set_dataset("/tmp/test.lance", 1);
+    
+    // Initialize schema before adding rows
+    auto schema = arrow::schema({arrow::field("value", arrow::int64())});
+    manager.initialize_schema(schema);
     manager.start();
     
     auto builder = std::make_shared<arrow::Int64Builder>();
-    builder->Append(1);
+    auto status = builder->Append(1);
+    ASSERT_TRUE(status.ok());
     std::shared_ptr<arrow::Array> array;
-    builder->Finish(&array);
+    status = builder->Finish(&array);
+    ASSERT_TRUE(status.ok());
     
     std::vector<std::shared_ptr<arrow::Array>> arrays = {array};
     manager.add_row(arrays);
@@ -101,6 +124,10 @@ TEST_F(BatchManagerTest, ManualFlush) {
 TEST_F(BatchManagerTest, PendingBatches) {
     BatchManager manager(10, 10000, write_callback_);
     manager.set_dataset("/tmp/test.lance", 1);
+    
+    // Initialize schema before adding rows
+    auto schema = arrow::schema({arrow::field("value", arrow::int64())});
+    manager.initialize_schema(schema);
     manager.start();
     
     auto builder = std::make_shared<arrow::Int64Builder>();
@@ -109,8 +136,10 @@ TEST_F(BatchManagerTest, PendingBatches) {
     // Add multiple batches
     for (int i = 0; i < 25; ++i) {
         builder->Reset();
-        builder->Append(i);
-        builder->Finish(&array);
+        auto status = builder->Append(i);
+        ASSERT_TRUE(status.ok());
+        status = builder->Finish(&array);
+        ASSERT_TRUE(status.ok());
         std::vector<std::shared_ptr<arrow::Array>> arrays = {array};
         manager.add_row(arrays);
     }
@@ -120,7 +149,7 @@ TEST_F(BatchManagerTest, PendingBatches) {
     
     // Should have some pending batches
     size_t pending = manager.pending_batches();
-    ASSERT_GE(pending, 0);
+    ASSERT_GE(pending, 0u);
     
     manager.stop();
 }

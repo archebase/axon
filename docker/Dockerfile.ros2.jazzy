@@ -48,9 +48,6 @@ WORKDIR /workspace
 COPY docker/scripts/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
 
-# Copy source code
-COPY . /workspace/edge_lance_recorder
-
 # Build GTest (required for some systems)
 # GTest may be in different locations depending on Ubuntu version
 RUN if [ -d /usr/src/googletest ]; then \
@@ -66,14 +63,9 @@ RUN if [ -d /usr/src/googletest ]; then \
         echo "GTest source not found, using system package"; \
     fi
 
-# Build the package using Makefile
-WORKDIR /workspace/edge_lance_recorder
-RUN /bin/bash -c "source /opt/ros/jazzy/setup.bash && \
-    export ROS_DISTRO=jazzy && \
-    export ROS_VERSION=2 && \
-    make build"
-
 # Source setup script
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
 
+# Note: Source code is mounted as volume at runtime
+# Note: Build happens at runtime, not during image build, for better caching
 CMD ["/bin/bash"]

@@ -79,90 +79,90 @@ bool MessageConverterFactory::has_converter(const std::string& message_type) {
     return false;
 }
 
-/**
- * Generic message converter using introspection
- */
-class IntrospectionMessageConverter : public MessageConverter {
-public:
-    IntrospectionMessageConverter(const std::string& message_type,
-                                  std::unique_ptr<MessageIntrospector> introspector,
-                                  const MessageTypeDescriptor& descriptor)
-        : message_type_(message_type)
-        , introspector_(std::move(introspector))
-        , descriptor_(descriptor)
-    {
-        schema_ = MessageIntrospector::create_schema(descriptor);
+// IntrospectionMessageConverter implementation
+
+IntrospectionMessageConverter::IntrospectionMessageConverter(
+    const std::string& message_type,
+    std::unique_ptr<MessageIntrospector> introspector,
+    const MessageTypeDescriptor& descriptor)
+    : message_type_(message_type)
+    , introspector_(std::move(introspector))
+    , descriptor_(descriptor)
+{
+    schema_ = MessageIntrospector::create_schema(descriptor);
+}
+
+bool IntrospectionMessageConverter::convert_to_arrow(
+    const void* message_ptr,
+    std::vector<std::shared_ptr<arrow::Array>>& arrays) {
+    if (!message_ptr || !introspector_) {
+        return false;
     }
     
-    bool convert_to_arrow(const void* message_ptr,
-                         std::vector<std::shared_ptr<arrow::Array>>& arrays) override {
-        if (!message_ptr || !introspector_) {
+    arrays.clear();
+    arrays.reserve(descriptor_.fields.size());
+    
+    // Convert each field
+    for (const auto& field_desc : descriptor_.fields) {
+        std::shared_ptr<arrow::Array> array = convert_field(message_ptr, field_desc);
+        if (!array) {
+            std::cerr << "Failed to convert field: " << field_desc.name << std::endl;
             return false;
         }
-        
-        arrays.clear();
-        arrays.reserve(descriptor_.fields.size());
-        
-        // Convert each field
-        for (const auto& field_desc : descriptor_.fields) {
-            std::shared_ptr<arrow::Array> array = convert_field(message_ptr, field_desc);
-            if (!array) {
-                std::cerr << "Failed to convert field: " << field_desc.name << std::endl;
-                return false;
+        arrays.push_back(array);
+    }
+    
+    return true;
+}
+
+std::shared_ptr<arrow::Schema> IntrospectionMessageConverter::get_schema() {
+    return schema_;
+}
+
+std::string IntrospectionMessageConverter::get_message_type() const {
+    return message_type_;
+}
+
+std::shared_ptr<arrow::Array> IntrospectionMessageConverter::convert_field(
+    const void* message,
+    const struct FieldDescriptor& field_desc) {
+    // Use introspection to get field value
+    // Full type-specific handling is done via MessageFactory registration
+    // This provides generic conversion for unregistered types
+    
+    if (field_desc.is_builtin) {
+        return convert_builtin_field(message, field_desc);
+    } else {
+        // Complex type - serialize to binary for now
+        // Full implementation would recursively convert nested messages
+        size_t size_bytes = 0;
+        const void* data = introspector_->get_field_pointer(message, field_desc.name, size_bytes);
+        if (data && size_bytes > 0) {
+            arrow::BinaryBuilder builder;
+            auto status = builder.Append(static_cast<const uint8_t*>(data), size_bytes);
+            if (!status.ok()) {
+                return nullptr;
             }
-            arrays.push_back(array);
-        }
-        
-        return true;
-    }
-    
-    std::shared_ptr<arrow::Schema> get_schema() override {
-        return schema_;
-    }
-    
-    std::string get_message_type() const override {
-        return message_type_;
-    }
-    
-private:
-    std::shared_ptr<arrow::Array> convert_field(const void* message,
-                                                const struct FieldDescriptor& field_desc) {
-        // Use introspection to get field value
-        // Full type-specific handling is done via MessageFactory registration
-        // This provides generic conversion for unregistered types
-        
-        if (field_desc.is_builtin) {
-            return convert_builtin_field(message, field_desc);
-        } else {
-            // Complex type - serialize to binary for now
-            // Full implementation would recursively convert nested messages
-            size_t size_bytes = 0;
-            const void* data = introspector_->get_field_pointer(message, field_desc.name, size_bytes);
-            if (data && size_bytes > 0) {
-                arrow::BinaryBuilder builder;
-                builder.Append(static_cast<const uint8_t*>(data), size_bytes);
-                std::shared_ptr<arrow::Array> array;
-                builder.Finish(&array);
-                return array;
+            std::shared_ptr<arrow::Array> array;
+            status = builder.Finish(&array);
+            if (!status.ok()) {
+                return nullptr;
             }
+            return array;
         }
-        
-        return nullptr;
     }
     
-    std::shared_ptr<arrow::Array> convert_builtin_field(const void* message,
-                                                        const struct FieldDescriptor& field_desc) {
-        // Uses introspection to extract the actual value
-        // Type-specific implementations are provided via MessageFactory
-        // This is called for unregistered types as fallback
-        return nullptr;
-    }
-    
-    std::string message_type_;
-    std::unique_ptr<MessageIntrospector> introspector_;
-    MessageTypeDescriptor descriptor_;
-    std::shared_ptr<arrow::Schema> schema_;
-};
+    return nullptr;
+}
+
+std::shared_ptr<arrow::Array> IntrospectionMessageConverter::convert_builtin_field(
+    const void* message,
+    const struct FieldDescriptor& field_desc) {
+    // Uses introspection to extract the actual value
+    // Type-specific implementations are provided via MessageFactory
+    // This is called for unregistered types as fallback
+    return nullptr;
+}
 
 } // namespace core
 } // namespace lance_recorder

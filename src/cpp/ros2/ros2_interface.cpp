@@ -3,7 +3,6 @@
 #include <rclcpp/subscription.hpp>
 #include <rclcpp/service.hpp>
 #include <rclcpp/generic_subscription.hpp>
-#include <rclcpp/generic_service.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <rmw/rmw.h>
 #include <memory>
@@ -77,7 +76,7 @@ public:
             // you would need to use typed subscriptions or message_factory
             try {
                 sub_wrapper->subscription = rclcpp::create_generic_subscription(
-                    node_.get(),
+                    node_->get_node_topics_interface(),
                     topic,
                     message_type,
                     rclcpp::QoS(10),
@@ -138,42 +137,17 @@ public:
             service_wrapper->service_name = service_name;
             service_wrapper->service_type = service_type;
             
-            // Create generic service
-            // Note: This requires ROS 2 Foxy or later
-            try {
-                service_wrapper->service = rclcpp::create_generic_service(
-                    node_.get(),
-                    service_name,
-                    service_type,
-                    [service_wrapper](
-                        const std::shared_ptr<rmw_request_id_t> request_header,
-                        const std::shared_ptr<rclcpp::SerializedMessage> request,
-                        std::shared_ptr<rclcpp::SerializedMessage> response) {
-                        if (service_wrapper->callback && request && response) {
-                            bool result = service_wrapper->callback(
-                                static_cast<const void*>(request.get()),
-                                static_cast<void*>(response.get())
-                            );
-                            return result;
-                        }
-                        return false;
-                    }
-                );
-                
-                if (service_wrapper->service) {
-                    auto* wrapper_ptr = new std::shared_ptr<ServiceWrapper>(service_wrapper);
-                    services_[wrapper_ptr] = std::make_pair(service_name, service_type);
-                    return wrapper_ptr;
-                }
-            } catch (const std::exception& e) {
-                RCLCPP_ERROR(node_->get_logger(),
-                            "create_generic_service failed (may require ROS 2 Foxy+): %s",
-                            e.what());
-                // Store wrapper anyway for future use
-                auto* wrapper_ptr = new std::shared_ptr<ServiceWrapper>(service_wrapper);
-                services_[wrapper_ptr] = std::make_pair(service_name, service_type);
-                return wrapper_ptr;
-            }
+            // Generic services are not available in all ROS 2 versions
+            // For now, store the wrapper for typed service registration
+            // The actual service needs to be created with concrete types
+            // through the ROS 2 service interfaces (see edge_lance_recorder_node.cpp)
+            RCLCPP_WARN(node_->get_logger(),
+                       "Generic service '%s' registered but requires typed implementation",
+                       service_name.c_str());
+            
+            auto* wrapper_ptr = new std::shared_ptr<ServiceWrapper>(service_wrapper);
+            services_[wrapper_ptr] = std::make_pair(service_name, service_type);
+            return wrapper_ptr;
         } catch (const std::exception& e) {
             RCLCPP_ERROR(node_->get_logger(), "Failed to advertise service %s: %s",
                         service_name.c_str(), e.what());
@@ -232,7 +206,9 @@ private:
     
     struct ServiceWrapper {
         std::function<bool(const void*, void*)> callback;
-        rclcpp::GenericService::SharedPtr service;
+        // GenericService may not be available in all ROS2 versions
+        // Using void* for now as a placeholder
+        std::shared_ptr<void> service;
         std::string service_name;
         std::string service_type;
     };

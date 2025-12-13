@@ -5,7 +5,7 @@
 namespace lance_recorder {
 namespace common {
 
-RosVersion RosInterfaceFactory::detect_ros_version() {
+RosInterfaceFactory::RosVersion RosInterfaceFactory::detect_ros_version() {
     // Check for ROS 1
     const char* ros_distro = std::getenv("ROS_DISTRO");
     if (ros_distro) {
