@@ -9,7 +9,7 @@
 #include <vector>
 #include <atomic>
 
-namespace lance_recorder {
+namespace axon {
 namespace ros2 {
 
 // Forward declarations
@@ -19,10 +19,10 @@ namespace core {
     class RecorderConfig;
 }
 
-class LanceRecorderNode : public rclcpp::Node {
+class AxonNode : public rclcpp::Node {
 public:
-    explicit LanceRecorderNode(const std::string& node_name = "lance_recorder");
-    ~LanceRecorderNode();
+    explicit AxonNode(const std::string& node_name = "axon");
+    ~AxonNode();
     
     bool initialize();
     void start_recording();
@@ -48,7 +48,7 @@ private:
 };
 
 } // namespace ros2
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // RECORDER_NODE_HPP
 

@@ -1,7 +1,8 @@
 [package]
-name = "lance_writer_bridge"
+name = "axon_lance_bridge"
 version = "0.1.0"
 edition = "2021"
+description = "Axon Lance writer bridge by ArcheBase"
 
 [lib]
 name = "lance_writer_bridge"

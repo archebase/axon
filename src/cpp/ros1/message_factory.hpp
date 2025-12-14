@@ -10,7 +10,7 @@
 #include <functional>
 #include <unordered_map>
 
-namespace lance_recorder {
+namespace axon {
 namespace ros1 {
 
 /**
@@ -90,7 +90,7 @@ void MessageFactory::register_message_type(const std::string& message_type) {
 }
 
 } // namespace ros1
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // ROS1_MESSAGE_FACTORY_HPP
 

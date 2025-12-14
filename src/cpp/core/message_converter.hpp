@@ -10,7 +10,7 @@
 // Include for full type definition (not just forward declaration)
 #include "message_introspection.hpp"
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 /**
@@ -146,7 +146,7 @@ private:
 #endif // ROS_VERSION == 1
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // MESSAGE_CONVERTER_HPP
 

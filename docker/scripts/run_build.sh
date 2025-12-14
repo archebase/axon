@@ -18,7 +18,7 @@ else
 fi
 
 # Navigate to workspace
-cd /workspace/edge_lance_recorder
+cd /workspace/axon
 
 # Build Rust library
 echo ""
@@ -27,7 +27,7 @@ echo "Building Rust bridge library..."
 echo "============================================"
 cd src/bridge
 cargo build
-cd /workspace/edge_lance_recorder
+cd /workspace/axon
 echo "✓ Rust library built"
 
 # Build C++ code
@@ -41,7 +41,7 @@ mkdir -p build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DROS_VERSION=${ROS_VERSION}
 cmake --build . -j$(nproc)
-cd /workspace/edge_lance_recorder
+cd /workspace/axon
 echo "✓ C++ code built"
 
 echo ""

@@ -2,7 +2,7 @@
 #include <sstream>
 #include <algorithm>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 std::string SchemaMerger::make_field_name(const std::string& topic, 
@@ -128,5 +128,5 @@ std::unordered_map<std::string, int> SchemaMerger::get_field_mapping(
 }
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 

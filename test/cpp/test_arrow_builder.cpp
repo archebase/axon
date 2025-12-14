@@ -2,7 +2,7 @@
 #include "arrow_builder.hpp"
 #include <arrow/api.h>
 
-using namespace lance_recorder::core;
+using namespace axon::core;
 
 TEST(ArrowBuilderTest, CreateInt64Builder) {
     auto builder = ArrowBuilderFactory::create_int64_builder();

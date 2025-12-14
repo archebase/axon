@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <memory>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 /**
@@ -68,7 +68,7 @@ private:
 };
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // SCHEMA_MERGER_HPP
 

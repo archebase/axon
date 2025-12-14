@@ -6,7 +6,7 @@
 #include <string>
 #include <memory>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 /**
@@ -72,5 +72,5 @@ std::unique_ptr<MessageIntrospector> MessageIntrospectorFactory::create() {
 }
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 

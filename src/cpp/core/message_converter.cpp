@@ -9,7 +9,7 @@
 #include <memory>
 #include <cstring>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 // Registry for message converters
@@ -165,4 +165,4 @@ std::shared_ptr<arrow::Array> IntrospectionMessageConverter::convert_builtin_fie
 }
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon

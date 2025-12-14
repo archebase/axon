@@ -14,7 +14,7 @@
 #include <functional>
 #include <vector>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 /**
@@ -214,6 +214,6 @@ private:
 };
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // BATCH_MANAGER_HPP

@@ -11,7 +11,7 @@
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Twist.h>
 
-namespace lance_recorder {
+namespace axon {
 namespace ros1 {
 
 /**
@@ -39,5 +39,5 @@ void register_common_message_types() {
 }
 
 } // namespace ros1
-} // namespace lance_recorder
+} // namespace axon
 

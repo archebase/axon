@@ -1,6 +1,6 @@
 # Docker Testing Guide
 
-This directory contains Docker configurations for building and testing Edge Lance Recorder across different ROS versions.
+This directory contains Docker configurations for building and testing Axon across different ROS versions.
 
 ## Quick Start
 
@@ -33,10 +33,10 @@ docker-compose -f docker-compose.test.yml up test-ros1
 
 ## Docker Images
 
-- `lance_recorder:ros1` - ROS1 Noetic
-- `lance_recorder:ros2-humble` - ROS2 Humble
-- `lance_recorder:ros2-jazzy` - ROS2 Jazzy
-- `lance_recorder:ros2-rolling` - ROS2 Rolling
+- `axon:ros1` - ROS1 Noetic
+- `axon:ros2-humble` - ROS2 Humble
+- `axon:ros2-jazzy` - ROS2 Jazzy
+- `axon:ros2-rolling` - ROS2 Rolling
 
 ## Test Scripts
 
@@ -55,26 +55,26 @@ Builds the project:
 
 ### Build Image
 ```bash
-docker build -f docker/Dockerfile.ros1 -t lance_recorder:ros1 .
+docker build -f docker/Dockerfile.ros1 -t axon:ros1 .
 ```
 
 ### Run Tests
 ```bash
 docker run --rm \
-  -v $(pwd):/workspace/edge_lance_recorder \
+  -v $(pwd):/workspace/axon \
   -e ROS_DISTRO=noetic \
   -e ROS_VERSION=1 \
-  lance_recorder:ros1 \
+  axon:ros1 \
   /usr/local/bin/run_tests.sh
 ```
 
 ### Interactive Shell
 ```bash
 docker run -it --rm \
-  -v $(pwd):/workspace/edge_lance_recorder \
+  -v $(pwd):/workspace/axon \
   -e ROS_DISTRO=noetic \
   -e ROS_VERSION=1 \
-  lance_recorder:ros1 \
+  axon:ros1 \
   /bin/bash
 ```
 
@@ -104,11 +104,3 @@ The Docker setup is designed for CI/CD pipelines:
 
 ### Permission Issues
 - Ensure scripts are executable: `chmod +x docker/scripts/*.sh`
-
-
-
-
-
-
-
-

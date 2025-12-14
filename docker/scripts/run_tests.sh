@@ -18,7 +18,7 @@ else
 fi
 
 # Navigate to workspace
-cd /workspace/edge_lance_recorder
+cd /workspace/axon
 
 # Run Rust tests
 echo ""
@@ -27,7 +27,7 @@ echo "Running Rust tests..."
 echo "============================================"
 cd src/bridge
 cargo test
-cd /workspace/edge_lance_recorder
+cd /workspace/axon
 echo "✓ Rust tests passed"
 
 # Build and run C++ tests
@@ -42,7 +42,7 @@ cd test/build
 cmake ..
 cmake --build . -j$(nproc)
 ctest --output-on-failure
-cd /workspace/edge_lance_recorder
+cd /workspace/axon
 echo "✓ C++ tests passed"
 
 # Run integration tests if they exist

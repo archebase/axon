@@ -7,7 +7,7 @@
 #include <memory>
 #include <type_traits>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 /**
@@ -86,7 +86,7 @@ public:
 };
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // MESSAGE_INTROSPECTION_HPP
 

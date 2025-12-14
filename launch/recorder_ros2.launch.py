@@ -26,9 +26,9 @@ def generate_launch_description():
     
     # Recorder node
     recorder_node = Node(
-        package='edge_lance_recorder',
-        executable='lance_recorder_node',
-        name='lance_recorder',
+        package='axon',
+        executable='axon_node',
+        name='axon',
         output='screen',
         parameters=[{
             'config_path': LaunchConfiguration('config_path'),

@@ -5,7 +5,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.ros1
-    container_name: lance_recorder_ros1
+    container_name: axon_ros1
     volumes:
       - ../data:/data
       - ../config:/workspace/config
@@ -19,7 +19,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.ros2.humble
-    container_name: lance_recorder_ros2_humble
+    container_name: axon_ros2_humble
     volumes:
       - ../data:/data
       - ../config:/workspace/config
@@ -33,7 +33,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.ros2.jazzy
-    container_name: lance_recorder_ros2_jazzy
+    container_name: axon_ros2_jazzy
     volumes:
       - ../data:/data
       - ../config:/workspace/config
@@ -47,7 +47,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.ros2.rolling
-    container_name: lance_recorder_ros2_rolling
+    container_name: axon_ros2_rolling
     volumes:
       - ../data:/data
       - ../config:/workspace/config

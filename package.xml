@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>edge_lance_recorder</name>
+  <name>axon</name>
   <version>0.1.0</version>
-  <description>High-performance ROS recorder that writes data to Lance format using C++/Rust FFI bridge</description>
+  <description>High-performance ROS recorder by ArcheBase that writes data to Lance format using C++/Rust FFI bridge</description>
   
-  <maintainer email="maintainer@example.com">Maintainer</maintainer>
+  <maintainer email="maintainer@archebase.com">ArcheBase</maintainer>
   <license>Apache-2.0</license>
   
   <buildtool_depend>cmake</buildtool_depend>

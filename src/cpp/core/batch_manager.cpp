@@ -9,7 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 BatchManager::BatchManager(size_t batch_size, 
@@ -269,4 +269,4 @@ arrow::MemoryPool* BatchManager::get_memory_pool() const {
 }
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon

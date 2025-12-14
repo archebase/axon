@@ -5,7 +5,7 @@
 #include <functional>
 #include <memory>
 
-namespace lance_recorder {
+namespace axon {
 namespace common {
 
 // Forward declarations
@@ -111,7 +111,7 @@ public:
 };
 
 } // namespace common
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // ROS_INTERFACE_HPP
 

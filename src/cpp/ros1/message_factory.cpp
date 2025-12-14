@@ -3,7 +3,7 @@
 #include <ros/serialization.h>
 #include <iostream>
 
-namespace lance_recorder {
+namespace axon {
 namespace ros1 {
 
 static std::unordered_map<std::string, MessageFactory::MessageInfo>* g_registry = nullptr;
@@ -53,5 +53,5 @@ bool MessageFactory::is_registered(const std::string& message_type) {
 }
 
 } // namespace ros1
-} // namespace lance_recorder
+} // namespace axon
 

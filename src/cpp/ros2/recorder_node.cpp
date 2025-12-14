@@ -9,17 +9,17 @@
 #include <memory>
 #include <fstream>
 
-namespace lance_recorder {
+namespace axon {
 namespace ros2 {
 
-LanceRecorderNode::LanceRecorderNode(const std::string& node_name)
+AxonNode::AxonNode(const std::string& node_name)
     : rclcpp::Node(node_name)
     , recording_(false)
     , dataset_handle_(0)
 {
 }
 
-LanceRecorderNode::~LanceRecorderNode() {
+AxonNode::~AxonNode() {
     stop_recording();
     
     // Stop all batch managers
@@ -37,7 +37,7 @@ LanceRecorderNode::~LanceRecorderNode() {
     }
 }
 
-bool LanceRecorderNode::initialize() {
+bool AxonNode::initialize() {
     // Load configuration
     if (!load_configuration()) {
         RCLCPP_ERROR(this->get_logger(), "Failed to load configuration");
@@ -67,7 +67,7 @@ bool LanceRecorderNode::initialize() {
     return true;
 }
 
-bool LanceRecorderNode::load_configuration() {
+bool AxonNode::load_configuration() {
     // Get config path from parameter
     std::string config_path = this->declare_parameter<std::string>("config_path", "config/default_config.yaml");
     
@@ -84,7 +84,7 @@ bool LanceRecorderNode::load_configuration() {
     return true;
 }
 
-bool LanceRecorderNode::collect_topic_schemas() {
+bool AxonNode::collect_topic_schemas() {
     // Create converters for all topics to get their schemas
     for (const auto& topic_config : config_->topics) {
         auto converter = core::MessageConverterFactory::create(topic_config.message_type);
@@ -101,7 +101,7 @@ bool LanceRecorderNode::collect_topic_schemas() {
     return !topic_schemas_.empty();
 }
 
-bool LanceRecorderNode::initialize_dataset() {
+bool AxonNode::initialize_dataset() {
     dataset_path_ = config_->dataset.path;
     
     // Merge schemas from all topics
@@ -138,7 +138,7 @@ bool LanceRecorderNode::initialize_dataset() {
     return true;
 }
 
-void LanceRecorderNode::setup_topic_recording(const std::string& topic_name, const std::string& message_type) {
+void AxonNode::setup_topic_recording(const std::string& topic_name, const std::string& message_type) {
     // Find topic config
     core::TopicConfig* topic_config = nullptr;
     for (auto& tc : config_->topics) {
@@ -212,18 +212,18 @@ void LanceRecorderNode::setup_topic_recording(const std::string& topic_name, con
                 topic_name.c_str(), message_type.c_str());
 }
 
-void LanceRecorderNode::setup_services() {
+void AxonNode::setup_services() {
     // Full service implementation would be added here
     // For ROS 2, services are handled via the ROS interface abstraction
     RCLCPP_INFO(this->get_logger(), "Services available via ROS interface");
 }
 
-void LanceRecorderNode::start_recording() {
+void AxonNode::start_recording() {
     recording_ = true;
     RCLCPP_INFO(this->get_logger(), "Recording started");
 }
 
-void LanceRecorderNode::stop_recording() {
+void AxonNode::stop_recording() {
     recording_ = false;
     
     // Flush all batch managers
@@ -235,13 +235,13 @@ void LanceRecorderNode::stop_recording() {
 }
 
 } // namespace ros2
-} // namespace lance_recorder
+} // namespace axon
 
 // Main entry point for ROS 2
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     
-    auto node = std::make_shared<lance_recorder::ros2::LanceRecorderNode>();
+    auto node = std::make_shared<axon::ros2::AxonNode>();
     
     if (!node->initialize()) {
         rclcpp::shutdown();

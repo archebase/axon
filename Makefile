@@ -1,4 +1,4 @@
-# Makefile for Edge Lance Recorder
+# Makefile for Axon by ArcheBase
 # Supports ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling)
 
 .PHONY: all build test clean install rust-build rust-test cpp-build cpp-test help
@@ -46,7 +46,7 @@ PRINTF := printf "%s\n"
 # Help target
 help:
 	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
-	@printf "%s\n" "$(GREEN)║     Edge Lance Recorder - Build System                  ║$(NC)"
+	@printf "%s\n" "$(GREEN)║     Axon by ArcheBase - Build System                     ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Available targets:$(NC)"
@@ -207,7 +207,7 @@ install: build
 docker-build-ros1:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS1...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros1 -t lance_recorder:ros1 . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros1 -t axon:ros1 . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -215,20 +215,20 @@ docker-test-ros1: docker-build-ros1
 	@printf "%s\n" "$(YELLOW)Running tests in ROS1 Docker container...$(NC)"
 	@mkdir -p $(RUST_TARGET_DIR)
 	@DOCKER_BUILDKIT=1 docker run --rm \
-		-v $(PWD):/workspace/edge_lance_recorder \
-		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/edge_lance_recorder/$(RUST_BRIDGE_DIR)/target \
+		-v $(PWD):/workspace/axon \
+		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/axon/$(RUST_BRIDGE_DIR)/target \
 		-v cargo-cache-ros1:/root/.cargo/registry \
 		-v cargo-git-cache-ros1:/root/.cargo/git \
 		-e ROS_DISTRO=noetic \
 		-e ROS_VERSION=1 \
-		lance_recorder:ros1 \
+		axon:ros1 \
 		/usr/local/bin/run_tests.sh
 	@printf "%s\n" "$(GREEN)✓ ROS1 tests passed$(NC)"
 
 docker-build-ros2-humble:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Humble...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.humble -t lance_recorder:ros2-humble . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.humble -t axon:ros2-humble . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -236,20 +236,20 @@ docker-test-ros2-humble: docker-build-ros2-humble
 	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Humble Docker container...$(NC)"
 	@mkdir -p $(RUST_TARGET_DIR)
 	@DOCKER_BUILDKIT=1 docker run --rm \
-		-v $(PWD):/workspace/edge_lance_recorder \
-		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/edge_lance_recorder/$(RUST_BRIDGE_DIR)/target \
+		-v $(PWD):/workspace/axon \
+		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/axon/$(RUST_BRIDGE_DIR)/target \
 		-v cargo-cache-ros2-humble:/root/.cargo/registry \
 		-v cargo-git-cache-ros2-humble:/root/.cargo/git \
 		-e ROS_DISTRO=humble \
 		-e ROS_VERSION=2 \
-		lance_recorder:ros2-humble \
+		axon:ros2-humble \
 		/usr/local/bin/run_tests.sh
 	@printf "%s\n" "$(GREEN)✓ ROS2 Humble tests passed$(NC)"
 
 docker-build-ros2-jazzy:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Jazzy...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.jazzy -t lance_recorder:ros2-jazzy . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.jazzy -t axon:ros2-jazzy . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -257,20 +257,20 @@ docker-test-ros2-jazzy: docker-build-ros2-jazzy
 	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Jazzy Docker container...$(NC)"
 	@mkdir -p $(RUST_TARGET_DIR)
 	@DOCKER_BUILDKIT=1 docker run --rm \
-		-v $(PWD):/workspace/edge_lance_recorder \
-		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/edge_lance_recorder/$(RUST_BRIDGE_DIR)/target \
+		-v $(PWD):/workspace/axon \
+		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/axon/$(RUST_BRIDGE_DIR)/target \
 		-v cargo-cache-ros2-jazzy:/root/.cargo/registry \
 		-v cargo-git-cache-ros2-jazzy:/root/.cargo/git \
 		-e ROS_DISTRO=jazzy \
 		-e ROS_VERSION=2 \
-		lance_recorder:ros2-jazzy \
+		axon:ros2-jazzy \
 		/usr/local/bin/run_tests.sh
 	@printf "%s\n" "$(GREEN)✓ ROS2 Jazzy tests passed$(NC)"
 
 docker-build-ros2-rolling:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Rolling...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.rolling -t lance_recorder:ros2-rolling . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.rolling -t axon:ros2-rolling . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -278,13 +278,13 @@ docker-test-ros2-rolling: docker-build-ros2-rolling
 	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Rolling Docker container...$(NC)"
 	@mkdir -p $(RUST_TARGET_DIR)
 	@DOCKER_BUILDKIT=1 docker run --rm \
-		-v $(PWD):/workspace/edge_lance_recorder \
-		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/edge_lance_recorder/$(RUST_BRIDGE_DIR)/target \
+		-v $(PWD):/workspace/axon \
+		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/axon/$(RUST_BRIDGE_DIR)/target \
 		-v cargo-cache-ros2-rolling:/root/.cargo/registry \
 		-v cargo-git-cache-ros2-rolling:/root/.cargo/git \
 		-e ROS_DISTRO=rolling \
 		-e ROS_VERSION=2 \
-		lance_recorder:ros2-rolling \
+		axon:ros2-rolling \
 		/usr/local/bin/run_tests.sh
 	@printf "%s\n" "$(GREEN)✓ ROS2 Rolling tests passed$(NC)"
 
@@ -314,13 +314,13 @@ docker-build-only:
 	@printf "%s\n" "$(YELLOW)Building in Docker container...$(NC)"
 	@mkdir -p $(RUST_TARGET_DIR)
 	@DOCKER_BUILDKIT=1 docker run --rm \
-		-v $(PWD):/workspace/edge_lance_recorder \
-		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/edge_lance_recorder/$(RUST_BRIDGE_DIR)/target \
+		-v $(PWD):/workspace/axon \
+		-v $(PWD)/$(RUST_TARGET_DIR):/workspace/axon/$(RUST_BRIDGE_DIR)/target \
 		-v cargo-cache-ros$(ROS_VERSION):/root/.cargo/registry \
 		-v cargo-git-cache-ros$(ROS_VERSION):/root/.cargo/git \
 		-e ROS_DISTRO=$(ROS_DISTRO) \
 		-e ROS_VERSION=$(ROS_VERSION) \
-		lance_recorder:ros$(ROS_VERSION) \
+		axon:ros$(ROS_VERSION) \
 		/usr/local/bin/run_build.sh
 	@printf "%s\n" "$(GREEN)✓ Docker build complete$(NC)"
 
