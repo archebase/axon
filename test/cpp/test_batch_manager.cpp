@@ -5,7 +5,7 @@
 #include <thread>
 #include <chrono>
 
-using namespace lance_recorder::core;
+using namespace axon::core;
 
 class BatchManagerTest : public ::testing::Test {
 protected:

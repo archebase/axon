@@ -3,7 +3,7 @@
 #include <fstream>
 #include <filesystem>
 
-using namespace lance_recorder::core;
+using namespace axon::core;
 
 class ConfigParserTest : public ::testing::Test {
 protected:

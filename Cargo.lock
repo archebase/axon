@@ -761,6 +761,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "axon_lance_bridge"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "cbindgen",
+ "lance",
+ "lazy_static",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "backon"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3352,20 +3366,6 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
-]
-
-[[package]]
-name = "lance_writer_bridge"
-version = "0.1.0"
-dependencies = [
- "arrow",
- "cbindgen",
- "lance",
- "lazy_static",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
 ]
 
 [[package]]

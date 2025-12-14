@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace lance_recorder {
+namespace axon {
 namespace common {
 
 RosInterfaceFactory::RosVersion RosInterfaceFactory::detect_ros_version() {
@@ -33,4 +33,4 @@ RosInterfaceFactory::RosVersion RosInterfaceFactory::detect_ros_version() {
 // This file provides the detection function only
 
 } // namespace common
-} // namespace lance_recorder
+} // namespace axon

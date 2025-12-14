@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 /**
@@ -100,7 +100,7 @@ public:
 };
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // ARROW_BUILDER_HPP
 

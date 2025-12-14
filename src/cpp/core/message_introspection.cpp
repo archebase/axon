@@ -4,7 +4,7 @@
 #include <sstream>
 #include <algorithm>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 std::shared_ptr<arrow::DataType> MessageIntrospector::ros_type_to_arrow(
@@ -85,5 +85,5 @@ std::unique_ptr<MessageIntrospector> MessageIntrospectorFactory::create() {
 }
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 

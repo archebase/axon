@@ -6,7 +6,7 @@
 #include <memory>
 #include <yaml-cpp/yaml.h>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 struct TopicConfig {
@@ -69,7 +69,7 @@ private:
 };
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // CONFIG_PARSER_HPP
 

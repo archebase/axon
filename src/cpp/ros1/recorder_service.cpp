@@ -7,7 +7,7 @@
 // Service message includes would go here
 // For ROS 1, these would be generated from .srv files
 
-namespace lance_recorder {
+namespace axon {
 namespace ros1 {
 
 // Service handler implementations
@@ -45,5 +45,5 @@ public:
 };
 
 } // namespace ros1
-} // namespace lance_recorder
+} // namespace axon
 

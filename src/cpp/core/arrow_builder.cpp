@@ -2,7 +2,7 @@
 #include <arrow/builder.h>
 #include <arrow/type.h>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 std::unique_ptr<ArrowBuilder> ArrowBuilderFactory::create_builder(std::shared_ptr<arrow::DataType> type) {
@@ -48,5 +48,5 @@ std::unique_ptr<TypedArrowBuilder<arrow::BooleanBuilder>> ArrowBuilderFactory::c
 }
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 

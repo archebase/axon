@@ -1,6 +1,6 @@
-# Edge Lance Recorder
+# Axon
 
-A high-performance ROS recorder that writes data to Lance format using a C++/Rust FFI bridge. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling).
+A high-performance ROS recorder by ArcheBase that writes data to Lance format using a C++/Rust FFI bridge. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling).
 
 ## Architecture
 
@@ -88,7 +88,7 @@ source /opt/ros/noetic/setup.bash
 # Create catkin workspace
 mkdir -p catkin_ws/src
 cd catkin_ws/src
-ln -s /path/to/edge_lance_recorder .
+ln -s /path/to/axon .
 
 # Build
 cd ..
@@ -105,7 +105,7 @@ source /opt/ros/<distro>/setup.bash
 # Create colcon workspace
 mkdir -p colcon_ws/src
 cd colcon_ws/src
-ln -s /path/to/edge_lance_recorder .
+ln -s /path/to/axon .
 
 # Build
 cd ..
@@ -198,20 +198,20 @@ recording:
 
 ```bash
 # Launch with default config
-roslaunch edge_lance_recorder recorder_ros1.launch
+roslaunch axon recorder_ros1.launch
 
 # Launch with custom config
-roslaunch edge_lance_recorder recorder_ros1.launch config_path:=/path/to/config.yaml
+roslaunch axon recorder_ros1.launch config_path:=/path/to/config.yaml
 ```
 
 ### ROS 2
 
 ```bash
 # Launch with default config
-ros2 launch edge_lance_recorder recorder_ros2.launch.py
+ros2 launch axon recorder_ros2.launch.py
 
 # Launch with custom config
-ros2 launch edge_lance_recorder recorder_ros2.launch.py config_path:=/path/to/config.yaml
+ros2 launch axon recorder_ros2.launch.py config_path:=/path/to/config.yaml
 ```
 
 ## ROS Services
@@ -224,10 +224,10 @@ Start recording with optional config override.
 
 ```bash
 # ROS 1
-rosservice call /lance_recorder/start_recording "config_path: ''"
+rosservice call /axon/start_recording "config_path: ''"
 
 # ROS 2
-ros2 service call /lance_recorder/start_recording edge_lance_recorder/srv/StartRecording "{config_path: ''}"
+ros2 service call /axon/start_recording axon/srv/StartRecording "{config_path: ''}"
 ```
 
 ### StopRecording
@@ -236,10 +236,10 @@ Stop recording and flush current batch.
 
 ```bash
 # ROS 1
-rosservice call /lance_recorder/stop_recording
+rosservice call /axon/stop_recording
 
 # ROS 2
-ros2 service call /lance_recorder/stop_recording edge_lance_recorder/srv/StopRecording
+ros2 service call /axon/stop_recording axon/srv/StopRecording
 ```
 
 ### UpdateConfig
@@ -248,10 +248,10 @@ Update configuration at runtime.
 
 ```bash
 # ROS 1
-rosservice call /lance_recorder/update_config "config_path: '/path/to/new_config.yaml'"
+rosservice call /axon/update_config "config_path: '/path/to/new_config.yaml'"
 
 # ROS 2
-ros2 service call /lance_recorder/update_config edge_lance_recorder/srv/UpdateConfig "{config_path: '/path/to/new_config.yaml'}"
+ros2 service call /axon/update_config axon/srv/UpdateConfig "{config_path: '/path/to/new_config.yaml'}"
 ```
 
 ### GetStatus
@@ -260,10 +260,10 @@ Get current recording status.
 
 ```bash
 # ROS 1
-rosservice call /lance_recorder/get_status
+rosservice call /axon/get_status
 
 # ROS 2
-ros2 service call /lance_recorder/get_status edge_lance_recorder/srv/GetStatus
+ros2 service call /axon/get_status axon/srv/GetStatus
 ```
 
 ## Docker
@@ -272,16 +272,16 @@ ros2 service call /lance_recorder/get_status edge_lance_recorder/srv/GetStatus
 
 ```bash
 # ROS 1
-docker build -f docker/Dockerfile.ros1 -t lance_recorder:ros1 .
+docker build -f docker/Dockerfile.ros1 -t axon:ros1 .
 
 # ROS 2 Humble
-docker build -f docker/Dockerfile.ros2.humble -t lance_recorder:ros2-humble .
+docker build -f docker/Dockerfile.ros2.humble -t axon:ros2-humble .
 
 # ROS 2 Jazzy
-docker build -f docker/Dockerfile.ros2.jazzy -t lance_recorder:ros2-jazzy .
+docker build -f docker/Dockerfile.ros2.jazzy -t axon:ros2-jazzy .
 
 # ROS 2 Rolling
-docker build -f docker/Dockerfile.ros2.rolling -t lance_recorder:ros2-rolling .
+docker build -f docker/Dockerfile.ros2.rolling -t axon:ros2-rolling .
 ```
 
 ### Using Docker Compose

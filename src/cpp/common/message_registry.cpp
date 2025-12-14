@@ -1,7 +1,7 @@
 #include "message_registry.hpp"
 #include <iostream>
 
-namespace lance_recorder {
+namespace axon {
 namespace common {
 
 static std::unordered_map<std::string, MessageRegistry::ConverterFactory>* g_registry = nullptr;
@@ -59,4 +59,4 @@ void MessageRegistry::initialize_default_converters() {
 }
 
 } // namespace common
-} // namespace lance_recorder
+} // namespace axon

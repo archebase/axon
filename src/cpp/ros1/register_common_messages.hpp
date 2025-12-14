@@ -1,7 +1,7 @@
 #ifndef REGISTER_COMMON_MESSAGES_HPP
 #define REGISTER_COMMON_MESSAGES_HPP
 
-namespace lance_recorder {
+namespace axon {
 namespace ros1 {
 
 /**
@@ -13,7 +13,7 @@ namespace ros1 {
 void register_common_message_types();
 
 } // namespace ros1
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // REGISTER_COMMON_MESSAGES_HPP
 

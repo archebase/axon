@@ -3,7 +3,7 @@
 #include <sstream>
 #include <iostream>
 
-namespace lance_recorder {
+namespace axon {
 namespace core {
 
 RecorderConfig RecorderConfig::from_yaml(const std::string& yaml_path) {
@@ -185,5 +185,5 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
 }
 
 } // namespace core
-} // namespace lance_recorder
+} // namespace axon
 

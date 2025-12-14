@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the complete, production-ready implementation that replaces all simplified/placeholder code with full, high-performance implementations.
+This document describes the complete, production-ready implementation of Axon by ArcheBase that replaces all simplified/placeholder code with full, high-performance implementations.
 
 ## Key Architectural Improvements
 
@@ -111,36 +111,36 @@ ROS Message → Arrow Builder → Arrow Array → C Data Interface → Rust
 ## Component Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                  ROS Interface Layer                     │
-│  ┌──────────────┐              ┌──────────────┐        │
-│  │  ROS1 Impl   │              │  ROS2 Impl   │        │
-│  └──────────────┘              └──────────────┘        │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                  ROS Interface Layer                         │
+│  ┌──────────────┐              ┌──────────────┐            │
+│  │  ROS1 Impl   │              │  ROS2 Impl   │            │
+│  └──────────────┘              └──────────────┘            │
+└─────────────────────────────────────────────────────────────┘
                          ↓
-┌─────────────────────────────────────────────────────────┐
-│              Message Conversion Layer                    │
-│  ┌──────────────────┐  ┌──────────────────────────┐   │
-│  │ Introspection    │  │ Typed Converters        │   │
-│  │ (Dynamic)        │  │ (Optimized)             │   │
-│  └──────────────────┘  └──────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│              Message Conversion Layer                        │
+│  ┌──────────────────┐  ┌──────────────────────────┐        │
+│  │ Introspection    │  │ Typed Converters         │        │
+│  │ (Dynamic)        │  │ (Optimized)              │        │
+│  └──────────────────┘  └──────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
                          ↓
-┌─────────────────────────────────────────────────────────┐
-│              Batch Management Layer                      │
-│  ┌──────────────────┐  ┌──────────────────────────┐   │
-│  │ BatchManager     │  │ SchemaMerger            │   │
-│  │ (Arrow Builders) │  │ (Multi-topic)           │   │
-│  └──────────────────┘  └──────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│              Batch Management Layer                          │
+│  ┌──────────────────┐  ┌──────────────────────────┐        │
+│  │ BatchManager     │  │ SchemaMerger             │        │
+│  │ (Arrow Builders) │  │ (Multi-topic)            │        │
+│  └──────────────────┘  └──────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
                          ↓
-┌─────────────────────────────────────────────────────────┐
-│                  FFI Bridge Layer                        │
-│  ┌──────────────────┐  ┌──────────────────────────┐   │
-│  │ C++ Wrapper     │  │ Rust Bridge              │   │
-│  │ (LanceWriter)   │  │ (Lance Dataset)          │   │
-│  └──────────────────┘  └──────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                  FFI Bridge Layer                            │
+│  ┌──────────────────┐  ┌──────────────────────────┐        │
+│  │ C++ Wrapper      │  │ Rust Bridge              │        │
+│  │ (LanceWriter)    │  │ (Lance Dataset)          │        │
+│  └──────────────────┘  └──────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Data Flow

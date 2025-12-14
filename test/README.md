@@ -1,6 +1,6 @@
 # Test Suite
 
-This directory contains the test suite for the Edge Lance Recorder project.
+This directory contains the test suite for the Axon project by ArcheBase.
 
 ## Test Structure
 

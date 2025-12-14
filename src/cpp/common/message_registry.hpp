@@ -9,7 +9,7 @@
 #include <arrow/api.h>
 #include "../core/message_converter.hpp"
 
-namespace lance_recorder {
+namespace axon {
 namespace common {
 
 // Use core::MessageConverter
@@ -54,7 +54,7 @@ private:
 };
 
 } // namespace common
-} // namespace lance_recorder
+} // namespace axon
 
 #endif // MESSAGE_REGISTRY_HPP
 

@@ -14,7 +14,7 @@
 #include <map>
 #include <string>
 
-namespace lance_recorder {
+namespace axon {
 namespace common {
 
 class Ros1Interface : public RosInterface {
@@ -299,4 +299,4 @@ std::unique_ptr<RosInterface> RosInterfaceFactory::create(RosVersion version) {
 }
 
 } // namespace common
-} // namespace lance_recorder
+} // namespace axon

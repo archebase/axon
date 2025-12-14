@@ -10,7 +10,7 @@
 #include <map>
 #include <string>
 
-namespace lance_recorder {
+namespace axon {
 namespace common {
 
 class Ros2Interface : public RosInterface {
@@ -140,7 +140,7 @@ public:
             // Generic services are not available in all ROS 2 versions
             // For now, store the wrapper for typed service registration
             // The actual service needs to be created with concrete types
-            // through the ROS 2 service interfaces (see edge_lance_recorder_node.cpp)
+            // through the ROS 2 service interfaces (see axon_node.cpp)
             RCLCPP_WARN(node_->get_logger(),
                        "Generic service '%s' registered but requires typed implementation",
                        service_name.c_str());
@@ -231,4 +231,4 @@ std::unique_ptr<RosInterface> RosInterfaceFactory::create(RosVersion version) {
 }
 
 } // namespace common
-} // namespace lance_recorder
+} // namespace axon

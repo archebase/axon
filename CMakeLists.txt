@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(edge_lance_recorder)
+project(axon)
 
 # Detect ROS version
 if(DEFINED ENV{ROS_VERSION})
@@ -119,20 +119,20 @@ if(ROS_VERSION EQUAL 1)
     target_compile_definitions(${PROJECT_NAME}_core PRIVATE ROS_VERSION_1)
     
     # ROS 1 Node
-    add_executable(lance_recorder_node
+    add_executable(axon_node
         src/cpp/ros1/recorder_node.cpp
         src/cpp/ros1/recorder_service.cpp
     )
     
-    target_link_libraries(lance_recorder_node
+    target_link_libraries(axon_node
         ${PROJECT_NAME}_core
         ${catkin_LIBRARIES}
     )
     
-    add_dependencies(lance_recorder_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+    add_dependencies(axon_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
     
     # Install
-    install(TARGETS lance_recorder_node ${PROJECT_NAME}_core
+    install(TARGETS axon_node ${PROJECT_NAME}_core
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
         LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
         ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
@@ -202,28 +202,28 @@ else()
     target_compile_definitions(${PROJECT_NAME}_core PRIVATE ROS_VERSION_2)
     
     # ROS 2 Node
-    add_executable(lance_recorder_node
+    add_executable(axon_node
         src/cpp/ros2/recorder_node.cpp
         src/cpp/ros2/recorder_service.cpp
     )
     
-    ament_target_dependencies(lance_recorder_node
+    ament_target_dependencies(axon_node
         rclcpp
         std_msgs
         sensor_msgs
         nav_msgs
     )
     
-    target_link_libraries(lance_recorder_node
+    target_link_libraries(axon_node
         ${PROJECT_NAME}_core
     )
     
-    rosidl_target_interfaces(lance_recorder_node
+    rosidl_target_interfaces(axon_node
         ${PROJECT_NAME} rosidl_typesupport_cpp
     )
     
     # Install
-    install(TARGETS lance_recorder_node ${PROJECT_NAME}_core
+    install(TARGETS axon_node ${PROJECT_NAME}_core
         DESTINATION lib/${PROJECT_NAME}
     )
     

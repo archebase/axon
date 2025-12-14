@@ -12,14 +12,14 @@
 #include <thread>
 #include <atomic>
 
-namespace lance_recorder {
+namespace axon {
 namespace ros1 {
 
-class LanceRecorderNode {
+class AxonNode {
 public:
-    LanceRecorderNode() : recording_(false), dataset_handle_(0) {}
+    AxonNode() : recording_(false), dataset_handle_(0) {}
     
-    ~LanceRecorderNode() {
+    ~AxonNode() {
         shutdown();
     }
     
@@ -31,7 +31,7 @@ public:
             return false;
         }
         
-        if (!ros_interface_->init(argc, argv, "lance_recorder")) {
+        if (!ros_interface_->init(argc, argv, "axon")) {
             std::cerr << "Failed to initialize ROS" << std::endl;
             return false;
         }
@@ -124,7 +124,7 @@ private:
         }
         
         // Try to get from package path
-        std::string package_path = ros::package::getPath("edge_lance_recorder");
+        std::string package_path = ros::package::getPath("axon");
         if (!package_path.empty()) {
             return package_path + "/config/default_config.yaml";
         }
@@ -318,11 +318,11 @@ private:
 };
 
 } // namespace ros1
-} // namespace lance_recorder
+} // namespace axon
 
 // Main entry point for ROS 1
 int main(int argc, char** argv) {
-    lance_recorder::ros1::LanceRecorderNode node;
+    axon::ros1::AxonNode node;
     
     if (!node.initialize(argc, argv)) {
         return 1;
