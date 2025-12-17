@@ -9,14 +9,14 @@
     Supports both ROS 1 (Noetic) and ROS 2 (Humble/Jazzy/Rolling).
   </description>
   
-  <maintainer email="maintainer@example.com">Axon Team</maintainer>
+  <maintainer email="maintainer@archebase.com">ArcheBase</maintainer>
   <license>Apache-2.0</license>
   
-  <url type="website">https://github.com/example/axon</url>
-  <url type="repository">https://github.com/example/axon</url>
-  <url type="bugtracker">https://github.com/example/axon/issues</url>
+  <url type="website">https://github.com/archebase/axon</url>
+  <url type="repository">https://github.com/archebase/axon</url>
+  <url type="bugtracker">https://github.com/archebase/axon/issues</url>
   
-  <author email="author@example.com">Axon Team</author>
+  <author email="maintainer@archebase.com">ArcheBase</author>
 
   <!-- Build tool dependency -->
   <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>

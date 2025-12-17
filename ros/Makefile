@@ -162,22 +162,22 @@ cpp-build:
 		$(MAKE) cpp-build-ros2; \
 	fi
 
-# C++ tests
+# C++ tests (core library tests are now in cpp/axon_arrow/test/)
 cpp-test:
-	@printf "%s\n" "$(YELLOW)Building and running C++ tests...$(NC)"
-	@mkdir -p $(TEST_BUILD_DIR)
-	@cd $(TEST_BUILD_DIR) && \
-		cmake ../.. && \
-		cmake --build . -j$(NPROC) && \
-		ctest --output-on-failure
+	@printf "%s\n" "$(YELLOW)Running core C++ library tests...$(NC)"
+	@cd $(PROJECT_ROOT)/cpp && $(MAKE) test
 	@printf "%s\n" "$(GREEN)✓ C++ tests passed$(NC)"
 
-# Run all tests
-test: rust-test cpp-test
+# ROS integration tests
+integration-test:
 	@printf "%s\n" "$(YELLOW)Running integration tests...$(NC)"
 	@if [ -f axon_recorder/test/integration/test_rust_bridge.sh ]; then \
 		bash axon_recorder/test/integration/test_rust_bridge.sh; \
 	fi
+	@printf "%s\n" "$(GREEN)✓ Integration tests passed$(NC)"
+
+# Run all tests
+test: rust-test cpp-test integration-test
 	@printf "%s\n" "$(GREEN)✓ All tests passed!$(NC)"
 
 # Clean targets
@@ -212,8 +212,8 @@ install: build
 docker-build-ros1:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS1...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros1 -t axon:ros1 . || \
-		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
+	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f ros/docker/Dockerfile.ros1 -t axon:ros1 . || \
+		(echo "$(RED)Build failed. See ros/docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
 docker-test-ros1: docker-build-ros1
@@ -233,8 +233,8 @@ docker-test-ros1: docker-build-ros1
 docker-build-ros2-humble:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Humble...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.humble -t axon:ros2-humble . || \
-		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
+	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f ros/docker/Dockerfile.ros2.humble -t axon:ros2-humble . || \
+		(echo "$(RED)Build failed. See ros/docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
 docker-test-ros2-humble: docker-build-ros2-humble
@@ -254,8 +254,8 @@ docker-test-ros2-humble: docker-build-ros2-humble
 docker-build-ros2-jazzy:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Jazzy...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.jazzy -t axon:ros2-jazzy . || \
-		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
+	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f ros/docker/Dockerfile.ros2.jazzy -t axon:ros2-jazzy . || \
+		(echo "$(RED)Build failed. See ros/docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
 docker-test-ros2-jazzy: docker-build-ros2-jazzy
@@ -275,8 +275,8 @@ docker-test-ros2-jazzy: docker-build-ros2-jazzy
 docker-build-ros2-rolling:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Rolling...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.rolling -t axon:ros2-rolling . || \
-		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
+	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f ros/docker/Dockerfile.ros2.rolling -t axon:ros2-rolling . || \
+		(echo "$(RED)Build failed. See ros/docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
 docker-test-ros2-rolling: docker-build-ros2-rolling
@@ -311,7 +311,7 @@ docker-test:
 # Run tests using docker-compose (all versions in parallel)
 docker-test-compose:
 	@printf "%s\n" "$(YELLOW)Running tests in all Docker containers (docker-compose)...$(NC)"
-	@cd $(PROJECT_ROOT)/docker && docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+	@cd $(PROJECT_ROOT)/ros/docker && docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
 	@printf "%s\n" "$(GREEN)✓ All Docker tests passed!$(NC)"
 
 # Build in Docker

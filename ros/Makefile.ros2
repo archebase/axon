@@ -5,6 +5,3 @@ include Makefile
 
 # Override ROS version detection for ROS2
 ROS_VERSION := 2
-
-
-

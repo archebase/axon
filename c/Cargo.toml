@@ -16,12 +16,12 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 # Core library
-axon-lance = { path = "../rust" }
+axon-lance = { path = "../rust/axon_lance" }
 
-# Arrow FFI types - must match version used by axon-lance
-arrow = { version = "54", default-features = false, features = ["ffi"] }
-arrow-schema = "54"
-arrow-array = "54"
+# Arrow FFI types - must match version used by axon-lance (and lance)
+arrow = { version = "56", default-features = false, features = ["ffi"] }
+arrow-schema = "56"
+arrow-array = "56"
 
 [build-dependencies]
 cbindgen = "0.29"

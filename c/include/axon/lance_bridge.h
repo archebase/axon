@@ -8,17 +8,6 @@
  * https://github.com/archebase/axon
  */
 
-
-#ifndef AXON_LANCE_BRIDGE_H
-#define AXON_LANCE_BRIDGE_H
-
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdint.h>
-
 /* Non-null pointer hint (used by static analyzers) */
 #ifndef AXON_NONNULL
 #define AXON_NONNULL
@@ -28,6 +17,20 @@
 struct ArrowSchema;
 struct ArrowArray;
 
+
+#ifndef AXON_LANCE_BRIDGE_H
+#define AXON_LANCE_BRIDGE_H
+
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include "stdint.h"
 
 /**
  * Operation completed successfully
@@ -78,9 +81,22 @@ struct ArrowArray;
 
 #define LANCE_ERROR_INVALID_HANDLE AXON_LANCE_ERROR_INVALID_HANDLE
 
-#ifdef __cplusplus
-extern "C" {
-#endif // __cplusplus
+/**
+ * Get the last error message as a C string
+ *
+ * Returns a pointer to the error message string, or NULL if no error.
+ * The returned string is valid until the next error occurs on this thread.
+ *
+ * # Safety
+ * The returned pointer is valid until the next call to any Axon function
+ * that may set an error on this thread.
+ */
+const char *axon_lance_get_last_error(void);
+
+/**
+ * Legacy name for backward compatibility
+ */
+const char *lance_get_last_error(void);
 
 /**
  * Create or open a Lance dataset
@@ -99,8 +115,7 @@ extern "C" {
  * * `path` must be a valid null-terminated C string
  * * `schema_ptr` must be a valid pointer to an FFI_ArrowSchema
  */
-int64_t axon_lance_create_dataset(const char *path,
-                                  FFI_ArrowSchema *schema_ptr);
+int64_t axon_lance_create_dataset(const char *path, FFI_ArrowSchema *schema_ptr);
 
 /**
  * Write a RecordBatch to a Lance dataset
@@ -145,39 +160,18 @@ int axon_lance_close_dataset(int64_t dataset_handle);
  * Legacy: Create or open a Lance dataset
  * Use `axon_lance_create_dataset` instead.
  */
-int64_t create_or_open_dataset(const char *path,
-                               FFI_ArrowSchema *schema_ptr);
+int64_t create_or_open_dataset(const char *path, FFI_ArrowSchema *schema_ptr);
 
 /**
  * Legacy: Write a RecordBatch to a Lance dataset
  * Use `axon_lance_write_batch` instead.
  */
-int write_batch(int64_t dataset_handle,
-                FFI_ArrowArray *array_ptr,
-                FFI_ArrowSchema *schema_ptr);
+int write_batch(int64_t dataset_handle, FFI_ArrowArray *array_ptr, FFI_ArrowSchema *schema_ptr);
 
 /**
  * Legacy: Close a dataset
  * Use `axon_lance_close_dataset` instead.
  */
 int close_dataset(int64_t dataset_handle);
-
-/**
- * Get the last error message as a C string
- *
- * Returns a pointer to the error message string, or NULL if no error.
- * The returned string is valid until the next error occurs on this thread.
- *
- * # Safety
- * The returned pointer is valid until the next call to any Axon function
- * that may set an error on this thread.
- */
-const char *axon_lance_get_last_error(void);
-
-const char *lance_get_last_error(void);
-
-#ifdef __cplusplus
-}  // extern "C"
-#endif  // __cplusplus
 
 #endif  /* AXON_LANCE_BRIDGE_H */

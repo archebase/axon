@@ -12,6 +12,15 @@ header = """/*
  *
  * https://github.com/archebase/axon
  */
+
+/* Non-null pointer hint (used by static analyzers) */
+#ifndef AXON_NONNULL
+#define AXON_NONNULL
+#endif
+
+/* Arrow FFI types (must be provided by Arrow C headers) */
+struct ArrowSchema;
+struct ArrowArray;
 """
 
 include_guard = "AXON_LANCE_BRIDGE_H"
@@ -64,15 +73,3 @@ allow_constexpr = false
 
 [macro_expansion]
 bitflags = false
-
-# After block for extern "C" closure
-after_includes = """
-/* Non-null pointer hint (used by static analyzers) */
-#ifndef AXON_NONNULL
-#define AXON_NONNULL
-#endif
-
-/* Arrow FFI types (must be provided by Arrow C headers) */
-struct ArrowSchema;
-struct ArrowArray;
-"""

@@ -4,7 +4,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-C_FFI_DIR="$SCRIPT_DIR/../../c"
+C_FFI_DIR="$SCRIPT_DIR/../../../../c"
 TEMP_DIR=$(mktemp -d)
 
 echo "Testing C FFI library..."
@@ -26,4 +26,3 @@ echo "FFI interface tests would go here..."
 rm -rf "$TEMP_DIR"
 
 echo "All tests passed!"
-

@@ -800,17 +800,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "axon_lance_bridge"
+name = "axon-lance"
 version = "0.1.0"
 dependencies = [
  "arrow",
- "cbindgen",
+ "arrow-array",
+ "arrow-schema",
  "lance",
  "lazy_static",
- "serde",
- "serde_json",
+ "once_cell",
  "tempfile",
+ "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "axon-lance-ffi"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "arrow-array",
+ "arrow-schema",
+ "axon-lance",
+ "cbindgen",
 ]
 
 [[package]]

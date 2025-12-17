@@ -95,6 +95,31 @@ ctest --output-on-failure
 |--------|---------|-------------|
 | `BUILD_SHARED_LIBS` | `OFF` | Build shared libraries instead of static |
 | `AXON_ARROW_BUILD_TESTS` | `ON` | Build unit tests |
+| `AXON_ARROW_ENABLE_COVERAGE` | `OFF` | Enable code coverage instrumentation |
+
+## Code Coverage
+
+Generate test coverage reports using `lcov`:
+
+**Install lcov:**
+```bash
+# macOS
+brew install lcov
+
+# Ubuntu
+sudo apt install lcov
+```
+
+**Generate coverage report:**
+```bash
+# Text summary
+make coverage
+
+# HTML report (opens in browser)
+make coverage-html
+```
+
+The HTML report will be generated in `coverage/index.html`.
 
 ## API Documentation
 

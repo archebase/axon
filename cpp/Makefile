@@ -1,7 +1,7 @@
 # Makefile for Axon C++ SDK (axon_arrow)
 # Core library providing Arrow builders, batch management, and message conversion
 
-.PHONY: all build test clean install help debug release format lint check-deps dev-setup verify
+.PHONY: all build test clean install help debug release format lint check-deps dev-setup verify coverage coverage-html
 
 .DEFAULT_GOAL := help
 
@@ -16,6 +16,7 @@ TEST_BUILD_DIR := $(BUILD_DIR)
 # Build configuration
 BUILD_TYPE ?= Release
 CMAKE_OPTIONS ?=
+COVERAGE_DIR := coverage
 
 # Detect number of CPU cores
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -54,6 +55,7 @@ help:
 	@printf "%s\n" "$(YELLOW)Code quality:$(NC)"
 	@printf "%s\n" "  $(BLUE)make format$(NC)         - Format code (requires clang-format)"
 	@printf "%s\n" "  $(BLUE)make lint$(NC)           - Lint code (requires cppcheck)"
+	@printf "%s\n" "  $(BLUE)make coverage$(NC)       - Run tests with coverage report (requires lcov)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Environment variables:$(NC)"
 	@printf "%s\n" "  $(BLUE)BUILD_TYPE$(NC)          - Release or Debug (default: Release)"
@@ -95,7 +97,7 @@ test: build
 # Clean build artifacts
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
-	@rm -rf $(BUILD_DIR)
+	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
 	@printf "%s\n" "$(GREEN)✓ Build artifacts cleaned$(NC)"
 
 # Install the library
@@ -142,3 +144,71 @@ dev-setup: check-deps
 # Verify (build + test)
 verify: build test
 	@printf "%s\n" "$(GREEN)✓ Verification complete - build and tests passed!$(NC)"
+
+# =============================================================================
+# Code Coverage
+# =============================================================================
+# Requires: lcov (brew install lcov / sudo apt install lcov)
+
+# Build with coverage and run tests
+# LCOV_IGNORE handles macOS LLVM/Clang compatibility issues:
+#   - mismatch: source file checksum mismatches
+#   - inconsistent: function end line < start line (LLVM gcov bug)
+#   - unsupported: function begin/end line exclusions not supported
+#   - unused: removing unused data
+#   - format: line number 0 for compiler-generated functions (__cxx_global_var_init)
+LCOV_IGNORE := --ignore-errors mismatch,mismatch \
+               --ignore-errors inconsistent,inconsistent \
+               --ignore-errors unsupported,unsupported \
+               --ignore-errors unused,unused \
+               --ignore-errors format,format
+
+coverage:
+	@printf "%s\n" "$(YELLOW)Building with coverage instrumentation...$(NC)"
+	@rm -rf $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake ../axon_arrow \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_ARROW_BUILD_TESTS=ON \
+			-DAXON_ARROW_ENABLE_COVERAGE=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
+	@cd $(BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
+	@if command -v lcov >/dev/null 2>&1; then \
+		cd $(BUILD_DIR) && \
+		lcov --capture --directory . --output-file coverage_raw.info $(LCOV_IGNORE) && \
+		lcov --remove coverage_raw.info \
+			'/usr/*' \
+			'/opt/*' \
+			'/Library/*' \
+			'*/test/*' \
+			'*/_deps/*' \
+			'*/c++/*' \
+			--output-file coverage.info $(LCOV_IGNORE) && \
+		echo "" && \
+		echo "================================================================================" && \
+		echo "                           COVERAGE SUMMARY" && \
+		echo "================================================================================" && \
+		lcov --list coverage.info $(LCOV_IGNORE) && \
+		echo "================================================================================" && \
+		printf "%s\n" "$(GREEN)✓ Coverage report generated$(NC)"; \
+		printf "%s\n" "$(YELLOW)Run 'make coverage-html' to generate HTML report$(NC)"; \
+	else \
+		printf "%s\n" "$(RED)Error: lcov not found. Install with: brew install lcov (macOS) or sudo apt install lcov (Ubuntu)$(NC)"; \
+		exit 1; \
+	fi
+
+# Generate HTML coverage report
+coverage-html: coverage
+	@printf "%s\n" "$(YELLOW)Generating HTML coverage report...$(NC)"
+	@mkdir -p $(COVERAGE_DIR)
+	@cd $(BUILD_DIR) && genhtml coverage.info --output-directory ../$(COVERAGE_DIR) $(LCOV_IGNORE)
+	@printf "%s\n" "$(GREEN)✓ HTML report generated at $(COVERAGE_DIR)/index.html$(NC)"
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		open $(COVERAGE_DIR)/index.html; \
+	elif command -v xdg-open >/dev/null 2>&1; then \
+		xdg-open $(COVERAGE_DIR)/index.html; \
+	fi

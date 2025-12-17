@@ -8,6 +8,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(AXON_ARROW_BUILD_TESTS "Build tests" ON)
+option(AXON_ARROW_ENABLE_COVERAGE "Enable code coverage" OFF)
+
+# =============================================================================
+# Code Coverage Configuration
+# =============================================================================
+if(AXON_ARROW_ENABLE_COVERAGE)
+    message(STATUS "Code coverage enabled")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+endif()
 
 # =============================================================================
 # Dependencies - Must be installed before building
