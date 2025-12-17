@@ -20,15 +20,15 @@ fi
 # Navigate to workspace
 cd /workspace/axon
 
-# Run Rust tests
+# Run C FFI tests (Rust)
 echo ""
 echo "============================================"
-echo "Running Rust tests..."
+echo "Running C FFI tests (Rust)..."
 echo "============================================"
-cd src/bridge
+cd c
 cargo test
 cd /workspace/axon
-echo "✓ Rust tests passed"
+echo "✓ C FFI tests passed"
 
 # Build and run C++ tests
 echo ""

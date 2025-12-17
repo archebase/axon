@@ -20,15 +20,15 @@ fi
 # Navigate to workspace
 cd /workspace/axon
 
-# Build Rust library
+# Build C FFI library (Rust)
 echo ""
 echo "============================================"
-echo "Building Rust bridge library..."
+echo "Building C FFI library (Rust)..."
 echo "============================================"
-cd src/bridge
+cd c
 cargo build
 cd /workspace/axon
-echo "✓ Rust library built"
+echo "✓ C FFI library built"
 
 # Build C++ code
 echo ""

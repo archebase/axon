@@ -1,0 +1,30 @@
+[package]
+name = "axon-lance-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "Axon Lance C FFI - C interface for writing data to Lance format"
+license = "Apache-2.0"
+repository = "https://github.com/archebase/axon"
+homepage = "https://github.com/archebase/axon"
+keywords = ["ros", "robotics", "lance", "arrow", "ffi"]
+categories = ["science", "data-structures", "api-bindings"]
+authors = ["ArcheBase <maintainer@archebase.com>"]
+
+[lib]
+name = "lance_writer_bridge"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# Core library
+axon-lance = { path = "../rust" }
+
+# Arrow FFI types - must match version used by axon-lance
+arrow = { version = "54", default-features = false, features = ["ffi"] }
+arrow-schema = "54"
+arrow-array = "54"
+
+[build-dependencies]
+cbindgen = "0.29"
+
+[package.metadata.docs.rs]
+features = ["default"]

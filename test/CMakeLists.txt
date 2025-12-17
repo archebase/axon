@@ -14,9 +14,9 @@ set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 # Include directories
 include_directories(
-    ${PROJECT_ROOT}/src/cpp
-    ${PROJECT_ROOT}/src/cpp/core
-    ${PROJECT_ROOT}/src/cpp/common
+    ${PROJECT_ROOT}/cpp/src
+    ${PROJECT_ROOT}/cpp/src/core
+    ${PROJECT_ROOT}/ros/axon_common/src
     ${GTEST_INCLUDE_DIRS}
     ${ARROW_INCLUDE_DIRS}
     ${yaml-cpp_INCLUDE_DIRS}
@@ -25,17 +25,17 @@ include_directories(
 # Test executables
 add_executable(test_config_parser
     cpp/test_config_parser.cpp
-    ../src/cpp/core/config_parser.cpp
+    ../cpp/src/core/config_parser.cpp
 )
 
 add_executable(test_batch_manager
     cpp/test_batch_manager.cpp
-    ../src/cpp/core/batch_manager.cpp
+    ../cpp/src/core/batch_manager.cpp
 )
 
 add_executable(test_arrow_builder
     cpp/test_arrow_builder.cpp
-    ../src/cpp/core/arrow_builder.cpp
+    ../cpp/src/core/arrow_builder.cpp
 )
 
 # Link libraries
@@ -65,4 +65,3 @@ enable_testing()
 add_test(NAME ConfigParserTest COMMAND test_config_parser)
 add_test(NAME BatchManagerTest COMMAND test_batch_manager)
 add_test(NAME ArrowBuilderTest COMMAND test_arrow_builder)
-

@@ -1,0 +1,35 @@
+[package]
+name = "axon-lance"
+version = "0.1.0"
+edition = "2021"
+description = "Axon Lance writer - Core Rust library for writing data to Lance format"
+license = "Apache-2.0"
+repository = "https://github.com/archebase/axon"
+homepage = "https://github.com/archebase/axon"
+documentation = "https://docs.rs/axon-lance"
+keywords = ["ros", "robotics", "lance", "arrow", "data"]
+categories = ["science", "data-structures"]
+authors = ["ArcheBase <maintainer@archebase.com>"]
+
+[lib]
+name = "axon_lance"
+crate-type = ["rlib"]
+
+[dependencies]
+# Lance 1.0.0 (2025-12-16)
+lance = "1.0"
+# Arrow version compatible with Lance 1.0
+arrow = { version = "54", default-features = false }
+arrow-schema = "54"
+arrow-array = "54"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync"] }
+thiserror = "2.0"
+once_cell = "1.19"
+lazy_static = "1.5"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+
+[package.metadata.docs.rs]
+features = ["default"]

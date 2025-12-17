@@ -4,7 +4,7 @@ This directory contains the test suite for the Axon project by ArcheBase.
 
 ## Test Structure
 
-- **Rust Tests**: Unit tests for the Rust bridge library (`src/bridge/src/lib.rs`)
+- **C FFI Tests (Rust)**: Unit tests for the C FFI library (`c/src/lib.rs`)
 - **C++ Unit Tests**: Tests for core C++ components
   - `test_config_parser.cpp`: Configuration parser tests
   - `test_batch_manager.cpp`: Batch manager tests
@@ -13,10 +13,10 @@ This directory contains the test suite for the Axon project by ArcheBase.
 
 ## Running Tests
 
-### Rust Tests
+### C FFI Tests (Rust)
 
 ```bash
-cd src/bridge
+cd c
 cargo test
 ```
 
@@ -33,19 +33,32 @@ ctest --output-on-failure
 ### All Tests
 
 ```bash
-# Run Rust tests
-cd src/bridge && cargo test && cd ../..
+# Run C FFI tests
+cd c && cargo test && cd ..
 
 # Build and run C++ tests
 mkdir -p build && cd build
 cmake ../test && make && ctest --output-on-failure
 ```
 
+### Using Makefile
+
+```bash
+# Run all tests
+make test
+
+# Run only Rust/C FFI tests
+make rust-test
+
+# Run only C++ tests
+make cpp-test
+```
+
 ## Test Coverage
 
 ### Current Coverage
 
-- ✅ Rust bridge library (FFI functions, error handling)
+- ✅ C FFI library (FFI functions, error handling, Lance operations)
 - ✅ Configuration parser (YAML loading, validation, saving)
 - ✅ Batch manager (batch collection, flushing, async writes)
 - ✅ Arrow builder (type-specific builders, reset functionality)
@@ -59,11 +72,10 @@ cmake ../test && make && ctest --output-on-failure
 
 ## Adding New Tests
 
-1. **Rust Tests**: Add to `#[cfg(test)]` module in the relevant `.rs` file
+1. **Rust/C FFI Tests**: Add to `#[cfg(test)]` module in `c/src/*.rs` files
 2. **C++ Tests**: Create new test file in `test/cpp/` and add to `test/CMakeLists.txt`
 3. **Integration Tests**: Add scripts to `test/integration/`
 
 ## CI/CD
 
 Tests are automatically run on push/PR via GitHub Actions (`.github/workflows/tests.yml`).
-

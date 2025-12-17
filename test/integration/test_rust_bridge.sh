@@ -1,22 +1,22 @@
 #!/bin/bash
-# Integration test for Rust bridge library
+# Integration test for C FFI library (Rust)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BRIDGE_DIR="$SCRIPT_DIR/../../src/bridge"
+C_FFI_DIR="$SCRIPT_DIR/../../c"
 TEMP_DIR=$(mktemp -d)
 
-echo "Testing Rust bridge library..."
+echo "Testing C FFI library..."
 
-cd "$BRIDGE_DIR"
+cd "$C_FFI_DIR"
 
 # Build the library
-echo "Building Rust library..."
+echo "Building C FFI library (Rust)..."
 cargo build --release
 
 # Run Rust unit tests
-echo "Running Rust unit tests..."
+echo "Running C FFI unit tests..."
 cargo test --release
 
 # Test FFI interface (would require C test program)

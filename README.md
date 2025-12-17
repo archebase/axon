@@ -227,7 +227,7 @@ Start recording with optional config override.
 rosservice call /axon/start_recording "config_path: ''"
 
 # ROS 2
-ros2 service call /axon/start_recording axon/srv/StartRecording "{config_path: ''}"
+ros2 service call /axon/start_recording axon_recorder/srv/StartRecording "{config_path: ''}"
 ```
 
 ### StopRecording
@@ -239,7 +239,7 @@ Stop recording and flush current batch.
 rosservice call /axon/stop_recording
 
 # ROS 2
-ros2 service call /axon/stop_recording axon/srv/StopRecording
+ros2 service call /axon/stop_recording axon_recorder/srv/StopRecording
 ```
 
 ### UpdateConfig
@@ -251,7 +251,7 @@ Update configuration at runtime.
 rosservice call /axon/update_config "config_path: '/path/to/new_config.yaml'"
 
 # ROS 2
-ros2 service call /axon/update_config axon/srv/UpdateConfig "{config_path: '/path/to/new_config.yaml'}"
+ros2 service call /axon/update_config axon_recorder/srv/UpdateConfig "{config_path: '/path/to/new_config.yaml'}"
 ```
 
 ### GetStatus
@@ -263,7 +263,7 @@ Get current recording status.
 rosservice call /axon/get_status
 
 # ROS 2
-ros2 service call /axon/get_status axon/srv/GetStatus
+ros2 service call /axon/get_status axon_recorder/srv/GetStatus
 ```
 
 ## Docker
@@ -299,15 +299,39 @@ docker-compose exec ros1-noetic /bin/bash
 - **Zero-Copy**: The Arrow C Data Interface enables zero-copy transfer between C++ and Rust
 - **Async Writes**: Background writer thread prevents blocking ROS callbacks
 
+## Project Structure
+
+```
+axon/
+├── c/                   # C SDK - FFI bridge (Rust → C)
+│   ├── src/             # Rust source (generates C FFI)
+│   └── ffi/             # C wrapper code
+├── cpp/                 # C++ SDK - Core library
+│   └── src/core/        # Arrow builders, batch management
+├── ros/                 # ROS packages
+│   ├── axon_common/     # Shared ROS utilities
+│   ├── axon_ros1/       # ROS1 recorder
+│   └── axon_ros2/       # ROS2 recorder
+├── python/              # Python SDK
+│   ├── axon/            # Core Python package
+│   └── axon_dagster/    # Dagster integration
+├── schemas/             # Schema definitions
+├── examples/            # Example code
+├── config/              # Configuration files
+├── launch/              # ROS launch files
+├── docker/              # Docker images
+└── docs/                # Documentation
+```
+
 ## Testing
 
 The project includes a comprehensive test suite covering Rust and C++ components.
 
 ### Running Tests
 
-**Rust Tests:**
+**C FFI Tests (Rust):**
 ```bash
-cd src/bridge
+cd c
 cargo test
 ```
 
@@ -322,8 +346,8 @@ ctest --output-on-failure
 
 **All Tests:**
 ```bash
-# Run Rust tests
-cd src/bridge && cargo test && cd ../..
+# Run C FFI tests
+cd c && cargo test && cd ..
 
 # Build and run C++ tests
 mkdir -p build && cd build
@@ -343,10 +367,10 @@ See `test/README.md` for more details on the test suite.
 
 ### Rust Library Not Found
 
-Ensure the Rust library is built before compiling C++ code:
+Ensure the C FFI library is built before compiling C++ code:
 
 ```bash
-cd src/bridge
+cd c
 cargo build --release
 ```
 

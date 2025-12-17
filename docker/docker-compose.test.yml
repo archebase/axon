@@ -11,7 +11,7 @@ services:
     container_name: axon_test_ros1
     volumes:
       - ../:/workspace/axon
-      - ../src/bridge/target:/workspace/axon/src/bridge/target
+      - ../c/target:/workspace/axon/c/target
       - cargo-cache-ros1:/root/.cargo/registry
       - cargo-git-cache-ros1:/root/.cargo/git
     environment:
@@ -27,7 +27,7 @@ services:
     container_name: axon_test_ros2_humble
     volumes:
       - ../:/workspace/axon
-      - ../src/bridge/target:/workspace/axon/src/bridge/target
+      - ../c/target:/workspace/axon/c/target
       - cargo-cache-ros2-humble:/root/.cargo/registry
       - cargo-git-cache-ros2-humble:/root/.cargo/git
     environment:
@@ -43,7 +43,7 @@ services:
     container_name: axon_test_ros2_jazzy
     volumes:
       - ../:/workspace/axon
-      - ../src/bridge/target:/workspace/axon/src/bridge/target
+      - ../c/target:/workspace/axon/c/target
       - cargo-cache-ros2-jazzy:/root/.cargo/registry
       - cargo-git-cache-ros2-jazzy:/root/.cargo/git
     environment:
@@ -59,7 +59,7 @@ services:
     container_name: axon_test_ros2_rolling
     volumes:
       - ../:/workspace/axon
-      - ../src/bridge/target:/workspace/axon/src/bridge/target
+      - ../c/target:/workspace/axon/c/target
       - cargo-cache-ros2-rolling:/root/.cargo/registry
       - cargo-git-cache-ros2-rolling:/root/.cargo/git
     environment:

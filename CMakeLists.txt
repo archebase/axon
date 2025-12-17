@@ -26,15 +26,15 @@ pkg_check_modules(ARROW REQUIRED arrow)
 # Find yaml-cpp
 find_package(yaml-cpp REQUIRED)
 
-# Build Rust library
-set(RUST_BRIDGE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/bridge)
-set(RUST_TARGET_DIR ${RUST_BRIDGE_DIR}/target)
+# Build Rust library (C FFI)
+set(C_FFI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/c)
+set(RUST_TARGET_DIR ${C_FFI_DIR}/target)
 set(RUST_BUILD_TYPE release)
 
 # Custom target to build Rust library
 add_custom_target(cargo_build
-    COMMAND cargo build --${RUST_BUILD_TYPE} --manifest-path ${RUST_BRIDGE_DIR}/Cargo.toml
-    WORKING_DIRECTORY ${RUST_BRIDGE_DIR}
+    COMMAND cargo build --${RUST_BUILD_TYPE} --manifest-path ${C_FFI_DIR}/Cargo.toml
+    WORKING_DIRECTORY ${C_FFI_DIR}
     COMMENT "Building Rust bridge library..."
 )
 
@@ -62,21 +62,6 @@ if(ROS_VERSION EQUAL 1)
         std_msgs
         sensor_msgs
         nav_msgs
-        message_generation
-    )
-    
-    # Generate service messages
-    add_service_files(
-        FILES
-        StartRecording.srv
-        StopRecording.srv
-        UpdateConfig.srv
-        GetStatus.srv
-    )
-    
-    generate_messages(
-        DEPENDENCIES
-        std_msgs
     )
     
     catkin_package(
@@ -87,6 +72,7 @@ if(ROS_VERSION EQUAL 1)
     
     include_directories(
         include
+        ${C_FFI_DIR}/include
         ${catkin_INCLUDE_DIRS}
         ${ARROW_INCLUDE_DIRS}
         ${yaml-cpp_INCLUDE_DIRS}
@@ -94,19 +80,18 @@ if(ROS_VERSION EQUAL 1)
     
     # Core library
     add_library(${PROJECT_NAME}_core
-        src/cpp/core/arrow_builder.cpp
-        src/cpp/core/batch_manager.cpp
-        src/cpp/core/message_converter.cpp
-        src/cpp/core/message_introspection.cpp
-        src/cpp/core/schema_merger.cpp
-        src/cpp/core/config_parser.cpp
-        src/cpp/common/message_registry.cpp
-        src/cpp/common/ros_interface.cpp
-        src/cpp/ros1/ros1_interface.cpp
-        src/cpp/ros1/ros1_introspection.cpp
-        src/cpp/ros1/message_factory.cpp
-        src/cpp/ros1/register_common_messages.cpp
-        src/cpp/ffi/lance_bridge.cpp
+        cpp/src/core/arrow_builder.cpp
+        cpp/src/core/batch_manager.cpp
+        cpp/src/core/message_converter.cpp
+        cpp/src/core/message_introspection.cpp
+        cpp/src/core/schema_merger.cpp
+        cpp/src/core/config_parser.cpp
+        ros/axon_common/src/message_registry.cpp
+        ros/axon_common/src/ros_interface.cpp
+        ros/axon_ros1/src/ros1_interface.cpp
+        ros/axon_ros1/src/ros1_introspection.cpp
+        ros/axon_ros1/src/message_factory.cpp
+        ros/axon_ros1/src/register_common_messages.cpp
     )
     
     target_link_libraries(${PROJECT_NAME}_core
@@ -120,8 +105,8 @@ if(ROS_VERSION EQUAL 1)
     
     # ROS 1 Node
     add_executable(axon_node
-        src/cpp/ros1/recorder_node.cpp
-        src/cpp/ros1/recorder_service.cpp
+        ros/axon_ros1/src/recorder_node.cpp
+        ros/axon_ros1/src/recorder_service.cpp
     )
     
     target_link_libraries(axon_node
@@ -138,7 +123,7 @@ if(ROS_VERSION EQUAL 1)
         ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     )
     
-    install(DIRECTORY launch/
+    install(DIRECTORY ros/axon_ros1/launch/
         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
         FILES_MATCHING PATTERN "*.launch"
     )
@@ -154,36 +139,26 @@ else()
     find_package(std_msgs REQUIRED)
     find_package(sensor_msgs REQUIRED)
     find_package(nav_msgs REQUIRED)
-    find_package(rosidl_default_generators REQUIRED)
-    
-    # Generate service messages
-    rosidl_generate_interfaces(${PROJECT_NAME}
-        "srv/StartRecording.srv"
-        "srv/StopRecording.srv"
-        "srv/UpdateConfig.srv"
-        "srv/GetStatus.srv"
-        DEPENDENCIES std_msgs
-    )
     
     include_directories(
         include
+        ${C_FFI_DIR}/include
         ${ARROW_INCLUDE_DIRS}
         ${yaml-cpp_INCLUDE_DIRS}
     )
     
     # Core library
     add_library(${PROJECT_NAME}_core
-        src/cpp/core/arrow_builder.cpp
-        src/cpp/core/batch_manager.cpp
-        src/cpp/core/message_converter.cpp
-        src/cpp/core/message_introspection.cpp
-        src/cpp/core/schema_merger.cpp
-        src/cpp/core/config_parser.cpp
-        src/cpp/common/message_registry.cpp
-        src/cpp/common/ros_interface.cpp
-        src/cpp/ros2/ros2_interface.cpp
-        src/cpp/ros2/ros2_introspection.cpp
-        src/cpp/ffi/lance_bridge.cpp
+        cpp/src/core/arrow_builder.cpp
+        cpp/src/core/batch_manager.cpp
+        cpp/src/core/message_converter.cpp
+        cpp/src/core/message_introspection.cpp
+        cpp/src/core/schema_merger.cpp
+        cpp/src/core/config_parser.cpp
+        ros/axon_common/src/message_registry.cpp
+        ros/axon_common/src/ros_interface.cpp
+        ros/axon_ros2/src/ros2_interface.cpp
+        ros/axon_ros2/src/ros2_introspection.cpp
     )
     
     ament_target_dependencies(${PROJECT_NAME}_core
@@ -203,8 +178,8 @@ else()
     
     # ROS 2 Node
     add_executable(axon_node
-        src/cpp/ros2/recorder_node.cpp
-        src/cpp/ros2/recorder_service.cpp
+        ros/axon_ros2/src/recorder_node.cpp
+        ros/axon_ros2/src/recorder_service.cpp
     )
     
     ament_target_dependencies(axon_node
@@ -227,7 +202,7 @@ else()
         DESTINATION lib/${PROJECT_NAME}
     )
     
-    install(DIRECTORY launch/
+    install(DIRECTORY ros/axon_ros2/launch/
         DESTINATION share/${PROJECT_NAME}/launch
     )
     
@@ -252,4 +227,3 @@ if(ROS_VERSION EQUAL 1 AND BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)
 endif()
-
