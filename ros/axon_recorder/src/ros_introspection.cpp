@@ -1,5 +1,5 @@
 #include "ros_introspection.hpp"
-#include "../../cpp/src/core/message_introspection.hpp"
+#include "message_introspection.hpp"
 
 #if defined(AXON_ROS1)
 #include <ros/message_traits.h>

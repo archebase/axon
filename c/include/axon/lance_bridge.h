@@ -13,9 +13,13 @@
 #define AXON_NONNULL
 #endif
 
-/* Arrow FFI types (must be provided by Arrow C headers) */
+/* Arrow FFI types (Arrow C Data Interface) */
 struct ArrowSchema;
 struct ArrowArray;
+
+/* Type aliases matching Rust arrow::ffi naming */
+typedef struct ArrowSchema FFI_ArrowSchema;
+typedef struct ArrowArray FFI_ArrowArray;
 
 
 #ifndef AXON_LANCE_BRIDGE_H
@@ -80,6 +84,10 @@ struct ArrowArray;
 #define LANCE_ERROR_IO AXON_LANCE_ERROR_IO
 
 #define LANCE_ERROR_INVALID_HANDLE AXON_LANCE_ERROR_INVALID_HANDLE
+
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
 
 /**
  * Get the last error message as a C string
@@ -173,5 +181,9 @@ int write_batch(int64_t dataset_handle, FFI_ArrowArray *array_ptr, FFI_ArrowSche
  * Use `axon_lance_close_dataset` instead.
  */
 int close_dataset(int64_t dataset_handle);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
 #endif  /* AXON_LANCE_BRIDGE_H */

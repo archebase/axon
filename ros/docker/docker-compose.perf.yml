@@ -1,0 +1,98 @@
+version: '3.8'
+
+# Docker Compose configuration for running performance tests
+# 
+# Usage:
+#   cd ros/docker
+#   
+#   # Run perf tests in ROS 2 Humble (default)
+#   docker-compose -f docker-compose.perf.yml up perf-ros2-humble --build
+#   
+#   # Run perf tests in ROS 2 Jazzy
+#   docker-compose -f docker-compose.perf.yml up perf-ros2-jazzy --build
+#   
+#   # Run with custom parameters
+#   docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
+#     /usr/local/bin/run_perf_tests.sh --duration 30 --imu-rate 2000
+#   
+#   # Interactive shell for debugging
+#   docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble /bin/bash
+
+services:
+  perf-ros1:
+    build:
+      context: ../..
+      dockerfile: ros/docker/Dockerfile.ros1
+    container_name: axon_perf_ros1
+    volumes:
+      - ../..:/workspace/axon
+      - perf-cargo-cache-ros1:/root/.cargo/registry
+      - perf-cargo-git-cache-ros1:/root/.cargo/git
+      - perf-ros1-build:/workspace/ros_ws
+    environment:
+      - ROS_DISTRO=noetic
+      - ROS_VERSION=1
+    network_mode: host
+    command: /usr/local/bin/run_perf_tests.sh
+
+  perf-ros2-humble:
+    build:
+      context: ../..
+      dockerfile: ros/docker/Dockerfile.ros2.humble
+    container_name: axon_perf_ros2_humble
+    volumes:
+      - ../..:/workspace/axon
+      - perf-cargo-cache-ros2-humble:/root/.cargo/registry
+      - perf-cargo-git-cache-ros2-humble:/root/.cargo/git
+      - perf-ros2-humble-build:/workspace/ros_ws
+    environment:
+      - ROS_DISTRO=humble
+      - ROS_VERSION=2
+    network_mode: host
+    command: /usr/local/bin/run_perf_tests.sh
+
+  perf-ros2-jazzy:
+    build:
+      context: ../..
+      dockerfile: ros/docker/Dockerfile.ros2.jazzy
+    container_name: axon_perf_ros2_jazzy
+    volumes:
+      - ../..:/workspace/axon
+      - perf-cargo-cache-ros2-jazzy:/root/.cargo/registry
+      - perf-cargo-git-cache-ros2-jazzy:/root/.cargo/git
+      - perf-ros2-jazzy-build:/workspace/ros_ws
+    environment:
+      - ROS_DISTRO=jazzy
+      - ROS_VERSION=2
+    network_mode: host
+    command: /usr/local/bin/run_perf_tests.sh
+
+  perf-ros2-rolling:
+    build:
+      context: ../..
+      dockerfile: ros/docker/Dockerfile.ros2.rolling
+    container_name: axon_perf_ros2_rolling
+    volumes:
+      - ../..:/workspace/axon
+      - perf-cargo-cache-ros2-rolling:/root/.cargo/registry
+      - perf-cargo-git-cache-ros2-rolling:/root/.cargo/git
+      - perf-ros2-rolling-build:/workspace/ros_ws
+    environment:
+      - ROS_DISTRO=rolling
+      - ROS_VERSION=2
+    network_mode: host
+    command: /usr/local/bin/run_perf_tests.sh
+
+volumes:
+  perf-cargo-cache-ros1:
+  perf-cargo-git-cache-ros1:
+  perf-ros1-build:
+  perf-cargo-cache-ros2-humble:
+  perf-cargo-git-cache-ros2-humble:
+  perf-ros2-humble-build:
+  perf-cargo-cache-ros2-jazzy:
+  perf-cargo-git-cache-ros2-jazzy:
+  perf-ros2-jazzy-build:
+  perf-cargo-cache-ros2-rolling:
+  perf-cargo-git-cache-ros2-rolling:
+  perf-ros2-rolling-build:

@@ -30,6 +30,16 @@ lazy_static = "1.5"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+rand = "0.8"
+
+[[bench]]
+name = "write_throughput"
+harness = false
+
+[[bench]]
+name = "compression_bench"
+harness = false
 
 [package.metadata.docs.rs]
 features = ["default"]

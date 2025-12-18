@@ -91,6 +91,57 @@ The Docker setup is designed for CI/CD pipelines:
   run: make docker-test-ros2-humble
 ```
 
+## Running Performance Tests
+
+Performance tests measure recording throughput, CPU usage, memory, and message drop rates.
+
+### Quick Start
+
+```bash
+# Run perf tests in ROS 2 Humble
+cd ros/docker
+docker-compose -f docker-compose.perf.yml up perf-ros2-humble --build
+
+# Run perf tests in ROS 1 Noetic
+docker-compose -f docker-compose.perf.yml up perf-ros1 --build
+```
+
+### Custom Parameters
+
+```bash
+# Run with custom test duration and rates
+docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
+  /usr/local/bin/run_perf_tests.sh --duration 30 --imu-rate 2000 --camera-rate 60
+
+# Available options:
+#   --duration <sec>     Test duration (default: 10)
+#   --imu-rate <hz>      IMU rate (default: 1000)
+#   --camera-rate <hz>   Camera rate (default: 30)
+#   --num-cameras <n>    Number of cameras (default: 3)
+#   --output <file>      JSON output file
+#   --skip-build         Skip building (use cached build)
+```
+
+### Interactive Debugging
+
+```bash
+# Open shell for debugging
+docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble /bin/bash
+
+# Inside container:
+source /opt/ros/humble/setup.bash
+cd /workspace/axon
+# ... debug as needed
+```
+
+### Skip Build (After First Run)
+
+```bash
+# Skip rebuilding to save time on subsequent runs
+docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
+  /usr/local/bin/run_perf_tests.sh --skip-build
+```
+
 ## Troubleshooting
 
 ### Build Fails

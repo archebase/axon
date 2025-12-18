@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.12)
 project(axon_recorder)
 
+# Allow linking libraries to targets defined in subdirectories
+# Required because axon_arrow is built in cpp/axon_arrow but linked here
+cmake_policy(SET CMP0079 NEW)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -38,7 +42,8 @@ find_package(PkgConfig REQUIRED)
 # ============================================================================
 # Build Rust C FFI Library
 # ============================================================================
-set(RUST_TARGET_DIR ${C_FFI_DIR}/target)
+# Note: Rust workspace outputs to the root target/ directory, not c/target/
+set(RUST_TARGET_DIR ${PROJECT_ROOT}/target)
 set(RUST_BUILD_TYPE release)
 
 # Determine library extension based on platform
@@ -59,9 +64,13 @@ add_custom_target(cargo_build
 
 # Import Rust library as shared library
 set(RUST_LIB_PATH ${RUST_TARGET_DIR}/${RUST_BUILD_TYPE}/liblance_writer_bridge${LIB_EXT})
-add_library(lance_bridge_rust SHARED IMPORTED)
+message(STATUS "Rust library path: ${RUST_LIB_PATH}")
+message(STATUS "PROJECT_ROOT: ${PROJECT_ROOT}")
+
+add_library(lance_bridge_rust SHARED IMPORTED GLOBAL)
 set_target_properties(lance_bridge_rust PROPERTIES
     IMPORTED_LOCATION ${RUST_LIB_PATH}
+    IMPORTED_NO_SONAME TRUE
 )
 add_dependencies(lance_bridge_rust cargo_build)
 
@@ -74,7 +83,8 @@ set(AXON_ARROW_BUILD_TESTS OFF CACHE BOOL "Disable axon_arrow tests in ROS build
 add_subdirectory(${CPP_SRC_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_arrow)
 
 # Add the C FFI include directory and link the Rust bridge
-target_include_directories(axon_arrow PUBLIC
+# Use PRIVATE to avoid source directory paths in INTERFACE_INCLUDE_DIRECTORIES
+target_include_directories(axon_arrow PRIVATE
     ${C_FFI_DIR}/include
 )
 target_link_libraries(axon_arrow PUBLIC
@@ -181,6 +191,11 @@ if(AXON_ROS_VERSION EQUAL 1)
 # ============================================================================
 elseif(AXON_ROS_VERSION EQUAL 2)
     find_package(ament_cmake REQUIRED)
+    
+    # Workaround: Ensure MEMBER_OF_GROUPS is set for rosidl_cmake check
+    # Some colcon/catkin_pkg versions don't correctly extract member_of_group from package.xml
+    set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages" CACHE INTERNAL "" FORCE)
+    
     find_package(rclcpp REQUIRED)
     find_package(std_msgs REQUIRED)
     find_package(sensor_msgs REQUIRED)
@@ -242,9 +257,14 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         geometry_msgs
     )
     
+    # Link to Rust FFI library - must use full path for shared library
     target_link_libraries(axon_recorder_node
         axon_recorder_lib
+        "${RUST_LIB_PATH}"
     )
+    
+    # Ensure Rust library is built before linking
+    add_dependencies(axon_recorder_node cargo_build)
     
     rosidl_target_interfaces(axon_recorder_node
         ${PROJECT_NAME} rosidl_typesupport_cpp

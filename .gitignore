@@ -98,3 +98,6 @@ cmake_install.cmake
 # Rust build files
 src/bridge/target/
 target
+
+# log files
+ros/log

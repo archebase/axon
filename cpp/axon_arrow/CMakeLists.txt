@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Enable position-independent code for static libraries
+# Required on ARM64 when linking static libs into shared libs
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(AXON_ARROW_BUILD_TESTS "Build tests" ON)
@@ -87,6 +91,15 @@ set_target_properties(axon_arrow PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 0
     PUBLIC_HEADER "${AXON_ARROW_HEADERS}"
+)
+
+# Build compression module
+add_subdirectory(compression)
+
+# Link compression to main library
+target_link_libraries(axon_arrow
+    PUBLIC
+        axon_compression
 )
 
 # Build tests if enabled

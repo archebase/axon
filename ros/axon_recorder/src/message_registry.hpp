@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 #include <arrow/api.h>
-#include "../../cpp/src/core/message_converter.hpp"
+#include "message_converter.hpp"
 
 namespace axon {
 namespace recorder {

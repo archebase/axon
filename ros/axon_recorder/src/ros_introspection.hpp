@@ -4,7 +4,7 @@
 #include <string>
 #include <memory>
 #include <vector>
-#include "../../cpp/src/core/message_introspection.hpp"
+#include "message_introspection.hpp"
 
 namespace axon {
 namespace recorder {

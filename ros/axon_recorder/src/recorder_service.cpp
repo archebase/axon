@@ -1,5 +1,5 @@
 #include "recorder_service.hpp"
-#include "../../cpp/src/core/config_parser.hpp"
+#include "config_parser.hpp"
 
 #include <memory>
 #include <string>

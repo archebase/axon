@@ -34,6 +34,13 @@ set_tests_properties(RustBridgeIntegrationTest
 )
 
 # ============================================================================
+# Performance Tests
+# ============================================================================
+# Performance tests for measuring recording throughput and resource usage
+
+add_subdirectory(perf)
+
+# ============================================================================
 # Future: ROS-specific unit tests can be added here
 # ============================================================================
 # Example:

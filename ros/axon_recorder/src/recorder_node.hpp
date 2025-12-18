@@ -2,9 +2,9 @@
 #define AXON_RECORDER_NODE_HPP
 
 #include "ros_interface.hpp"
-#include "../../cpp/src/core/batch_manager.hpp"
-#include "../../cpp/src/core/config_parser.hpp"
-#include "../../cpp/src/core/message_converter.hpp"
+#include "batch_manager.hpp"
+#include "config_parser.hpp"
+#include "message_converter.hpp"
 
 #include <arrow/api.h>
 #include <memory>

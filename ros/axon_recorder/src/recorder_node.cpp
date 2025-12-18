@@ -1,9 +1,10 @@
 #include "recorder_node.hpp"
 #include "ros_interface.hpp"
-#include "../../cpp/src/core/batch_manager.hpp"
-#include "../../cpp/src/core/config_parser.hpp"
-#include "../../cpp/src/core/message_converter.hpp"
-#include "../../cpp/src/core/schema_merger.hpp"
+#include "batch_manager.hpp"
+#include "config_parser.hpp"
+#include "message_converter.hpp"
+#include "schema_merger.hpp"
+#include <arrow/c/bridge.h>  // Arrow C Data Interface (ExportSchema, ExportRecordBatch)
 #include <axon/lance_bridge.h>
 
 #if defined(AXON_ROS1)
@@ -275,14 +276,30 @@ void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) 
                 // Add timestamp and topic fields
                 int64_t timestamp_ns = ros_interface_->now_nsec();
                 arrow::Int64Builder timestamp_builder;
-                timestamp_builder.Append(timestamp_ns);
+                auto status = timestamp_builder.Append(timestamp_ns);
+                if (!status.ok()) {
+                    ros_interface_->log_error("Failed to append timestamp: " + status.message());
+                    return;
+                }
                 std::shared_ptr<arrow::Array> timestamp_array;
-                timestamp_builder.Finish(&timestamp_array);
+                status = timestamp_builder.Finish(&timestamp_array);
+                if (!status.ok()) {
+                    ros_interface_->log_error("Failed to finish timestamp array: " + status.message());
+                    return;
+                }
                 
                 arrow::StringBuilder topic_builder;
-                topic_builder.Append(topic_name);
+                status = topic_builder.Append(topic_name);
+                if (!status.ok()) {
+                    ros_interface_->log_error("Failed to append topic: " + status.message());
+                    return;
+                }
                 std::shared_ptr<arrow::Array> topic_array;
-                topic_builder.Finish(&topic_array);
+                status = topic_builder.Finish(&topic_array);
+                if (!status.ok()) {
+                    ros_interface_->log_error("Failed to finish topic array: " + status.message());
+                    return;
+                }
                 
                 // Prepend timestamp and topic to arrays
                 std::vector<std::shared_ptr<arrow::Array>> full_arrays;
