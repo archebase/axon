@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# =============================================================================
+# Code Formatting with clang-format
+# =============================================================================
+# Look for ClangFormat.cmake in parent directories
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake" ${CMAKE_MODULE_PATH})
+include(ClangFormat OPTIONAL)
+
 # Enable position-independent code for static libraries
 # Required on ARM64 when linking static libs into shared libs
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -89,6 +96,21 @@ set(AXON_ARROW_HEADERS
 
 # Create library
 add_library(axon_arrow ${AXON_ARROW_SOURCES})
+
+# =============================================================================
+# Clang-format targets
+# =============================================================================
+if(COMMAND axon_add_clang_format)
+    # Collect all source files for formatting
+    file(GLOB_RECURSE ALL_CXX_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    )
+    
+    axon_add_clang_format(axon_arrow SOURCE_FILES ${ALL_CXX_SOURCES})
+    axon_register_format_target(axon_arrow)
+endif()
 
 target_include_directories(axon_arrow
     PUBLIC
