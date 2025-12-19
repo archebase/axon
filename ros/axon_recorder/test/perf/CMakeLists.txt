@@ -16,23 +16,22 @@ target_compile_definitions(synthetic_publisher PRIVATE
     $<$<BOOL:${AXON_ROS2}>:AXON_ROS2>
 )
 
-target_link_libraries(synthetic_publisher
-    PRIVATE
-        Threads::Threads
-)
-
 # ROS 1 dependencies
 if(AXON_ROS1)
-    target_link_libraries(synthetic_publisher PRIVATE
+    target_link_libraries(synthetic_publisher
         ${catkin_LIBRARIES}
+        Threads::Threads
     )
     target_include_directories(synthetic_publisher PRIVATE
         ${catkin_INCLUDE_DIRS}
     )
 endif()
 
-# ROS 2 dependencies
+# ROS 2 dependencies - use plain linking style for ament compatibility
 if(AXON_ROS2)
+    target_link_libraries(synthetic_publisher
+        Threads::Threads
+    )
     ament_target_dependencies(synthetic_publisher
         rclcpp
         sensor_msgs
@@ -50,23 +49,22 @@ target_compile_definitions(perf_test_node PRIVATE
     $<$<BOOL:${AXON_ROS2}>:AXON_ROS2>
 )
 
-target_link_libraries(perf_test_node
-    PRIVATE
-        Threads::Threads
-)
-
 # ROS 1 dependencies
 if(AXON_ROS1)
-    target_link_libraries(perf_test_node PRIVATE
+    target_link_libraries(perf_test_node
         ${catkin_LIBRARIES}
+        Threads::Threads
     )
     target_include_directories(perf_test_node PRIVATE
         ${catkin_INCLUDE_DIRS}
     )
 endif()
 
-# ROS 2 dependencies
+# ROS 2 dependencies - use plain linking style for ament compatibility
 if(AXON_ROS2)
+    target_link_libraries(perf_test_node
+        Threads::Threads
+    )
     ament_target_dependencies(perf_test_node
         rclcpp
         sensor_msgs

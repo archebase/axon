@@ -230,7 +230,8 @@ pub unsafe extern "C" fn axon_lance_write_batch(
         arrow_array::RecordBatch::from(struct_array)
     };
 
-    match LanceWriter::write_batch(dataset_handle, record_batch) {
+    // Use async write for non-blocking high-throughput recording
+    match LanceWriter::write_batch_async(dataset_handle, record_batch) {
         Ok(_) => AXON_LANCE_SUCCESS,
         Err(e) => {
             set_last_error(&e);

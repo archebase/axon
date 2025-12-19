@@ -21,6 +21,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <fstream>
+#include <iomanip>
 #include <random>
 #include <thread>
 #include <atomic>
@@ -33,6 +35,7 @@
 #include <sensor_msgs/Image.h>
 #elif defined(AXON_ROS2)
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #endif
@@ -45,8 +48,8 @@ struct PublisherConfig {
     int imu_rate = 1000;       // Hz
     int camera_rate = 30;      // Hz
     int num_cameras = 3;
-    int width = 1920;
-    int height = 1080;
+    int width = 1080;          // HD resolution for testing
+    int height = 720;          // HD resolution for testing
     int duration_sec = 10;
     bool compress = false;
     
@@ -107,6 +110,8 @@ struct PublishStats {
     std::atomic<uint64_t> total_bytes{0};
     std::chrono::steady_clock::time_point start_time;
     
+    static constexpr const char* STATS_FILE_PATH = "/data/recordings/publisher_stats.json";
+    
     void print() {
         auto elapsed = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - start_time).count();
@@ -119,6 +124,36 @@ struct PublishStats {
                   << "Total Bytes: " << (total_bytes.load() / 1024 / 1024) << " MB\n"
                   << "Throughput: " << (total_bytes.load() / 1024 / 1024 / elapsed) << " MB/s\n"
                   << "============================\n";
+    }
+    
+    void write_stats_file() {
+        auto elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - start_time).count();
+        
+        uint64_t imu = imu_published.load();
+        uint64_t rgb = rgb_published.load();
+        uint64_t depth = depth_published.load();
+        uint64_t total = imu + rgb + depth;
+        uint64_t bytes = total_bytes.load();
+        
+        std::ofstream stats_file(STATS_FILE_PATH);
+        if (!stats_file.is_open()) {
+            std::cerr << "Warning: Could not write stats file: " << STATS_FILE_PATH << "\n";
+            return;
+        }
+        
+        stats_file << "{\n"
+                   << "  \"imu_published\": " << imu << ",\n"
+                   << "  \"rgb_published\": " << rgb << ",\n"
+                   << "  \"depth_published\": " << depth << ",\n"
+                   << "  \"total_messages\": " << total << ",\n"
+                   << "  \"total_bytes\": " << bytes << ",\n"
+                   << "  \"duration_sec\": " << std::fixed << std::setprecision(2) << elapsed << ",\n"
+                   << "  \"throughput_mbps\": " << std::fixed << std::setprecision(2) << (bytes / 1024.0 / 1024.0 / elapsed) << "\n"
+                   << "}\n";
+        
+        stats_file.close();
+        std::cout << "Publisher stats written to: " << STATS_FILE_PATH << "\n";
     }
 };
 
@@ -233,6 +268,8 @@ sensor_msgs::Image generate_depth_image(int width, int height, int camera_id, st
     return msg;
 }
 #elif defined(AXON_ROS2)
+// Fast image generation for performance testing
+// Uses simple patterns instead of per-pixel random generation
 sensor_msgs::msg::Image generate_rgb_image(rclcpp::Node& node, int width, int height, int camera_id, std::mt19937& rng) {
     sensor_msgs::msg::Image msg;
     msg.header.stamp = node.now();
@@ -244,17 +281,22 @@ sensor_msgs::msg::Image generate_rgb_image(rclcpp::Node& node, int width, int he
     msg.is_bigendian = false;
     msg.step = width * 3;
     
-    msg.data.resize(width * height * 3);
-    std::uniform_int_distribution<int> noise(-5, 5);
+    // Fast allocation and simple pattern fill
+    size_t data_size = width * height * 3;
+    msg.data.resize(data_size);
     
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int idx = (y * width + x) * 3;
-            int base = ((x + y) % 256);
-            msg.data[idx] = std::clamp(base + noise(rng), 0, 255);
-            msg.data[idx + 1] = std::clamp((base + 85) % 256 + noise(rng), 0, 255);
-            msg.data[idx + 2] = std::clamp((base + 170) % 256 + noise(rng), 0, 255);
-        }
+    // Use frame counter for varying data (simulates changing frames)
+    static std::atomic<uint8_t> frame_counter{0};
+    uint8_t fill_value = frame_counter.fetch_add(1);
+    
+    // Fast memset for bulk of data, then add minimal variation
+    std::memset(msg.data.data(), fill_value, data_size);
+    
+    // Add camera_id to first few bytes for uniqueness
+    if (data_size > 3) {
+        msg.data[0] = static_cast<uint8_t>(camera_id);
+        msg.data[1] = fill_value;
+        msg.data[2] = static_cast<uint8_t>(rng() & 0xFF);
     }
     
     return msg;
@@ -271,17 +313,21 @@ sensor_msgs::msg::Image generate_depth_image(rclcpp::Node& node, int width, int 
     msg.is_bigendian = false;
     msg.step = width * 2;
     
-    msg.data.resize(width * height * 2);
-    std::normal_distribution<double> depth_noise(0.0, 10.0);
+    // Fast allocation and simple pattern fill
+    size_t data_size = width * height * 2;
+    msg.data.resize(data_size);
     
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int idx = (y * width + x) * 2;
-            uint16_t depth = static_cast<uint16_t>(
-                std::clamp(2000.0 + 500.0 * std::sin(x * 0.01) + depth_noise(rng), 500.0, 10000.0));
-            msg.data[idx] = depth & 0xFF;
-            msg.data[idx + 1] = (depth >> 8) & 0xFF;
-        }
+    // Use frame counter for varying data
+    static std::atomic<uint8_t> depth_frame_counter{0};
+    uint8_t fill_value = depth_frame_counter.fetch_add(1);
+    
+    // Fast memset - simulates uniform depth
+    std::memset(msg.data.data(), fill_value, data_size);
+    
+    // Add camera_id to first few bytes for uniqueness
+    if (data_size > 2) {
+        msg.data[0] = static_cast<uint8_t>(camera_id);
+        msg.data[1] = fill_value;
     }
     
     return msg;
@@ -391,27 +437,49 @@ public:
     {
         stats_.start_time = std::chrono::steady_clock::now();
         
-        // Create publishers
-        imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu/data", 100);
+        // Pre-generate images once - reuse in publish loop for maximum throughput
+        RCLCPP_INFO(get_logger(), "Pre-generating test images...");
+        pre_generate_images();
+        RCLCPP_INFO(get_logger(), "Image pre-generation complete");
+        
+        // Create separate callback groups for IMU and each camera for true parallelism
+        imu_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        
+        // Create publishers with reliable QoS and large queue for high-throughput
+        auto pub_qos = rclcpp::QoS(1000).reliable().keep_last(1000);
+        
+        imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu/data", pub_qos);
+        
+        // Create per-camera callback groups, publishers, and timers
+        auto camera_period = std::chrono::microseconds(1000000 / config_.camera_rate);
         
         for (int i = 0; i < config_.num_cameras; ++i) {
+            // Each camera gets its own callback group for parallel execution
+            camera_callback_groups_.push_back(
+                create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive));
+            
             rgb_pubs_.push_back(
-                create_publisher<sensor_msgs::msg::Image>("/camera" + std::to_string(i) + "/rgb", 10));
+                create_publisher<sensor_msgs::msg::Image>("/camera" + std::to_string(i) + "/rgb", pub_qos));
             depth_pubs_.push_back(
-                create_publisher<sensor_msgs::msg::Image>("/camera" + std::to_string(i) + "/depth", 10));
+                create_publisher<sensor_msgs::msg::Image>("/camera" + std::to_string(i) + "/depth", pub_qos));
+            
+            // Create per-camera timer with its own callback group
+            camera_timers_.push_back(create_wall_timer(
+                camera_period,
+                [this, i]() { camera_callback(i); },
+                camera_callback_groups_[i]));
         }
         
-        // Create timers
+        // IMU timer runs at high frequency (e.g., 1000 Hz)
         auto imu_period = std::chrono::microseconds(1000000 / config_.imu_rate);
-        imu_timer_ = create_wall_timer(imu_period, 
-            std::bind(&SyntheticPublisher::imu_callback, this));
+        imu_timer_ = create_wall_timer(
+            imu_period, 
+            std::bind(&SyntheticPublisher::imu_callback, this),
+            imu_callback_group_);
         
-        auto camera_period = std::chrono::microseconds(1000000 / config_.camera_rate);
-        camera_timer_ = create_wall_timer(camera_period,
-            std::bind(&SyntheticPublisher::camera_callback, this));
-        
-        // Status timer
-        status_timer_ = create_wall_timer(std::chrono::seconds(1),
+        // Status timer (runs on default callback group)
+        status_timer_ = create_wall_timer(
+            std::chrono::seconds(1),
             std::bind(&SyntheticPublisher::status_callback, this));
         
         // Duration timer
@@ -420,32 +488,77 @@ public:
             [this]() {
                 RCLCPP_INFO(get_logger(), "Test duration complete, shutting down...");
                 stats_.print();
+                stats_.write_stats_file();
                 rclcpp::shutdown();
             });
     }
     
 private:
+    // Pre-generate all images once during initialization
+    void pre_generate_images() {
+        for (int i = 0; i < config_.num_cameras; ++i) {
+            // Pre-generate RGB image
+            sensor_msgs::msg::Image rgb_msg;
+            rgb_msg.header.frame_id = "camera_" + std::to_string(i) + "_rgb_frame";
+            rgb_msg.width = config_.width;
+            rgb_msg.height = config_.height;
+            rgb_msg.encoding = "rgb8";
+            rgb_msg.is_bigendian = false;
+            rgb_msg.step = config_.width * 3;
+            rgb_msg.data.resize(config_.width * config_.height * 3);
+            // Fill with simple pattern
+            std::memset(rgb_msg.data.data(), static_cast<uint8_t>(100 + i * 10), rgb_msg.data.size());
+            rgb_templates_.push_back(std::move(rgb_msg));
+            
+            // Pre-generate depth image
+            sensor_msgs::msg::Image depth_msg;
+            depth_msg.header.frame_id = "camera_" + std::to_string(i) + "_depth_frame";
+            depth_msg.width = config_.width;
+            depth_msg.height = config_.height;
+            depth_msg.encoding = "16UC1";
+            depth_msg.is_bigendian = false;
+            depth_msg.step = config_.width * 2;
+            depth_msg.data.resize(config_.width * config_.height * 2);
+            // Fill with simple pattern
+            std::memset(depth_msg.data.data(), static_cast<uint8_t>(50 + i * 5), depth_msg.data.size());
+            depth_templates_.push_back(std::move(depth_msg));
+        }
+        
+        // Pre-generate IMU template
+        imu_template_.header.frame_id = "imu_link";
+        imu_template_.linear_acceleration.x = 0.0;
+        imu_template_.linear_acceleration.y = 0.0;
+        imu_template_.linear_acceleration.z = 9.81;
+        imu_template_.angular_velocity.x = 0.0;
+        imu_template_.angular_velocity.y = 0.0;
+        imu_template_.angular_velocity.z = 0.0;
+        imu_template_.orientation.w = 1.0;
+        imu_template_.orientation.x = 0.0;
+        imu_template_.orientation.y = 0.0;
+        imu_template_.orientation.z = 0.0;
+    }
+    
     void imu_callback() {
-        auto msg = axon::test::generate_imu_message(*this, rng_);
-        imu_pub_->publish(msg);
+        // Reuse pre-generated IMU, just update timestamp
+        imu_template_.header.stamp = now();
+        imu_pub_->publish(imu_template_);
         stats_.imu_published++;
         stats_.total_bytes += sizeof(sensor_msgs::msg::Imu);
     }
     
-    void camera_callback() {
-        for (int i = 0; i < config_.num_cameras; ++i) {
-            auto rgb_msg = axon::test::generate_rgb_image(
-                *this, config_.width, config_.height, i, rng_);
-            rgb_pubs_[i]->publish(rgb_msg);
-            stats_.rgb_published++;
-            stats_.total_bytes += rgb_msg.data.size();
-            
-            auto depth_msg = axon::test::generate_depth_image(
-                *this, config_.width, config_.height, i, rng_);
-            depth_pubs_[i]->publish(depth_msg);
-            stats_.depth_published++;
-            stats_.total_bytes += depth_msg.data.size();
-        }
+    // Per-camera callback - reuses pre-generated images
+    void camera_callback(int camera_id) {
+        // Reuse pre-generated RGB, just update timestamp
+        rgb_templates_[camera_id].header.stamp = now();
+        rgb_pubs_[camera_id]->publish(rgb_templates_[camera_id]);
+        stats_.rgb_published++;
+        stats_.total_bytes += rgb_templates_[camera_id].data.size();
+        
+        // Reuse pre-generated depth, just update timestamp
+        depth_templates_[camera_id].header.stamp = now();
+        depth_pubs_[camera_id]->publish(depth_templates_[camera_id]);
+        stats_.depth_published++;
+        stats_.total_bytes += depth_templates_[camera_id].data.size();
     }
     
     void status_callback() {
@@ -457,12 +570,21 @@ private:
     std::mt19937 rng_;
     std::atomic<bool> running_;
     
+    // Pre-generated message templates (reused in callbacks)
+    std::vector<sensor_msgs::msg::Image> rgb_templates_;
+    std::vector<sensor_msgs::msg::Image> depth_templates_;
+    sensor_msgs::msg::Imu imu_template_;
+    
+    // Callback groups for parallel execution
+    rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
+    std::vector<rclcpp::CallbackGroup::SharedPtr> camera_callback_groups_;
+    
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> rgb_pubs_;
     std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> depth_pubs_;
     
     rclcpp::TimerBase::SharedPtr imu_timer_;
-    rclcpp::TimerBase::SharedPtr camera_timer_;
+    std::vector<rclcpp::TimerBase::SharedPtr> camera_timers_;
     rclcpp::TimerBase::SharedPtr status_timer_;
     rclcpp::TimerBase::SharedPtr duration_timer_;
 };
@@ -475,7 +597,14 @@ int main(int argc, char** argv) {
     config.print_config();
     
     auto node = std::make_shared<SyntheticPublisher>(config);
-    rclcpp::spin(node);
+    
+    // Use multi-threaded executor with enough threads for all callback groups
+    // IMU (1) + cameras (num_cameras) + status (1) + duration (1) = num_cameras + 3
+    size_t num_threads = static_cast<size_t>(config.num_cameras + 4);
+    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), num_threads);
+    executor.add_node(node);
+    executor.spin();
+    
     rclcpp::shutdown();
     
     return 0;

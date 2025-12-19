@@ -1,10 +1,13 @@
 #include "recorder_node.hpp"
 #include "ros_interface.hpp"
+#include "ros_introspection.hpp"
 #include "batch_manager.hpp"
 #include "config_parser.hpp"
 #include "message_converter.hpp"
+#include "message_introspection.hpp"
 #include "schema_merger.hpp"
 #include <arrow/c/bridge.h>  // Arrow C Data Interface (ExportSchema, ExportRecordBatch)
+#include <arrow/builder.h>   // BinaryBuilder for worker thread conversion
 #include <axon/lance_bridge.h>
 
 #if defined(AXON_ROS1)
@@ -13,26 +16,114 @@
 #include <ros/package.h>
 #elif defined(AXON_ROS2)
 #include <rclcpp/rclcpp.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #endif
 
+#include <fstream>
+#include <iomanip>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 #include <thread>
 #include <atomic>
 #include <iostream>
+#include <csignal>
 
 namespace axon {
 namespace recorder {
 
 RecorderNode::RecorderNode() 
     : recording_(false)
-    , dataset_handle_(0) 
+    , dataset_handle_(0)
+    , workers_running_(false)
 {
 }
 
 RecorderNode::~RecorderNode() {
     shutdown();
+}
+
+void RecorderNode::start_worker_threads() {
+    if (workers_running_.load()) {
+        return;
+    }
+    
+    workers_running_.store(true);
+    worker_threads_.reserve(NUM_WORKER_THREADS);
+    
+    for (size_t i = 0; i < NUM_WORKER_THREADS; ++i) {
+        worker_threads_.emplace_back(&RecorderNode::worker_thread_func, this);
+    }
+}
+
+void RecorderNode::stop_worker_threads() {
+    if (!workers_running_.load()) {
+        return;
+    }
+    
+    workers_running_.store(false);
+    
+    // Notify all per-topic queues
+    for (auto& [topic_name, topic_queue] : topic_queues_) {
+        topic_queue->cv.notify_all();
+    }
+    
+    for (auto& thread : worker_threads_) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+    worker_threads_.clear();
+}
+
+void RecorderNode::worker_thread_func() {
+    while (workers_running_.load()) {
+        // Round-robin through all topic queues to avoid starvation
+        bool processed_any = false;
+        
+        for (auto& [topic_name, topic_queue] : topic_queues_) {
+            if (!workers_running_.load()) break;
+            
+            MessageItem item;
+            bool got_item = false;
+            
+            // Try to get an item from this topic's queue (non-blocking)
+            {
+                std::unique_lock<std::mutex> lock(topic_queue->mutex, std::try_to_lock);
+                if (lock.owns_lock() && !topic_queue->queue.empty()) {
+                    item = std::move(topic_queue->queue.front());
+                    topic_queue->queue.pop();
+                    topic_queue->size.fetch_sub(1, std::memory_order_relaxed);
+                    got_item = true;
+                }
+            }
+            
+            if (!got_item) continue;
+            processed_any = true;
+            
+            // Process message outside of lock
+            auto batch_mgr_it = batch_managers_.find(topic_name);
+            if (batch_mgr_it == batch_managers_.end()) continue;
+            
+            try {
+                // Direct binary append with ownership transfer (zero-copy in BatchManager)
+                batch_mgr_it->second->add_row_with_raw_data(
+                    item.timestamp_ns, topic_name, std::move(item.raw_data));
+                
+                // Track successful writes
+                messages_written_.fetch_add(1, std::memory_order_relaxed);
+            } catch (const std::exception& e) {
+                if (ros_interface_) {
+                    ros_interface_->log_error(std::string("Worker exception: ") + e.what());
+                }
+            }
+        }
+        
+        // If no work was found, sleep briefly to avoid busy-waiting
+        if (!processed_any) {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+    }
 }
 
 bool RecorderNode::initialize(int argc, char** argv) {
@@ -53,6 +144,12 @@ bool RecorderNode::initialize(int argc, char** argv) {
         ros_interface_->log_error("Failed to load configuration");
         return false;
     }
+    
+    // Register ROS introspector factory for message conversion
+    // This allows MessageConverterFactory to create converters for any ROS message type
+    core::MessageIntrospectorFactory::set_factory(
+        []() { return RosIntrospectorFactory::create(); }
+    );
     
     // Collect schemas from all topics
     if (!collect_topic_schemas()) {
@@ -82,32 +179,42 @@ void RecorderNode::run() {
         start_recording();
     }
     
+    std::cerr << "[axon_recorder] Entering spin()..." << std::endl;
     ros_interface_->spin();
+    std::cerr << "[axon_recorder] spin() returned" << std::endl;
 }
 
 void RecorderNode::shutdown() {
+    std::cerr << "[axon_recorder] shutdown() called" << std::endl;
+    
     stop_recording();
     
     // Stop all batch managers
+    std::cerr << "[axon_recorder] Stopping batch managers..." << std::endl;
     for (auto& pair : batch_managers_) {
         pair.second->stop();
     }
     batch_managers_.clear();
     
     // Unsubscribe all
+    std::cerr << "[axon_recorder] Unsubscribing topics..." << std::endl;
     for (auto& pair : subscriptions_) {
         ros_interface_->unsubscribe(pair.second);
     }
     subscriptions_.clear();
     
     if (dataset_handle_ > 0) {
+        std::cerr << "[axon_recorder] Closing dataset..." << std::endl;
         close_dataset(dataset_handle_);
         dataset_handle_ = 0;
     }
     
     if (ros_interface_) {
+        std::cerr << "[axon_recorder] Shutting down ROS interface..." << std::endl;
         ros_interface_->shutdown();
     }
+    
+    std::cerr << "[axon_recorder] Shutdown complete" << std::endl;
 }
 
 bool RecorderNode::load_configuration() {
@@ -142,8 +249,23 @@ std::string RecorderNode::get_config_path() {
     // Fallback to default
     return "config/default_config.yaml";
 #elif defined(AXON_ROS2)
-    // ROS 2: would use parameter from node
-    // For now, use default path
+    // ROS 2: Try several locations for config file
+    
+    // Try workspace source path first (for development)
+    std::string source_config = "/workspace/axon/ros/axon_recorder/config/default_config.yaml";
+    std::ifstream test_file(source_config);
+    if (test_file.good()) {
+        return source_config;
+    }
+    
+    // Try install share directory (for installed package)
+    std::string install_config = ament_index_cpp::get_package_share_directory("axon_recorder") + "/config/default_config.yaml";
+    std::ifstream test_install(install_config);
+    if (test_install.good()) {
+        return install_config;
+    }
+    
+    // Fallback to relative path
     return "config/default_config.yaml";
 #else
     return "config/default_config.yaml";
@@ -170,14 +292,16 @@ bool RecorderNode::initialize_dataset() {
     dataset_path_ = config_.dataset.path;
     
     // Merge schemas from all topics
-    merged_schema_ = core::SchemaMerger::merge_schemas(topic_schemas_, true);
-    
+    // Use simple recording schema: timestamp, topic, message_data
+    // This allows efficient storage of any message type as binary
+    merged_schema_ = core::SchemaMerger::create_recording_schema(topic_schemas_);
+
     if (!merged_schema_) {
-        ros_interface_->log_error("Failed to merge schemas");
+        ros_interface_->log_error("Failed to create recording schema");
         return false;
     }
-    
-    ros_interface_->log_info("Merged schema has " + 
+
+    ros_interface_->log_info("Recording schema has " +
                              std::to_string(merged_schema_->num_fields()) + " fields");
     
     // Export schema to C interface
@@ -227,9 +351,12 @@ void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) 
         
         int32_t result = write_batch(handle, &c_array, &c_schema);
         
-        // Release C structures
-        c_array.release(&c_array);
-        c_schema.release(&c_schema);
+        // Release schema only - Rust takes ownership of array via Arrow C Data Interface
+        // The array's release callback will be called by Rust when it's done with the data.
+        // Calling c_array.release() here would cause a double-free.
+        if (c_schema.release) {
+            c_schema.release(&c_schema);
+        }
         
         if (result != LANCE_SUCCESS) {
             const char* error = lance_get_last_error();
@@ -258,59 +385,51 @@ void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) 
     
     batch_managers_[topic_config.name] = std::move(batch_mgr);
     
-    // Subscribe to topic
-    auto callback = [this, topic_name = topic_config.name](const void* msg_ptr) {
+    // Create per-topic queue for this topic
+    topic_queues_[topic_config.name] = std::make_unique<TopicQueue>();
+    auto* topic_queue = topic_queues_[topic_config.name].get();
+    
+    // Subscribe to topic - fast path: just copy raw bytes and queue
+    auto callback = [this, topic_name = topic_config.name, topic_queue](const void* msg_ptr) {
         if (!recording_.load()) {
             return;
         }
         
-        auto converter_it = converters_.find(topic_name);
-        if (converter_it == converters_.end()) {
+        // Capture timestamp immediately for accuracy
+        int64_t timestamp_ns = ros_interface_->now_nsec();
+        
+        // Get raw message bytes - fast pointer access
+#if defined(AXON_ROS2)
+        const rclcpp::SerializedMessage* serialized_msg = 
+            static_cast<const rclcpp::SerializedMessage*>(msg_ptr);
+        if (!serialized_msg || serialized_msg->size() == 0) {
             return;
         }
         
-        std::vector<std::shared_ptr<arrow::Array>> arrays;
-        if (converter_it->second->convert_to_arrow(msg_ptr, arrays)) {
-            auto batch_mgr_it = batch_managers_.find(topic_name);
-            if (batch_mgr_it != batch_managers_.end()) {
-                // Add timestamp and topic fields
-                int64_t timestamp_ns = ros_interface_->now_nsec();
-                arrow::Int64Builder timestamp_builder;
-                auto status = timestamp_builder.Append(timestamp_ns);
-                if (!status.ok()) {
-                    ros_interface_->log_error("Failed to append timestamp: " + status.message());
-                    return;
-                }
-                std::shared_ptr<arrow::Array> timestamp_array;
-                status = timestamp_builder.Finish(&timestamp_array);
-                if (!status.ok()) {
-                    ros_interface_->log_error("Failed to finish timestamp array: " + status.message());
-                    return;
-                }
-                
-                arrow::StringBuilder topic_builder;
-                status = topic_builder.Append(topic_name);
-                if (!status.ok()) {
-                    ros_interface_->log_error("Failed to append topic: " + status.message());
-                    return;
-                }
-                std::shared_ptr<arrow::Array> topic_array;
-                status = topic_builder.Finish(&topic_array);
-                if (!status.ok()) {
-                    ros_interface_->log_error("Failed to finish topic array: " + status.message());
-                    return;
-                }
-                
-                // Prepend timestamp and topic to arrays
-                std::vector<std::shared_ptr<arrow::Array>> full_arrays;
-                full_arrays.reserve(arrays.size() + 2);
-                full_arrays.push_back(timestamp_array);
-                full_arrays.push_back(topic_array);
-                full_arrays.insert(full_arrays.end(), arrays.begin(), arrays.end());
-                
-                batch_mgr_it->second->add_row(full_arrays);
-            }
+        // Increment received counter
+        messages_received_.fetch_add(1, std::memory_order_relaxed);
+        
+        // Check queue size without lock (approximate, but fast)
+        if (topic_queue->size.load(std::memory_order_relaxed) >= MAX_QUEUE_SIZE_PER_TOPIC) {
+            messages_dropped_.fetch_add(1, std::memory_order_relaxed);
+            return;  // Drop message to prevent memory buildup
         }
+        
+        // Fast enqueue to per-topic queue - minimal contention
+        {
+            std::lock_guard<std::mutex> lock(topic_queue->mutex);
+            
+            MessageItem item;
+            item.timestamp_ns = timestamp_ns;
+            
+            // Copy raw bytes - unavoidable but faster than Arrow conversion
+            const auto& rcl_msg = serialized_msg->get_rcl_serialized_message();
+            item.raw_data.assign(rcl_msg.buffer, rcl_msg.buffer + rcl_msg.buffer_length);
+            
+            topic_queue->queue.push(std::move(item));
+            topic_queue->size.fetch_add(1, std::memory_order_relaxed);
+        }
+#endif
     };
     
     void* sub = ros_interface_->subscribe(
@@ -333,19 +452,64 @@ void RecorderNode::setup_services() {
 }
 
 void RecorderNode::start_recording() {
+    // Start worker threads for async message processing
+    start_worker_threads();
     recording_ = true;
     ros_interface_->log_info("Recording started");
 }
 
 void RecorderNode::stop_recording() {
+    // Use std::cerr for shutdown messages since ROS logging may be disabled after rclcpp::shutdown()
+    std::cerr << "[axon_recorder] stop_recording() called" << std::endl;
+    
     recording_ = false;
     
+    // Stop worker threads (will drain remaining queue items)
+    std::cerr << "[axon_recorder] Stopping worker threads..." << std::endl;
+    stop_worker_threads();
+    std::cerr << "[axon_recorder] Worker threads stopped" << std::endl;
+    
     // Flush all batch managers
+    std::cerr << "[axon_recorder] Flushing batch managers..." << std::endl;
     for (auto& pair : batch_managers_) {
         pair.second->flush();
     }
+    std::cerr << "[axon_recorder] Batch managers flushed" << std::endl;
     
-    ros_interface_->log_info("Recording stopped");
+    // Write statistics file for performance monitoring
+    write_stats_file();
+    
+    std::cerr << "[axon_recorder] Recording stopped" << std::endl;
+    if (ros_interface_) {
+        ros_interface_->log_info("Recording stopped");
+    }
+}
+
+void RecorderNode::write_stats_file() {
+    std::ofstream stats_file(STATS_FILE_PATH);
+    if (!stats_file.is_open()) {
+        ros_interface_->log_warn("Could not write stats file: " + std::string(STATS_FILE_PATH));
+        return;
+    }
+    
+    uint64_t received = messages_received_.load();
+    uint64_t dropped = messages_dropped_.load();
+    uint64_t written = messages_written_.load();
+    double drop_rate = (received > 0) ? (100.0 * dropped / received) : 0.0;
+    
+    stats_file << "{\n"
+               << "  \"messages_received\": " << received << ",\n"
+               << "  \"messages_dropped\": " << dropped << ",\n"
+               << "  \"messages_written\": " << written << ",\n"
+               << "  \"drop_rate_percent\": " << std::fixed << std::setprecision(2) << drop_rate << "\n"
+               << "}\n";
+    
+    stats_file.close();
+    
+    ros_interface_->log_info("Stats written: received=" + std::to_string(received) + 
+                            ", dropped=" + std::to_string(dropped) +
+                            ", written=" + std::to_string(written) +
+                            ", drop_rate=" + std::to_string(drop_rate) + "%");
 }
 
 } // namespace recorder
@@ -354,16 +518,55 @@ void RecorderNode::stop_recording() {
 // ============================================================================
 // Main Entry Point
 // ============================================================================
+// Note: ROS2's rclcpp::init() installs default signal handlers for SIGINT 
+// and SIGTERM that call rclcpp::shutdown(). We rely on these handlers.
+// After spin() returns, we call node.shutdown() to write stats.
+
+// Global flag to track if we received a signal
+static std::atomic<bool> g_signal_received{false};
+
+// Signal handler to log signal reception
+static void signal_handler(int signum) {
+    std::cerr << "[axon_recorder] Received signal " << signum 
+              << " (SIGTERM=" << SIGTERM << ", SIGINT=" << SIGINT << ")" << std::endl;
+    g_signal_received.store(true);
+    
+    // Call rclcpp::shutdown() to trigger executor exit
+#if defined(AXON_ROS2)
+    std::cerr << "[axon_recorder] Calling rclcpp::shutdown()..." << std::endl;
+    rclcpp::shutdown();
+    std::cerr << "[axon_recorder] rclcpp::shutdown() called" << std::endl;
+#elif defined(AXON_ROS1)
+    ros::shutdown();
+#endif
+}
 
 int main(int argc, char** argv) {
+    std::cerr << "[axon_recorder] main() starting" << std::endl;
+    
     axon::recorder::RecorderNode node;
     
     if (!node.initialize(argc, argv)) {
+        std::cerr << "[axon_recorder] Initialization failed" << std::endl;
         return 1;
     }
     
+    // Install custom signal handlers AFTER rclcpp::init() to override ROS defaults
+    std::cerr << "[axon_recorder] Installing signal handlers..." << std::endl;
+    std::signal(SIGTERM, signal_handler);
+    std::signal(SIGINT, signal_handler);
+    
+    std::cerr << "[axon_recorder] Initialization complete, calling run()" << std::endl;
+    
+    // run() blocks until rclcpp::shutdown() is called (by signal or otherwise)
     node.run();
+    
+    std::cerr << "[axon_recorder] run() returned, calling shutdown()" << std::endl;
+    
+    // Ensure shutdown is called - this writes the stats file
+    // This runs AFTER spin() returns due to SIGTERM/SIGINT
     node.shutdown();
     
+    std::cerr << "[axon_recorder] main() exiting normally" << std::endl;
     return 0;
 }

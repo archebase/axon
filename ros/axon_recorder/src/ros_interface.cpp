@@ -17,6 +17,7 @@
 #include <rclcpp/service.hpp>
 #include <rclcpp/generic_subscription.hpp>
 #include <rclcpp/serialized_message.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <rmw/rmw.h>
 #endif
 
@@ -271,7 +272,7 @@ private:
 
 class RosInterfaceImpl : public RosInterface {
 public:
-    RosInterfaceImpl() : node_(nullptr), initialized_(false) {}
+    RosInterfaceImpl() : node_(nullptr), initialized_(false), num_threads_(8) {}
     
     ~RosInterfaceImpl() override {
         shutdown();
@@ -287,15 +288,36 @@ public:
             return false;
         }
         
-        node_ = std::make_shared<rclcpp::Node>(node_name);
+        // Create node with options that allow reentrant callbacks
+        rclcpp::NodeOptions options;
+        options.allow_undeclared_parameters(true);
+        options.automatically_declare_parameters_from_overrides(true);
+        
+        node_ = std::make_shared<rclcpp::Node>(node_name, options);
+        
+        // Create callback group for parallel processing
+        callback_group_ = node_->create_callback_group(
+            rclcpp::CallbackGroupType::Reentrant);
+        
+        // Create multi-threaded executor for parallel callback processing
+        executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>(
+            rclcpp::ExecutorOptions(), num_threads_);
+        executor_->add_node(node_);
+        
         initialized_ = true;
         return true;
     }
     
     void shutdown() override {
         if (initialized_) {
+            // Cancel executor before cleaning up
+            if (executor_) {
+                executor_->cancel();
+                executor_.reset();
+            }
             subscriptions_.clear();
             services_.clear();
+            callback_group_.reset();
             node_.reset();
             rclcpp::shutdown();
             initialized_ = false;
@@ -324,16 +346,27 @@ public:
             sub_wrapper->message_type = message_type;
             
             try {
+                // Use reliable QoS with large queue for high-throughput recording
+                auto qos = rclcpp::QoS(1000)
+                    .reliable()
+                    .keep_last(1000)
+                    .durability_volatile();
+                
+                // Create subscription options with reentrant callback group
+                rclcpp::SubscriptionOptions sub_options;
+                sub_options.callback_group = callback_group_;
+                    
                 sub_wrapper->subscription = rclcpp::create_generic_subscription(
                     node_->get_node_topics_interface(),
                     topic,
                     message_type,
-                    rclcpp::QoS(10),
+                    qos,
                     [sub_wrapper](std::shared_ptr<rclcpp::SerializedMessage> msg) {
                         if (sub_wrapper->callback && msg) {
                             sub_wrapper->callback(static_cast<const void*>(msg.get()));
                         }
-                    }
+                    },
+                    sub_options
                 );
                 
                 if (sub_wrapper->subscription) {
@@ -399,11 +432,15 @@ public:
     }
     
     void spin_once() override {
-        rclcpp::spin_some(node_);
+        if (executor_) {
+            executor_->spin_some();
+        }
     }
     
     void spin() override {
-        rclcpp::spin(node_);
+        if (executor_) {
+            executor_->spin();
+        }
     }
     
     int64_t now_nsec() const override {
@@ -454,7 +491,10 @@ private:
     };
     
     std::shared_ptr<rclcpp::Node> node_;
+    std::shared_ptr<rclcpp::executors::MultiThreadedExecutor> executor_;
+    rclcpp::CallbackGroup::SharedPtr callback_group_;
     bool initialized_;
+    size_t num_threads_;
     std::map<void*, std::pair<std::string, std::string>> subscriptions_;
     std::map<void*, std::pair<std::string, std::string>> services_;
 };

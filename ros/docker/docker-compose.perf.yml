@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Docker Compose configuration for running performance tests
 # 
 # Usage:

@@ -70,6 +70,19 @@ void register_common_message_types() {
     // Geometry messages
     MessageFactory::register_message_type<geometry_msgs::msg::Pose>("geometry_msgs/msg/Pose");
     MessageFactory::register_message_type<geometry_msgs::msg::Twist>("geometry_msgs/msg/Twist");
+    
+    // Also register with ROS 1 style names for config compatibility
+    // This allows configs to use "sensor_msgs/Image" instead of "sensor_msgs/msg/Image"
+    MessageFactory::register_message_type<std_msgs::msg::String>("std_msgs/String");
+    MessageFactory::register_message_type<std_msgs::msg::Int32>("std_msgs/Int32");
+    MessageFactory::register_message_type<std_msgs::msg::Float64>("std_msgs/Float64");
+    MessageFactory::register_message_type<std_msgs::msg::Bool>("std_msgs/Bool");
+    MessageFactory::register_message_type<std_msgs::msg::Header>("std_msgs/Header");
+    MessageFactory::register_message_type<sensor_msgs::msg::Image>("sensor_msgs/Image");
+    MessageFactory::register_message_type<sensor_msgs::msg::PointCloud2>("sensor_msgs/PointCloud2");
+    MessageFactory::register_message_type<nav_msgs::msg::Odometry>("nav_msgs/Odometry");
+    MessageFactory::register_message_type<geometry_msgs::msg::Pose>("geometry_msgs/Pose");
+    MessageFactory::register_message_type<geometry_msgs::msg::Twist>("geometry_msgs/Twist");
 #endif
 }
 

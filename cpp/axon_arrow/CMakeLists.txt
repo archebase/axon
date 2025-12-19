@@ -15,6 +15,32 @@ option(AXON_ARROW_BUILD_TESTS "Build tests" ON)
 option(AXON_ARROW_ENABLE_COVERAGE "Enable code coverage" OFF)
 
 # =============================================================================
+# Address Sanitizer (ASAN) Support
+# Can be enabled via AXON_ARROW_ASAN_FLAGS from parent project or ENABLE_ASAN
+# =============================================================================
+option(ENABLE_ASAN "Enable Address Sanitizer for debugging memory issues" OFF)
+
+# Check environment variable
+if(DEFINED ENV{ENABLE_ASAN} AND "$ENV{ENABLE_ASAN}" STREQUAL "1")
+    set(ENABLE_ASAN ON)
+endif()
+
+# Apply ASAN flags (either from parent project or local option)
+if(DEFINED AXON_ARROW_ASAN_FLAGS OR ENABLE_ASAN)
+    if(DEFINED AXON_ARROW_ASAN_FLAGS)
+        set(ASAN_FLAGS "${AXON_ARROW_ASAN_FLAGS}")
+    else()
+        set(ASAN_FLAGS "-fsanitize=address -fno-omit-frame-pointer -g -O1")
+    endif()
+    
+    message(STATUS "axon_arrow: ADDRESS SANITIZER ENABLED")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ASAN_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ASAN_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+endif()
+
+# =============================================================================
 # Code Coverage Configuration
 # =============================================================================
 if(AXON_ARROW_ENABLE_COVERAGE)

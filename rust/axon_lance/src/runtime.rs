@@ -7,9 +7,21 @@
 use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
 
-/// Global shared Tokio runtime
+/// Global shared Tokio runtime for general operations
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     Runtime::new().expect("Failed to create Tokio runtime")
+});
+
+/// Dedicated multi-threaded runtime for async writes
+/// Uses 8 worker threads optimized for high-throughput I/O-bound operations
+/// Increased from 4 to handle concurrent writes from multiple topics
+static WRITE_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(8)
+        .thread_name("lance-writer")
+        .enable_all()
+        .build()
+        .expect("Failed to create write runtime")
 });
 
 /// Get a reference to the shared Tokio runtime
@@ -19,6 +31,25 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 /// a new runtime for each operation.
 pub fn get_runtime() -> &'static Runtime {
     &RUNTIME
+}
+
+/// Get a reference to the dedicated write runtime
+///
+/// This runtime is optimized for async write operations with multiple
+/// worker threads to handle concurrent I/O.
+pub fn get_write_runtime() -> &'static Runtime {
+    &WRITE_RUNTIME
+}
+
+/// Spawn an async task on the write runtime (non-blocking)
+///
+/// Unlike `block_on`, this returns immediately and executes the
+/// future in the background. Errors are logged but not propagated.
+pub fn spawn_write<F>(future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    get_write_runtime().spawn(future);
 }
 
 /// Execute an async function using the shared runtime

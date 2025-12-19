@@ -12,7 +12,7 @@ use arrow::record_batch::RecordBatchIterator;
 use lance::dataset::{Dataset, WriteMode, WriteParams};
 
 use crate::error::{LanceError, Result};
-use crate::runtime::block_on;
+use crate::runtime::{block_on, spawn_write};
 
 /// Handle type for dataset references
 pub type DatasetHandle = i64;
@@ -113,9 +113,10 @@ impl LanceWriter {
     Ok(handle)
 }
 
-    /// Write a RecordBatch to the dataset
+    /// Write a RecordBatch to the dataset (blocking)
     ///
-    /// Appends the given batch to the dataset.
+    /// Appends the given batch to the dataset. This function blocks until
+    /// the write completes.
     ///
     /// # Arguments
     /// * `handle` - Dataset handle from `create_or_open`
@@ -152,6 +153,57 @@ impl LanceWriter {
     
     Ok(())
 }
+
+    /// Write a RecordBatch to the dataset asynchronously (non-blocking)
+    ///
+    /// Spawns the write operation on a dedicated runtime and returns immediately.
+    /// This is optimized for high-throughput recording scenarios where blocking
+    /// the caller would cause message drops.
+    ///
+    /// # Arguments
+    /// * `handle` - Dataset handle from `create_or_open`
+    /// * `batch` - The RecordBatch to write
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the write was successfully queued
+    /// * `Err(LanceError)` - If the handle is invalid
+    ///
+    /// # Note
+    /// Errors during the actual write are logged but not propagated since
+    /// this is a fire-and-forget operation.
+    pub fn write_batch_async(handle: DatasetHandle, batch: RecordBatch) -> Result<()> {
+        // Validate handle and get state before spawning
+        let (dataset, schema) = {
+            let datasets = DATASETS.lock().unwrap();
+            let state = datasets.get(&handle)
+                .ok_or_else(|| LanceError::InvalidHandle(format!("Invalid dataset handle: {}", handle)))?;
+            (Arc::clone(&state.dataset), Arc::clone(&state.schema))
+        };
+        
+        // Spawn async write - returns immediately
+        spawn_write(async move {
+            // Optimized write parameters for high-throughput recording:
+            // - Larger row groups reduce I/O overhead
+            // - Lance V2 format (default in 0.39+) has better compression
+            let params = WriteParams {
+                mode: WriteMode::Append,
+                max_rows_per_group: 8192,  // Increased from default 1024 for larger batches
+                ..Default::default()
+            };
+            
+            let batch_iter = RecordBatchIterator::new(
+                std::iter::once(Ok(batch)),
+                schema,
+            );
+            
+            let mut dataset_guard = dataset.lock().await;
+            if let Err(e) = dataset_guard.append(batch_iter, Some(params)).await {
+                eprintln!("Async write error: {}", e);
+            }
+        });
+        
+        Ok(())
+    }
 
     /// Close a dataset and release resources
     ///

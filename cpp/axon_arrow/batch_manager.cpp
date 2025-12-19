@@ -125,6 +125,244 @@ void BatchManager::add_row(const std::vector<std::shared_ptr<arrow::Array>>& arr
     }
 }
 
+void BatchManager::add_row_with_metadata(int64_t timestamp_ns, 
+                                          const std::string& topic_name,
+                                          const std::vector<std::shared_ptr<arrow::Array>>& data_arrays) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    if (!schema_) {
+        throw std::runtime_error("Schema not initialized. Call initialize_schema() first.");
+    }
+    
+    // Schema layout: [timestamp, topic, ...data_fields]
+    // We expect at least 2 fields (timestamp, topic) + data arrays
+    size_t expected_data_fields = static_cast<size_t>(schema_->num_fields()) - 2;
+    if (data_arrays.size() != expected_data_fields) {
+        throw std::runtime_error("Data array count mismatch. Expected " + 
+                               std::to_string(expected_data_fields) + 
+                               ", got " + std::to_string(data_arrays.size()));
+    }
+    
+    // Append timestamp directly to builder (index 0)
+    auto* timestamp_builder = dynamic_cast<arrow::Int64Builder*>(builders_[0].get());
+    if (timestamp_builder) {
+        auto status = timestamp_builder->Append(timestamp_ns);
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append timestamp: " << status.ToString() << std::endl;
+        }
+    }
+    
+    // Append topic directly to builder (index 1)
+    auto* topic_builder = dynamic_cast<arrow::StringBuilder*>(builders_[1].get());
+    if (topic_builder) {
+        auto status = topic_builder->Append(topic_name);
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append topic: " << status.ToString() << std::endl;
+        }
+    }
+    
+    // Append data arrays to remaining builders (starting at index 2)
+    for (size_t i = 0; i < data_arrays.size(); ++i) {
+        size_t builder_idx = i + 2;  // Skip timestamp and topic
+        
+        if (!data_arrays[i]) {
+            auto status = builders_[builder_idx]->AppendNull();
+            if (!status.ok()) {
+                std::cerr << "Warning: Failed to append null: " << status.ToString() << std::endl;
+            }
+            continue;
+        }
+        
+        arrow::ArraySpan span(*data_arrays[i]->data());
+        arrow::Status status = builders_[builder_idx]->AppendArraySlice(span, 0, data_arrays[i]->length());
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append to builder " << builder_idx 
+                      << ": " << status.ToString() << std::endl;
+            auto null_status = builders_[builder_idx]->AppendNull();
+            if (!null_status.ok()) {
+                std::cerr << "Warning: Failed to append null: " << null_status.ToString() << std::endl;
+            }
+        }
+    }
+    
+    current_row_count_.store(current_row_count_.load() + 1, std::memory_order_relaxed);
+    
+    // Check if we need to flush
+    bool should_flush = false;
+    size_t current_count = current_row_count_.load(std::memory_order_relaxed);
+    
+    if (current_count >= batch_size_) {
+        should_flush = true;
+    } else if (flush_interval_ms_ > 0) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - last_flush_time_).count();
+        if (elapsed >= flush_interval_ms_) {
+            should_flush = true;
+        }
+    }
+    
+    if (should_flush) {
+        flush_internal();
+    }
+}
+
+void BatchManager::add_row_with_metadata(int64_t timestamp_ns, 
+                                          const std::string& topic_name,
+                                          std::vector<uint8_t>&& raw_data,
+                                          const std::vector<std::shared_ptr<arrow::Array>>& data_arrays) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    if (!schema_) {
+        throw std::runtime_error("Schema not initialized. Call initialize_schema() first.");
+    }
+    
+    // Store raw data to keep it alive until batch flush
+    // The data_arrays reference this raw_data buffer (zero-copy)
+    pending_raw_data_.push_back(std::move(raw_data));
+    
+    // Schema layout: [timestamp, topic, ...data_fields]
+    size_t expected_data_fields = static_cast<size_t>(schema_->num_fields()) - 2;
+    if (data_arrays.size() != expected_data_fields) {
+        throw std::runtime_error("Data array count mismatch. Expected " + 
+                               std::to_string(expected_data_fields) + 
+                               ", got " + std::to_string(data_arrays.size()));
+    }
+    
+    // Append timestamp directly to builder (index 0)
+    auto* timestamp_builder = dynamic_cast<arrow::Int64Builder*>(builders_[0].get());
+    if (timestamp_builder) {
+        auto status = timestamp_builder->Append(timestamp_ns);
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append timestamp: " << status.ToString() << std::endl;
+        }
+    }
+    
+    // Append topic directly to builder (index 1)
+    auto* topic_builder = dynamic_cast<arrow::StringBuilder*>(builders_[1].get());
+    if (topic_builder) {
+        auto status = topic_builder->Append(topic_name);
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append topic: " << status.ToString() << std::endl;
+        }
+    }
+    
+    // Append data arrays to remaining builders (starting at index 2)
+    for (size_t i = 0; i < data_arrays.size(); ++i) {
+        size_t builder_idx = i + 2;
+        
+        if (!data_arrays[i]) {
+            auto status = builders_[builder_idx]->AppendNull();
+            if (!status.ok()) {
+                std::cerr << "Warning: Failed to append null: " << status.ToString() << std::endl;
+            }
+            continue;
+        }
+        
+        arrow::ArraySpan span(*data_arrays[i]->data());
+        arrow::Status status = builders_[builder_idx]->AppendArraySlice(span, 0, data_arrays[i]->length());
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append to builder " << builder_idx 
+                      << ": " << status.ToString() << std::endl;
+            auto null_status = builders_[builder_idx]->AppendNull();
+            if (!null_status.ok()) {
+                std::cerr << "Warning: Failed to append null: " << null_status.ToString() << std::endl;
+            }
+        }
+    }
+    
+    current_row_count_.store(current_row_count_.load() + 1, std::memory_order_relaxed);
+    
+    // Check if we need to flush
+    bool should_flush = false;
+    size_t current_count = current_row_count_.load(std::memory_order_relaxed);
+    
+    if (current_count >= batch_size_) {
+        should_flush = true;
+    } else if (flush_interval_ms_ > 0) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - last_flush_time_).count();
+        if (elapsed >= flush_interval_ms_) {
+            should_flush = true;
+        }
+    }
+    
+    if (should_flush) {
+        flush_internal();
+    }
+}
+
+void BatchManager::add_row_with_raw_data(int64_t timestamp_ns, 
+                                          const std::string& topic_name,
+                                          std::vector<uint8_t>&& raw_data) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    if (!schema_) {
+        throw std::runtime_error("Schema not initialized. Call initialize_schema() first.");
+    }
+    
+    // Append timestamp directly to builder (index 0)
+    auto* timestamp_builder = dynamic_cast<arrow::Int64Builder*>(builders_[0].get());
+    if (timestamp_builder) {
+        auto status = timestamp_builder->Append(timestamp_ns);
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append timestamp: " << status.ToString() << std::endl;
+        }
+    }
+    
+    // Append topic directly to builder (index 1)
+    auto* topic_builder = dynamic_cast<arrow::StringBuilder*>(builders_[1].get());
+    if (topic_builder) {
+        auto status = topic_builder->Append(topic_name);
+        if (!status.ok()) {
+            std::cerr << "Warning: Failed to append topic: " << status.ToString() << std::endl;
+        }
+    }
+    
+    // Append raw data directly to binary builder (index 2)
+    // This avoids creating intermediate Arrow arrays
+    if (builders_.size() > 2) {
+        auto* binary_builder = dynamic_cast<arrow::BinaryBuilder*>(builders_[2].get());
+        if (binary_builder) {
+            auto status = binary_builder->Append(raw_data.data(), raw_data.size());
+            if (!status.ok()) {
+                std::cerr << "Warning: Failed to append binary data: " << status.ToString() << std::endl;
+            }
+        } else {
+            // Fallback: try LargeBinaryBuilder for very large messages
+            auto* large_builder = dynamic_cast<arrow::LargeBinaryBuilder*>(builders_[2].get());
+            if (large_builder) {
+                auto status = large_builder->Append(raw_data.data(), raw_data.size());
+                if (!status.ok()) {
+                    std::cerr << "Warning: Failed to append binary data: " << status.ToString() << std::endl;
+                }
+            }
+        }
+    }
+    
+    current_row_count_.store(current_row_count_.load() + 1, std::memory_order_relaxed);
+    
+    // Check if we need to flush
+    bool should_flush = false;
+    size_t current_count = current_row_count_.load(std::memory_order_relaxed);
+    
+    if (current_count >= batch_size_) {
+        should_flush = true;
+    } else if (flush_interval_ms_ > 0) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - last_flush_time_).count();
+        if (elapsed >= flush_interval_ms_) {
+            should_flush = true;
+        }
+    }
+    
+    if (should_flush) {
+        flush_internal();
+    }
+}
+
 void BatchManager::flush() {
     std::lock_guard<std::mutex> lock(mutex_);
     flush_internal();
@@ -196,6 +434,9 @@ void BatchManager::reset_builders() {
         builder->Reset();
     }
     current_row_count_.store(0, std::memory_order_relaxed);
+    
+    // Clear raw data storage (data has been copied to Arrow buffers during Finish)
+    pending_raw_data_.clear();
 }
 
 void BatchManager::start() {

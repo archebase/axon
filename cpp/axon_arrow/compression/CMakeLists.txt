@@ -1,8 +1,34 @@
 # Compression module CMake configuration
 # This module provides image compression for robotics data
 
-# Find optional JPEG libraries
+# Find pkg-config for compression library detection
 find_package(PkgConfig QUIET)
+
+# =============================================================================
+# Verify Arrow compression codecs (LZ4, ZSTD)
+# Note: Arrow's CMake may warn about missing lz4Config.cmake/zstdConfig.cmake
+# These warnings are harmless - Arrow falls back to pkg-config successfully
+# =============================================================================
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(LZ4 QUIET liblz4)
+    pkg_check_modules(ZSTD QUIET libzstd)
+endif()
+
+# Print compression status summary (appears after Arrow's warnings)
+message(STATUS "")
+message(STATUS "=== Axon Compression Status ===")
+if(LZ4_FOUND)
+    message(STATUS "  LZ4:  ✓ Available (via pkg-config)")
+else()
+    message(STATUS "  LZ4:  ✗ Not found - install liblz4-dev")
+endif()
+if(ZSTD_FOUND)
+    message(STATUS "  ZSTD: ✓ Available (via pkg-config)")
+else()
+    message(STATUS "  ZSTD: ✗ Not found - install libzstd-dev")
+endif()
+
+# Find optional JPEG libraries
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(TURBOJPEG QUIET libturbojpeg)
 endif()

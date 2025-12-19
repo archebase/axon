@@ -142,6 +142,41 @@ public:
     void add_row(const std::vector<std::shared_ptr<arrow::Array>>& arrays);
     
     /**
+     * Add a row with timestamp and topic metadata (optimized for recording)
+     * This method avoids per-message array allocation by appending directly to builders.
+     * @param timestamp_ns Timestamp in nanoseconds
+     * @param topic_name Topic name
+     * @param data_arrays Data arrays (without timestamp and topic)
+     */
+    void add_row_with_metadata(int64_t timestamp_ns, 
+                               const std::string& topic_name,
+                               const std::vector<std::shared_ptr<arrow::Array>>& data_arrays);
+    
+    /**
+     * Add a row with timestamp, topic, and raw data ownership (zero-copy optimized)
+     * Takes ownership of raw_data to keep it alive until batch is flushed.
+     * @param timestamp_ns Timestamp in nanoseconds
+     * @param topic_name Topic name
+     * @param raw_data Raw message bytes (moved, ownership transferred)
+     * @param data_arrays Data arrays wrapping raw_data
+     */
+    void add_row_with_metadata(int64_t timestamp_ns, 
+                               const std::string& topic_name,
+                               std::vector<uint8_t>&& raw_data,
+                               const std::vector<std::shared_ptr<arrow::Array>>& data_arrays);
+    
+    /**
+     * Add a row with timestamp, topic, and raw binary data (direct append, no intermediate arrays)
+     * Most efficient method - appends raw bytes directly to BinaryBuilder.
+     * @param timestamp_ns Timestamp in nanoseconds
+     * @param topic_name Topic name
+     * @param raw_data Raw message bytes (moved for potential future zero-copy)
+     */
+    void add_row_with_raw_data(int64_t timestamp_ns, 
+                               const std::string& topic_name,
+                               std::vector<uint8_t>&& raw_data);
+    
+    /**
      * Add a row using raw values (builds arrays internally)
      * This is slower but more convenient
      */
@@ -209,6 +244,9 @@ private:
     mutable std::mutex mutex_;
     std::chrono::steady_clock::time_point last_flush_time_;
     std::atomic<size_t> current_row_count_;
+    
+    // Storage for raw data buffers (keeps them alive until batch flush)
+    std::vector<std::vector<uint8_t>> pending_raw_data_;
 };
 
 } // namespace core

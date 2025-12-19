@@ -78,9 +78,27 @@ std::shared_ptr<arrow::Schema> MessageIntrospector::create_schema(
     return std::make_shared<arrow::Schema>(fields);
 }
 
+// Static factory function storage
+MessageIntrospectorFactory::FactoryFunction& MessageIntrospectorFactory::get_factory() {
+    static FactoryFunction factory = nullptr;
+    return factory;
+}
+
+void MessageIntrospectorFactory::set_factory(FactoryFunction factory) {
+    get_factory() = std::move(factory);
+}
+
+bool MessageIntrospectorFactory::has_factory() {
+    return static_cast<bool>(get_factory());
+}
+
 std::unique_ptr<MessageIntrospector> MessageIntrospectorFactory::create() {
-    // Platform-specific implementations are in ros1/ros2 directories
-    // This function is implemented in ros1_introspection.cpp and ros2_introspection.cpp
+    auto& factory = get_factory();
+    if (factory) {
+        return factory();
+    }
+    // No factory registered - return nullptr
+    // Platform-specific implementations should register their factory at startup
     return nullptr;
 }
 

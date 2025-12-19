@@ -8,6 +8,32 @@ cmake_policy(SET CMP0079 NEW)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ============================================================================
+# Address Sanitizer (ASAN) Support
+# Enable with: cmake -DENABLE_ASAN=ON or set ENABLE_ASAN=1 environment variable
+# ============================================================================
+option(ENABLE_ASAN "Enable Address Sanitizer for debugging memory issues" OFF)
+
+# Also check environment variable
+if(DEFINED ENV{ENABLE_ASAN} AND "$ENV{ENABLE_ASAN}" STREQUAL "1")
+    set(ENABLE_ASAN ON)
+endif()
+
+if(ENABLE_ASAN)
+    message(STATUS "=== ADDRESS SANITIZER ENABLED ===")
+    message(STATUS "Building with ASAN for memory debugging")
+    
+    # ASAN compiler and linker flags
+    set(ASAN_FLAGS "-fsanitize=address -fno-omit-frame-pointer -g -O1")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ASAN_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ASAN_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+    
+    # Also set for axon_arrow subdirectory
+    set(AXON_ARROW_ASAN_FLAGS "${ASAN_FLAGS}" CACHE STRING "ASAN flags for axon_arrow" FORCE)
+endif()
+
 # Project paths
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(CPP_SRC_DIR ${PROJECT_ROOT}/cpp/axon_arrow)
@@ -30,7 +56,16 @@ else()
     set(AXON_ROS_VERSION 1)
 endif()
 
-# Find Arrow
+# Add custom config files to suppress Arrow's CMake warnings
+# Arrow uses find_package(lz4 CONFIG) which looks for lz4-config.cmake in CMAKE_PREFIX_PATH
+# Ubuntu packages don't provide these, so we provide pkg-config wrappers
+list(PREPEND CMAKE_PREFIX_PATH 
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/lz4"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/zstd"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/re2"
+)
+
+# Find Arrow (our config files prevent "lz4Config.cmake not found" warnings)
 find_package(Arrow REQUIRED)
 
 # Find yaml-cpp
@@ -186,6 +221,10 @@ if(AXON_ROS_VERSION EQUAL 1)
         DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     )
     
+    # Build tests (perf tests, integration tests)
+    set(AXON_ROS1 TRUE)
+    add_subdirectory(test)
+
 # ============================================================================
 # ROS 2 specific setup
 # ============================================================================
@@ -202,6 +241,7 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     find_package(nav_msgs REQUIRED)
     find_package(geometry_msgs REQUIRED)
     find_package(rosidl_default_generators REQUIRED)
+    find_package(ament_index_cpp REQUIRED)
     
     # Generate service messages
     rosidl_generate_interfaces(${PROJECT_NAME}
@@ -255,6 +295,7 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         sensor_msgs
         nav_msgs
         geometry_msgs
+        ament_index_cpp
     )
     
     # Link to Rust FFI library - must use full path for shared library
@@ -266,9 +307,9 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     # Ensure Rust library is built before linking
     add_dependencies(axon_recorder_node cargo_build)
     
-    rosidl_target_interfaces(axon_recorder_node
-        ${PROJECT_NAME} rosidl_typesupport_cpp
-    )
+    # Link to generated service typesupport (replaces deprecated rosidl_target_interfaces)
+    rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+    target_link_libraries(axon_recorder_node "${cpp_typesupport_target}")
     
     # Install
     install(TARGETS axon_recorder_lib axon_recorder_node
@@ -281,6 +322,10 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         DESTINATION share/${PROJECT_NAME}/launch
     )
     
+    install(DIRECTORY config/
+        DESTINATION share/${PROJECT_NAME}/config
+    )
+    
     install(DIRECTORY srv/
         DESTINATION share/${PROJECT_NAME}/srv
         FILES_MATCHING PATTERN "*.srv"
@@ -290,6 +335,10 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     install(FILES ${RUST_LIB_PATH}
         DESTINATION lib
     )
+    
+    # Build tests (perf tests, integration tests)
+    set(AXON_ROS2 TRUE)
+    add_subdirectory(test)
     
     ament_package()
 endif()

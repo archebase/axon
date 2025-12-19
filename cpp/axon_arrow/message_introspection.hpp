@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <functional>
 #include <type_traits>
 
 namespace axon {
@@ -79,10 +80,31 @@ public:
 
 /**
  * Factory for creating message introspectors
+ * Allows platform-specific implementations (ROS1/ROS2) to register their factory
  */
 class MessageIntrospectorFactory {
 public:
+    using FactoryFunction = std::function<std::unique_ptr<MessageIntrospector>()>;
+    
+    /**
+     * Create a message introspector using the registered factory
+     * Returns nullptr if no factory is registered
+     */
     static std::unique_ptr<MessageIntrospector> create();
+    
+    /**
+     * Register a factory function for creating introspectors
+     * This should be called at startup by the platform-specific layer (e.g., ROS recorder)
+     */
+    static void set_factory(FactoryFunction factory);
+    
+    /**
+     * Check if a factory has been registered
+     */
+    static bool has_factory();
+    
+private:
+    static FactoryFunction& get_factory();
 };
 
 } // namespace core
