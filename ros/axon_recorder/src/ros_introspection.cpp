@@ -1,7 +1,5 @@
 #include "ros_introspection.hpp"
 
-#include "message_introspection.hpp"
-
 #if defined(AXON_ROS1)
 #include <ros/message.h>
 #include <ros/message_traits.h>
@@ -21,6 +19,35 @@
 #include <vector>
 
 namespace axon {
+namespace core {
+
+// ============================================================================
+// MessageIntrospectorFactory Implementation
+// ============================================================================
+
+static MessageIntrospectorFactory::FactoryFunction g_factory = nullptr;
+
+MessageIntrospectorFactory::FactoryFunction& MessageIntrospectorFactory::get_factory() {
+  return g_factory;
+}
+
+std::unique_ptr<MessageIntrospector> MessageIntrospectorFactory::create() {
+  if (g_factory) {
+    return g_factory();
+  }
+  return nullptr;
+}
+
+void MessageIntrospectorFactory::set_factory(FactoryFunction factory) {
+  g_factory = std::move(factory);
+}
+
+bool MessageIntrospectorFactory::has_factory() {
+  return g_factory != nullptr;
+}
+
+}  // namespace core
+
 namespace recorder {
 
 #if defined(AXON_ROS1)
@@ -44,22 +71,11 @@ public:
       descriptor.name = message_type;
     }
 
-    // For ROS 1, we use message_traits and MD5Sum to get message metadata
-    // Full field extraction would require:
-    // 1. Loading message definition from ROS package
-    // 2. Parsing .msg file format
-    // 3. Extracting field names and types recursively
-    // This is implemented via MessageFactory registration system instead
-
-    // Try to get message definition
-    std::string definition = ros::message_traits::Definition<ros::Message>::value();
-
     return true;
   }
 
   bool get_field_value(const void* message, const std::string& field_name, void* output) override {
     // ROS 1 doesn't have direct field access
-    // Would need to use serialization or message introspection
     return false;
   }
 
@@ -80,70 +96,6 @@ public:
 // ============================================================================
 // ROS 2 Message Introspection Implementation
 // ============================================================================
-
-// Include rosidl introspection headers for runtime type information
-#include <rosidl_typesupport_introspection_cpp/field_types.hpp>
-#include <rosidl_typesupport_introspection_cpp/identifier.hpp>
-#include <rosidl_typesupport_introspection_cpp/message_introspection.hpp>
-
-namespace {
-
-// Helper to create a field descriptor
-core::FieldDescriptor make_field(
-  const std::string& name, const std::string& type, bool is_array = false, bool is_builtin = true
-) {
-  core::FieldDescriptor fd;
-  fd.name = name;
-  fd.type_name = type;
-  fd.is_array = is_array;
-  fd.is_fixed_size = false;
-  fd.array_size = 0;
-  fd.is_builtin = is_builtin;
-  return fd;
-}
-
-// Convert rosidl type ID to our type name
-std::string rosidl_type_to_string(uint8_t type_id) {
-  using namespace rosidl_typesupport_introspection_cpp;
-  switch (type_id) {
-    case ROS_TYPE_BOOL:
-      return "bool";
-    case ROS_TYPE_BYTE:
-      return "byte";
-    case ROS_TYPE_CHAR:
-      return "char";
-    case ROS_TYPE_FLOAT:
-      return "float32";
-    case ROS_TYPE_DOUBLE:
-      return "float64";
-    case ROS_TYPE_INT8:
-      return "int8";
-    case ROS_TYPE_INT16:
-      return "int16";
-    case ROS_TYPE_INT32:
-      return "int32";
-    case ROS_TYPE_INT64:
-      return "int64";
-    case ROS_TYPE_UINT8:
-      return "uint8";
-    case ROS_TYPE_UINT16:
-      return "uint16";
-    case ROS_TYPE_UINT32:
-      return "uint32";
-    case ROS_TYPE_UINT64:
-      return "uint64";
-    case ROS_TYPE_STRING:
-      return "string";
-    case ROS_TYPE_WSTRING:
-      return "wstring";
-    case ROS_TYPE_MESSAGE:
-      return "message";
-    default:
-      return "binary";
-  }
-}
-
-}  // anonymous namespace
 
 class RosIntrospectorImpl : public MessageIntrospector {
 public:
@@ -170,14 +122,11 @@ public:
 
     // For high-performance recording, we use a simplified schema:
     // Store the entire serialized message as binary data
-    // This minimizes conversion overhead and preserves all message data
-    // Field extraction can be done on the read side when needed
-
     core::FieldDescriptor data_field;
     data_field.name = "message_data";
     data_field.type_name = "binary";
     data_field.is_array = false;
-    data_field.is_builtin = false;  // Treated as binary blob
+    data_field.is_builtin = false;
     descriptor.fields.push_back(data_field);
 
     return true;

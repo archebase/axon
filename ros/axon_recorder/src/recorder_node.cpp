@@ -1,17 +1,8 @@
 #include "recorder_node.hpp"
 
-#include <axon/lance_bridge.h>
-
-#include <arrow/builder.h>   // BinaryBuilder for worker thread conversion
-#include <arrow/c/bridge.h>  // Arrow C Data Interface (ExportSchema, ExportRecordBatch)
-
-#include "batch_manager.hpp"
 #include "config_parser.hpp"
-#include "message_converter.hpp"
-#include "message_introspection.hpp"
+#include "mcap_writer_wrapper.hpp"
 #include "ros_interface.hpp"
-#include "ros_introspection.hpp"
-#include "schema_merger.hpp"
 
 #if defined(AXON_ROS1)
 #include <ros/package.h>
@@ -25,10 +16,12 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -41,8 +34,7 @@ namespace recorder {
 // =============================================================================
 
 RecorderNode::RecorderNode()
-    : dataset_handle_(0)
-    , recording_(false)
+    : recording_(false)
     , shutdown_requested_(false) {}
 
 RecorderNode::~RecorderNode() {
@@ -87,12 +79,13 @@ void RecorderNode::stop_worker_threads() {
  * Per-topic worker thread function
  *
  * This function runs in a dedicated thread for each topic, draining the
- * lock-free queue and writing to the BatchManager.
+ * lock-free queue and writing directly to MCAP.
  *
  * Design rationale:
  * - One thread per topic eliminates contention between topics
  * - Lock-free queue provides wait-free push from ROS callback
  * - Tight spin loop with brief sleeps balances latency and CPU usage
+ * - Direct MCAP write (no Arrow conversion) reduces CPU overhead
  */
 void RecorderNode::worker_thread_func(const std::string& topic_name) {
   auto context_it = topic_contexts_.find(topic_name);
@@ -101,14 +94,15 @@ void RecorderNode::worker_thread_func(const std::string& topic_name) {
   }
 
   auto& context = context_it->second;
-  auto batch_mgr_it = batch_managers_.find(topic_name);
 
-  if (batch_mgr_it == batch_managers_.end()) {
-    std::cerr << "[Worker " << topic_name << "] No batch manager found!" << std::endl;
+  // Get channel ID for this topic
+  auto channel_it = topic_channel_ids_.find(topic_name);
+  if (channel_it == topic_channel_ids_.end()) {
+    std::cerr << "[Worker " << topic_name << "] No channel ID found!" << std::endl;
     return;
   }
 
-  auto& batch_mgr = batch_mgr_it->second;
+  uint16_t channel_id = channel_it->second;
   MessageItem item;
   size_t consecutive_empty = 0;
 
@@ -118,12 +112,24 @@ void RecorderNode::worker_thread_func(const std::string& topic_name) {
       consecutive_empty = 0;
 
       try {
-        // Direct binary append with ownership transfer
-        batch_mgr->add_row_with_raw_data(item.timestamp_ns, topic_name, std::move(item.raw_data));
+        // Get sequence number for this message
+        uint32_t seq = context->sequence.fetch_add(1, std::memory_order_relaxed);
 
-        // Update statistics
-        context->written.fetch_add(1, std::memory_order_relaxed);
-        messages_written_.fetch_add(1, std::memory_order_relaxed);
+        // Write directly to MCAP (no Arrow conversion!)
+        bool success = mcap_writer_->write(
+          channel_id, seq, static_cast<uint64_t>(item.timestamp_ns),
+          static_cast<uint64_t>(item.timestamp_ns),  // publish_time = log_time
+          item.raw_data.data(), item.raw_data.size()
+        );
+
+        if (success) {
+          // Update statistics
+          context->written.fetch_add(1, std::memory_order_relaxed);
+          messages_written_.fetch_add(1, std::memory_order_relaxed);
+        } else {
+          std::cerr << "[Worker " << topic_name
+                    << "] Write failed: " << mcap_writer_->get_last_error() << std::endl;
+        }
 
       } catch (const std::exception& e) {
         std::cerr << "[Worker " << topic_name << "] Exception: " << e.what() << std::endl;
@@ -146,9 +152,16 @@ void RecorderNode::worker_thread_func(const std::string& topic_name) {
   // Drain remaining items before exit
   while (context->queue->try_pop(item)) {
     try {
-      batch_mgr->add_row_with_raw_data(item.timestamp_ns, topic_name, std::move(item.raw_data));
-      context->written.fetch_add(1, std::memory_order_relaxed);
-      messages_written_.fetch_add(1, std::memory_order_relaxed);
+      uint32_t seq = context->sequence.fetch_add(1, std::memory_order_relaxed);
+      bool success = mcap_writer_->write(
+        channel_id, seq, static_cast<uint64_t>(item.timestamp_ns),
+        static_cast<uint64_t>(item.timestamp_ns), item.raw_data.data(), item.raw_data.size()
+      );
+
+      if (success) {
+        context->written.fetch_add(1, std::memory_order_relaxed);
+        messages_written_.fetch_add(1, std::memory_order_relaxed);
+      }
     } catch (const std::exception& e) {
       std::cerr << "[Worker " << topic_name << "] Drain exception: " << e.what() << std::endl;
     }
@@ -177,25 +190,19 @@ bool RecorderNode::initialize(int argc, char** argv) {
     return false;
   }
 
-  // Register ROS introspector factory for message conversion
-  // This allows MessageConverterFactory to create converters for any ROS message type
-  core::MessageIntrospectorFactory::set_factory([]() {
-    return RosIntrospectorFactory::create();
-  });
-
-  // Collect schemas from all topics
-  if (!collect_topic_schemas()) {
-    ros_interface_->log_error("Failed to collect topic schemas");
+  // Initialize MCAP writer
+  if (!initialize_mcap_writer()) {
+    ros_interface_->log_error("Failed to initialize MCAP writer");
     return false;
   }
 
-  // Merge schemas and initialize dataset
-  if (!initialize_dataset()) {
-    ros_interface_->log_error("Failed to initialize dataset");
+  // Register schemas for all message types
+  if (!register_topic_schemas()) {
+    ros_interface_->log_error("Failed to register topic schemas");
     return false;
   }
 
-  // Setup batch managers for each topic
+  // Setup subscriptions for each topic
   for (const auto& topic_config : config_.topics) {
     setup_topic_recording(topic_config);
   }
@@ -224,7 +231,7 @@ void RecorderNode::shutdown() {
 
   std::cerr << "[axon_recorder] shutdown() called" << std::endl;
 
-  // Stop recording (drains queues, flushes batches)
+  // Stop recording (drains queues)
   stop_recording();
 
   // Unsubscribe all topics FIRST to stop new messages
@@ -240,31 +247,15 @@ void RecorderNode::shutdown() {
   std::cerr << "[axon_recorder] Clearing topic contexts..." << std::endl;
   topic_contexts_.clear();
 
-  // Stop all batch managers and clear BEFORE closing dataset
-  // This ensures all pending Arrow operations complete
-  std::cerr << "[axon_recorder] Stopping batch managers..." << std::endl;
-  for (auto& pair : batch_managers_) {
-    pair.second->stop();
+  // Close MCAP writer (writes footer and finalizes file)
+  if (mcap_writer_ && mcap_writer_->is_open()) {
+    std::cerr << "[axon_recorder] Closing MCAP writer..." << std::endl;
+    auto stats = mcap_writer_->get_statistics();
+    std::cerr << "[axon_recorder] MCAP stats: " << stats.messages_written << " messages, "
+              << stats.bytes_written << " bytes" << std::endl;
+    mcap_writer_->close();
   }
-  batch_managers_.clear();
-
-  // Clear converters (may hold Arrow schema references)
-  converters_.clear();
-  topic_schemas_.clear();
-  merged_schema_.reset();
-
-  // CRITICAL: Wait for all pending async writes to complete BEFORE closing dataset
-  // This ensures Rust's Arrow resources are released while C++ Arrow memory pool is still valid
-  std::cerr << "[axon_recorder] Flushing pending Lance writes..." << std::endl;
-  lance_flush();
-  std::cerr << "[axon_recorder] Lance flush complete" << std::endl;
-
-  // Close dataset AFTER all Arrow operations are done
-  if (dataset_handle_ > 0) {
-    std::cerr << "[axon_recorder] Closing dataset..." << std::endl;
-    close_dataset(dataset_handle_);
-    dataset_handle_ = 0;
-  }
+  mcap_writer_.reset();
 
   // Shutdown ROS interface LAST and release it
   if (ros_interface_) {
@@ -332,118 +323,133 @@ std::string RecorderNode::get_config_path() {
 #endif
 }
 
-bool RecorderNode::collect_topic_schemas() {
-  // Create converters for all topics to get their schemas
+std::string RecorderNode::get_output_path() {
+  // Generate timestamped filename
+  auto now = std::chrono::system_clock::now();
+  auto time_t = std::chrono::system_clock::to_time_t(now);
+  std::tm tm = *std::localtime(&time_t);
+
+  std::ostringstream oss;
+  oss << config_.dataset.path;
+
+  // Ensure path ends with /
+  if (!config_.dataset.path.empty() && config_.dataset.path.back() != '/') {
+    oss << "/";
+  }
+
+  oss << "recording_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".mcap";
+
+  return oss.str();
+}
+
+bool RecorderNode::initialize_mcap_writer() {
+  mcap_writer_ = std::make_unique<mcap_wrapper::McapWriterWrapper>();
+
+  output_path_ = get_output_path();
+
+  // Configure MCAP options
+  mcap_wrapper::McapWriterOptions options;
+
+#if defined(AXON_ROS1)
+  options.profile = "ros1";
+#else
+  options.profile = "ros2";
+#endif
+
+  options.compression = mcap_wrapper::Compression::Zstd;
+  options.compression_level = 3;   // Fast compression
+  options.chunk_size = 4 * 1024 * 1024;  // 4MB chunks
+
+  if (!mcap_writer_->open(output_path_, options)) {
+    ros_interface_->log_error("Failed to open MCAP file: " + mcap_writer_->get_last_error());
+    return false;
+  }
+
+  ros_interface_->log_info("MCAP file opened: " + output_path_);
+  return true;
+}
+
+std::string RecorderNode::get_schema_encoding() {
+#if defined(AXON_ROS1)
+  return "ros1msg";
+#else
+  return "ros2msg";
+#endif
+}
+
+std::string RecorderNode::get_message_encoding() {
+#if defined(AXON_ROS1)
+  return "ros1";
+#else
+  return "cdr";
+#endif
+}
+
+std::string RecorderNode::get_message_definition(const std::string& message_type) {
+  // Get message definition from ROS interface
+  // This will be implemented in schema-extraction task
+  return ros_interface_->get_message_definition(message_type);
+}
+
+bool RecorderNode::register_topic_schemas() {
+  std::string schema_encoding = get_schema_encoding();
+  std::string message_encoding = get_message_encoding();
+
+  // Register schemas for all unique message types
   for (const auto& topic_config : config_.topics) {
-    auto converter = core::MessageConverterFactory::create(topic_config.message_type);
-    if (!converter) {
-      ros_interface_->log_warn("No converter for message type: " + topic_config.message_type);
+    const std::string& msg_type = topic_config.message_type;
+
+    // Skip if already registered
+    if (message_type_schema_ids_.find(msg_type) != message_type_schema_ids_.end()) {
       continue;
     }
 
-    converters_[topic_config.name] = std::move(converter);
-    topic_schemas_[topic_config.name] = converters_[topic_config.name]->get_schema();
-  }
+    // Get message definition
+    std::string definition = get_message_definition(msg_type);
 
-  return !topic_schemas_.empty();
-}
+    // Register schema
+    uint16_t schema_id = mcap_writer_->register_schema(msg_type, schema_encoding, definition);
 
-bool RecorderNode::initialize_dataset() {
-  dataset_path_ = config_.dataset.path;
-
-  // Merge schemas from all topics
-  // Use simple recording schema: timestamp, topic, message_data
-  // This allows efficient storage of any message type as binary
-  merged_schema_ = core::SchemaMerger::create_recording_schema(topic_schemas_);
-
-  if (!merged_schema_) {
-    ros_interface_->log_error("Failed to create recording schema");
-    return false;
-  }
-
-  ros_interface_->log_info(
-    "Recording schema has " + std::to_string(merged_schema_->num_fields()) + " fields"
-  );
-
-  // Export schema to C interface
-  struct ArrowSchema c_schema;
-  arrow::Status status = arrow::ExportSchema(*merged_schema_, &c_schema);
-  if (!status.ok()) {
-    ros_interface_->log_error("Failed to export schema: " + status.ToString());
-    return false;
-  }
-
-  dataset_handle_ = create_or_open_dataset(dataset_path_.c_str(), &c_schema);
-
-  // Release schema
-  c_schema.release(&c_schema);
-
-  if (dataset_handle_ <= 0) {
-    const char* error = lance_get_last_error();
-    if (error) {
-      ros_interface_->log_error("Failed to create dataset: " + std::string(error));
+    if (schema_id == 0) {
+      ros_interface_->log_warn("Failed to register schema for: " + msg_type);
+      // Continue anyway - MCAP can work without schema
     }
-    return false;
+
+    message_type_schema_ids_[msg_type] = schema_id;
+    ros_interface_->log_info(
+      "Registered schema: " + msg_type + " (id=" + std::to_string(schema_id) + ")"
+    );
+  }
+
+  // Register channels for all topics
+  for (const auto& topic_config : config_.topics) {
+    uint16_t schema_id = message_type_schema_ids_[topic_config.message_type];
+
+    // Build metadata (QoS, frame_id, etc.)
+    std::unordered_map<std::string, std::string> metadata;
+    // Add QoS profile metadata for ROS 2 compatibility
+    metadata["offered_qos_profiles"] = "- history: keep_last\n  depth: 10\n  reliability: reliable";
+
+    uint16_t channel_id =
+      mcap_writer_->register_channel(topic_config.name, message_encoding, schema_id, metadata);
+
+    if (channel_id == 0) {
+      ros_interface_->log_error("Failed to register channel for: " + topic_config.name);
+      return false;
+    }
+
+    topic_channel_ids_[topic_config.name] = channel_id;
+    ros_interface_->log_info(
+      "Registered channel: " + topic_config.name + " (id=" + std::to_string(channel_id) + ")"
+    );
   }
 
   return true;
 }
 
 void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) {
-  // Get converter (already created in collect_topic_schemas)
-  auto converter_it = converters_.find(topic_config.name);
-  if (converter_it == converters_.end()) {
-    ros_interface_->log_warn("No converter for topic: " + topic_config.name);
-    return;
-  }
-
   // =========================================================================
-  // Step 1: Create BatchManager for this topic
-  // =========================================================================
-  auto write_callback =
-    [this](
-      const std::shared_ptr<arrow::RecordBatch>& batch, const std::string& path, int64_t handle
-    ) -> bool {
-    struct ArrowArray c_array;
-    struct ArrowSchema c_schema;
-    arrow::Status status = arrow::ExportRecordBatch(*batch, &c_array, &c_schema);
-
-    if (!status.ok()) {
-      ros_interface_->log_error("Failed to export batch: " + status.ToString());
-      return false;
-    }
-
-    int32_t result = write_batch(handle, &c_array, &c_schema);
-
-    // Release schema only - Rust takes ownership of array via Arrow C Data Interface
-    if (c_schema.release) {
-      c_schema.release(&c_schema);
-    }
-
-    if (result != LANCE_SUCCESS) {
-      const char* error = lance_get_last_error();
-      if (error) {
-        ros_interface_->log_error("Write failed: " + std::string(error));
-      }
-    }
-
-    return result == LANCE_SUCCESS;
-  };
-
-  auto memory_pool = arrow::default_memory_pool();
-
-  auto batch_mgr = std::make_unique<core::BatchManager>(
-    topic_config.batch_size, topic_config.flush_interval_ms, write_callback, memory_pool
-  );
-
-  batch_mgr->initialize_schema(merged_schema_);
-  batch_mgr->set_dataset(dataset_path_, dataset_handle_);
-  batch_mgr->start();
-
-  batch_managers_[topic_config.name] = std::move(batch_mgr);
-
-  // =========================================================================
-  // Step 2: Create lock-free queue and topic context
+  // Step 1: Create lock-free queue and topic context
   // =========================================================================
   auto context = std::make_unique<TopicContext>();
   context->queue = std::make_unique<core::SPSCQueue<MessageItem>>(QUEUE_CAPACITY_PER_TOPIC);
@@ -453,7 +459,7 @@ void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) 
   topic_contexts_[topic_config.name] = std::move(context);
 
   // =========================================================================
-  // Step 3: Create zero-copy subscription
+  // Step 2: Create zero-copy subscription
   // =========================================================================
   // Configure QoS based on message type
   // CRITICAL: Match publisher's QoS depth to prevent DDS reliable protocol drops
@@ -526,7 +532,8 @@ void RecorderNode::start_recording() {
   recording_.store(true, std::memory_order_release);
 
   ros_interface_->log_info(
-    "Recording started with " + std::to_string(topic_contexts_.size()) + " topics"
+    "Recording started with " + std::to_string(topic_contexts_.size()) + " topics to " +
+    output_path_
   );
 }
 
@@ -544,12 +551,12 @@ void RecorderNode::stop_recording() {
   std::cerr << "[axon_recorder] Stopping worker threads..." << std::endl;
   stop_worker_threads();
 
-  // Flush all batch managers
-  std::cerr << "[axon_recorder] Flushing batch managers..." << std::endl;
-  for (auto& pair : batch_managers_) {
-    pair.second->flush();
+  // Flush MCAP writer to ensure all data is written
+  if (mcap_writer_ && mcap_writer_->is_open()) {
+    std::cerr << "[axon_recorder] Flushing MCAP writer..." << std::endl;
+    mcap_writer_->flush();
   }
-  std::cerr << "[axon_recorder] Batch managers flushed" << std::endl;
+  std::cerr << "[axon_recorder] MCAP writer flushed" << std::endl;
 
   // Write statistics file for performance monitoring
   write_stats_file();
@@ -584,12 +591,17 @@ void RecorderNode::write_stats_file() {
   }
 
   auto stats = get_stats();
+  auto mcap_stats = mcap_writer_ ? mcap_writer_->get_statistics()
+                                 : mcap_wrapper::McapWriterWrapper::Statistics{};
 
   // Also write per-topic statistics
   stats_file << "{\n"
+             << "  \"output_file\": \"" << output_path_ << "\",\n"
+             << "  \"format\": \"mcap\",\n"
              << "  \"messages_received\": " << stats.messages_received << ",\n"
              << "  \"messages_dropped\": " << stats.messages_dropped << ",\n"
              << "  \"messages_written\": " << stats.messages_written << ",\n"
+             << "  \"bytes_written\": " << mcap_stats.bytes_written << ",\n"
              << "  \"drop_rate_percent\": " << std::fixed << std::setprecision(2)
              << stats.drop_rate_percent << ",\n"
              << "  \"per_topic_stats\": {\n";
@@ -649,10 +661,9 @@ static void signal_handler(int signum) {
 }
 
 int main(int argc, char** argv) {
-  std::cerr << "[axon_recorder] main() starting" << std::endl;
+  std::cerr << "[axon_recorder] main() starting (MCAP backend)" << std::endl;
 
   // Use a block scope to ensure RecorderNode is fully destroyed before main() returns
-  // This prevents static destruction order issues with Arrow's memory pool
   {
     axon::recorder::RecorderNode node;
 
@@ -679,14 +690,6 @@ int main(int argc, char** argv) {
 
     std::cerr << "[axon_recorder] Node destroyed" << std::endl;
   }  // RecorderNode destructor runs here, before main() exits
-
-  // Final safety flush - ensure ALL Rust async tasks complete before C++ exits
-  // This is critical to prevent Arrow memory pool access after destruction
-  std::cerr << "[axon_recorder] Final Lance flush before exit..." << std::endl;
-  lance_flush();
-
-  // Brief pause to allow any background cleanup to complete
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   std::cerr << "[axon_recorder] main() exiting normally" << std::endl;
   return 0;

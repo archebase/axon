@@ -3,7 +3,7 @@
 # Optimized batch sizes to reduce write frequency and improve throughput
 
 dataset:
-  path: /data/recordings/dataset.lance
+  path: /data/recordings
   mode: append
 
 topics:

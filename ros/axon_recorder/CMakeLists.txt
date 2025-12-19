@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.12)
 project(axon_recorder)
 
 # Allow linking libraries to targets defined in subdirectories
-# Required because axon_arrow is built in cpp/axon_arrow but linked here
 cmake_policy(SET CMP0079 NEW)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -35,15 +34,11 @@ if(ENABLE_ASAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ASAN_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
-    
-    # Also set for axon_arrow subdirectory
-    set(AXON_ARROW_ASAN_FLAGS "${ASAN_FLAGS}" CACHE STRING "ASAN flags for axon_arrow" FORCE)
 endif()
 
 # Project paths
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-set(CPP_SRC_DIR ${PROJECT_ROOT}/cpp/axon_arrow)
-set(C_FFI_DIR ${PROJECT_ROOT}/c)
+set(CPP_MCAP_DIR ${PROJECT_ROOT}/cpp/axon_mcap)
 
 # Detect ROS version and set appropriate macro
 if(DEFINED ENV{ROS_VERSION})
@@ -62,20 +57,25 @@ else()
     set(AXON_ROS_VERSION 1)
 endif()
 
-# Add custom config files to suppress Arrow's CMake warnings
-# Arrow uses find_package(lz4 CONFIG) which looks for lz4-config.cmake in CMAKE_PREFIX_PATH
-# Ubuntu packages don't provide these, so we provide pkg-config wrappers
-list(PREPEND CMAKE_PREFIX_PATH 
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/lz4"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/zstd"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/re2"
-)
-
-# Find Arrow (our config files prevent "lz4Config.cmake not found" warnings)
-find_package(Arrow REQUIRED)
-
 # Find yaml-cpp
 find_package(yaml-cpp REQUIRED)
+
+# Find pkg-config for compression libraries
+find_package(PkgConfig REQUIRED)
+
+# Find compression libraries for MCAP
+pkg_check_modules(ZSTD QUIET libzstd)
+pkg_check_modules(LZ4 QUIET liblz4)
+
+if(ZSTD_FOUND)
+    message(STATUS "Found Zstd: ${ZSTD_VERSION}")
+else()
+    message(WARNING "Zstd not found - MCAP compression disabled")
+endif()
+
+if(LZ4_FOUND)
+    message(STATUS "Found LZ4: ${LZ4_VERSION}")
+endif()
 
 # =============================================================================
 # Clang-format targets (before ROS-specific setup)
@@ -94,63 +94,29 @@ if(COMMAND axon_add_clang_format)
     axon_register_format_target(axon_recorder_format_target)
 endif()
 
-# Find pkg-config for additional dependencies
-find_package(PkgConfig REQUIRED)
+# ============================================================================
+# Build MCAP Library (replaces Lance/Rust)
+# ============================================================================
+message(STATUS "Building with MCAP backend (replaces Lance)")
+add_subdirectory(${CPP_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
 
 # ============================================================================
-# Build Rust C FFI Library
+# Config Parser Library (from cpp/axon_arrow - only config_parser needed)
 # ============================================================================
-# Note: Rust workspace outputs to the root target/ directory, not c/target/
-set(RUST_TARGET_DIR ${PROJECT_ROOT}/target)
-set(RUST_BUILD_TYPE release)
+# Build only the config parser from axon_arrow (no Arrow/Lance dependencies)
+set(CPP_ARROW_DIR ${PROJECT_ROOT}/cpp/axon_arrow)
 
-# Determine library extension based on platform
-if(APPLE)
-    set(LIB_EXT ".dylib")
-elseif(UNIX)
-    set(LIB_EXT ".so")
-else()
-    set(LIB_EXT ".dll")
-endif()
-
-# Custom target to build Rust library
-add_custom_target(cargo_build
-    COMMAND cargo build --${RUST_BUILD_TYPE} --manifest-path ${C_FFI_DIR}/Cargo.toml
-    WORKING_DIRECTORY ${C_FFI_DIR}
-    COMMENT "Building Rust Lance bridge library..."
+add_library(axon_config_parser STATIC
+    ${CPP_ARROW_DIR}/config_parser.cpp
 )
 
-# Import Rust library as shared library
-set(RUST_LIB_PATH ${RUST_TARGET_DIR}/${RUST_BUILD_TYPE}/liblance_writer_bridge${LIB_EXT})
-message(STATUS "Rust library path: ${RUST_LIB_PATH}")
-message(STATUS "PROJECT_ROOT: ${PROJECT_ROOT}")
-
-add_library(lance_bridge_rust SHARED IMPORTED GLOBAL)
-set_target_properties(lance_bridge_rust PROPERTIES
-    IMPORTED_LOCATION ${RUST_LIB_PATH}
-    IMPORTED_NO_SONAME TRUE
-)
-add_dependencies(lance_bridge_rust cargo_build)
-
-# ============================================================================
-# Build Core C++ Library (from cpp/axon_arrow)
-# ============================================================================
-# Include axon_arrow as a subdirectory - this builds it as part of this project
-# Tests are disabled here since they're run separately via cpp/Makefile
-set(AXON_ARROW_BUILD_TESTS OFF CACHE BOOL "Disable axon_arrow tests in ROS build" FORCE)
-add_subdirectory(${CPP_SRC_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_arrow)
-
-# Add the C FFI include directory and link the Rust bridge
-# Use PRIVATE to avoid source directory paths in INTERFACE_INCLUDE_DIRECTORIES
-target_include_directories(axon_arrow PRIVATE
-    ${C_FFI_DIR}/include
-)
-target_link_libraries(axon_arrow PUBLIC
-    lance_bridge_rust
+target_include_directories(axon_config_parser PUBLIC
+    ${CPP_ARROW_DIR}
 )
 
-# Alias for backward compatibility
-add_library(axon_cpp ALIAS axon_arrow)
+target_link_libraries(axon_config_parser PUBLIC
+    yaml-cpp
+)
 
 # ============================================================================
 # ROS 1 specific setup
@@ -187,10 +153,10 @@ if(AXON_ROS_VERSION EQUAL 1)
     
     include_directories(
         ${catkin_INCLUDE_DIRS}
-        ${Arrow_INCLUDE_DIRS}
         src
-        ${CPP_SRC_DIR}
-        ${C_FFI_DIR}/include
+        ${CPP_MCAP_DIR}
+        ${CPP_MCAP_DIR}/include
+        ${CPP_ARROW_DIR}
     )
     
     # Auto-discover recorder library sources
@@ -205,11 +171,9 @@ if(AXON_ROS_VERSION EQUAL 1)
     
     target_link_libraries(axon_recorder_lib
         ${catkin_LIBRARIES}
-        Arrow::arrow_shared
-        axon_cpp
+        axon_mcap
+        axon_config_parser
     )
-    
-    add_dependencies(axon_recorder_lib cargo_build)
     
     # Executable
     add_executable(axon_recorder_node
@@ -237,11 +201,6 @@ if(AXON_ROS_VERSION EQUAL 1)
     install(DIRECTORY srv/
         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/srv
         FILES_MATCHING PATTERN "*.srv"
-    )
-    
-    # Install Rust library
-    install(FILES ${RUST_LIB_PATH}
-        DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     )
     
     # Build tests (perf tests, integration tests)
@@ -276,10 +235,10 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     )
     
     include_directories(
-        ${Arrow_INCLUDE_DIRS}
         src
-        ${CPP_SRC_DIR}
-        ${C_FFI_DIR}/include
+        ${CPP_MCAP_DIR}
+        ${CPP_MCAP_DIR}/include
+        ${CPP_ARROW_DIR}
     )
     
     # Auto-discover recorder library sources
@@ -301,11 +260,17 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     )
     
     target_link_libraries(axon_recorder_lib
-        Arrow::arrow_shared
-        axon_cpp
+        axon_mcap
+        axon_config_parser
     )
     
-    add_dependencies(axon_recorder_lib cargo_build)
+    # Link compression libraries if available
+    if(ZSTD_FOUND)
+        target_link_libraries(axon_recorder_lib ${ZSTD_LIBRARIES})
+    endif()
+    if(LZ4_FOUND)
+        target_link_libraries(axon_recorder_lib ${LZ4_LIBRARIES})
+    endif()
     
     # Executable
     add_executable(axon_recorder_node
@@ -321,21 +286,16 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         ament_index_cpp
     )
     
-    # Link to Rust FFI library - must use full path for shared library
     target_link_libraries(axon_recorder_node
         axon_recorder_lib
-        "${RUST_LIB_PATH}"
     )
-    
-    # Ensure Rust library is built before linking
-    add_dependencies(axon_recorder_node cargo_build)
     
     # Link to generated service typesupport (replaces deprecated rosidl_target_interfaces)
     rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
     target_link_libraries(axon_recorder_node "${cpp_typesupport_target}")
     
     # Install
-    install(TARGETS axon_recorder_lib axon_recorder_node
+    install(TARGETS axon_recorder_lib axon_recorder_node axon_mcap axon_config_parser
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -352,11 +312,6 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     install(DIRECTORY srv/
         DESTINATION share/${PROJECT_NAME}/srv
         FILES_MATCHING PATTERN "*.srv"
-    )
-    
-    # Install Rust library
-    install(FILES ${RUST_LIB_PATH}
-        DESTINATION lib
     )
     
     # Build tests (perf tests, integration tests)

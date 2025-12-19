@@ -1,25 +1,33 @@
 #ifndef AXON_MESSAGE_REGISTRY_HPP
 #define AXON_MESSAGE_REGISTRY_HPP
 
-#include <arrow/api.h>
-
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "message_converter.hpp"
-
 namespace axon {
 namespace recorder {
 
-// Use core::MessageConverter
-using MessageConverter = core::MessageConverter;
+/**
+ * Abstract message converter interface (simplified for MCAP backend)
+ *
+ * With MCAP, raw serialized messages are written directly, so converters
+ * are optional and only needed for advanced use cases like transcoding.
+ */
+class MessageConverter {
+public:
+  virtual ~MessageConverter() = default;
+  virtual std::string get_message_type() const = 0;
+};
 
 /**
  * Registry for ROS message type handlers
  * Maps message types to conversion functions
+ *
+ * Note: With MCAP backend, converters are optional since raw serialized
+ * messages are written directly to the file.
  */
 class MessageRegistry {
 public:

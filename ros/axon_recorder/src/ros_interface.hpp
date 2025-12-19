@@ -179,6 +179,17 @@ public:
   virtual void log_warn(const std::string& message) const = 0;
   virtual void log_error(const std::string& message) const = 0;
   virtual void log_debug(const std::string& message) const = 0;
+
+  /**
+   * Get the message definition for a message type
+   *
+   * Returns the message definition string in ROS format (ros1msg or ros2msg).
+   * This is used for MCAP schema registration.
+   *
+   * @param message_type Full message type name (e.g., "sensor_msgs/msg/Image")
+   * @return Message definition string, or empty string if not found
+   */
+  virtual std::string get_message_definition(const std::string& message_type) const = 0;
 };
 
 /**

@@ -1,8 +1,6 @@
 #ifndef AXON_RECORDER_NODE_HPP
 #define AXON_RECORDER_NODE_HPP
 
-#include <arrow/api.h>
-
 #include <atomic>
 #include <condition_variable>
 #include <memory>
@@ -13,9 +11,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "batch_manager.hpp"
 #include "config_parser.hpp"
-#include "message_converter.hpp"
+#include "mcap_writer_wrapper.hpp"
 #include "ros_interface.hpp"
 #include "spsc_queue.hpp"
 
@@ -31,29 +28,29 @@ namespace recorder {
  * multiple high-frequency sensor streams (cameras, IMU, lidar, etc.).
  *
  * Key Design Principles:
- * 1. Zero-copy message path: ROS subscription -> Lock-free queue -> Arrow batch
+ * 1. Zero-copy message path: ROS subscription -> Lock-free queue -> MCAP file
  * 2. Per-topic parallelism: Each topic has dedicated resources to prevent interference
  * 3. Lock-free queues: Eliminates mutex contention in the hot path
  * 4. Deferred processing: Minimal work in callbacks, heavy lifting in worker threads
  *
- * Data Flow:
- * ----------
+ * Data Flow (MCAP Backend):
+ * -------------------------
  * [ROS DDS] -> [Generic Subscription] -> [Zero-copy Callback] -> [SPSC Queue]
  *                                                                      |
  *                                                                      v
- * [Lance Dataset] <- [Arrow Batch] <- [BatchManager] <- [Worker Thread]
+ * [MCAP File] <----------------------- [McapWriterWrapper] <- [Worker Thread]
  *
  * Threading Model:
  * ----------------
  * - ROS executor threads: Handle subscription callbacks (configurable)
- * - Per-topic worker threads: Drain queues and build Arrow batches
- * - BatchManager writer thread: Async batch writing to Lance
+ * - Per-topic worker threads: Drain queues and write to MCAP
+ * - MCAP writer handles chunking and compression internally
  *
  * Memory Management:
  * ------------------
  * - Pre-allocated lock-free queues per topic
  * - Ownership transfer (move semantics) throughout the pipeline
- * - Arrow memory pool for efficient batch construction
+ * - Direct serialized message storage (no Arrow conversion needed)
  */
 class RecorderNode {
 public:
@@ -119,11 +116,19 @@ private:
   // Initialization
   // =========================================================================
   bool load_configuration();
-  bool collect_topic_schemas();
-  bool initialize_dataset();
+  bool initialize_mcap_writer();
+  bool register_topic_schemas();
   void setup_topic_recording(const core::TopicConfig& topic_config);
   void setup_services();
   std::string get_config_path();
+  std::string get_output_path();
+
+  // =========================================================================
+  // Schema helpers
+  // =========================================================================
+  std::string get_message_definition(const std::string& message_type);
+  std::string get_schema_encoding();
+  std::string get_message_encoding();
 
   // =========================================================================
   // Worker Thread Management
@@ -142,16 +147,16 @@ private:
   // =========================================================================
   std::unique_ptr<RosInterface> ros_interface_;
   core::RecorderConfig config_;
-  int64_t dataset_handle_;
-  std::string dataset_path_;
 
-  // Schema management
-  std::shared_ptr<arrow::Schema> merged_schema_;
-  std::unordered_map<std::string, std::shared_ptr<arrow::Schema>> topic_schemas_;
-  std::unordered_map<std::string, std::unique_ptr<core::MessageConverter>> converters_;
+  // MCAP writer (replaces Lance dataset)
+  std::unique_ptr<mcap_wrapper::McapWriterWrapper> mcap_writer_;
+  std::string output_path_;
 
-  // Per-topic batch managers (one per topic for isolation)
-  std::unordered_map<std::string, std::unique_ptr<core::BatchManager>> batch_managers_;
+  // Channel IDs for each topic (assigned by MCAP writer)
+  std::unordered_map<std::string, uint16_t> topic_channel_ids_;
+
+  // Schema IDs for each message type (assigned by MCAP writer)
+  std::unordered_map<std::string, uint16_t> message_type_schema_ids_;
 
   // Subscriptions (handles for cleanup)
   std::unordered_map<std::string, void*> subscriptions_;
@@ -195,6 +200,9 @@ private:
     std::atomic<uint64_t> received{0};
     std::atomic<uint64_t> dropped{0};
     std::atomic<uint64_t> written{0};
+
+    // Sequence number for MCAP messages
+    std::atomic<uint32_t> sequence{0};
 
     TopicContext() = default;
 

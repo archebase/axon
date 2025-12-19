@@ -20,9 +20,6 @@ void MessageRegistry::register_message_type(
 ) {
   auto& registry = get_registry();
   registry[message_type] = factory;
-
-  // Also register with core factory
-  core::MessageConverterFactory::register_converter(message_type, factory);
 }
 
 std::unique_ptr<MessageConverter> MessageRegistry::get_converter(const std::string& message_type) {
@@ -31,17 +28,12 @@ std::unique_ptr<MessageConverter> MessageRegistry::get_converter(const std::stri
   if (it != registry.end()) {
     return it->second();
   }
-
-  // Try to get from core factory
-  return core::MessageConverterFactory::create(message_type);
+  return nullptr;
 }
 
 bool MessageRegistry::has_converter(const std::string& message_type) {
   auto& registry = get_registry();
-  if (registry.find(message_type) != registry.end()) {
-    return true;
-  }
-  return core::MessageConverterFactory::has_converter(message_type);
+  return registry.find(message_type) != registry.end();
 }
 
 std::vector<std::string> MessageRegistry::get_registered_types() {
@@ -55,11 +47,9 @@ std::vector<std::string> MessageRegistry::get_registered_types() {
 }
 
 void MessageRegistry::initialize_default_converters() {
-  // This will be populated by ROS-specific implementations
-  // that register converters for sensor_msgs, std_msgs, etc.
-  // For now, converters must be registered explicitly by the application
-  std::cout << "MessageRegistry: Default converters should be registered by ROS-specific code"
-            << std::endl;
+  // With MCAP backend, converters are not needed for recording
+  // Raw serialized messages are written directly to MCAP
+  std::cout << "MessageRegistry: MCAP backend - converters optional" << std::endl;
 }
 
 }  // namespace recorder

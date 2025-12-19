@@ -1,16 +1,14 @@
 # Axon C++ SDK
 
-C++ core library for Axon - provides Arrow builders, batch management, and message conversion.
+C++ core libraries for Axon - provides MCAP recording, configuration parsing, and message utilities.
 
 ## Overview
 
 The C++ SDK provides core functionality that is **not** ROS-specific:
 
-- **Arrow Builders** - Build Apache Arrow arrays from various data types
-- **Batch Manager** - Manage batches of data for efficient writing
-- **Config Parser** - Parse YAML configuration files
-- **Message Converter** - Convert message data to Arrow format
-- **Schema Merger** - Merge schemas from multiple topics
+- **MCAP Writer** (`axon_mcap/`) - High-performance MCAP file writer with compression support
+- **Config Parser** (`axon_arrow/config_parser`) - Parse YAML configuration files
+- **Message Utilities** (`axon_arrow/`) - Message introspection and conversion utilities
 
 ## Directory Structure
 
@@ -18,42 +16,55 @@ The C++ SDK provides core functionality that is **not** ROS-specific:
 cpp/
 ├── Makefile                              # Build system
 ├── README.md                             # This file
-└── axon_arrow/
+├── axon_mcap/                            # MCAP recording library (NEW)
+│   ├── CMakeLists.txt                    # CMake build configuration
+│   ├── mcap_writer_wrapper.hpp           # Thread-safe MCAP writer API
+│   ├── mcap_writer_wrapper.cpp           # Implementation
+│   ├── include/mcap/                     # Foxglove MCAP header-only library
+│   └── test/
+│       └── test_mcap_writer.cpp          # MCAP writer tests
+└── axon_arrow/                           # Utility libraries (legacy Arrow code)
     ├── CMakeLists.txt                    # CMake build configuration
-    ├── cmake/
-    │   └── axon_arrow-config.cmake.in    # CMake package config
-    ├── arrow_builder.cpp/.hpp            # Arrow array builders
-    ├── batch_manager.cpp/.hpp            # Batch management
-    ├── config_parser.cpp/.hpp            # YAML config parser
-    ├── message_converter.cpp/.hpp        # Message conversion
-    ├── message_introspection.cpp/.hpp    # Message introspection
-    ├── schema_merger.cpp/.hpp            # Schema merging
-    └── test/
-        ├── CMakeLists.txt                # Test build configuration
-        ├── test_arrow_builder.cpp        # Arrow builder tests
-        ├── test_batch_manager.cpp        # Batch manager tests
-        └── test_config_parser.cpp        # Config parser tests
+    ├── config_parser.cpp/.hpp            # YAML config parser (ACTIVE)
+    ├── message_introspection.cpp/.hpp    # Message introspection (ACTIVE)
+    ├── message_converter.cpp/.hpp        # Message conversion utilities
+    ├── batch_manager.cpp/.hpp            # Arrow batch management (DEPRECATED)
+    ├── schema_merger.cpp/.hpp            # Schema merging (DEPRECATED)
+    ├── arrow_builder.cpp/.hpp            # Arrow array builders (DEPRECATED)
+    └── test/                             # Tests
 ```
+
+## Migration from Lance to MCAP
+
+The recorder has been migrated from Lance (columnar storage) to MCAP (append-only container).
+See [MIGRATION_LANCE_TO_MCAP.md](../MIGRATION_LANCE_TO_MCAP.md) for details.
+
+**Key changes:**
+- No more Arrow/Lance dependencies for recording
+- Simplified data path (no schema conversion)
+- Lower CPU overhead
+- Compatible with Foxglove Studio and ROS bag tools
 
 ## Dependencies
 
-All dependencies must be installed before building:
+### Required Dependencies
 
-- **Apache Arrow C++** - Core dependency for Arrow format support
 - **yaml-cpp** - YAML configuration parsing
-- **GoogleTest** - Unit testing framework
+- **zstd** (optional) - Zstd compression for MCAP
+- **lz4** (optional) - LZ4 compression for MCAP
+- **GoogleTest** - Unit testing framework (for tests only)
 
 ### Installing Dependencies
 
 **macOS (Homebrew):**
 ```bash
-brew install apache-arrow yaml-cpp googletest
+brew install yaml-cpp zstd lz4 googletest
 ```
 
 **Ubuntu/Debian:**
 ```bash
 sudo apt-get update
-sudo apt-get install -y libarrow-dev libyaml-cpp-dev libgtest-dev
+sudo apt-get install -y libyaml-cpp-dev libzstd-dev liblz4-dev libgtest-dev
 ```
 
 ## Building
@@ -72,9 +83,6 @@ make build
 # Build and run tests
 make test
 
-# Build in debug mode
-make debug
-
 # Clean build artifacts
 make clean
 ```
@@ -82,83 +90,57 @@ make clean
 ### Using CMake Directly
 
 ```bash
-cd cpp
+# Build MCAP library
+cd cpp/axon_mcap
 mkdir build && cd build
-cmake ../axon_arrow -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_BUILD_TYPE=Release -DAXON_MCAP_BUILD_TESTS=ON
 cmake --build . -j$(nproc)
-ctest --output-on-failure
+
+# Run tests
+./test_mcap_writer
 ```
 
 ### CMake Options
 
+#### MCAP Library (axon_mcap)
+
 | Option | Default | Description |
 |--------|---------|-------------|
-| `BUILD_SHARED_LIBS` | `OFF` | Build shared libraries instead of static |
-| `AXON_ARROW_BUILD_TESTS` | `ON` | Build unit tests |
-| `AXON_ARROW_ENABLE_COVERAGE` | `OFF` | Enable code coverage instrumentation |
-
-## Code Coverage
-
-Generate test coverage reports using `lcov`:
-
-**Install lcov:**
-```bash
-# macOS
-brew install lcov
-
-# Ubuntu
-sudo apt install lcov
-```
-
-**Generate coverage report:**
-```bash
-# Text summary
-make coverage
-
-# HTML report (opens in browser)
-make coverage-html
-```
-
-The HTML report will be generated in `coverage/index.html`.
+| `AXON_MCAP_BUILD_TESTS` | `OFF` | Build MCAP unit tests |
 
 ## API Documentation
 
-### ArrowBuilder
+### McapWriterWrapper
 
-Builds Apache Arrow arrays from primitive types:
-
-```cpp
-#include "arrow_builder.hpp"
-
-axon::core::ArrowBuilderFactory factory;
-auto builder = factory.create_int64_builder();
-auto& typed = static_cast<TypedArrowBuilder<arrow::Int64Builder>&>(*builder);
-typed.get().Append(42);
-typed.get().Append(100);
-
-std::shared_ptr<arrow::Array> array;
-typed.Finish(&array);
-```
-
-### BatchManager
-
-Manages batches of data for efficient writing:
+Thread-safe wrapper for writing MCAP files:
 
 ```cpp
-#include "batch_manager.hpp"
+#include "mcap_writer_wrapper.hpp"
 
-axon::core::BatchManager manager(batch_size, flush_interval_ms, write_callback);
-manager.set_dataset("/path/to/dataset.lance", handle);
-manager.initialize_schema(schema);
-manager.start();
+using namespace axon::mcap_wrapper;
 
-// Add rows
-manager.add_row(arrays);
+// Create writer with options
+McapWriterWrapper writer;
+McapWriterOptions options;
+options.profile = "ros2";
+options.compression = Compression::Zstd;
+options.chunk_size = 4 * 1024 * 1024;  // 4MB chunks
 
-// Manual flush if needed
-manager.flush();
+// Open file
+writer.open("/path/to/output.mcap", options);
 
-manager.stop();
+// Register schema
+std::string schema_def = "uint32 height\nuint32 width\nstring encoding\nuint8[] data";
+uint16_t schema_id = writer.register_schema("sensor_msgs/msg/Image", "ros2msg", schema_def);
+
+// Register channel
+uint16_t channel_id = writer.register_channel("/camera/image", "cdr", schema_id);
+
+// Write messages (thread-safe)
+writer.write(channel_id, timestamp_ns, timestamp_ns, data, size);
+
+// Close file (writes footer)
+writer.close();
 ```
 
 ### ConfigParser
@@ -168,29 +150,22 @@ Parses YAML configuration files:
 ```cpp
 #include "config_parser.hpp"
 
-axon::core::ConfigParser parser;
-axon::core::RecorderConfig config;
+axon::core::RecorderConfig config = axon::core::RecorderConfig::from_yaml("/path/to/config.yaml");
 
-parser.load_from_file("/path/to/config.yaml", config);
-
-// Validate configuration
 if (config.validate()) {
     // Use config
+    for (const auto& topic : config.topics) {
+        std::cout << "Topic: " << topic.name << std::endl;
+    }
 }
 ```
 
 ## Testing
 
-Run all tests:
+Run MCAP writer tests:
 ```bash
-make test
-```
-
-Run specific tests:
-```bash
-make test-arrow   # Arrow builder tests
-make test-batch   # Batch manager tests
-make test-config  # Config parser tests
+cd cpp/axon_mcap/build
+./test_mcap_writer
 ```
 
 ## Usage
@@ -199,17 +174,19 @@ The C++ SDK is used by:
 - **ROS packages** (`ros/axon_recorder/`) for ROS 1 and ROS 2 integration
 - Can be used **standalone** for non-ROS applications
 
-### Using as a CMake Package
+### Using in ROS Packages
 
-After installing (`make install`), you can use the library in other CMake projects:
+The recorder CMakeLists.txt includes axon_mcap as a subdirectory:
 
 ```cmake
-find_package(axon_arrow REQUIRED)
-target_link_libraries(your_target axon::axon_arrow)
+add_subdirectory(${PROJECT_ROOT}/cpp/axon_mcap ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
+target_link_libraries(your_target axon_mcap)
 ```
 
 ## See Also
 
-- [C SDK (FFI Bridge)](../c/README.md)
+- [Migration Guide](../MIGRATION_LANCE_TO_MCAP.md)
 - [ROS Recorder Package](../ros/axon_recorder/README.md)
 - [Main README](../README.md)
+- [MCAP Specification](https://mcap.dev/)
+- [Foxglove Studio](https://foxglove.dev/)

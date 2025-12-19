@@ -261,6 +261,18 @@ public:
     ROS_DEBUG("%s", message.c_str());
   }
 
+  std::string get_message_definition(const std::string& message_type) const override {
+    // For ROS 1, try to get message definition from MessageFactory
+    if (MessageFactory::is_registered(message_type)) {
+      MessageFactory::MessageInfo info;
+      if (MessageFactory::get_message_info(message_type, info)) {
+        return info.definition;
+      }
+    }
+    // Return placeholder for unknown types
+    return "# Message definition not available for: " + message_type;
+  }
+
 private:
   struct ServiceWrapper {
     ros::ServiceServer server;
@@ -612,6 +624,84 @@ public:
     if (node_) {
       RCLCPP_DEBUG(node_->get_logger(), "%s", message.c_str());
     }
+  }
+
+  std::string get_message_definition(const std::string& message_type) const override {
+    // For ROS 2, we construct a basic message definition
+    // MCAP can work without schema data, but having it helps with playback
+    //
+    // In production, you would use rosidl_runtime introspection to get
+    // the full message definition. For now, we return a placeholder.
+    //
+    // The message definition format for ROS 2 is the .msg file content.
+    // Example for sensor_msgs/msg/Image:
+    // std_msgs/Header header
+    // uint32 height
+    // uint32 width
+    // string encoding
+    // uint8 is_bigendian
+    // uint32 step
+    // uint8[] data
+
+    // Common message definitions for well-known types
+    static const std::map<std::string, std::string> known_definitions = {
+      {"std_msgs/msg/Header",
+       "builtin_interfaces/Time stamp\n"
+       "string frame_id"},
+      {"sensor_msgs/msg/Image",
+       "std_msgs/Header header\n"
+       "uint32 height\n"
+       "uint32 width\n"
+       "string encoding\n"
+       "uint8 is_bigendian\n"
+       "uint32 step\n"
+       "uint8[] data"},
+      {"sensor_msgs/msg/Imu",
+       "std_msgs/Header header\n"
+       "geometry_msgs/Quaternion orientation\n"
+       "float64[9] orientation_covariance\n"
+       "geometry_msgs/Vector3 angular_velocity\n"
+       "float64[9] angular_velocity_covariance\n"
+       "geometry_msgs/Vector3 linear_acceleration\n"
+       "float64[9] linear_acceleration_covariance"},
+      {"sensor_msgs/msg/PointCloud2",
+       "std_msgs/Header header\n"
+       "uint32 height\n"
+       "uint32 width\n"
+       "sensor_msgs/PointField[] fields\n"
+       "bool is_bigendian\n"
+       "uint32 point_step\n"
+       "uint32 row_step\n"
+       "uint8[] data\n"
+       "bool is_dense"},
+      {"geometry_msgs/msg/Twist",
+       "geometry_msgs/Vector3 linear\n"
+       "geometry_msgs/Vector3 angular"},
+      {"geometry_msgs/msg/TwistStamped",
+       "std_msgs/Header header\n"
+       "geometry_msgs/Twist twist"},
+      {"geometry_msgs/msg/Pose",
+       "geometry_msgs/Point position\n"
+       "geometry_msgs/Quaternion orientation"},
+      {"geometry_msgs/msg/PoseStamped",
+       "std_msgs/Header header\n"
+       "geometry_msgs/Pose pose"},
+      {"nav_msgs/msg/Odometry",
+       "std_msgs/Header header\n"
+       "string child_frame_id\n"
+       "geometry_msgs/PoseWithCovariance pose\n"
+       "geometry_msgs/TwistWithCovariance twist"},
+    };
+
+    auto it = known_definitions.find(message_type);
+    if (it != known_definitions.end()) {
+      return it->second;
+    }
+
+    // Return placeholder for unknown types
+    // MCAP will still work, but Foxglove may not be able to decode messages
+    return "# Message definition not available for: " + message_type + "\n"
+           "# Recording will still work, but schema-based decoding may be limited.";
   }
 
 private:
