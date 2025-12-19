@@ -21,19 +21,15 @@ struct ArrowArray;
 typedef struct ArrowSchema FFI_ArrowSchema;
 typedef struct ArrowArray FFI_ArrowArray;
 
-
 #ifndef AXON_LANCE_BRIDGE_H
 #define AXON_LANCE_BRIDGE_H
 
 #include <stdarg.h>
 #include <stdbool.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+
 #include "stdint.h"
 
 /**
@@ -87,7 +83,7 @@ typedef struct ArrowArray FFI_ArrowArray;
 
 #ifdef __cplusplus
 extern "C" {
-#endif // __cplusplus
+#endif  // __cplusplus
 
 /**
  * Get the last error message as a C string
@@ -99,12 +95,12 @@ extern "C" {
  * The returned pointer is valid until the next call to any Axon function
  * that may set an error on this thread.
  */
-const char *axon_lance_get_last_error(void);
+const char* axon_lance_get_last_error(void);
 
 /**
  * Legacy name for backward compatibility
  */
-const char *lance_get_last_error(void);
+const char* lance_get_last_error(void);
 
 /**
  * Create or open a Lance dataset
@@ -123,7 +119,7 @@ const char *lance_get_last_error(void);
  * * `path` must be a valid null-terminated C string
  * * `schema_ptr` must be a valid pointer to an FFI_ArrowSchema
  */
-int64_t axon_lance_create_dataset(const char *path, FFI_ArrowSchema *schema_ptr);
+int64_t axon_lance_create_dataset(const char* path, FFI_ArrowSchema* schema_ptr);
 
 /**
  * Write a RecordBatch to a Lance dataset
@@ -145,9 +141,9 @@ int64_t axon_lance_create_dataset(const char *path, FFI_ArrowSchema *schema_ptr)
  * * `array_ptr` must be a valid pointer to an FFI_ArrowArray
  * * `schema_ptr` must be a valid pointer to an FFI_ArrowSchema
  */
-int axon_lance_write_batch(int64_t dataset_handle,
-                           FFI_ArrowArray *array_ptr,
-                           FFI_ArrowSchema *schema_ptr);
+int axon_lance_write_batch(
+  int64_t dataset_handle, FFI_ArrowArray* array_ptr, FFI_ArrowSchema* schema_ptr
+);
 
 /**
  * Close a dataset and release resources
@@ -168,13 +164,13 @@ int axon_lance_close_dataset(int64_t dataset_handle);
  * Legacy: Create or open a Lance dataset
  * Use `axon_lance_create_dataset` instead.
  */
-int64_t create_or_open_dataset(const char *path, FFI_ArrowSchema *schema_ptr);
+int64_t create_or_open_dataset(const char* path, FFI_ArrowSchema* schema_ptr);
 
 /**
  * Legacy: Write a RecordBatch to a Lance dataset
  * Use `axon_lance_write_batch` instead.
  */
-int write_batch(int64_t dataset_handle, FFI_ArrowArray *array_ptr, FFI_ArrowSchema *schema_ptr);
+int write_batch(int64_t dataset_handle, FFI_ArrowArray* array_ptr, FFI_ArrowSchema* schema_ptr);
 
 /**
  * Legacy: Close a dataset
@@ -182,8 +178,28 @@ int write_batch(int64_t dataset_handle, FFI_ArrowArray *array_ptr, FFI_ArrowSche
  */
 int close_dataset(int64_t dataset_handle);
 
+/**
+ * Wait for all pending async writes to complete
+ *
+ * This function MUST be called before program exit to ensure:
+ * 1. All data is flushed to disk
+ * 2. All Arrow resources are released before C++ static destructors run
+ *
+ * Failing to call this can cause crashes during program shutdown due to
+ * Arrow memory pool access after it has been destroyed.
+ *
+ * # Returns
+ * Number of pending writes that were waited on
+ */
+int axon_lance_flush(void);
+
+/**
+ * Legacy name for flush
+ */
+int lance_flush(void);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  /* AXON_LANCE_BRIDGE_H */
+#endif /* AXON_LANCE_BRIDGE_H */

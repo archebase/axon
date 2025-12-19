@@ -298,3 +298,30 @@ pub unsafe extern "C" fn write_batch(
 pub extern "C" fn close_dataset(dataset_handle: i64) -> c_int {
     axon_lance_close_dataset(dataset_handle)
 }
+
+// ============================================================================
+// Shutdown functions - MUST be called before program exit
+// ============================================================================
+
+/// Wait for all pending async writes to complete
+///
+/// This function MUST be called before program exit to ensure:
+/// 1. All data is flushed to disk
+/// 2. All Arrow resources are released before C++ static destructors run
+///
+/// Failing to call this can cause crashes during program shutdown due to
+/// Arrow memory pool access after it has been destroyed.
+///
+/// # Returns
+/// Number of pending writes that were waited on
+#[no_mangle]
+pub extern "C" fn axon_lance_flush() -> c_int {
+    use axon_lance::runtime::wait_for_pending_writes;
+    wait_for_pending_writes() as c_int
+}
+
+/// Legacy name for flush
+#[no_mangle]
+pub extern "C" fn lance_flush() -> c_int {
+    axon_lance_flush()
+}

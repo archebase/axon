@@ -13,6 +13,21 @@
 #   docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
 #     /usr/local/bin/run_perf_tests.sh --duration 30 --imu-rate 2000
 #   
+#   # Run with flamegraph profiling (requires native Linux host)
+#   # NOTE: Flamegraph requires 'perf' which only works on native Linux.
+#   #       On macOS (Docker Desktop/OrbStack) or WSL2, flamegraph will be skipped.
+#   docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
+#     /workspace/axon/ros/docker/scripts/run_perf_tests.sh --flamegraph --duration 20
+#   
+#   # Run with ASAN (Address Sanitizer) for memory debugging
+#   docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
+#     /workspace/axon/ros/docker/scripts/run_perf_tests.sh --asan --duration 10
+#   
+#   # Output files are saved to host at: ros/docker/output/
+#   #   - flamegraph/recorder_flamegraph.svg  (interactive CPU profile - Linux only)
+#   #   - publisher_stats.json
+#   #   - recorder_stats.json
+#   
 #   # Interactive shell for debugging
 #   docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble /bin/bash
 
@@ -38,11 +53,15 @@ services:
       context: ../..
       dockerfile: ros/docker/Dockerfile.ros2.humble
     container_name: axon_perf_ros2_humble
+    # Privileged mode required for perf flamegraph profiling
+    privileged: true
     volumes:
       - ../..:/workspace/axon
       - perf-cargo-cache-ros2-humble:/root/.cargo/registry
       - perf-cargo-git-cache-ros2-humble:/root/.cargo/git
       - perf-ros2-humble-build:/workspace/ros_ws
+      # Persist recordings and flamegraphs
+      - ./output:/data/recordings
     environment:
       - ROS_DISTRO=humble
       - ROS_VERSION=2
@@ -54,11 +73,13 @@ services:
       context: ../..
       dockerfile: ros/docker/Dockerfile.ros2.jazzy
     container_name: axon_perf_ros2_jazzy
+    privileged: true
     volumes:
       - ../..:/workspace/axon
       - perf-cargo-cache-ros2-jazzy:/root/.cargo/registry
       - perf-cargo-git-cache-ros2-jazzy:/root/.cargo/git
       - perf-ros2-jazzy-build:/workspace/ros_ws
+      - ./output:/data/recordings
     environment:
       - ROS_DISTRO=jazzy
       - ROS_VERSION=2
@@ -70,11 +91,13 @@ services:
       context: ../..
       dockerfile: ros/docker/Dockerfile.ros2.rolling
     container_name: axon_perf_ros2_rolling
+    privileged: true
     volumes:
       - ../..:/workspace/axon
       - perf-cargo-cache-ros2-rolling:/root/.cargo/registry
       - perf-cargo-git-cache-ros2-rolling:/root/.cargo/git
       - perf-ros2-rolling-build:/workspace/ros_ws
+      - ./output:/data/recordings
     environment:
       - ROS_DISTRO=rolling
       - ROS_VERSION=2

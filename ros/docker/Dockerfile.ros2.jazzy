@@ -51,6 +51,15 @@ RUN apt-get update && apt-get install -y \
     libturbojpeg0-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install profiling tools for flamegraph generation
+# Note: linux-tools-generic may not match host kernel; perf requires --privileged
+RUN apt-get update && apt-get install -y \
+    linux-tools-generic \
+    linux-tools-common \
+    perl \
+    && rm -rf /var/lib/apt/lists/* \
+    && git clone --depth 1 https://github.com/brendangregg/FlameGraph.git /opt/FlameGraph || true
+
 # Set working directory
 WORKDIR /workspace
 

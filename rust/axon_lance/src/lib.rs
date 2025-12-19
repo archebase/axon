@@ -69,7 +69,7 @@ mod writer;
 // Re-exports for convenience
 pub use error::{LanceError, Result};
 pub use writer::{DatasetHandle, LanceWriter};
-pub use runtime::{get_runtime, block_on};
+pub use runtime::{get_runtime, block_on, wait_for_pending_writes, pending_write_count};
 
 // Re-export commonly used Arrow types
 pub use arrow_schema::{Schema, Field, DataType};

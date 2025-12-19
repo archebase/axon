@@ -5,6 +5,7 @@
 //! for each operation.
 
 use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::runtime::Runtime;
 
 /// Global shared Tokio runtime for general operations
@@ -23,6 +24,9 @@ static WRITE_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
         .build()
         .expect("Failed to create write runtime")
 });
+
+/// Counter for pending async write tasks
+static PENDING_WRITES: AtomicUsize = AtomicUsize::new(0);
 
 /// Get a reference to the shared Tokio runtime
 ///
@@ -45,11 +49,59 @@ pub fn get_write_runtime() -> &'static Runtime {
 ///
 /// Unlike `block_on`, this returns immediately and executes the
 /// future in the background. Errors are logged but not propagated.
+/// 
+/// The task is tracked so `wait_for_pending_writes` can wait for completion.
 pub fn spawn_write<F>(future: F)
 where
     F: std::future::Future<Output = ()> + Send + 'static,
 {
-    get_write_runtime().spawn(future);
+    PENDING_WRITES.fetch_add(1, Ordering::SeqCst);
+    
+    get_write_runtime().spawn(async move {
+        future.await;
+        PENDING_WRITES.fetch_sub(1, Ordering::SeqCst);
+    });
+}
+
+/// Get the number of pending async write tasks
+pub fn pending_write_count() -> usize {
+    PENDING_WRITES.load(Ordering::SeqCst)
+}
+
+/// Wait for all pending async writes to complete
+///
+/// This should be called before program exit to ensure all data is flushed
+/// and Arrow resources are released before C++ static destructors run.
+///
+/// Returns the number of writes that were pending when called.
+pub fn wait_for_pending_writes() -> usize {
+    let initial_count = PENDING_WRITES.load(Ordering::SeqCst);
+    
+    if initial_count == 0 {
+        return 0;
+    }
+    
+    eprintln!("[lance] Waiting for {} pending writes to complete...", initial_count);
+    
+    // Poll until all writes complete (with timeout)
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(30);
+    
+    while PENDING_WRITES.load(Ordering::SeqCst) > 0 {
+        if start.elapsed() > timeout {
+            let remaining = PENDING_WRITES.load(Ordering::SeqCst);
+            eprintln!("[lance] Warning: Timeout waiting for writes, {} still pending", remaining);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    
+    let final_count = PENDING_WRITES.load(Ordering::SeqCst);
+    if final_count == 0 {
+        eprintln!("[lance] All pending writes completed");
+    }
+    
+    initial_count
 }
 
 /// Execute an async function using the shared runtime

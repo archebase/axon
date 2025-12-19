@@ -142,6 +142,40 @@ docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
   /usr/local/bin/run_perf_tests.sh --skip-build
 ```
 
+### ASAN (Address Sanitizer) Testing
+
+ASAN helps detect memory errors like double-free, use-after-free, and buffer overflows.
+
+```bash
+# Run perf tests with ASAN enabled (full load)
+docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
+  /usr/local/bin/run_perf_tests.sh --asan
+
+# Run with reduced load for faster debugging (asan-lite)
+docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
+  /usr/local/bin/run_perf_tests.sh --asan-lite
+```
+
+ASAN options:
+- `--asan` - Enable Address Sanitizer build and runtime checks
+- `--asan-lite` - Enable ASAN with reduced load (faster debugging iterations)
+
+### Flamegraph CPU Profiling
+
+Generate interactive CPU flamegraphs to identify performance bottlenecks:
+
+```bash
+# Run perf tests with flamegraph profiling
+docker-compose -f docker-compose.perf.yml run --rm --privileged perf-ros2-humble \
+  /usr/local/bin/run_perf_tests.sh --flamegraph
+
+# With custom sampling frequency
+docker-compose -f docker-compose.perf.yml run --rm --privileged perf-ros2-humble \
+  /usr/local/bin/run_perf_tests.sh --flamegraph --flamegraph-freq 199
+```
+
+The flamegraph SVG will be saved to `/data/recordings/flamegraph/recorder_flamegraph.svg`.
+
 ## Troubleshooting
 
 ### Build Fails

@@ -101,3 +101,10 @@ target
 
 # log files
 ros/log
+
+# Performance test output (flamegraphs, recordings)
+ros/docker/output/*
+!ros/docker/output/.gitkeep
+perf.data
+perf.data.*
+*.folded
