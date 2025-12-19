@@ -1,9 +1,10 @@
 #ifndef AXON_ROS_INTROSPECTION_HPP
 #define AXON_ROS_INTROSPECTION_HPP
 
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
+
 #include "message_introspection.hpp"
 
 namespace axon {
@@ -20,10 +21,10 @@ using FieldDescriptor = core::FieldDescriptor;
  */
 class RosIntrospectorFactory {
 public:
-    static std::unique_ptr<MessageIntrospector> create();
+  static std::unique_ptr<MessageIntrospector> create();
 };
 
-} // namespace recorder
-} // namespace axon
+}  // namespace recorder
+}  // namespace axon
 
-#endif // AXON_ROS_INTROSPECTION_HPP
+#endif  // AXON_ROS_INTROSPECTION_HPP

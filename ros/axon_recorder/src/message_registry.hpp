@@ -1,12 +1,14 @@
 #ifndef AXON_MESSAGE_REGISTRY_HPP
 #define AXON_MESSAGE_REGISTRY_HPP
 
+#include <arrow/api.h>
+
+#include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include <memory>
-#include <functional>
 #include <vector>
-#include <arrow/api.h>
+
 #include "message_converter.hpp"
 
 namespace axon {
@@ -21,39 +23,38 @@ using MessageConverter = core::MessageConverter;
  */
 class MessageRegistry {
 public:
-    using ConverterFactory = std::function<std::unique_ptr<MessageConverter>()>;
-    
-    /**
-     * Register a message type converter
-     */
-    static void register_message_type(const std::string& message_type,
-                                     ConverterFactory factory);
-    
-    /**
-     * Get converter for a message type
-     */
-    static std::unique_ptr<MessageConverter> get_converter(const std::string& message_type);
-    
-    /**
-     * Check if a message type is registered
-     */
-    static bool has_converter(const std::string& message_type);
-    
-    /**
-     * Get all registered message types
-     */
-    static std::vector<std::string> get_registered_types();
-    
-    /**
-     * Initialize default converters for common ROS message types
-     */
-    static void initialize_default_converters();
-    
+  using ConverterFactory = std::function<std::unique_ptr<MessageConverter>()>;
+
+  /**
+   * Register a message type converter
+   */
+  static void register_message_type(const std::string& message_type, ConverterFactory factory);
+
+  /**
+   * Get converter for a message type
+   */
+  static std::unique_ptr<MessageConverter> get_converter(const std::string& message_type);
+
+  /**
+   * Check if a message type is registered
+   */
+  static bool has_converter(const std::string& message_type);
+
+  /**
+   * Get all registered message types
+   */
+  static std::vector<std::string> get_registered_types();
+
+  /**
+   * Initialize default converters for common ROS message types
+   */
+  static void initialize_default_converters();
+
 private:
-    static std::unordered_map<std::string, ConverterFactory>& get_registry();
+  static std::unordered_map<std::string, ConverterFactory>& get_registry();
 };
 
-} // namespace recorder
-} // namespace axon
+}  // namespace recorder
+}  // namespace axon
 
-#endif // AXON_MESSAGE_REGISTRY_HPP
+#endif  // AXON_MESSAGE_REGISTRY_HPP

@@ -8,6 +8,12 @@ cmake_policy(SET CMP0079 NEW)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# =============================================================================
+# Code Formatting with clang-format
+# =============================================================================
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake" ${CMAKE_MODULE_PATH})
+include(ClangFormat OPTIONAL)
+
 # ============================================================================
 # Address Sanitizer (ASAN) Support
 # Enable with: cmake -DENABLE_ASAN=ON or set ENABLE_ASAN=1 environment variable
@@ -70,6 +76,23 @@ find_package(Arrow REQUIRED)
 
 # Find yaml-cpp
 find_package(yaml-cpp REQUIRED)
+
+# =============================================================================
+# Clang-format targets (before ROS-specific setup)
+# =============================================================================
+if(COMMAND axon_add_clang_format)
+    # Collect all source files for formatting
+    file(GLOB_RECURSE AXON_RECORDER_ALL_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp"
+    )
+    
+    # Create format targets (they don't depend on any build target)
+    add_custom_target(axon_recorder_format_target)
+    axon_add_clang_format(axon_recorder_format_target SOURCE_FILES ${AXON_RECORDER_ALL_SOURCES})
+    axon_register_format_target(axon_recorder_format_target)
+endif()
 
 # Find pkg-config for additional dependencies
 find_package(PkgConfig REQUIRED)
