@@ -23,11 +23,12 @@ namespace recorder {
 
 /**
  * Message factory for creating typed subscribers dynamically (ROS 1)
+ * Note: ROS 1 messages don't have a common base class, so we use void*
  */
 class MessageFactory {
 public:
-  using MessageCreator = std::function<std::shared_ptr<ros::Message>()>;
-  using MessageDeserializer = std::function<void(const uint8_t*, uint32_t, ros::Message&)>;
+  using MessageCreator = std::function<std::shared_ptr<void>()>;
+  using MessageDeserializer = std::function<void(const uint8_t*, uint32_t, void*)>;
 
   struct MessageInfo {
     std::string md5sum;
@@ -35,7 +36,7 @@ public:
     std::string definition;
     MessageCreator creator;
     MessageDeserializer deserializer;
-    size_t size;
+    bool is_fixed_size;
   };
 
   /**
@@ -47,13 +48,13 @@ public:
   /**
    * Create a message instance from type name
    */
-  static std::shared_ptr<ros::Message> create_message(const std::string& message_type);
+  static std::shared_ptr<void> create_message(const std::string& message_type);
 
   /**
    * Deserialize message from buffer
    */
   static bool deserialize_message(
-    const std::string& message_type, const uint8_t* buffer, uint32_t size, ros::Message& msg
+    const std::string& message_type, const uint8_t* buffer, uint32_t size, void* msg
   );
 
   /**
@@ -81,16 +82,16 @@ void MessageFactory::register_message_type(const std::string& message_type) {
   info.md5sum = ros::message_traits::MD5Sum<MessageType>::value();
   info.datatype = ros::message_traits::DataType<MessageType>::value();
   info.definition = ros::message_traits::Definition<MessageType>::value();
-  info.size = ros::message_traits::Size<MessageType>::value();
+  info.is_fixed_size = ros::message_traits::IsFixedSize<MessageType>::value;
 
-  info.creator = []() -> std::shared_ptr<ros::Message> {
+  info.creator = []() -> std::shared_ptr<void> {
     return std::make_shared<MessageType>();
   };
 
-  info.deserializer = [](const uint8_t* buffer, uint32_t size, ros::Message& msg) {
-    MessageType& typed_msg = static_cast<MessageType&>(msg);
+  info.deserializer = [](const uint8_t* buffer, uint32_t size, void* msg) {
+    MessageType* typed_msg = static_cast<MessageType*>(msg);
     ros::serialization::IStream stream(const_cast<uint8_t*>(buffer), size);
-    ros::serialization::deserialize(stream, typed_msg);
+    ros::serialization::deserialize(stream, *typed_msg);
   };
 
   registry[message_type] = info;

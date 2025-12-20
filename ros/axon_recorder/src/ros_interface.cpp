@@ -4,14 +4,9 @@
 #include "register_common_messages.hpp"
 
 #if defined(AXON_ROS1)
-#include <ros/connection.h>
-#include <ros/message.h>
-#include <ros/package.h>
 #include <ros/ros.h>
-#include <ros/service_traits.h>
-#include <ros/subscribe_options.h>
-#include <ros/topic_manager.h>
-#include <ros/transport_hints.h>
+#include <ros/serialization.h>
+#include <topic_tools/shape_shifter.h>
 #elif defined(AXON_ROS2)
 #include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <rclcpp/generic_subscription.hpp>
@@ -104,49 +99,17 @@ public:
     ros::Subscriber* sub = nullptr;
 
     try {
-      ros::SubscribeOptions opts;
-      opts.topic = topic;
-      opts.queue_size = 10;
-      opts.transport_hints = ros::TransportHints();
-
-      if (MessageFactory::is_registered(message_type)) {
-        MessageFactory::MessageInfo info;
-        if (MessageFactory::get_message_info(message_type, info)) {
-          opts.md5sum = info.md5sum;
-          opts.datatype = info.datatype;
-        }
-      } else {
-        opts.datatype = message_type;
-      }
-
-      auto msg_callback = [callback, message_type](const ros::MessageConstPtr& msg) {
-        if (!msg) {
-          return;
-        }
-
-        if (MessageFactory::is_registered(message_type)) {
-          auto typed_msg = MessageFactory::create_message(message_type);
-          if (typed_msg) {
-            const uint8_t* data = msg->raw();
-            uint32_t size = msg->size();
-            if (data && size > 0) {
-              try {
-                MessageFactory::deserialize_message(message_type, data, size, *typed_msg);
-                callback(static_cast<const void*>(typed_msg.get()));
-                return;
-              } catch (const std::exception& e) {
-                ROS_WARN(
-                  "Failed to deserialize message type %s: %s", message_type.c_str(), e.what()
-                );
-              }
-            }
+      // Use ShapeShifter for generic subscription (type-agnostic)
+      auto shape_callback =
+        [callback](const topic_tools::ShapeShifter::ConstPtr& msg) {
+          if (msg) {
+            callback(static_cast<const void*>(msg.get()));
           }
-        }
+        };
 
-        callback(static_cast<const void*>(msg.get()));
-      };
-
-      sub = new ros::Subscriber(node_handle_->subscribe(opts.topic, opts.queue_size, msg_callback));
+      sub = new ros::Subscriber(
+        node_handle_->subscribe<topic_tools::ShapeShifter>(topic, 10, shape_callback)
+      );
 
     } catch (const std::exception& e) {
       ROS_ERROR(
@@ -182,6 +145,70 @@ public:
       subscriptions_.erase(it);
       delete sub;
     }
+  }
+
+  void* subscribe_zero_copy(
+    const std::string& topic, const std::string& message_type,
+    std::function<void(SerializedMessageData&&)> callback,
+    const SubscriptionConfig& /* config */
+  ) override {
+    if (!node_handle_) {
+      return nullptr;
+    }
+
+    ros::Subscriber* sub = nullptr;
+
+    try {
+      // Use ShapeShifter for zero-copy access to serialized data
+      auto shape_callback =
+        [callback, this](const topic_tools::ShapeShifter::ConstPtr& msg) {
+          if (!msg) {
+            return;
+          }
+
+          // Get receive timestamp
+          int64_t timestamp_ns = now_nsec();
+
+          // Get serialized data size
+          uint32_t serialized_size = msg->size();
+
+          // Allocate buffer and serialize
+          std::vector<uint8_t> buffer(serialized_size);
+          ros::serialization::OStream stream(buffer.data(), serialized_size);
+          msg->write(stream);
+
+          // Create SerializedMessageData with ownership transfer
+          SerializedMessageData data(std::move(buffer), timestamp_ns);
+          callback(std::move(data));
+        };
+
+      sub = new ros::Subscriber(
+        node_handle_->subscribe<topic_tools::ShapeShifter>(topic, 100, shape_callback)
+      );
+
+    } catch (const std::exception& e) {
+      ROS_ERROR(
+        "Failed to subscribe (zero-copy) to topic %s (type: %s): %s",
+        topic.c_str(),
+        message_type.c_str(),
+        e.what()
+      );
+      if (sub) {
+        delete sub;
+        sub = nullptr;
+      }
+    }
+
+    if (sub) {
+      subscriptions_[sub] = std::make_pair(topic, message_type);
+      ROS_INFO(
+        "Successfully subscribed (zero-copy) to topic %s (type: %s)",
+        topic.c_str(),
+        message_type.c_str()
+      );
+    }
+
+    return sub;
   }
 
   void* advertise_service(

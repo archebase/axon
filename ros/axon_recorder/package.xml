@@ -28,6 +28,7 @@
   <depend condition="$ROS_VERSION == 1">sensor_msgs</depend>
   <depend condition="$ROS_VERSION == 1">nav_msgs</depend>
   <depend condition="$ROS_VERSION == 1">geometry_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">topic_tools</depend>
   <build_depend condition="$ROS_VERSION == 1">message_generation</build_depend>
   <exec_depend condition="$ROS_VERSION == 1">message_runtime</exec_depend>
 

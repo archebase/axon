@@ -110,6 +110,7 @@ if(AXON_ROS_VERSION EQUAL 1)
         sensor_msgs
         nav_msgs
         geometry_msgs
+        topic_tools
         message_generation
     )
     
@@ -131,7 +132,7 @@ if(AXON_ROS_VERSION EQUAL 1)
     catkin_package(
         INCLUDE_DIRS src
         LIBRARIES axon_recorder_lib
-        CATKIN_DEPENDS roscpp std_msgs sensor_msgs nav_msgs geometry_msgs message_runtime
+        CATKIN_DEPENDS roscpp std_msgs sensor_msgs nav_msgs geometry_msgs topic_tools message_runtime
     )
     
     include_directories(

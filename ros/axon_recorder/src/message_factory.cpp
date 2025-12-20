@@ -24,7 +24,7 @@ std::unordered_map<std::string, MessageFactory::MessageInfo>& MessageFactory::ge
   return *g_registry;
 }
 
-std::shared_ptr<ros::Message> MessageFactory::create_message(const std::string& message_type) {
+std::shared_ptr<void> MessageFactory::create_message(const std::string& message_type) {
   auto& registry = get_registry();
   auto it = registry.find(message_type);
   if (it != registry.end() && it->second.creator) {
@@ -34,7 +34,7 @@ std::shared_ptr<ros::Message> MessageFactory::create_message(const std::string& 
 }
 
 bool MessageFactory::deserialize_message(
-  const std::string& message_type, const uint8_t* buffer, uint32_t size, ros::Message& msg
+  const std::string& message_type, const uint8_t* buffer, uint32_t size, void* msg
 ) {
   auto& registry = get_registry();
   auto it = registry.find(message_type);
