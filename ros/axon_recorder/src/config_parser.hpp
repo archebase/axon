@@ -1,5 +1,5 @@
-#ifndef CONFIG_PARSER_HPP
-#define CONFIG_PARSER_HPP
+#ifndef AXON_RECORDER_CONFIG_PARSER_HPP
+#define AXON_RECORDER_CONFIG_PARSER_HPP
 
 #include <yaml-cpp/yaml.h>
 
@@ -23,7 +23,6 @@ struct DatasetConfig {
 };
 
 struct RecordingConfig {
-  bool auto_start = true;
   double max_disk_usage_gb = 100.0;
 };
 
@@ -72,4 +71,5 @@ private:
 }  // namespace core
 }  // namespace axon
 
-#endif  // CONFIG_PARSER_HPP
+#endif  // AXON_RECORDER_CONFIG_PARSER_HPP
+

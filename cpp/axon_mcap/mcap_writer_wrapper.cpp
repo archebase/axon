@@ -5,6 +5,7 @@
 #include <mcap/writer.hpp>
 
 #include <chrono>
+#include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <shared_mutex>
@@ -57,6 +58,17 @@ public:
     // Set compression level if supported
     if (options.compression == Compression::Zstd) {
       mcap_opts.compressionLevel = mcap::CompressionLevel(options.compression_level);
+    }
+
+    // Create parent directories if they don't exist
+    std::filesystem::path file_path(path);
+    if (file_path.has_parent_path()) {
+      std::error_code ec;
+      std::filesystem::create_directories(file_path.parent_path(), ec);
+      if (ec) {
+        last_error_ = "Failed to create directory: " + ec.message();
+        return false;
+      }
     }
 
     // Open the file

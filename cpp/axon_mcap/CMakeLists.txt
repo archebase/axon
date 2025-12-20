@@ -1,43 +1,69 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.14)  # FetchContent requires 3.14+
 project(axon_mcap)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # =============================================================================
-# Dependencies
+# Fetch MCAP Library from Foxglove (Header-only)
+# Source: https://github.com/foxglove/mcap
 # =============================================================================
 
-# Find yaml-cpp for config parser
-if(APPLE)
-    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
-elseif(UNIX)
-    list(APPEND CMAKE_PREFIX_PATH "/usr" "/usr/local")
+include(FetchContent)
+
+# Pin to a specific release for reproducibility
+# releases/cpp/v2.1.1 -> commit b2953496735e7b89d5b2ea58be73abed85317c5f
+# Check https://github.com/foxglove/mcap/releases for latest C++ releases
+set(MCAP_COMMIT_HASH "b2953496735e7b89d5b2ea58be73abed85317c5f" CACHE STRING "MCAP commit hash for releases/cpp/v2.1.1")
+set(MCAP_DOWNLOAD_URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT_HASH}.tar.gz")
+set(MCAP_TARBALL "${CMAKE_CURRENT_BINARY_DIR}/mcap-${MCAP_COMMIT_HASH}.tar.gz")
+set(mcap_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/mcap-${MCAP_COMMIT_HASH}")
+
+# Download if not already present
+if(NOT EXISTS "${mcap_SOURCE_DIR}")
+    message(STATUS "Downloading MCAP library from ${MCAP_DOWNLOAD_URL}")
+    file(DOWNLOAD "${MCAP_DOWNLOAD_URL}" "${MCAP_TARBALL}" 
+         STATUS DOWNLOAD_STATUS
+         SHOW_PROGRESS)
+    list(GET DOWNLOAD_STATUS 0 DOWNLOAD_ERROR)
+    if(DOWNLOAD_ERROR)
+        message(FATAL_ERROR "Failed to download MCAP: ${DOWNLOAD_STATUS}")
+    endif()
+    
+    # Extract
+    message(STATUS "Extracting MCAP library to ${CMAKE_CURRENT_BINARY_DIR}")
+    execute_process(
+        COMMAND ${CMAKE_COMMAND} -E tar xzf "${MCAP_TARBALL}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        RESULT_VARIABLE EXTRACT_RESULT
+    )
+    if(EXTRACT_RESULT)
+        message(FATAL_ERROR "Failed to extract MCAP: ${EXTRACT_RESULT}")
+    endif()
+    
+    # Clean up tarball
+    file(REMOVE "${MCAP_TARBALL}")
 endif()
-find_package(yaml-cpp REQUIRED)
 
-# Handle both old and new cmake target names for yaml-cpp
-if(TARGET yaml-cpp::yaml-cpp)
-    set(YAML_CPP_TARGET yaml-cpp::yaml-cpp)
-else()
-    set(YAML_CPP_TARGET yaml-cpp)
-endif()
+message(STATUS "MCAP library located at: ${mcap_SOURCE_DIR}")
 
 # =============================================================================
-# MCAP Library (Header-only from Foxglove)
-# =============================================================================
-
 # Find compression libraries (optional but recommended)
+# =============================================================================
+
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(ZSTD QUIET libzstd)
     pkg_check_modules(LZ4 QUIET liblz4)
 endif()
 
-# Create interface library for MCAP headers
+# =============================================================================
+# MCAP Headers Interface Library
+# =============================================================================
+
 add_library(mcap_headers INTERFACE)
 target_include_directories(mcap_headers INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${mcap_SOURCE_DIR}/cpp/mcap/include>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -64,23 +90,23 @@ else()
 endif()
 
 # =============================================================================
-# MCAP Writer Wrapper Library (includes config parser)
+# MCAP Writer Wrapper Library
 # =============================================================================
 
 add_library(axon_mcap
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_writer_wrapper.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/config_parser.cpp
 )
+
+# Enable position-independent code for linking into shared libraries (e.g., ROS 2 ament packages)
+set_target_properties(axon_mcap PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(axon_mcap PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(axon_mcap PUBLIC
     mcap_headers
-    ${YAML_CPP_TARGET}
 )
 
 # Link compression libraries if available
@@ -107,7 +133,6 @@ if(AXON_MCAP_BUILD_TESTS)
     
     target_include_directories(test_mcap_writer PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     
     target_link_libraries(test_mcap_writer

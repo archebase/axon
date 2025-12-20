@@ -12,9 +12,19 @@
 #include <vector>
 
 #include "config_parser.hpp"
+#include "http_callback_client.hpp"
 #include "mcap_writer_wrapper.hpp"
 #include "ros_interface.hpp"
 #include "spsc_queue.hpp"
+#include "state_machine.hpp"
+#include "task_config.hpp"
+
+// Forward declaration
+namespace axon {
+namespace recorder {
+class ServiceAdapter;
+}
+}  // namespace axon
 
 namespace axon {
 namespace recorder {
@@ -94,10 +104,68 @@ public:
   void stop_recording();
 
   /**
-   * Check if recording is active
+   * Pause recording
+   * Temporarily stops accepting new messages
+   */
+  void pause_recording();
+
+  /**
+   * Resume recording
+   * Resumes accepting messages after pause
+   */
+  void resume_recording();
+
+  /**
+   * Cancel recording
+   * Stops recording and cleans up without finalizing
+   */
+  void cancel_recording();
+
+  /**
+   * Check if recording is active (recording or paused)
    */
   bool is_recording() const {
     return recording_.load(std::memory_order_acquire);
+  }
+
+  /**
+   * Check if recording is paused
+   */
+  bool is_paused() const {
+    return paused_.load(std::memory_order_acquire);
+  }
+
+  /**
+   * Get the state manager for external access
+   */
+  StateManager& get_state_manager() {
+    return state_manager_;
+  }
+
+  /**
+   * Get the task config cache for external access
+   */
+  TaskConfigCache& get_task_config_cache() {
+    return task_config_cache_;
+  }
+
+  /**
+   * Get the HTTP callback client for external access
+   */
+  HttpCallbackClient& get_http_callback_client() {
+    return http_callback_client_;
+  }
+
+  /**
+   * Configure topics from task config (used when starting from cached config)
+   */
+  bool configure_from_task_config(const TaskConfig& config);
+
+  /**
+   * Get the current output path
+   */
+  std::string get_output_path() const {
+    return output_path_;
   }
 
   /**
@@ -121,7 +189,7 @@ private:
   void setup_topic_recording(const core::TopicConfig& topic_config);
   void setup_services();
   std::string get_config_path();
-  std::string get_output_path();
+  std::string generate_output_path() const;
 
   // =========================================================================
   // Schema helpers
@@ -146,6 +214,7 @@ private:
   // Core Components
   // =========================================================================
   std::unique_ptr<RosInterface> ros_interface_;
+  std::unique_ptr<ServiceAdapter> service_adapter_;
   core::RecorderConfig config_;
 
   // MCAP writer (replaces Lance dataset)
@@ -217,9 +286,20 @@ private:
   std::unordered_map<std::string, std::unique_ptr<TopicContext>> topic_contexts_;
 
   // =========================================================================
+  // State Machine & Task Management
+  // =========================================================================
+  StateManager state_manager_;
+  TaskConfigCache task_config_cache_;
+  HttpCallbackClient http_callback_client_;
+
+  // Recording start time (for duration calculation)
+  std::chrono::system_clock::time_point recording_start_time_;
+
+  // =========================================================================
   // State
   // =========================================================================
   std::atomic<bool> recording_{false};
+  std::atomic<bool> paused_{false};
   std::atomic<bool> shutdown_requested_{false};
 
   // =========================================================================

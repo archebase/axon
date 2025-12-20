@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Docker Compose configuration for running tests
 # Usage: cd ros/docker && docker-compose -f docker-compose.test.yml up --abort-on-container-exit
 

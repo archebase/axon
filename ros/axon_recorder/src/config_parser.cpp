@@ -59,8 +59,7 @@ std::string RecorderConfig::to_string() const {
         << ", batch_size: " << topic.batch_size << ", flush_interval: " << topic.flush_interval_ms
         << "ms)\n";
   }
-  oss << "Recording: auto_start=" << recording.auto_start
-      << ", max_disk_usage=" << recording.max_disk_usage_gb << "GB\n";
+  oss << "Recording: max_disk_usage=" << recording.max_disk_usage_gb << "GB\n";
   return oss.str();
 }
 
@@ -120,7 +119,6 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
     }
 
     // Recording
-    node["recording"]["auto_start"] = config.recording.auto_start;
     node["recording"]["max_disk_usage_gb"] = config.recording.max_disk_usage_gb;
 
     std::ofstream file(path);
@@ -168,9 +166,6 @@ bool ConfigParser::parse_topics(const YAML::Node& node, std::vector<TopicConfig>
 }
 
 bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& recording) {
-  if (node["auto_start"]) {
-    recording.auto_start = node["auto_start"].as<bool>();
-  }
   if (node["max_disk_usage_gb"]) {
     recording.max_disk_usage_gb = node["max_disk_usage_gb"].as<double>();
   }
@@ -187,3 +182,4 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
 
 }  // namespace core
 }  // namespace axon
+

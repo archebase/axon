@@ -1,8 +1,12 @@
 #include "recorder_node.hpp"
 
 #include "config_parser.hpp"
+#include "http_callback_client.hpp"
 #include "mcap_writer_wrapper.hpp"
 #include "ros_interface.hpp"
+#include "service_adapter.hpp"
+#include "state_machine.hpp"
+#include "task_config.hpp"
 
 #if defined(AXON_ROS1)
 #include <ros/package.h>
@@ -214,10 +218,7 @@ bool RecorderNode::initialize(int argc, char** argv) {
 }
 
 void RecorderNode::run() {
-  if (config_.recording.auto_start) {
-    start_recording();
-  }
-
+  // Recording is started via service calls, not automatically
   std::cerr << "[axon_recorder] Entering spin()..." << std::endl;
   ros_interface_->spin();
   std::cerr << "[axon_recorder] spin() returned" << std::endl;
@@ -256,6 +257,13 @@ void RecorderNode::shutdown() {
     mcap_writer_->close();
   }
   mcap_writer_.reset();
+
+  // Shutdown service adapter before ROS interface
+  if (service_adapter_) {
+    std::cerr << "[axon_recorder] Shutting down service adapter..." << std::endl;
+    service_adapter_->shutdown();
+    service_adapter_.reset();
+  }
 
   // Shutdown ROS interface LAST and release it
   if (ros_interface_) {
@@ -323,7 +331,7 @@ std::string RecorderNode::get_config_path() {
 #endif
 }
 
-std::string RecorderNode::get_output_path() {
+std::string RecorderNode::generate_output_path() const {
   // Generate timestamped filename
   auto now = std::chrono::system_clock::now();
   auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -345,7 +353,7 @@ std::string RecorderNode::get_output_path() {
 bool RecorderNode::initialize_mcap_writer() {
   mcap_writer_ = std::make_unique<mcap_wrapper::McapWriterWrapper>();
 
-  output_path_ = get_output_path();
+  output_path_ = generate_output_path();
 
   // Configure MCAP options
   mcap_wrapper::McapWriterOptions options;
@@ -486,6 +494,11 @@ void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) 
         return;
       }
 
+      // Check if paused - drop messages while paused
+      if (paused_.load(std::memory_order_acquire)) {
+        return;
+      }
+
       // Update statistics
       context_ptr->received.fetch_add(1, std::memory_order_relaxed);
       messages_received_.fetch_add(1, std::memory_order_relaxed);
@@ -515,8 +528,14 @@ void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) 
 }
 
 void RecorderNode::setup_services() {
-  // Full service implementation would go here
-  ros_interface_->log_info("Services available via ROS interface");
+  // Create and register service adapter
+  service_adapter_ = std::make_unique<ServiceAdapter>(this, ros_interface_.get());
+
+  if (service_adapter_->register_services()) {
+    ros_interface_->log_info("Recording services registered successfully");
+  } else {
+    ros_interface_->log_error("Failed to register recording services");
+  }
 }
 
 void RecorderNode::start_recording() {
@@ -528,13 +547,101 @@ void RecorderNode::start_recording() {
   // Start per-topic worker threads
   start_worker_threads();
 
+  // Record start time for duration calculation
+  recording_start_time_ = std::chrono::system_clock::now();
+
   // Enable message acceptance
   recording_.store(true, std::memory_order_release);
+  paused_.store(false, std::memory_order_release);
 
   ros_interface_->log_info(
     "Recording started with " + std::to_string(topic_contexts_.size()) + " topics to " +
     output_path_
   );
+
+  // Send start callback if configured
+  auto config_opt = task_config_cache_.get();
+  if (config_opt && config_opt->has_callbacks()) {
+    StartCallbackPayload payload;
+    payload.task_id = config_opt->task_id;
+    payload.device_id = config_opt->device_id;
+    payload.status = "recording";
+    payload.started_at = HttpCallbackClient::get_iso8601_timestamp(recording_start_time_);
+    payload.topics = config_opt->topics;
+
+    http_callback_client_.post_start_callback_async(*config_opt, payload);
+  }
+}
+
+void RecorderNode::pause_recording() {
+  if (!recording_.load(std::memory_order_acquire)) {
+    ros_interface_->log_warn("Cannot pause: not recording");
+    return;
+  }
+
+  if (paused_.load(std::memory_order_acquire)) {
+    ros_interface_->log_warn("Recording already paused");
+    return;
+  }
+
+  paused_.store(true, std::memory_order_release);
+  ros_interface_->log_info("Recording paused");
+}
+
+void RecorderNode::resume_recording() {
+  if (!recording_.load(std::memory_order_acquire)) {
+    ros_interface_->log_warn("Cannot resume: not recording");
+    return;
+  }
+
+  if (!paused_.load(std::memory_order_acquire)) {
+    ros_interface_->log_warn("Recording not paused");
+    return;
+  }
+
+  paused_.store(false, std::memory_order_release);
+  ros_interface_->log_info("Recording resumed");
+}
+
+void RecorderNode::cancel_recording() {
+  std::cerr << "[axon_recorder] cancel_recording() called" << std::endl;
+
+  // Stop accepting new messages
+  recording_.store(false, std::memory_order_release);
+  paused_.store(false, std::memory_order_release);
+
+  // Brief sleep to allow in-flight callbacks to complete
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // Stop worker threads (will drain remaining queue items)
+  stop_worker_threads();
+
+  // Send finish callback with cancelled status if configured
+  auto config_opt = task_config_cache_.get();
+  if (config_opt && config_opt->has_callbacks()) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - recording_start_time_);
+
+    FinishCallbackPayload payload;
+    payload.task_id = config_opt->task_id;
+    payload.device_id = config_opt->device_id;
+    payload.status = "cancelled";
+    payload.started_at = HttpCallbackClient::get_iso8601_timestamp(recording_start_time_);
+    payload.finished_at = HttpCallbackClient::get_iso8601_timestamp(now);
+    payload.duration_sec = duration.count() / 1000.0;
+    payload.message_count = messages_written_.load();
+    payload.file_size_bytes = 0;  // Not finalized
+    payload.output_path = output_path_;
+    payload.topics = config_opt->topics;
+    payload.error = "Recording cancelled";
+
+    http_callback_client_.post_finish_callback_async(*config_opt, payload);
+  }
+
+  // Clear the task config
+  task_config_cache_.clear();
+
+  std::cerr << "[axon_recorder] Recording cancelled" << std::endl;
 }
 
 void RecorderNode::stop_recording() {
@@ -543,6 +650,7 @@ void RecorderNode::stop_recording() {
 
   // Disable new message acceptance
   recording_.store(false, std::memory_order_release);
+  paused_.store(false, std::memory_order_release);
 
   // Brief sleep to allow in-flight callbacks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -558,6 +666,34 @@ void RecorderNode::stop_recording() {
   }
   std::cerr << "[axon_recorder] MCAP writer flushed" << std::endl;
 
+  // Send finish callback if configured
+  auto config_opt = task_config_cache_.get();
+  if (config_opt && config_opt->has_callbacks()) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - recording_start_time_);
+    
+    auto mcap_stats = mcap_writer_ ? mcap_writer_->get_statistics()
+                                   : mcap_wrapper::McapWriterWrapper::Statistics{};
+
+    FinishCallbackPayload payload;
+    payload.task_id = config_opt->task_id;
+    payload.device_id = config_opt->device_id;
+    payload.status = "finished";
+    payload.started_at = HttpCallbackClient::get_iso8601_timestamp(recording_start_time_);
+    payload.finished_at = HttpCallbackClient::get_iso8601_timestamp(now);
+    payload.duration_sec = duration.count() / 1000.0;
+    payload.message_count = messages_written_.load();
+    payload.file_size_bytes = mcap_stats.bytes_written;
+    payload.output_path = output_path_;
+    payload.topics = config_opt->topics;
+    payload.error = "";
+
+    http_callback_client_.post_finish_callback_async(*config_opt, payload);
+  }
+
+  // Clear the task config
+  task_config_cache_.clear();
+
   // Write statistics file for performance monitoring
   write_stats_file();
 
@@ -565,6 +701,33 @@ void RecorderNode::stop_recording() {
   if (ros_interface_) {
     ros_interface_->log_info("Recording stopped");
   }
+}
+
+bool RecorderNode::configure_from_task_config(const TaskConfig& config) {
+  // This method reconfigures the recorder based on task config
+  // It's called when starting recording with cached config
+
+  // If topics are specified in the config, use them instead of the default config
+  if (!config.topics.empty()) {
+    // For now, we validate that the topics exist in the default config
+    // Future enhancement: dynamically subscribe to new topics
+    ros_interface_->log_info(
+      "Task config specifies " + std::to_string(config.topics.size()) + " topics"
+    );
+  }
+
+  // Update output path to use task_id
+  if (!config.task_id.empty()) {
+    // Generate new output path with task_id
+    std::string base_path = config_.dataset.path;
+    if (!base_path.empty() && base_path.back() != '/') {
+      base_path += "/";
+    }
+    output_path_ = base_path + config.generate_output_filename();
+    ros_interface_->log_info("Output path set to: " + output_path_);
+  }
+
+  return true;
 }
 
 RecorderNode::RecordingStats RecorderNode::get_stats() const {
@@ -633,64 +796,3 @@ void RecorderNode::write_stats_file() {
 
 }  // namespace recorder
 }  // namespace axon
-
-// ============================================================================
-// Main Entry Point
-// ============================================================================
-// Note: ROS2's rclcpp::init() installs default signal handlers for SIGINT
-// and SIGTERM that call rclcpp::shutdown(). We rely on these handlers.
-// After spin() returns, we call node.shutdown() to write stats.
-
-// Global flag to track if we received a signal
-static std::atomic<bool> g_signal_received{false};
-
-// Signal handler to log signal reception
-static void signal_handler(int signum) {
-  std::cerr << "[axon_recorder] Received signal " << signum << " (SIGTERM=" << SIGTERM
-            << ", SIGINT=" << SIGINT << ")" << std::endl;
-  g_signal_received.store(true);
-
-  // Call rclcpp::shutdown() to trigger executor exit
-#if defined(AXON_ROS2)
-  std::cerr << "[axon_recorder] Calling rclcpp::shutdown()..." << std::endl;
-  rclcpp::shutdown();
-  std::cerr << "[axon_recorder] rclcpp::shutdown() called" << std::endl;
-#elif defined(AXON_ROS1)
-  ros::shutdown();
-#endif
-}
-
-int main(int argc, char** argv) {
-  std::cerr << "[axon_recorder] main() starting (MCAP backend)" << std::endl;
-
-  // Use a block scope to ensure RecorderNode is fully destroyed before main() returns
-  {
-    axon::recorder::RecorderNode node;
-
-    if (!node.initialize(argc, argv)) {
-      std::cerr << "[axon_recorder] Initialization failed" << std::endl;
-      return 1;
-    }
-
-    // Install custom signal handlers AFTER rclcpp::init() to override ROS defaults
-    std::cerr << "[axon_recorder] Installing signal handlers..." << std::endl;
-    std::signal(SIGTERM, signal_handler);
-    std::signal(SIGINT, signal_handler);
-
-    std::cerr << "[axon_recorder] Initialization complete, calling run()" << std::endl;
-
-    // run() blocks until rclcpp::shutdown() is called (by signal or otherwise)
-    node.run();
-
-    std::cerr << "[axon_recorder] run() returned, calling shutdown()" << std::endl;
-
-    // Ensure shutdown is called - this writes the stats file
-    // This runs AFTER spin() returns due to SIGTERM/SIGINT
-    node.shutdown();
-
-    std::cerr << "[axon_recorder] Node destroyed" << std::endl;
-  }  // RecorderNode destructor runs here, before main() exits
-
-  std::cerr << "[axon_recorder] main() exiting normally" << std::endl;
-  return 0;
-}
