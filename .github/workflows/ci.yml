@@ -83,36 +83,4 @@ jobs:
           # Additional CMake args for release build
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
 
-  # ==========================================================================
-  # Integration Tests Job - Run integration tests after C++ tests pass
-  # ==========================================================================
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: cpp-tests
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libyaml-cpp-dev \
-            libzstd-dev \
-            liblz4-dev
-
-      - name: Run integration tests
-        run: |
-          chmod +x ros/axon_recorder/test/integration/test_rust_bridge.sh
-          # Note: The integration test script tests C FFI/Rust bridge
-          # Skip if Rust components are not present
-          if [ -d "c" ] || [ -d "rust" ]; then
-            ros/axon_recorder/test/integration/test_rust_bridge.sh || echo "Integration test skipped - Rust/C components not available"
-          else
-            echo "Skipping integration tests - Rust/C components not present in repository"
-          fi
 

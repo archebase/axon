@@ -16,19 +16,7 @@ enable_testing()
 # Integration Tests
 # ============================================================================
 # Integration tests are shell scripts that test the full system
-
-# Add integration test for Rust bridge
-add_test(
-    NAME RustBridgeIntegrationTest
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_rust_bridge.sh
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-set_tests_properties(RustBridgeIntegrationTest
-    PROPERTIES
-        TIMEOUT 60
-        LABELS "integration"
-)
+# Note: Rust bridge tests removed as the Rust/C FFI bridge is no longer used
 
 # ============================================================================
 # Performance Tests
