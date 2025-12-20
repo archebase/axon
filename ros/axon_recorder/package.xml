@@ -42,12 +42,12 @@
 
   <!-- Common dependencies -->
 
-  <!-- Member of group - MUST be direct child of <package>, NOT inside <export> -->
-  <!-- This is required for packages that generate ROS 2 service/message interfaces -->
-  <member_of_group>rosidl_interface_packages</member_of_group>
+  <!-- Member of group - Required for packages that generate ROS 2 service/message interfaces -->
+  <!-- Only applies to ROS 2 (catkin ignores this tag) -->
+  <member_of_group condition="$ROS_VERSION == 2">rosidl_interface_packages</member_of_group>
 
   <!-- Export section -->
+  <!-- build_type is omitted: catkin (ROS 1) and ament_cmake (ROS 2) infer it from buildtool_depend -->
   <export>
-    <build_type>ament_cmake</build_type>
   </export>
 </package>
