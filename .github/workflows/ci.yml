@@ -77,14 +77,9 @@ jobs:
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
-          # Install system dependencies before building
-          # These are required by axon_mcap and not available via rosdep
-          BEFORE_SCRIPT: |
-            apt-get update && apt-get install -y \
-              libyaml-cpp-dev \
-              libzstd-dev \
-              liblz4-dev \
-              pkg-config
+          # Install system dependencies required by axon_mcap (not available via rosdep)
+          # Using ADDITIONAL_DEBS instead of deprecated BEFORE_SCRIPT
+          ADDITIONAL_DEBS: libyaml-cpp-dev libzstd-dev liblz4-dev pkg-config
           # Additional CMake args for release build
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
 
