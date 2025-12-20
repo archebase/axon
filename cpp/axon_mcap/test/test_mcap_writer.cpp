@@ -299,25 +299,72 @@ TEST_F(McapWriterTest, LargeMessages) {
   options.compression = Compression::Zstd;
   options.chunk_size = 1024 * 1024; // 1MB chunks
   
-  ASSERT_TRUE(writer.open(test_file_, options));
+  // #region agent log - H1: Check compression settings
+  std::cerr << "[DEBUG-H1] Opening file: " << test_file_ << std::endl;
+  std::cerr << "[DEBUG-H1] Compression: Zstd, chunk_size: " << options.chunk_size << std::endl;
+  // #endregion
+  
+  bool open_result = writer.open(test_file_, options);
+  // #region agent log - H2: Check open result and any errors
+  std::cerr << "[DEBUG-H2] Open result: " << (open_result ? "success" : "FAILED") << std::endl;
+  std::cerr << "[DEBUG-H2] Last error after open: '" << writer.get_last_error() << "'" << std::endl;
+  // #endregion
+  ASSERT_TRUE(open_result);
   
   uint16_t schema_id = writer.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint8[] data");
   uint16_t channel_id = writer.register_channel("/camera/image", "cdr", schema_id);
+  // #region agent log - H2: Check schema/channel registration
+  std::cerr << "[DEBUG-H2] Schema ID: " << schema_id << ", Channel ID: " << channel_id << std::endl;
+  // #endregion
   
   // Simulate 1920x1080 RGB image (~6MB)
   std::vector<uint8_t> large_payload(1920 * 1080 * 3, 0x80);
   uint64_t timestamp = 1000000000ULL;
   
+  // #region agent log - H3: Log payload size
+  std::cerr << "[DEBUG-H3] Payload size: " << large_payload.size() << " bytes (" << (large_payload.size() / 1024.0 / 1024.0) << " MB)" << std::endl;
+  // #endregion
+  
   // Write several large images
+  int write_failures = 0;
   for (int i = 0; i < 10; ++i) {
     uint64_t t = timestamp + i * 33333333ULL; // ~30fps
-    EXPECT_TRUE(writer.write(channel_id, t, t, large_payload.data(), large_payload.size()));
+    bool write_result = writer.write(channel_id, t, t, large_payload.data(), large_payload.size());
+    if (!write_result) {
+      write_failures++;
+      // #region agent log - H2: Log write failures
+      std::cerr << "[DEBUG-H2] Write " << i << " FAILED! Error: " << writer.get_last_error() << std::endl;
+      // #endregion
+    }
+    EXPECT_TRUE(write_result);
   }
   
   auto stats = writer.get_statistics();
+  // #region agent log - H3/H5: Log statistics before close
+  std::cerr << "[DEBUG-H3] Stats before close: messages=" << stats.messages_written 
+            << ", bytes=" << stats.bytes_written << " (" << (stats.bytes_written / 1024.0 / 1024.0) << " MB)"
+            << ", schemas=" << stats.schemas_registered << ", channels=" << stats.channels_registered << std::endl;
+  std::cerr << "[DEBUG-H3] Write failures: " << write_failures << std::endl;
+  // #endregion
   EXPECT_EQ(stats.messages_written, 10);
   
+  // #region agent log - H5: Check file size before close
+  if (fs::exists(test_file_)) {
+    std::cerr << "[DEBUG-H5] File size BEFORE close: " << fs::file_size(test_file_) << " bytes" << std::endl;
+  } else {
+    std::cerr << "[DEBUG-H5] File does NOT exist before close!" << std::endl;
+  }
+  // #endregion
+  
   writer.close();
+  
+  // #region agent log - H5: Check file size after close
+  std::cerr << "[DEBUG-H5] File exists after close: " << (fs::exists(test_file_) ? "yes" : "NO") << std::endl;
+  if (fs::exists(test_file_)) {
+    auto final_size = fs::file_size(test_file_);
+    std::cerr << "[DEBUG-H5] File size AFTER close: " << final_size << " bytes (" << (final_size / 1024.0 / 1024.0) << " MB)" << std::endl;
+  }
+  // #endregion
   
   // File should be created with reasonable size
   EXPECT_TRUE(fs::exists(test_file_));

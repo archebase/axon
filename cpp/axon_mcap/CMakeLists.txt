@@ -29,9 +29,16 @@ endif()
 
 # Find compression libraries (optional but recommended)
 find_package(PkgConfig QUIET)
+message(STATUS "=== MCAP Compression Library Detection ===")
+message(STATUS "PkgConfig found: ${PkgConfig_FOUND}")
 if(PkgConfig_FOUND)
     pkg_check_modules(ZSTD QUIET libzstd)
     pkg_check_modules(LZ4 QUIET liblz4)
+    message(STATUS "ZSTD_FOUND: ${ZSTD_FOUND}")
+    message(STATUS "ZSTD_LIBRARIES: ${ZSTD_LIBRARIES}")
+    message(STATUS "ZSTD_INCLUDE_DIRS: ${ZSTD_INCLUDE_DIRS}")
+    message(STATUS "LZ4_FOUND: ${LZ4_FOUND}")
+    message(STATUS "LZ4_LIBRARIES: ${LZ4_LIBRARIES}")
 endif()
 
 # Create interface library for MCAP headers
