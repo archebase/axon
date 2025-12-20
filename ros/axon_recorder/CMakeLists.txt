@@ -95,28 +95,10 @@ if(COMMAND axon_add_clang_format)
 endif()
 
 # ============================================================================
-# Build MCAP Library (replaces Lance/Rust)
+# Build MCAP Library (includes config parser)
 # ============================================================================
-message(STATUS "Building with MCAP backend (replaces Lance)")
+message(STATUS "Building with MCAP backend")
 add_subdirectory(${CPP_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
-
-# ============================================================================
-# Config Parser Library (from cpp/axon_arrow - only config_parser needed)
-# ============================================================================
-# Build only the config parser from axon_arrow (no Arrow/Lance dependencies)
-set(CPP_ARROW_DIR ${PROJECT_ROOT}/cpp/axon_arrow)
-
-add_library(axon_config_parser STATIC
-    ${CPP_ARROW_DIR}/config_parser.cpp
-)
-
-target_include_directories(axon_config_parser PUBLIC
-    ${CPP_ARROW_DIR}
-)
-
-target_link_libraries(axon_config_parser PUBLIC
-    yaml-cpp
-)
 
 # ============================================================================
 # ROS 1 specific setup
@@ -156,7 +138,6 @@ if(AXON_ROS_VERSION EQUAL 1)
         src
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
-        ${CPP_ARROW_DIR}
     )
     
     # Auto-discover recorder library sources
@@ -172,7 +153,6 @@ if(AXON_ROS_VERSION EQUAL 1)
     target_link_libraries(axon_recorder_lib
         ${catkin_LIBRARIES}
         axon_mcap
-        axon_config_parser
     )
     
     # Executable
@@ -238,7 +218,6 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         src
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
-        ${CPP_ARROW_DIR}
     )
     
     # Auto-discover recorder library sources
@@ -261,7 +240,6 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     
     target_link_libraries(axon_recorder_lib
         axon_mcap
-        axon_config_parser
     )
     
     # Link compression libraries if available
@@ -295,7 +273,7 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     target_link_libraries(axon_recorder_node "${cpp_typesupport_target}")
     
     # Install
-    install(TARGETS axon_recorder_lib axon_recorder_node axon_mcap axon_config_parser
+    install(TARGETS axon_recorder_lib axon_recorder_node axon_mcap
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION lib/${PROJECT_NAME}

@@ -3,9 +3,6 @@ cmake_minimum_required(VERSION 3.15)
 # ============================================================================
 # Axon Recorder Tests
 # ============================================================================
-# Note: Core C++ library tests (arrow_builder, batch_manager, config_parser)
-# have been moved to cpp/axon_arrow/test/ and are run via cpp/Makefile.
-#
 # This CMakeLists.txt is for ROS-specific integration tests only.
 # ============================================================================
 

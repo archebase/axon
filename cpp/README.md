@@ -7,40 +7,30 @@ C++ core libraries for Axon - provides MCAP recording, configuration parsing, an
 The C++ SDK provides core functionality that is **not** ROS-specific:
 
 - **MCAP Writer** (`axon_mcap/`) - High-performance MCAP file writer with compression support
-- **Config Parser** (`axon_arrow/config_parser`) - Parse YAML configuration files
-- **Message Utilities** (`axon_arrow/`) - Message introspection and conversion utilities
+- **Config Parser** (`axon_mcap/config_parser`) - Parse YAML configuration files
 
 ## Directory Structure
 
 ```
 cpp/
-├── Makefile                              # Build system
 ├── README.md                             # This file
-├── axon_mcap/                            # MCAP recording library (NEW)
-│   ├── CMakeLists.txt                    # CMake build configuration
-│   ├── mcap_writer_wrapper.hpp           # Thread-safe MCAP writer API
-│   ├── mcap_writer_wrapper.cpp           # Implementation
-│   ├── include/mcap/                     # Foxglove MCAP header-only library
-│   └── test/
-│       └── test_mcap_writer.cpp          # MCAP writer tests
-└── axon_arrow/                           # Utility libraries (legacy Arrow code)
+└── axon_mcap/                            # MCAP recording library
     ├── CMakeLists.txt                    # CMake build configuration
-    ├── config_parser.cpp/.hpp            # YAML config parser (ACTIVE)
-    ├── message_introspection.cpp/.hpp    # Message introspection (ACTIVE)
-    ├── message_converter.cpp/.hpp        # Message conversion utilities
-    ├── batch_manager.cpp/.hpp            # Arrow batch management (DEPRECATED)
-    ├── schema_merger.cpp/.hpp            # Schema merging (DEPRECATED)
-    ├── arrow_builder.cpp/.hpp            # Arrow array builders (DEPRECATED)
-    └── test/                             # Tests
+    ├── mcap_writer_wrapper.hpp           # Thread-safe MCAP writer API
+    ├── mcap_writer_wrapper.cpp           # Implementation
+    ├── config_parser.hpp                 # YAML config parser
+    ├── config_parser.cpp                 # Config parser implementation
+    ├── include/mcap/                     # Foxglove MCAP header-only library
+    └── test/
+        └── test_mcap_writer.cpp          # MCAP writer tests
 ```
 
-## Migration from Lance to MCAP
+## MCAP Format
 
-The recorder has been migrated from Lance (columnar storage) to MCAP (append-only container).
-See [MIGRATION_LANCE_TO_MCAP.md](../MIGRATION_LANCE_TO_MCAP.md) for details.
+The recorder uses MCAP (append-only container) format for efficient storage and playback.
 
-**Key changes:**
-- No more Arrow/Lance dependencies for recording
+**Key features:**
+- No Arrow/Lance dependencies
 - Simplified data path (no schema conversion)
 - Lower CPU overhead
 - Compatible with Foxglove Studio and ROS bag tools
@@ -185,7 +175,6 @@ target_link_libraries(your_target axon_mcap)
 
 ## See Also
 
-- [Migration Guide](../MIGRATION_LANCE_TO_MCAP.md)
 - [ROS Recorder Package](../ros/axon_recorder/README.md)
 - [Main README](../README.md)
 - [MCAP Specification](https://mcap.dev/)

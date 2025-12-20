@@ -24,18 +24,18 @@ This document describes the complete, production-ready implementation of Axon by
 ### 2. High-Performance Batch Manager
 
 **Before**: Simplified array concatenation, inefficient memory usage
-**After**: Arrow Builders with zero-copy optimization
+**After**: Efficient message batching with direct MCAP serialization
 
 **Key Features**:
-- **Arrow Builders**: Use `arrow::ArrayBuilder` for efficient batch construction
-- **Memory Pool**: Configurable memory pool for memory reuse
+- **Message Queues**: Per-topic lock-free queues for efficient batching
+- **Direct Serialization**: Messages serialized directly to MCAP format
 - **Lock-free Optimizations**: Atomic counters for approximate size
-- **Efficient Appending**: `AppendArraySlice` for zero-copy when possible
+- **Efficient Batching**: Batch messages before writing to reduce I/O overhead
 - **Proper Resource Management**: RAII, move semantics
 
 **Performance Improvements**:
-- 10-100x faster batch construction
-- Reduced memory allocations
+- Reduced CPU overhead (no schema conversion)
+- Lower memory allocations
 - Better cache locality
 
 ### 3. Schema Merging System
@@ -73,10 +73,10 @@ This document describes the complete, production-ready implementation of Axon by
 ### 5. Memory Management
 
 **Improvements**:
-- **Memory Pools**: Reusable Arrow memory pools
+- **Message Buffers**: Efficient buffering for serialized messages
 - **Smart Pointers**: Proper RAII throughout
 - **Move Semantics**: Efficient resource transfer
-- **Zero-Copy**: Arrow C Data Interface for FFI
+- **Direct Storage**: Messages stored directly in MCAP format without conversion
 
 ### 6. Error Handling & Resilience
 
@@ -88,12 +88,12 @@ This document describes the complete, production-ready implementation of Axon by
 
 ## Performance Optimizations
 
-### Zero-Copy Architecture
+### Direct Serialization Architecture
 
 ```
-ROS Message → Arrow Builder → Arrow Array → C Data Interface → Rust
-     ↓              ↓              ↓              ↓            ↓
-  (copy)      (zero-copy)    (zero-copy)    (zero-copy)   (zero-copy)
+ROS Message → Serialization → MCAP Writer → Disk
+     ↓              ↓              ↓
+  (copy)      (direct)      (buffered)
 ```
 
 ### Lock-Free Optimizations
@@ -104,9 +104,9 @@ ROS Message → Arrow Builder → Arrow Array → C Data Interface → Rust
 
 ### Memory Efficiency
 
-- Arrow memory pools for reuse
-- Builder reset instead of recreation
-- Efficient array concatenation
+- Efficient message buffering
+- Reusable serialization buffers
+- Direct MCAP format storage (no intermediate conversions)
 
 ## Component Architecture
 
@@ -119,26 +119,18 @@ ROS Message → Arrow Builder → Arrow Array → C Data Interface → Rust
 └─────────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────────┐
-│              Message Conversion Layer                        │
+│              Message Serialization Layer                     │
 │  ┌──────────────────┐  ┌──────────────────────────┐        │
-│  │ Introspection    │  │ Typed Converters         │        │
-│  │ (Dynamic)        │  │ (Optimized)              │        │
+│  │ Message Factory  │  │ Serialization           │        │
+│  │ (Dynamic)        │  │ (ROS format)             │        │
 │  └──────────────────┘  └──────────────────────────┘        │
 └─────────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────────┐
-│              Batch Management Layer                          │
+│                  MCAP Writer Layer                           │
 │  ┌──────────────────┐  ┌──────────────────────────┐        │
-│  │ BatchManager     │  │ SchemaMerger             │        │
-│  │ (Arrow Builders) │  │ (Multi-topic)            │        │
-│  └──────────────────┘  └──────────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│                  FFI Bridge Layer                            │
-│  ┌──────────────────┐  ┌──────────────────────────┐        │
-│  │ C++ Wrapper      │  │ Rust Bridge              │        │
-│  │ (LanceWriter)    │  │ (Lance Dataset)          │        │
+│  │ MCAP Writer      │  │ Compression             │        │
+│  │ (Thread-safe)    │  │ (Zstd/LZ4)              │        │
 │  └──────────────────┘  └──────────────────────────┘        │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -146,38 +138,38 @@ ROS Message → Arrow Builder → Arrow Array → C Data Interface → Rust
 ## Data Flow
 
 1. **Message Reception**: ROS callback receives message
-2. **Conversion**: MessageConverter converts to Arrow arrays
-3. **Batching**: BatchManager accumulates using Arrow Builders
-4. **Flush**: When batch size/interval reached, create RecordBatch
-5. **Async Write**: Background thread writes via FFI to Rust
-6. **Lance Storage**: Rust writes to Lance dataset
+2. **Serialization**: Message is serialized to ROS message format
+3. **Batching**: Messages are queued for batch writing
+4. **Flush**: When batch size/interval reached, write to MCAP
+5. **Async Write**: Background thread writes to MCAP file
+6. **MCAP Storage**: Messages written to MCAP file on disk
 
 ## Threading Model
 
-- **Main Thread**: ROS callbacks, message conversion
-- **Writer Thread**: Async batch writing (per BatchManager)
-- **Lock Strategy**: Minimal locking, atomic where possible
+- **Main Thread**: ROS callbacks, message serialization
+- **Writer Thread**: Async MCAP file writing
+- **Lock Strategy**: Minimal locking, thread-safe MCAP writer
 
 ## Memory Model
 
-- **Arrow Memory Pool**: Shared or per-topic pools
-- **Builder Reuse**: Reset builders instead of recreation
-- **Zero-Copy**: Arrow handles zero-copy internally when possible
+- **Message Queues**: Per-topic queues for batching
+- **MCAP Buffers**: Efficient buffering for file writes
+- **Compression**: Optional compression (Zstd/LZ4) reduces disk I/O
 
 ## Future Enhancements
 
-1. **Compression**: Arrow compression support
-2. **Partitioning**: Time-based or topic-based partitioning
-3. **Indexing**: Secondary indices for fast queries
-4. **Streaming**: Real-time streaming to Lance
-5. **Metrics**: Performance metrics and monitoring
+1. **Advanced Compression**: Per-topic compression settings
+2. **Indexing**: Fast topic/time-based queries
+3. **Streaming**: Real-time streaming to remote storage
+4. **Metrics**: Performance metrics and monitoring
+5. **Multi-file**: Automatic file rotation for long recordings
 
 ## Migration Notes
 
-All simplified implementations have been replaced:
-- ✅ BatchManager: Now uses Arrow Builders
-- ✅ MessageConverter: Full introspection support
+The system has been migrated from Lance/Arrow to MCAP:
+- ✅ MCAP Writer: Thread-safe MCAP file writing
+- ✅ Message Serialization: Direct ROS message serialization
 - ✅ ROS Interfaces: Complete subscription/service implementation
-- ✅ Schema Management: Full merging support
+- ✅ Configuration: YAML-based configuration parsing
 - ✅ Error Handling: Comprehensive throughout
 

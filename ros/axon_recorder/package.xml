@@ -5,7 +5,7 @@
   <version>0.1.0</version>
   <description>
     Axon data recorder for ROS.
-    Records ROS topic data to Lance format for efficient storage and analytics.
+    Records ROS topic data to MCAP format for efficient storage and playback.
     Supports both ROS 1 (Noetic) and ROS 2 (Humble/Jazzy/Rolling).
   </description>
   
@@ -41,7 +41,6 @@
   <exec_depend condition="$ROS_VERSION == 2">rosidl_default_runtime</exec_depend>
 
   <!-- Common dependencies -->
-  <depend>arrow</depend>
 
   <!-- Member of group - MUST be direct child of <package>, NOT inside <export> -->
   <!-- This is required for packages that generate ROS 2 service/message interfaces -->

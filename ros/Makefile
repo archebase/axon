@@ -162,10 +162,16 @@ cpp-build:
 		$(MAKE) cpp-build-ros2; \
 	fi
 
-# C++ tests (core library tests are now in cpp/axon_arrow/test/)
+# C++ tests
 cpp-test:
-	@printf "%s\n" "$(YELLOW)Running core C++ library tests...$(NC)"
-	@cd $(PROJECT_ROOT)/cpp && $(MAKE) test
+	@printf "%s\n" "$(YELLOW)Running C++ library tests...$(NC)"
+	@if [ -d "$(PROJECT_ROOT)/cpp/axon_mcap" ]; then \
+		cd $(PROJECT_ROOT)/cpp/axon_mcap && \
+		mkdir -p build && cd build && \
+		cmake .. -DAXON_MCAP_BUILD_TESTS=ON && \
+		cmake --build . && \
+		ctest --output-on-failure; \
+	fi
 	@printf "%s\n" "$(GREEN)✓ C++ tests passed$(NC)"
 
 # ROS integration tests

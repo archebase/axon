@@ -1,5 +1,5 @@
 # zstd-config.cmake - Config file for zstd library using pkg-config
-# This suppresses Arrow's "zstdConfig.cmake not found" warning
+# Provides zstd library configuration for MCAP compression
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)

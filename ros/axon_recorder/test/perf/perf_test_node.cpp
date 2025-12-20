@@ -424,7 +424,7 @@ struct PerformanceResults {
     out << kv_row("Sent by Publisher:", std::to_string(messages_sent));
     out << kv_row("Received by Recorder:", std::to_string(messages_received));
     out << kv_row("Dropped (queue full):", std::to_string(messages_dropped));
-    out << kv_row("Written to Lance:", std::to_string(messages_written));
+    out << kv_row("Written to MCAP:", std::to_string(messages_written));
 
     std::ostringstream drop_val;
     drop_val << std::fixed << std::setprecision(2) << drop_rate_percent << "%";

@@ -1,5 +1,5 @@
 # lz4-config.cmake - Config file for lz4 library using pkg-config
-# This suppresses Arrow's "lz4Config.cmake not found" warning
+# Provides lz4 library configuration for MCAP compression
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)

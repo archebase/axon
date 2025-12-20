@@ -3,7 +3,7 @@
   <!-- This launch file works for ROS 1 (Noetic) -->
   
   <arg name="config_path" default="$(find axon_recorder)/config/default_config.yaml" />
-  <arg name="dataset_path" default="/data/recordings/dataset.lance" />
+  <arg name="dataset_path" default="/data/recordings/dataset.mcap" />
   <arg name="auto_start" default="true" />
   
   <node name="axon_recorder" pkg="axon_recorder" type="axon_recorder_node" output="screen">

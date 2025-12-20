@@ -2,29 +2,6 @@
 
 ## Common Issues
 
-### Apache Arrow Package Not Found
-
-**Symptom:**
-```
-E: Unable to locate package libarrow-dev
-E: Unable to locate package libarrow-glib-dev
-E: Unable to locate package libparquet-dev
-```
-
-**Root Cause:**
-- Apache Arrow packages are not in default Ubuntu repositories
-- Need to add Apache Arrow official PPA
-
-**Solution:**
-- Already fixed in Dockerfiles - they automatically add Apache Arrow PPA
-- If building manually, add the PPA:
-  ```bash
-  curl -fsSL https://apache.jfrog.io/artifactory/arrow/ubuntu/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb -o /tmp/apache-arrow-apt-source.deb
-  sudo apt-get install -y /tmp/apache-arrow-apt-source.deb
-  sudo apt-get update
-  sudo apt-get install -y libarrow-dev libarrow-glib-dev libparquet-dev
-  ```
-
 ### 403 Forbidden Error
 
 **Symptom:**
@@ -101,29 +78,8 @@ to https://docker.m.daocloud.io/...: 403 Forbidden
 - Verify Rust installation in Dockerfile
 
 **CMake errors:**
-- Ensure Arrow and yaml-cpp are installed
+- Ensure yaml-cpp is installed
 - Check ROS environment is sourced correctly
-
-### Rust Compilation Errors
-
-**Symptom:**
-```
-error[E0034]: multiple applicable items in scope
-arrow-arith-37.0.0/src/temporal.rs:261:47
-```
-
-**Root Cause:**
-- Arrow 50 has compatibility issues with `arrow-arith` and chrono versions
-- Method name conflicts between `Datelike` and `ChronoDateExt` traits
-
-**Solution:**
-- Already fixed in `Cargo.toml` - using arrow 49 instead of 50
-- If issues persist, try:
-  ```bash
-  cd src/bridge
-  cargo update
-  cargo build --release
-  ```
 
 ### Network Issues
 

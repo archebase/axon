@@ -23,29 +23,12 @@ RUN apt-get update && apt-get install -y \
 # Initialize rosdep
 RUN rosdep init || true && rosdep update
 
-# Add Apache Arrow official APT repository for Ubuntu 20.04 (Focal)
-RUN wget https://packages.apache.org/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb -O /tmp/apache-arrow-apt-source.deb && \
-    apt-get install -y -V /tmp/apache-arrow-apt-source.deb && \
-    rm /tmp/apache-arrow-apt-source.deb && \
-    apt-get update
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install Apache Arrow C++ (development) from official repository
-RUN apt-get update && apt-get install -y -V \
-    libarrow-dev \
-    libarrow-glib-dev \
-    libparquet-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install yaml-cpp
 RUN apt-get update && apt-get install -y \
     libyaml-cpp-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install compression libraries (required for Arrow compression codecs)
+# Install compression libraries (required for MCAP compression)
 # These are needed for LZ4, ZSTD compression and reduce recording data size significantly
 RUN apt-get update && apt-get install -y \
     liblz4-dev \

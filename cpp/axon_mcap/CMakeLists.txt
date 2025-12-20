@@ -5,6 +5,25 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # =============================================================================
+# Dependencies
+# =============================================================================
+
+# Find yaml-cpp for config parser
+if(APPLE)
+    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew" "/usr/local")
+elseif(UNIX)
+    list(APPEND CMAKE_PREFIX_PATH "/usr" "/usr/local")
+endif()
+find_package(yaml-cpp REQUIRED)
+
+# Handle both old and new cmake target names for yaml-cpp
+if(TARGET yaml-cpp::yaml-cpp)
+    set(YAML_CPP_TARGET yaml-cpp::yaml-cpp)
+else()
+    set(YAML_CPP_TARGET yaml-cpp)
+endif()
+
+# =============================================================================
 # MCAP Library (Header-only from Foxglove)
 # =============================================================================
 
@@ -38,11 +57,12 @@ if(LZ4_FOUND)
 endif()
 
 # =============================================================================
-# MCAP Writer Wrapper Library
+# MCAP Writer Wrapper Library (includes config parser)
 # =============================================================================
 
 add_library(axon_mcap
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_writer_wrapper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/config_parser.cpp
 )
 
 target_include_directories(axon_mcap PUBLIC
@@ -53,6 +73,7 @@ target_include_directories(axon_mcap PUBLIC
 
 target_link_libraries(axon_mcap PUBLIC
     mcap_headers
+    ${YAML_CPP_TARGET}
 )
 
 # Link compression libraries if available

@@ -150,36 +150,10 @@ cd /workspace/axon
 if [ "$SKIP_BUILD" = false ]; then
     echo ""
     echo "============================================"
-    echo "Building Rust Lance bridge library..."
-    echo "============================================"
-    
-    # Build the Rust C FFI library first (required by axon_recorder)
-    # Note: Cargo workspace outputs to /workspace/axon/target/, not /workspace/axon/c/target/
-    cd /workspace/axon
-    
-    echo "Building with cargo..."
-    cargo build --release -p axon-lance-ffi 2>&1
-    BUILD_EXIT=$?
-    
-    # Verify the library was created (workspace outputs to root target/)
-    if [ -f "target/release/liblance_writer_bridge.so" ]; then
-        echo "✓ Built Rust Lance bridge library"
-        # ls -la target/release/liblance_writer_bridge*
-    else
-        echo "ERROR: Rust library not found after build"
-        echo "Cargo exit code: $BUILD_EXIT"
-        echo "Contents of target/release/:"
-        ls -la target/release/ 2>/dev/null || echo "Directory does not exist"
-        exit 1
-    fi
-    
-    echo ""
-    echo "============================================"
     echo "Building axon_recorder package..."
     echo "============================================"
     
     # Build in the axon/ros directory to preserve relative paths in CMakeLists.txt
-    # The CMakeLists.txt uses paths like ../../cpp/axon_arrow which need the full repo structure
     cd /workspace/axon/ros
     
     if [ "${ROS_VERSION}" = "2" ]; then
@@ -775,7 +749,7 @@ if [ "$ASAN_ENABLED" = true ]; then
             echo "✓ No ASAN errors detected in this run."
             echo ""
             echo "Note: If you saw 'double free' in the output but ASAN didn't report it,"
-            echo "the error may be in a library not compiled with ASAN (e.g., Arrow, ROS2)."
+            echo "the error may be in a library not compiled with ASAN (e.g., ROS2)."
             echo ""
             echo "Full log: $ASAN_LOG"
         fi

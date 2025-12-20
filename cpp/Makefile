@@ -1,5 +1,5 @@
-# Makefile for Axon C++ SDK (axon_arrow)
-# Core library providing Arrow builders, batch management, and message conversion
+# Makefile for Axon C++ SDK (axon_mcap)
+# Core library providing MCAP writer and configuration parsing
 
 .PHONY: all build test clean install help debug release format lint check-deps dev-setup verify coverage coverage-html
 
@@ -39,7 +39,7 @@ endif
 # Help target
 help:
 	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
-	@printf "%s\n" "$(GREEN)║     Axon C++ SDK (axon_arrow) - Build System             ║$(NC)"
+	@printf "%s\n" "$(GREEN)║     Axon C++ SDK (axon_mcap) - Build System              ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Available targets:$(NC)"
@@ -70,12 +70,12 @@ help:
 all: build
 
 build:
-	@printf "%s\n" "$(YELLOW)Building axon_arrow library...$(NC)"
+	@printf "%s\n" "$(YELLOW)Building axon_mcap library...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
-		cmake ../axon_arrow \
+		cmake ../axon_mcap \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_ARROW_BUILD_TESTS=ON \
+			-DAXON_MCAP_BUILD_TESTS=ON \
 			$(CMAKE_OPTIONS) && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ Build complete$(NC)"
@@ -102,7 +102,7 @@ clean:
 
 # Install the library
 install: build
-	@printf "%s\n" "$(YELLOW)Installing axon_arrow library...$(NC)"
+	@printf "%s\n" "$(YELLOW)Installing axon_mcap library...$(NC)"
 	@cd $(BUILD_DIR) && cmake --install .
 	@printf "%s\n" "$(GREEN)✓ Library installed$(NC)"
 
@@ -110,7 +110,7 @@ install: build
 format:
 	@printf "%s\n" "$(YELLOW)Formatting C++ code...$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
-		find axon_arrow -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i; \
+		find axon_mcap -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i; \
 		printf "%s\n" "$(GREEN)✓ Code formatted$(NC)"; \
 	else \
 		printf "%s\n" "$(RED)Error: clang-format not found$(NC)"; \
@@ -122,7 +122,7 @@ lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
 		cppcheck --enable=all --suppress=missingIncludeSystem \
-			--error-exitcode=1 axon_arrow/; \
+			--error-exitcode=1 axon_mcap/; \
 		printf "%s\n" "$(GREEN)✓ Linting passed$(NC)"; \
 	else \
 		printf "%s\n" "$(RED)Error: cppcheck not found$(NC)"; \
@@ -133,7 +133,6 @@ lint:
 check-deps:
 	@printf "%s\n" "$(YELLOW)Checking dependencies...$(NC)"
 	@command -v cmake >/dev/null 2>&1 || { printf "%s\n" "$(RED)Error: cmake not found$(NC)"; exit 1; }
-	@pkg-config --exists arrow || { printf "%s\n" "$(RED)Error: Apache Arrow not found$(NC)"; exit 1; }
 	@pkg-config --exists yaml-cpp || { printf "%s\n" "$(RED)Error: yaml-cpp not found$(NC)"; exit 1; }
 	@printf "%s\n" "$(GREEN)✓ All dependencies found$(NC)"
 
@@ -168,10 +167,10 @@ coverage:
 	@rm -rf $(BUILD_DIR)
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
-		cmake ../axon_arrow \
+		cmake ../axon_mcap \
 			-DCMAKE_BUILD_TYPE=Debug \
-			-DAXON_ARROW_BUILD_TESTS=ON \
-			-DAXON_ARROW_ENABLE_COVERAGE=ON \
+			-DAXON_MCAP_BUILD_TESTS=ON \
+			-DAXON_MCAP_ENABLE_COVERAGE=ON \
 			$(CMAKE_OPTIONS) && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"

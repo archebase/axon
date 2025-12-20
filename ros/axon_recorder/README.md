@@ -1,17 +1,16 @@
 # Axon Recorder
 
-ROS data recorder that captures topic data and writes to Lance format.
+ROS data recorder that captures topic data and writes to MCAP format.
 
 ## Overview
 
-`axon_recorder` is a unified ROS package that works with both ROS 1 (Noetic) and ROS 2 (Humble/Jazzy/Rolling). It subscribes to configured topics, converts messages to Arrow format, and writes data to Lance datasets for efficient storage and analytics.
+`axon_recorder` is a unified ROS package that works with both ROS 1 (Noetic) and ROS 2 (Humble/Jazzy/Rolling). It subscribes to configured topics and writes data to MCAP files for efficient storage and playback.
 
 ## Features
 
 - **Unified codebase**: Single package supports both ROS 1 and ROS 2
 - **Compile-time ROS selection**: Uses preprocessor macros (`AXON_ROS1`/`AXON_ROS2`) for version-specific code
-- **Arrow-based serialization**: Efficient columnar data format
-- **Lance storage**: Optimized for ML/analytics workloads
+- **MCAP format**: Efficient append-only container format compatible with Foxglove Studio
 - **Configurable batching**: Control batch sizes and flush intervals per topic
 - **Service interface**: Start/stop recording, update config at runtime
 
@@ -66,7 +65,7 @@ With custom parameters:
 ```bash
 roslaunch axon_recorder recorder.launch \
     config_path:=/path/to/config.yaml \
-    dataset_path:=/data/my_dataset.lance \
+    dataset_path:=/data/my_dataset.mcap \
     auto_start:=false
 ```
 
@@ -81,7 +80,7 @@ With custom parameters:
 ```bash
 ros2 launch axon_recorder recorder.launch.xml \
     config_path:=/path/to/config.yaml \
-    dataset_path:=/data/my_dataset.lance \
+    dataset_path:=/data/my_dataset.mcap \
     auto_start:=false
 ```
 
@@ -91,7 +90,7 @@ See `config/default_config.yaml` for configuration options:
 
 ```yaml
 dataset:
-  path: /data/recordings/dataset.lance
+  path: /data/recordings/dataset.mcap
 
 topics:
   - name: /camera/image_raw
@@ -120,9 +119,8 @@ The recorder uses a layered architecture:
 
 1. **RosInterface**: Abstract interface for ROS operations, with ROS 1 and ROS 2 implementations selected at compile time
 2. **MessageFactory**: Creates and deserializes typed messages dynamically
-3. **MessageRegistry**: Maps message types to Arrow converters
-4. **BatchManager**: Accumulates rows and flushes to Lance when thresholds are met
-5. **Lance Bridge**: C FFI bridge to Rust Lance writer
+3. **MessageRegistry**: Maps message types to serialization handlers
+4. **MCAP Writer**: Thread-safe MCAP file writer with compression support
 
 ## Compile-Time ROS Selection
 

@@ -3,7 +3,7 @@
 <launch>
   <!-- Launch arguments -->
   <arg name="config_path" default="config/default_config.yaml" description="Path to YAML configuration file"/>
-  <arg name="dataset_path" default="/data/recordings/dataset.lance" description="Path to Lance dataset"/>
+  <arg name="dataset_path" default="/data/recordings/dataset.mcap" description="Path to MCAP file"/>
   <arg name="auto_start" default="true" description="Automatically start recording on launch"/>
 
   <!-- Recorder node -->

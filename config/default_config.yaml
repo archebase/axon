@@ -1,5 +1,5 @@
 dataset:
-  path: "/data/recordings/dataset.lance"
+  path: "/data/recordings/dataset.mcap"
   mode: "append"  # or "create"
 
 topics:

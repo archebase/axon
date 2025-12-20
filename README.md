@@ -1,26 +1,25 @@
 # Axon
 
-A high-performance ROS recorder by ArcheBase that writes data to Lance format using a C++/Rust FFI bridge. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling).
+A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling).
 
 ## Architecture
 
-The system uses a three-layer architecture:
+The system uses a layered architecture:
 
-- **Rust Layer**: Lance dataset writing via C FFI interface
-- **C++ Core Layer**: Arrow builders, message conversion, batch management
+- **C++ Core Layer**: MCAP writer, message serialization, configuration parsing
 - **ROS Abstraction Layer**: ROS 1/2 compatibility with unified interface
 
 ```
-ROS Messages → C++ Arrow Builders → C FFI → Rust Lance Writer → Disk
-     ↓              ↓                    ↓
-  YAML Config   Batch Queue      Async Write Thread
-     ↓              ↓
-  ROS Service  Status/Control
+ROS Messages → Message Serialization → MCAP Writer → Disk
+     ↓                    ↓                  ↓
+  YAML Config        Batch Queue      Async Write Thread
+     ↓                    ↓
+  ROS Service      Status/Control
 ```
 
 ## Features
 
-- **Zero-Copy Data Transfer**: Uses Apache Arrow C Data Interface for efficient data transfer between C++ and Rust
+- **MCAP Format**: Efficient append-only container format compatible with Foxglove Studio
 - **Asynchronous Writes**: Background thread prevents blocking ROS callbacks
 - **Multi-ROS Support**: Compatible with ROS 1 Noetic and ROS 2 Humble/Jazzy/Rolling
 - **All Message Types**: Dynamically handles all ROS message types via introspection
@@ -32,9 +31,9 @@ ROS Messages → C++ Arrow Builders → C FFI → Rust Lance Writer → Disk
 ### System Dependencies
 
 - CMake 3.15+
-- Rust toolchain (cargo)
-- Apache Arrow C++ (libarrow-dev)
 - yaml-cpp (libyaml-cpp-dev)
+- zstd (optional, for compression)
+- lz4 (optional, for compression)
 
 ### ROS Dependencies
 
@@ -116,10 +115,8 @@ source install/setup.bash
 ### Makefile Targets
 
 **Local Build:**
-- `make build` - Build Rust library and C++ code
-- `make test` - Run all tests (Rust + C++)
-- `make rust-build` - Build only Rust library
-- `make rust-test` - Run only Rust tests
+- `make build` - Build C++ code
+- `make test` - Run all tests
 - `make cpp-build` - Build only C++ code
 - `make cpp-test` - Run only C++ tests
 - `make clean` - Clean all build artifacts
@@ -173,7 +170,7 @@ Create a YAML configuration file (see `config/default_config.yaml` for example):
 
 ```yaml
 dataset:
-  path: "/data/recordings/dataset.lance"
+  path: "/data/recordings/dataset.mcap"
   mode: "append"  # or "create"
 
 topics:
@@ -296,91 +293,71 @@ docker-compose exec ros1-noetic /bin/bash
 
 - **Batch Size**: Larger batch sizes improve write throughput but increase memory usage
 - **Flush Interval**: Shorter intervals reduce data loss risk but may impact performance
-- **Zero-Copy**: The Arrow C Data Interface enables zero-copy transfer between C++ and Rust
+- **Direct Serialization**: MCAP format stores ROS messages directly without conversion overhead
 - **Async Writes**: Background writer thread prevents blocking ROS callbacks
 
 ## Project Structure
 
 ```
 axon/
-├── c/                   # C SDK - FFI bridge (Rust → C)
-│   ├── src/             # Rust source (generates C FFI)
-│   └── ffi/             # C wrapper code
 ├── cpp/                 # C++ SDK - Core library
-│   └── src/core/        # Arrow builders, batch management
+│   └── axon_mcap/       # MCAP writer and utilities
 ├── ros/                 # ROS packages
-│   ├── axon_common/     # Shared ROS utilities
-│   ├── axon_ros1/       # ROS1 recorder
-│   └── axon_ros2/       # ROS2 recorder
-├── python/              # Python SDK
-│   ├── axon/            # Core Python package
-│   └── axon_dagster/    # Dagster integration
-├── schemas/             # Schema definitions
-├── examples/            # Example code
+│   └── axon_recorder/   # Unified ROS 1/2 recorder
 ├── config/              # Configuration files
-├── launch/              # ROS launch files
-├── docker/              # Docker images
-└── docs/                # Documentation
+├── docs/                # Documentation
+└── ros/docker/          # Docker images and test scripts
 ```
 
 ## Testing
 
-The project includes a comprehensive test suite covering Rust and C++ components.
+The project includes a comprehensive test suite covering C++ components.
 
 ### Running Tests
 
-**C FFI Tests (Rust):**
-```bash
-cd c
-cargo test
-```
-
 **C++ Tests:**
 ```bash
-mkdir -p build
-cd build
-cmake ../test
-make
+cd cpp/axon_mcap
+mkdir -p build && cd build
+cmake .. -DAXON_MCAP_BUILD_TESTS=ON
+cmake --build .
 ctest --output-on-failure
 ```
 
-**All Tests:**
+**ROS Integration Tests:**
 ```bash
-# Run C FFI tests
-cd c && cargo test && cd ..
-
-# Build and run C++ tests
-mkdir -p build && cd build
-cmake ../test && make && ctest --output-on-failure
+cd ros
+make test
 ```
 
 ### Test Coverage
 
-- ✅ Rust bridge library (FFI functions, error handling, dataset operations)
-- ✅ Configuration parser (YAML loading, validation, saving)
-- ✅ Batch manager (batch collection, flushing, async writes)
-- ✅ Arrow builder (type-specific builders, reset functionality)
+- ✅ MCAP writer (file operations, compression, thread safety)
+- ✅ Configuration parser (YAML loading, validation)
+- ✅ ROS integration (message handling, service interface)
 
-See `test/README.md` for more details on the test suite.
+See `ros/axon_recorder/test/README.md` for more details on the test suite.
 
 ## Troubleshooting
 
-### Rust Library Not Found
+### MCAP Library Not Found
 
-Ensure the C FFI library is built before compiling C++ code:
+Ensure the MCAP library is built before compiling ROS packages:
 
 ```bash
-cd c
-cargo build --release
+cd cpp/axon_mcap
+mkdir -p build && cd build
+cmake ..
+cmake --build .
 ```
 
-### Arrow Library Not Found
+### Dependencies Not Found
 
-Install Apache Arrow C++ development packages:
+Install required development packages:
 
 ```bash
 # Ubuntu/Debian
-sudo apt-get install libarrow-dev libarrow-glib-dev
+sudo apt-get install libyaml-cpp-dev libzstd-dev liblz4-dev
 ```
 
 ### Message Type Not Supported

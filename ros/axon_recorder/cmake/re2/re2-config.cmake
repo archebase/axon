@@ -1,5 +1,5 @@
 # re2-config.cmake - Config file for re2 library using pkg-config
-# This suppresses Arrow's "re2Config.cmake not found" warning
+# Provides re2 library configuration for MCAP compression
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
