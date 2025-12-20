@@ -114,12 +114,13 @@ if(AXON_ROS_VERSION EQUAL 1)
     )
     
     # Generate service messages
+    # Note: add_service_files looks in srv/ directory by default
     add_service_files(
         FILES
-        srv/StartRecording.srv
-        srv/StopRecording.srv
-        srv/UpdateConfig.srv
-        srv/GetStatus.srv
+        StartRecording.srv
+        StopRecording.srv
+        UpdateConfig.srv
+        GetStatus.srv
     )
     
     generate_messages(
