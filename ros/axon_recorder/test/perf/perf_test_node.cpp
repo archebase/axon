@@ -24,6 +24,7 @@
 #include <iostream>
 #include <sstream>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #if defined(AXON_ROS2)
