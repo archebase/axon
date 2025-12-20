@@ -149,9 +149,6 @@ public:
     std::lock_guard<std::mutex> lock(write_mutex_);
 
     if (!is_open_.load(std::memory_order_acquire)) {
-      // #region agent log - H2
-      std::cerr << "[DEBUG-WRITER-H2] Write failed: writer not open" << std::endl;
-      // #endregion
       return false;
     }
 
@@ -166,9 +163,6 @@ public:
     auto status = writer_.write(msg);
     if (!status.ok()) {
       last_error_ = "Failed to write message: " + status.message;
-      // #region agent log - H2
-      std::cerr << "[DEBUG-WRITER-H2] Write failed with status: " << status.message << std::endl;
-      // #endregion
       return false;
     }
 
