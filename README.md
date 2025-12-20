@@ -166,7 +166,7 @@ Docker containers include:
 
 ## Configuration
 
-Create a YAML configuration file (see `config/default_config.yaml` for example):
+Create a YAML configuration file (see `ros/axon_recorder/config/default_config.yaml` for example):
 
 ```yaml
 dataset:
