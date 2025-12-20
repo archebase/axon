@@ -41,19 +41,26 @@ target_include_directories(mcap_headers INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
-# Add compression support if available
+# Configure compression support
+# The MCAP library uses MCAP_COMPRESSION_NO_ZSTD and MCAP_COMPRESSION_NO_LZ4
+# to DISABLE compression. By default, compression is enabled, so we need to
+# define these macros when the libraries are NOT available.
 if(ZSTD_FOUND)
-    target_compile_definitions(mcap_headers INTERFACE MCAP_COMPRESSION_ZSTD)
     target_link_libraries(mcap_headers INTERFACE ${ZSTD_LIBRARIES})
     target_include_directories(mcap_headers INTERFACE ${ZSTD_INCLUDE_DIRS})
     message(STATUS "MCAP: Zstd compression enabled")
+else()
+    target_compile_definitions(mcap_headers INTERFACE MCAP_COMPRESSION_NO_ZSTD)
+    message(STATUS "MCAP: Zstd compression disabled (libzstd not found)")
 endif()
 
 if(LZ4_FOUND)
-    target_compile_definitions(mcap_headers INTERFACE MCAP_COMPRESSION_LZ4)
     target_link_libraries(mcap_headers INTERFACE ${LZ4_LIBRARIES})
     target_include_directories(mcap_headers INTERFACE ${LZ4_INCLUDE_DIRS})
     message(STATUS "MCAP: LZ4 compression enabled")
+else()
+    target_compile_definitions(mcap_headers INTERFACE MCAP_COMPRESSION_NO_LZ4)
+    message(STATUS "MCAP: LZ4 compression disabled (liblz4 not found)")
 endif()
 
 # =============================================================================
