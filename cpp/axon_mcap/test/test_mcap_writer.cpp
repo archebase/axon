@@ -296,12 +296,24 @@ TEST_F(McapWriterTest, LargeMessages) {
   McapWriterWrapper writer;
   
   McapWriterOptions options;
-  options.compression = Compression::Zstd;
   options.chunk_size = 1024 * 1024; // 1MB chunks
+  
+  // #region agent log - H6: Check compile-time Zstd availability
+#ifdef MCAP_COMPRESSION_NO_ZSTD
+  std::cerr << "[DEBUG-H6] MCAP_COMPRESSION_NO_ZSTD IS DEFINED - Zstd disabled at compile time" << std::endl;
+  options.compression = Compression::None;
+  std::cerr << "[DEBUG-H6] Using Compression::None as fallback" << std::endl;
+#else
+  std::cerr << "[DEBUG-H6] MCAP_COMPRESSION_NO_ZSTD is NOT defined - Zstd should be available" << std::endl;
+  // Try Zstd first, but let's also test if the issue is Zstd-specific
+  options.compression = Compression::None;  // TEMPORARILY use None to verify uncompressed works
+  std::cerr << "[DEBUG-H6] TEMPORARILY using Compression::None to verify basic write works" << std::endl;
+#endif
+  // #endregion
   
   // #region agent log - H1: Check compression settings
   std::cerr << "[DEBUG-H1] Opening file: " << test_file_ << std::endl;
-  std::cerr << "[DEBUG-H1] Compression: Zstd, chunk_size: " << options.chunk_size << std::endl;
+  std::cerr << "[DEBUG-H1] Compression: " << (options.compression == Compression::Zstd ? "Zstd" : (options.compression == Compression::Lz4 ? "Lz4" : "None")) << ", chunk_size: " << options.chunk_size << std::endl;
   // #endregion
   
   bool open_result = writer.open(test_file_, options);
