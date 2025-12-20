@@ -106,6 +106,7 @@ add_subdirectory(${CPP_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
 if(AXON_ROS_VERSION EQUAL 1)
     find_package(catkin REQUIRED COMPONENTS
         roscpp
+        roslib
         std_msgs
         sensor_msgs
         nav_msgs
@@ -132,7 +133,7 @@ if(AXON_ROS_VERSION EQUAL 1)
     catkin_package(
         INCLUDE_DIRS src
         LIBRARIES axon_recorder_lib
-        CATKIN_DEPENDS roscpp std_msgs sensor_msgs nav_msgs geometry_msgs topic_tools message_runtime
+        CATKIN_DEPENDS roscpp roslib std_msgs sensor_msgs nav_msgs geometry_msgs topic_tools message_runtime
     )
     
     include_directories(
