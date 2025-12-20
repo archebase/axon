@@ -1,0 +1,67 @@
+FROM ros:noetic-ros-base
+
+# Install system dependencies and ROS build tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    curl \
+    git \
+    libgtest-dev \
+    libgmock-dev \
+    python3-catkin-tools \
+    python3-rosdep \
+    python3-rosinstall \
+    python3-rosinstall-generator \
+    python3-wstool \
+    wget \
+    ca-certificates \
+    lsb-release \
+    clang-format \
+    && rm -rf /var/lib/apt/lists/*
+
+# Initialize rosdep
+RUN rosdep init || true && rosdep update
+
+# Install yaml-cpp
+RUN apt-get update && apt-get install -y \
+    libyaml-cpp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install compression libraries (required for MCAP compression)
+# These are needed for LZ4, ZSTD compression and reduce recording data size significantly
+RUN apt-get update && apt-get install -y \
+    liblz4-dev \
+    libzstd-dev \
+    libre2-dev \
+    libturbojpeg0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy test scripts first (for better Docker layer caching)
+COPY ros/docker/scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh
+
+# Build GTest (required for some systems)
+# GTest may be in different locations depending on Ubuntu version
+RUN if [ -d /usr/src/googletest ]; then \
+        cd /usr/src/googletest && \
+        mkdir -p build && cd build && \
+        cmake .. && make && \
+        cp lib/*.a /usr/lib/ || cp lib/libgtest*.a /usr/lib/; \
+    elif [ -d /usr/src/gtest ]; then \
+        cd /usr/src/gtest && \
+        cmake . && make && \
+        cp *.a /usr/lib/ 2>/dev/null || cp lib/*.a /usr/lib/; \
+    else \
+        echo "GTest source not found, using system package"; \
+    fi
+
+# Source setup script
+RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc
+
+# Note: Source code is mounted as volume at runtime
+# Note: Build happens at runtime, not during image build, for better caching
+CMD ["/bin/bash"]

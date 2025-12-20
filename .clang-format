@@ -1,0 +1,37 @@
+---
+Language: Cpp
+Standard: Latest
+BasedOnStyle: Google
+
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: Empty
+AlignAfterOpenBracket: BlockIndent
+AlignEscapedNewlines: DontAlign
+AccessModifierOffset: -2
+TabWidth: 2
+ContinuationIndentWidth: 2
+UseTab: Never
+BinPackArguments: false
+BreakConstructorInitializers: BeforeComma
+ColumnLimit: 100
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+DerivePointerAlignment: false
+FixNamespaceComments: true
+PointerAlignment: Left
+ReflowComments: true
+SortIncludes: true
+SpaceAfterTemplateKeyword: false
+
+IncludeCategories:
+  - Regex: "^<axon"
+    Priority: 1
+    SortPriority: 0
+  - Regex: "^<.*/"
+    Priority: 2
+    SortPriority: 0
+  - Regex: "^<.*"
+    Priority: 3
+    SortPriority: 0
+  - Regex: ".*"
+    Priority: 4
+    SortPriority: 0

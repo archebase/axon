@@ -1,0 +1,96 @@
+name: Publish Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish-rust:
+    name: Publish Rust Crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Publish to crates.io
+        run: |
+          cd rust
+          cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        env:
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+
+  publish-python:
+    name: Publish Python Packages
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [axon, axon-dagster]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+      
+      - name: Build package
+        run: |
+          if [ "${{ matrix.package }}" == "axon" ]; then
+            cd python
+          else
+            cd python/axon_dagster
+          fi
+          python -m build
+      
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ "${{ matrix.package }}" == "axon" ]; then
+            cd python
+          else
+            cd python/axon_dagster
+          fi
+          python -m twine upload dist/*
+
+  publish-ros:
+    name: Publish ROS Packages
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ros-distro: [noetic, humble, jazzy, rolling]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up ROS
+        uses: ros-tooling/setup-ros@v0.3
+        with:
+          required-ros-distributions: ${{ matrix.ros-distro }}
+      
+      - name: Build ROS package
+        run: |
+          if [ "${{ matrix.ros-distro }}" == "noetic" ]; then
+            source /opt/ros/noetic/setup.bash
+            catkin_make
+          else
+            source /opt/ros/${{ matrix.ros-distro }}/setup.bash
+            colcon build
+          fi
+      
+      - name: Publish to ROS Index
+        # Note: ROS Index publishing requires manual setup
+        run: |
+          echo "ROS Index publishing requires manual setup"
+          echo "See: https://index.ros.org/doc/ros2/Tutorials/Indexing-Your-First-Package/"
