@@ -1,10 +1,7 @@
 #include "ros_introspection.hpp"
 
 #if defined(AXON_ROS1)
-#include <ros/message.h>
-#include <ros/message_traits.h>
-#include <ros/serialization.h>
-#include <ros/types.h>
+#include <ros/ros.h>
 #elif defined(AXON_ROS2)
 #include <rclcpp/rclcpp.hpp>
 #include <rosidl_runtime_cpp/bounded_vector.hpp>
@@ -80,14 +77,11 @@ public:
   }
 
   const void* get_field_pointer(
-    const void* message, const std::string& field_name, size_t& size_bytes
+    const void* /* message */, const std::string& /* field_name */, size_t& size_bytes
   ) override {
-    // For ROS 1, get serialized message data
-    const ros::Message* msg = static_cast<const ros::Message*>(message);
-    if (msg) {
-      size_bytes = msg->size();
-      return msg->raw();
-    }
+    // ROS 1 doesn't have a common base class for messages with raw data access.
+    // Use ShapeShifter for serialized data access instead.
+    size_bytes = 0;
     return nullptr;
   }
 };

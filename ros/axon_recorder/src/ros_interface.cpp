@@ -44,7 +44,6 @@ public:
       delete static_cast<ros::Subscriber*>(pair.first);
     }
     subscriptions_.clear();
-    services_.clear();
   }
 
   bool init(int argc, char** argv, const std::string& node_name) override {
@@ -213,50 +212,18 @@ public:
 
   void* advertise_service(
     const std::string& service_name, const std::string& service_type,
-    std::function<bool(const void*, void*)> callback
+    std::function<bool(const void*, void*)> /* callback */
   ) override {
-    if (!node_handle_) {
-      return nullptr;
-    }
-
-    auto* service_wrapper = new ServiceWrapper();
-    service_wrapper->callback = callback;
-    service_wrapper->service_name = service_name;
-    service_wrapper->service_type = service_type;
-
-    try {
-      auto service_callback =
-        [service_wrapper](ros::ServiceRequest& req, ros::ServiceResponse& res) -> bool {
-        if (service_wrapper->callback) {
-          return service_wrapper->callback(
-            static_cast<const void*>(&req), static_cast<void*>(&res)
-          );
-        }
-        return false;
-      };
-
-      service_wrapper->server = node_handle_->advertiseService(service_name, service_callback);
-
-      if (!service_wrapper->server) {
-        throw std::runtime_error("Failed to create service server");
-      }
-
-    } catch (const std::exception& e) {
-      ROS_ERROR(
-        "Failed to advertise service %s (type: %s): %s",
-        service_name.c_str(),
-        service_type.c_str(),
-        e.what()
-      );
-      delete service_wrapper;
-      return nullptr;
-    }
-
-    services_[service_wrapper] = std::make_pair(service_name, service_type);
-    ROS_INFO(
-      "Successfully advertised service %s (type: %s)", service_name.c_str(), service_type.c_str()
+    // Note: ROS 1 generic service advertisement requires compile-time type knowledge.
+    // Services are registered directly in recorder_node using generated service types.
+    // This generic interface is primarily for ROS 2 compatibility.
+    ROS_WARN(
+      "Generic service advertisement not supported in ROS 1. "
+      "Use typed service registration instead for: %s (%s)",
+      service_name.c_str(),
+      service_type.c_str()
     );
-    return service_wrapper;
+    return nullptr;
   }
 
   void spin_once() override {
@@ -301,17 +268,9 @@ public:
   }
 
 private:
-  struct ServiceWrapper {
-    ros::ServiceServer server;
-    std::function<bool(const void*, void*)> callback;
-    std::string service_name;
-    std::string service_type;
-  };
-
   std::unique_ptr<ros::NodeHandle> node_handle_;
   bool initialized_;
   std::map<void*, std::pair<std::string, std::string>> subscriptions_;
-  std::map<void*, std::pair<std::string, std::string>> services_;
 };
 
 #elif defined(AXON_ROS2)
