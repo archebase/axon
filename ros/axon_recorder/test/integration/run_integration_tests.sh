@@ -88,11 +88,20 @@ ls -la /root/target_ws/install/axon_recorder/lib/axon_recorder/ 2>/dev/null || e
 # Verify package is available
 echo "Checking if axon_recorder is available..."
 if [ "$ROS_VERSION" = "2" ]; then
-    echo "ros2 pkg list output:"
-    ros2 pkg list 2>&1 | head -20
-    ros2 pkg list 2>/dev/null | grep -q axon_recorder || echo "WARNING: axon_recorder not found in ros2 pkg list"
+    # Check if package is in the list (grep for specific package to avoid pipefail issues with head)
+    if ros2 pkg list 2>/dev/null | grep -q "^axon_recorder$"; then
+        echo "✓ axon_recorder found in ros2 pkg list"
+    else
+        echo "WARNING: axon_recorder not found in ros2 pkg list"
+        echo "First 30 packages:"
+        ros2 pkg list 2>/dev/null | head -30 || true
+    fi
 else
-    rospack find axon_recorder 2>/dev/null || echo "WARNING: axon_recorder not found via rospack"
+    if rospack find axon_recorder 2>/dev/null; then
+        echo "✓ axon_recorder found via rospack"
+    else
+        echo "WARNING: axon_recorder not found via rospack"
+    fi
 fi
 
 # Path to the test script
