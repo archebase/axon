@@ -40,10 +40,11 @@ RUN apt-get update && apt-get install -y \
     libturbojpeg0-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Boost (required for HTTP callback client)
+# Install Boost and OpenSSL (required for HTTP callback client with HTTPS support)
 RUN apt-get update && apt-get install -y \
     libboost-dev \
     libboost-system-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ROS CLI tools (required for integration tests)

@@ -68,19 +68,20 @@ using HttpCallbackHandler = std::function<void(const HttpCallbackResult&)>;
  * Features:
  * - Async HTTP POST with non-blocking API
  * - JWT Bearer token authentication
+ * - SSL/TLS support for HTTPS
  * - Timeout handling
  * - Error reporting
+ *
+ * Note: This class uses std::enable_shared_from_this to ensure safe async
+ * operations. Always create instances using std::make_shared<HttpCallbackClient>().
  */
-class HttpCallbackClient {
+class HttpCallbackClient : public std::enable_shared_from_this<HttpCallbackClient> {
 public:
   /**
    * Configuration for the HTTP client.
    */
   struct Config {
-    std::chrono::seconds connect_timeout{10};
     std::chrono::seconds request_timeout{30};
-    int max_retries{3};
-    std::chrono::milliseconds retry_delay{1000};
   };
 
   HttpCallbackClient();

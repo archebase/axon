@@ -2,8 +2,10 @@
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/beast/ssl.hpp>
 #include <boost/beast/version.hpp>
 
 #include <chrono>
@@ -17,6 +19,7 @@
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
+namespace ssl = net::ssl;
 using tcp = net::ip::tcp;
 
 namespace axon {
@@ -132,8 +135,15 @@ std::string HttpCallbackClient::get_iso8601_timestamp() {
 }
 
 std::string HttpCallbackClient::get_iso8601_timestamp(std::chrono::system_clock::time_point tp) {
-  auto time_t = std::chrono::system_clock::to_time_t(tp);
-  std::tm tm = *std::gmtime(&time_t);
+  auto time_t_val = std::chrono::system_clock::to_time_t(tp);
+  std::tm tm{};
+
+  // Use thread-safe version of gmtime
+#ifdef _WIN32
+  gmtime_s(&tm, &time_t_val);
+#else
+  gmtime_r(&time_t_val, &tm);
+#endif
 
   std::ostringstream oss;
   oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
@@ -145,8 +155,8 @@ bool HttpCallbackClient::parse_url(
 ) {
   // Simple URL parser for http:// and https:// URLs
   // Format: http(s)://host(:port)/path
-
-  std::regex url_regex(R"(^(https?)://([^/:]+)(?::(\d+))?(.*)$)", std::regex::icase);
+  // Note: static regex is compiled once for better performance
+  static const std::regex url_regex(R"(^(https?)://([^/:]+)(?::(\d+))?(.*)$)", std::regex::icase);
   std::smatch match;
 
   if (!std::regex_match(url, match, url_regex)) {
@@ -189,29 +199,12 @@ HttpCallbackResult HttpCallbackClient::http_post(
     return result;
   }
 
-  // Note: For simplicity, we only support HTTP (not HTTPS) in this implementation.
-  // For HTTPS support, you would need to add Boost.Asio SSL context.
-  if (use_ssl) {
-    result.error_message =
-      "ERR_CALLBACK_FAILED: HTTPS not supported in this build. URL: " + url;
-    std::cerr << "[HttpCallbackClient] Warning: " << result.error_message << std::endl;
-    // Continue anyway with HTTP - in production you'd want proper SSL support
-  }
-
   try {
     // Create IO context and resolver
     net::io_context ioc;
     tcp::resolver resolver(ioc);
-    beast::tcp_stream stream(ioc);
 
-    // Set timeout
-    stream.expires_after(config_.request_timeout);
-
-    // Resolve and connect
-    auto const results = resolver.resolve(host, port);
-    stream.connect(results);
-
-    // Build HTTP request
+    // Build HTTP request (same for HTTP and HTTPS)
     http::request<http::string_body> req{http::verb::post, path, 11};
     req.set(http::field::host, host);
     req.set(http::field::user_agent, "axon-recorder/1.0");
@@ -225,13 +218,75 @@ HttpCallbackResult HttpCallbackClient::http_post(
     req.body() = body;
     req.prepare_payload();
 
-    // Send request
-    http::write(stream, req);
-
-    // Receive response
+    // Response buffer and object
     beast::flat_buffer buffer;
     http::response<http::string_body> res;
-    http::read(stream, buffer, res);
+
+    if (use_ssl) {
+      // HTTPS request with SSL/TLS
+      ssl::context ctx(ssl::context::tlsv12_client);
+      
+      // Use system's default CA certificates for verification
+      ctx.set_default_verify_paths();
+      ctx.set_verify_mode(ssl::verify_peer);
+
+      beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
+
+      // Set SNI hostname (required for most servers)
+      if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str())) {
+        beast::error_code ec{static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()};
+        result.error_message = "ERR_CALLBACK_FAILED: SNI hostname failed: " + ec.message();
+        return result;
+      }
+
+      // Set timeout on the underlying TCP stream
+      beast::get_lowest_layer(stream).expires_after(config_.request_timeout);
+
+      // Resolve and connect
+      auto const results = resolver.resolve(host, port);
+      beast::get_lowest_layer(stream).connect(results);
+
+      // Perform SSL handshake
+      stream.handshake(ssl::stream_base::client);
+
+      // Send request
+      http::write(stream, req);
+
+      // Receive response
+      http::read(stream, buffer, res);
+
+      // Gracefully close the SSL stream
+      beast::error_code ec;
+      stream.shutdown(ec);
+      // Ignore truncated error (peer may close without close_notify)
+      if (ec && ec != net::ssl::error::stream_truncated && ec != beast::errc::not_connected) {
+        std::cerr << "[HttpCallbackClient] SSL shutdown warning: " << ec.message() << std::endl;
+      }
+
+    } else {
+      // Plain HTTP request
+      beast::tcp_stream stream(ioc);
+
+      // Set timeout
+      stream.expires_after(config_.request_timeout);
+
+      // Resolve and connect
+      auto const results = resolver.resolve(host, port);
+      stream.connect(results);
+
+      // Send request
+      http::write(stream, req);
+
+      // Receive response
+      http::read(stream, buffer, res);
+
+      // Gracefully close the socket
+      beast::error_code ec;
+      stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+      if (ec && ec != beast::errc::not_connected) {
+        std::cerr << "[HttpCallbackClient] Socket shutdown warning: " << ec.message() << std::endl;
+      }
+    }
 
     result.status_code = static_cast<int>(res.result_int());
     result.response_body = res.body();
@@ -242,15 +297,6 @@ HttpCallbackResult HttpCallbackClient::http_post(
     } else {
       result.error_message = "ERR_CALLBACK_FAILED: Server returned status " +
                              std::to_string(result.status_code);
-    }
-
-    // Gracefully close the socket
-    beast::error_code ec;
-    stream.socket().shutdown(tcp::socket::shutdown_both, ec);
-    // Ignore not_connected error (it's expected)
-    if (ec && ec != beast::errc::not_connected) {
-      // Log but don't fail
-      std::cerr << "[HttpCallbackClient] Socket shutdown warning: " << ec.message() << std::endl;
     }
 
   } catch (const std::exception& e) {
@@ -310,10 +356,11 @@ HttpCallbackResult HttpCallbackClient::post_finish_callback(
 void HttpCallbackClient::post_start_callback_async(
   const TaskConfig& task_config, const StartCallbackPayload& payload
 ) {
-  // Fire-and-forget async call using a detached thread
-  // In production, you might want a thread pool or async IO
-  std::thread([this, task_config, payload]() {
-    auto result = post_start_callback(task_config, payload, nullptr);
+  // Capture shared_ptr to ensure the client outlives the async operation
+  // This prevents use-after-free if HttpCallbackClient is destroyed before thread completes
+  auto self = shared_from_this();
+  std::thread([self, task_config, payload]() {
+    auto result = self->post_start_callback(task_config, payload, nullptr);
     if (!result.success) {
       std::cerr << "[HttpCallbackClient] Start callback failed: " << result.error_message
                 << std::endl;
@@ -327,9 +374,11 @@ void HttpCallbackClient::post_start_callback_async(
 void HttpCallbackClient::post_finish_callback_async(
   const TaskConfig& task_config, const FinishCallbackPayload& payload
 ) {
-  // Fire-and-forget async call using a detached thread
-  std::thread([this, task_config, payload]() {
-    auto result = post_finish_callback(task_config, payload, nullptr);
+  // Capture shared_ptr to ensure the client outlives the async operation
+  // This prevents use-after-free if HttpCallbackClient is destroyed before thread completes
+  auto self = shared_from_this();
+  std::thread([self, task_config, payload]() {
+    auto result = self->post_finish_callback(task_config, payload, nullptr);
     if (!result.success) {
       std::cerr << "[HttpCallbackClient] Finish callback failed: " << result.error_message
                 << std::endl;

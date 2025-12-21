@@ -40,7 +40,7 @@ public:
   TaskConfigCache& get_task_config_cache() {
     return task_config_cache_;
   }
-  HttpCallbackClient& get_http_callback_client() {
+  std::shared_ptr<HttpCallbackClient> get_http_callback_client() {
     return http_callback_client_;
   }
 
@@ -132,7 +132,7 @@ public:
 private:
   StateManager state_manager_;
   TaskConfigCache task_config_cache_;
-  HttpCallbackClient http_callback_client_;
+  std::shared_ptr<HttpCallbackClient> http_callback_client_ = std::make_shared<HttpCallbackClient>();
 
   std::string output_path_;
   RecordingStats stats_;

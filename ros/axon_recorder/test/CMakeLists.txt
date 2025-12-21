@@ -25,6 +25,7 @@ endif()
 # Find dependencies
 find_package(GTest REQUIRED)
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
 find_package(Boost QUIET COMPONENTS system)
 if(NOT Boost_FOUND)
     find_package(Boost QUIET)
@@ -69,7 +70,7 @@ target_link_libraries(test_state_machine
 )
 add_test(NAME StateMachineTest COMMAND test_state_machine)
 
-# Test HttpCallbackClient (requires Boost)
+# Test HttpCallbackClient (requires Boost and OpenSSL for SSL support)
 if(Boost_FOUND)
     add_executable(test_http_callback_client
         unit/test_http_callback_client.cpp
@@ -79,6 +80,8 @@ if(Boost_FOUND)
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
+        OpenSSL::SSL
+        OpenSSL::Crypto
     )
     if(Boost_SYSTEM_FOUND)
         target_link_libraries(test_http_callback_client ${Boost_LIBRARIES})
@@ -95,6 +98,8 @@ if(Boost_FOUND)
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
+        OpenSSL::SSL
+        OpenSSL::Crypto
     )
     if(Boost_SYSTEM_FOUND)
         target_link_libraries(test_recording_workflow ${Boost_LIBRARIES})

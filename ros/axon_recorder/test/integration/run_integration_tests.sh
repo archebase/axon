@@ -20,7 +20,7 @@
 #   - axon_recorder package must be built and installed
 # ============================================================================
 
-set -e
+set -eo pipefail
 
 # Determine script directory and source path
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

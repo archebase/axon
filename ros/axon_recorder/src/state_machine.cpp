@@ -60,56 +60,70 @@ bool StateManager::is_valid_transition(RecorderState from, RecorderState to) con
 }
 
 bool StateManager::transition_to(RecorderState to, std::string& error_msg) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::vector<StateTransitionCallback> callbacks_copy;
+  RecorderState from;
 
-  RecorderState from = current_state_;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
 
-  // Check if transition is valid
-  if (!is_valid_transition(from, to)) {
-    error_msg = "ERR_INVALID_STATE: Cannot transition from " + state_to_string(from) + " to " +
-                state_to_string(to);
-    return false;
+    from = current_state_;
+
+    // Check if transition is valid
+    if (!is_valid_transition(from, to)) {
+      error_msg = "ERR_INVALID_STATE: Cannot transition from " + state_to_string(from) + " to " +
+                  state_to_string(to);
+      return false;
+    }
+
+    // Perform transition
+    current_state_ = to;
+    error_msg.clear();
+
+    // Copy callbacks to invoke outside lock (prevents deadlock if callback queries state)
+    callbacks_copy = callbacks_;
   }
 
-  // Perform transition
-  current_state_ = to;
-
-  // Notify callbacks (outside lock would be better, but simpler this way)
-  // Note: callbacks should be quick and non-blocking
-  for (const auto& callback : callbacks_) {
+  // Notify callbacks outside lock
+  for (const auto& callback : callbacks_copy) {
     callback(from, to);
   }
 
-  error_msg.clear();
   return true;
 }
 
 bool StateManager::transition(RecorderState from, RecorderState to, std::string& error_msg) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::vector<StateTransitionCallback> callbacks_copy;
 
-  // Verify current state matches expected
-  if (current_state_ != from) {
-    error_msg = "ERR_INVALID_STATE: Expected state " + state_to_string(from) + " but current is " +
-                state_to_string(current_state_);
-    return false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // Verify current state matches expected
+    if (current_state_ != from) {
+      error_msg = "ERR_INVALID_STATE: Expected state " + state_to_string(from) + " but current is " +
+                  state_to_string(current_state_);
+      return false;
+    }
+
+    // Check if transition is valid
+    if (!is_valid_transition(from, to)) {
+      error_msg = "ERR_INVALID_STATE: Cannot transition from " + state_to_string(from) + " to " +
+                  state_to_string(to);
+      return false;
+    }
+
+    // Perform transition
+    current_state_ = to;
+    error_msg.clear();
+
+    // Copy callbacks to invoke outside lock (prevents deadlock if callback queries state)
+    callbacks_copy = callbacks_;
   }
 
-  // Check if transition is valid
-  if (!is_valid_transition(from, to)) {
-    error_msg = "ERR_INVALID_STATE: Cannot transition from " + state_to_string(from) + " to " +
-                state_to_string(to);
-    return false;
-  }
-
-  // Perform transition
-  current_state_ = to;
-
-  // Notify callbacks
-  for (const auto& callback : callbacks_) {
+  // Notify callbacks outside lock
+  for (const auto& callback : callbacks_copy) {
     callback(from, to);
   }
 
-  error_msg.clear();
   return true;
 }
 

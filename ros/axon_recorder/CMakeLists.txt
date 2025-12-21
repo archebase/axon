@@ -72,10 +72,16 @@ endif()
 # Find yaml-cpp
 find_package(yaml-cpp REQUIRED)
 
-# Find Boost for HTTP callback client (Beast requires system and optionally ssl)
+# Find Boost for HTTP callback client (Beast requires system)
 find_package(Boost REQUIRED COMPONENTS system)
 if(Boost_FOUND)
     message(STATUS "Found Boost: ${Boost_VERSION}")
+endif()
+
+# Find OpenSSL for HTTPS support in HTTP callback client
+find_package(OpenSSL REQUIRED)
+if(OpenSSL_FOUND)
+    message(STATUS "Found OpenSSL: ${OPENSSL_VERSION}")
 endif()
 
 # Find pkg-config for compression libraries
@@ -176,6 +182,8 @@ if(AXON_ROS_VERSION EQUAL 1)
         ${catkin_LIBRARIES}
         axon_mcap
         ${Boost_LIBRARIES}
+        OpenSSL::SSL
+        OpenSSL::Crypto
         yaml-cpp
     )
     
@@ -271,6 +279,8 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     target_link_libraries(axon_recorder_lib
         axon_mcap
         ${Boost_LIBRARIES}
+        OpenSSL::SSL
+        OpenSSL::Crypto
         yaml-cpp
     )
     

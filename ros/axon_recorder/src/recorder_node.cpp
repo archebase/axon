@@ -38,7 +38,8 @@ namespace recorder {
 // =============================================================================
 
 RecorderNode::RecorderNode()
-    : recording_(false)
+    : http_callback_client_(std::make_shared<HttpCallbackClient>())
+    , recording_(false)
     , shutdown_requested_(false) {}
 
 RecorderNode::~RecorderNode() {
@@ -569,7 +570,7 @@ void RecorderNode::start_recording() {
     payload.started_at = HttpCallbackClient::get_iso8601_timestamp(recording_start_time_);
     payload.topics = config_opt->topics;
 
-    http_callback_client_.post_start_callback_async(*config_opt, payload);
+    http_callback_client_->post_start_callback_async(*config_opt, payload);
   }
 }
 
@@ -635,7 +636,7 @@ void RecorderNode::cancel_recording() {
     payload.topics = config_opt->topics;
     payload.error = "Recording cancelled";
 
-    http_callback_client_.post_finish_callback_async(*config_opt, payload);
+    http_callback_client_->post_finish_callback_async(*config_opt, payload);
   }
 
   // Clear the task config
@@ -688,7 +689,7 @@ void RecorderNode::stop_recording() {
     payload.topics = config_opt->topics;
     payload.error = "";
 
-    http_callback_client_.post_finish_callback_async(*config_opt, payload);
+    http_callback_client_->post_finish_callback_async(*config_opt, payload);
   }
 
   // Clear the task config
@@ -744,6 +745,14 @@ RecorderNode::RecordingStats RecorderNode::get_stats() const {
   }
 
   return stats;
+}
+
+double RecorderNode::get_recording_duration_sec() const {
+  if (!recording_.load(std::memory_order_relaxed)) {
+    return 0.0;
+  }
+  auto now = std::chrono::system_clock::now();
+  return std::chrono::duration<double>(now - recording_start_time_).count();
 }
 
 void RecorderNode::write_stats_file() {

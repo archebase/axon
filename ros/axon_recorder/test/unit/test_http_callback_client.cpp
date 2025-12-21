@@ -141,7 +141,8 @@ TEST_F(FinishCallbackPayloadTest, ToJsonLargeNumbers) {
 
 class HttpCallbackClientTest : public ::testing::Test {
 protected:
-  HttpCallbackClient client_;
+  // Use shared_ptr since HttpCallbackClient uses enable_shared_from_this
+  std::shared_ptr<HttpCallbackClient> client_ = std::make_shared<HttpCallbackClient>();
 
   TaskConfig create_sample_config() {
     TaskConfig config;
@@ -186,7 +187,7 @@ TEST_F(HttpCallbackClientTest, PostStartCallbackNoUrl) {
   payload.task_id = "task_001";
   payload.status = "recording";
 
-  auto result = client_.post_start_callback(config, payload);
+  auto result = client_->post_start_callback(config, payload);
 
   // Should succeed (no-op) when no URL is configured
   EXPECT_TRUE(result.success);
@@ -203,7 +204,7 @@ TEST_F(HttpCallbackClientTest, PostFinishCallbackNoUrl) {
   payload.task_id = "task_001";
   payload.status = "finished";
 
-  auto result = client_.post_finish_callback(config, payload);
+  auto result = client_->post_finish_callback(config, payload);
 
   // Should succeed (no-op) when no URL is configured
   EXPECT_TRUE(result.success);
@@ -218,7 +219,7 @@ TEST_F(HttpCallbackClientTest, PostStartCallbackInvalidUrl) {
   payload.task_id = "task_001";
   payload.status = "recording";
 
-  auto result = client_.post_start_callback(config, payload);
+  auto result = client_->post_start_callback(config, payload);
 
   // Should fail with invalid URL
   EXPECT_FALSE(result.success);
@@ -239,7 +240,7 @@ TEST_F(HttpCallbackClientTest, PostStartCallbackUnreachableServer) {
   payload.started_at = HttpCallbackClient::get_iso8601_timestamp();
   payload.topics = {"/test/topic"};
 
-  auto result = client_.post_start_callback(config, payload);
+  auto result = client_->post_start_callback(config, payload);
 
   // Should fail (can't connect)
   EXPECT_FALSE(result.success);
@@ -248,17 +249,15 @@ TEST_F(HttpCallbackClientTest, PostStartCallbackUnreachableServer) {
 
 TEST_F(HttpCallbackClientTest, ConfigWithTimeout) {
   HttpCallbackClient::Config config;
-  config.connect_timeout = std::chrono::seconds(5);
   config.request_timeout = std::chrono::seconds(10);
-  config.max_retries = 2;
 
-  HttpCallbackClient client_with_config(config);
+  auto client_with_config = std::make_shared<HttpCallbackClient>(config);
 
   // Just verify construction succeeds
   TaskConfig task_config;
   StartCallbackPayload payload;
 
-  auto result = client_with_config.post_start_callback(task_config, payload);
+  auto result = client_with_config->post_start_callback(task_config, payload);
   EXPECT_TRUE(result.success);  // No URL configured, so it's a no-op
 }
 
@@ -282,7 +281,7 @@ TEST_F(HttpCallbackClientTest, CallbackHandlerInvoked) {
     received_result = result;
   };
 
-  auto result = client_.post_start_callback(config, payload, handler);
+  auto result = client_->post_start_callback(config, payload, handler);
 
   EXPECT_TRUE(handler_called);
   EXPECT_TRUE(received_result.success);
@@ -296,7 +295,7 @@ TEST_F(HttpCallbackClientTest, CallbackHandlerNullptr) {
   payload.task_id = "task_001";
 
   // Should not crash with nullptr handler
-  auto result = client_.post_start_callback(config, payload, nullptr);
+  auto result = client_->post_start_callback(config, payload, nullptr);
   EXPECT_TRUE(result.success);
 }
 
@@ -309,7 +308,7 @@ TEST_F(HttpCallbackClientTest, UrlParsing_HttpScheme) {
   config.start_callback_url = "http://localhost:8080/api/start";
 
   StartCallbackPayload payload;
-  auto result = client_.post_start_callback(config, payload);
+  auto result = client_->post_start_callback(config, payload);
 
   // Will fail to connect, but shouldn't fail URL parsing
   EXPECT_FALSE(result.success);
@@ -321,7 +320,7 @@ TEST_F(HttpCallbackClientTest, UrlParsing_HttpsScheme) {
   config.start_callback_url = "https://localhost:8443/api/start";
 
   StartCallbackPayload payload;
-  auto result = client_.post_start_callback(config, payload);
+  auto result = client_->post_start_callback(config, payload);
 
   // Will fail (HTTPS not fully supported in this implementation)
   EXPECT_FALSE(result.success);
@@ -332,7 +331,7 @@ TEST_F(HttpCallbackClientTest, UrlParsing_NoPort) {
   config.start_callback_url = "http://localhost/api/start";  // Default port 80
 
   StartCallbackPayload payload;
-  auto result = client_.post_start_callback(config, payload);
+  auto result = client_->post_start_callback(config, payload);
 
   // Will fail to connect, but parsing should work
   EXPECT_FALSE(result.success);
@@ -344,7 +343,7 @@ TEST_F(HttpCallbackClientTest, UrlParsing_NoPath) {
   config.start_callback_url = "http://localhost:8080";  // No path
 
   StartCallbackPayload payload;
-  auto result = client_.post_start_callback(config, payload);
+  auto result = client_->post_start_callback(config, payload);
 
   // Should use "/" as default path
   EXPECT_FALSE(result.success);

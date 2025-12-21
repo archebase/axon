@@ -152,8 +152,15 @@ public:
   /**
    * Get the HTTP callback client for external access
    */
-  HttpCallbackClient& get_http_callback_client() {
+  std::shared_ptr<HttpCallbackClient> get_http_callback_client() {
     return http_callback_client_;
+  }
+
+  /**
+   * Get the ROS interface for logging
+   */
+  RosInterface* get_ros_interface() {
+    return ros_interface_.get();
   }
 
   /**
@@ -178,6 +185,12 @@ public:
     double drop_rate_percent;
   };
   RecordingStats get_stats() const;
+
+  /**
+   * Get recording duration in seconds.
+   * Returns 0.0 if not currently recording.
+   */
+  double get_recording_duration_sec() const;
 
 private:
   // =========================================================================
@@ -290,7 +303,7 @@ private:
   // =========================================================================
   StateManager state_manager_;
   TaskConfigCache task_config_cache_;
-  HttpCallbackClient http_callback_client_;
+  std::shared_ptr<HttpCallbackClient> http_callback_client_;
 
   // Recording start time (for duration calculation)
   std::chrono::system_clock::time_point recording_start_time_;

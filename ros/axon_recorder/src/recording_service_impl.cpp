@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "recorder_node.hpp"
+#include "ros_interface.hpp"
 
 namespace axon {
 namespace recorder {
@@ -59,6 +60,7 @@ bool RecordingServiceImpl::handle_cached_recording_config(
   if (!state_manager.transition_to(RecorderState::READY, error_msg)) {
     // Rollback - clear the config
     node_->get_task_config_cache().clear();
+    node_->get_ros_interface()->log_warn("State transition to READY failed: " + error_msg);
     message = error_msg;
     return true;
   }
@@ -177,6 +179,7 @@ bool RecordingServiceImpl::handle_start_command(std::string& message, std::strin
   // Transition to RECORDING state
   std::string error_msg;
   if (!state_manager.transition_to(RecorderState::RECORDING, error_msg)) {
+    node_->get_ros_interface()->log_warn("State transition to RECORDING failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -206,6 +209,7 @@ bool RecordingServiceImpl::handle_pause_command(const std::string& task_id, std:
 
   // Transition to PAUSED state
   if (!state_manager.transition_to(RecorderState::PAUSED, error_msg)) {
+    node_->get_ros_interface()->log_warn("State transition to PAUSED failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -235,6 +239,7 @@ bool RecordingServiceImpl::handle_resume_command(const std::string& task_id, std
 
   // Transition to RECORDING state
   if (!state_manager.transition_to(RecorderState::RECORDING, error_msg)) {
+    node_->get_ros_interface()->log_warn("State transition to RECORDING (resume) failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -267,6 +272,7 @@ bool RecordingServiceImpl::handle_cancel_command(const std::string& task_id, std
 
   // Transition to IDLE state
   if (!state_manager.transition_to(RecorderState::IDLE, error_msg)) {
+    node_->get_ros_interface()->log_warn("State transition to IDLE (cancel) failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -296,6 +302,7 @@ bool RecordingServiceImpl::handle_finish_command(const std::string& task_id, std
 
   // Transition to IDLE state
   if (!state_manager.transition_to(RecorderState::IDLE, error_msg)) {
+    node_->get_ros_interface()->log_warn("State transition to IDLE (finish) failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -319,6 +326,7 @@ bool RecordingServiceImpl::handle_clear_command(std::string& message) {
   // Transition to IDLE state
   std::string error_msg;
   if (!state_manager.transition_to(RecorderState::IDLE, error_msg)) {
+    node_->get_ros_interface()->log_warn("State transition to IDLE (clear) failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -373,12 +381,7 @@ bool RecordingServiceImpl::handle_recording_status(
   last_error = "";  // Would need error tracking in RecorderNode
 
   // Calculate duration if recording
-  if (state_manager.is_recording_active()) {
-    // Duration calculation would need start time tracking
-    duration_sec = 0.0;  // TODO: Track actual duration
-  } else {
-    duration_sec = 0.0;
-  }
+  duration_sec = node_->get_recording_duration_sec();
 
   // Disk usage and throughput would need additional tracking
   disk_usage_gb = 0.0;
