@@ -4,32 +4,33 @@
 #include <memory>
 #include <string>
 
+#include "recorder_context.hpp"
 #include "state_machine.hpp"
 #include "task_config.hpp"
-
-// Forward declarations
-namespace axon {
-namespace recorder {
-class RecorderNode;
-}
-}  // namespace axon
 
 namespace axon {
 namespace recorder {
 
 /**
  * RecordingServiceImpl provides the implementation for all recording services.
- * It coordinates between the ROS service layer and the RecorderNode.
+ * It coordinates between the ROS service layer and the IRecorderContext.
  *
  * Services implemented:
  * - CachedRecordingConfig: Cache task configuration from server
  * - IsRecordingReady: Query if recorder has cached config
  * - RecordingControl: Control recording lifecycle
  * - RecordingStatus: Query recording status
+ *
+ * This class uses the IRecorderContext interface for dependency injection,
+ * enabling easier testing with mock implementations.
  */
 class RecordingServiceImpl {
 public:
-  explicit RecordingServiceImpl(RecorderNode* node);
+  /**
+   * Construct with a shared pointer to the recorder context.
+   * Using shared_ptr ensures the context remains valid for the lifetime of this object.
+   */
+  explicit RecordingServiceImpl(std::shared_ptr<IRecorderContext> context);
 
   // =========================================================================
   // CachedRecordingConfig Service
@@ -121,7 +122,7 @@ private:
    */
   bool validate_task_id(const std::string& task_id, std::string& error_msg);
 
-  RecorderNode* node_;
+  std::shared_ptr<IRecorderContext> context_;
 };
 
 }  // namespace recorder

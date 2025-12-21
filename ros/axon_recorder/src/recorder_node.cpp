@@ -2,11 +2,13 @@
 
 #include "config_parser.hpp"
 #include "http_callback_client.hpp"
-#include "mcap_writer_wrapper.hpp"
+#include "recording_session.hpp"
 #include "ros_interface.hpp"
 #include "service_adapter.hpp"
 #include "state_machine.hpp"
 #include "task_config.hpp"
+#include "topic_manager.hpp"
+#include "worker_thread_pool.hpp"
 
 #if defined(AXON_ROS1)
 #include <ros/package.h>
@@ -34,12 +36,22 @@ namespace axon {
 namespace recorder {
 
 // =============================================================================
+// Factory Method
+// =============================================================================
+
+std::shared_ptr<RecorderNode> RecorderNode::create() {
+  // Can't use make_shared with private constructor
+  return std::shared_ptr<RecorderNode>(new RecorderNode());
+}
+
+// =============================================================================
 // Constructor / Destructor
 // =============================================================================
 
 RecorderNode::RecorderNode()
-    : http_callback_client_(std::make_shared<HttpCallbackClient>())
-    , recording_(false)
+    : recording_session_(std::make_unique<RecordingSession>())
+    , worker_pool_(std::make_unique<WorkerThreadPool>())
+    , http_callback_client_(std::make_shared<HttpCallbackClient>())
     , shutdown_requested_(false) {}
 
 RecorderNode::~RecorderNode() {
@@ -47,133 +59,14 @@ RecorderNode::~RecorderNode() {
 }
 
 // =============================================================================
-// Worker Thread Management
+// Worker Thread Pool Setup
 // =============================================================================
 
-void RecorderNode::start_worker_threads() {
-  // Start per-topic worker threads
-  for (auto& [topic_name, context] : topic_contexts_) {
-    if (context->running.load()) {
-      continue;
-    }
-
-    context->running.store(true);
-    context->worker_thread = std::thread(&RecorderNode::worker_thread_func, this, topic_name);
-
-    ros_interface_->log_info("Started worker thread for topic: " + topic_name);
-  }
-}
-
-void RecorderNode::stop_worker_threads() {
-  // Signal all workers to stop
-  for (auto& [topic_name, context] : topic_contexts_) {
-    context->running.store(false);
-  }
-
-  // Wait for all workers to finish
-  for (auto& [topic_name, context] : topic_contexts_) {
-    if (context->worker_thread.joinable()) {
-      context->worker_thread.join();
-    }
-  }
-
-  std::cerr << "[axon_recorder] All worker threads stopped" << std::endl;
-}
-
-/**
- * Per-topic worker thread function
- *
- * This function runs in a dedicated thread for each topic, draining the
- * lock-free queue and writing directly to MCAP.
- *
- * Design rationale:
- * - One thread per topic eliminates contention between topics
- * - Lock-free queue provides wait-free push from ROS callback
- * - Tight spin loop with brief sleeps balances latency and CPU usage
- * - Direct MCAP write (no Arrow conversion) reduces CPU overhead
- */
-void RecorderNode::worker_thread_func(const std::string& topic_name) {
-  auto context_it = topic_contexts_.find(topic_name);
-  if (context_it == topic_contexts_.end()) {
-    return;
-  }
-
-  auto& context = context_it->second;
-
-  // Get channel ID for this topic
-  auto channel_it = topic_channel_ids_.find(topic_name);
-  if (channel_it == topic_channel_ids_.end()) {
-    std::cerr << "[Worker " << topic_name << "] No channel ID found!" << std::endl;
-    return;
-  }
-
-  uint16_t channel_id = channel_it->second;
-  MessageItem item;
-  size_t consecutive_empty = 0;
-
-  while (context->running.load(std::memory_order_acquire)) {
-    // Try to pop from lock-free queue
-    if (context->queue->try_pop(item)) {
-      consecutive_empty = 0;
-
-      try {
-        // Get sequence number for this message
-        uint32_t seq = context->sequence.fetch_add(1, std::memory_order_relaxed);
-
-        // Write directly to MCAP (no Arrow conversion!)
-        bool success = mcap_writer_->write(
-          channel_id, seq, static_cast<uint64_t>(item.timestamp_ns),
-          static_cast<uint64_t>(item.timestamp_ns),  // publish_time = log_time
-          item.raw_data.data(), item.raw_data.size()
-        );
-
-        if (success) {
-          // Update statistics
-          context->written.fetch_add(1, std::memory_order_relaxed);
-          messages_written_.fetch_add(1, std::memory_order_relaxed);
-        } else {
-          std::cerr << "[Worker " << topic_name
-                    << "] Write failed: " << mcap_writer_->get_last_error() << std::endl;
-        }
-
-      } catch (const std::exception& e) {
-        std::cerr << "[Worker " << topic_name << "] Exception: " << e.what() << std::endl;
-      }
-    } else {
-      // Queue empty - use adaptive backoff
-      ++consecutive_empty;
-
-      if (consecutive_empty > 100) {
-        // Long idle - sleep longer to save CPU
-        std::this_thread::sleep_for(std::chrono::microseconds(500));
-      } else if (consecutive_empty > 10) {
-        // Brief idle - short sleep
-        std::this_thread::sleep_for(std::chrono::microseconds(WORKER_IDLE_SLEEP_US));
-      }
-      // else: tight spin for first few empty iterations (low latency)
-    }
-  }
-
-  // Drain remaining items before exit
-  while (context->queue->try_pop(item)) {
-    try {
-      uint32_t seq = context->sequence.fetch_add(1, std::memory_order_relaxed);
-      bool success = mcap_writer_->write(
-        channel_id, seq, static_cast<uint64_t>(item.timestamp_ns),
-        static_cast<uint64_t>(item.timestamp_ns), item.raw_data.data(), item.raw_data.size()
-      );
-
-      if (success) {
-        context->written.fetch_add(1, std::memory_order_relaxed);
-        messages_written_.fetch_add(1, std::memory_order_relaxed);
-      }
-    } catch (const std::exception& e) {
-      std::cerr << "[Worker " << topic_name << "] Drain exception: " << e.what() << std::endl;
-    }
-  }
-
-  std::cerr << "[Worker " << topic_name << "] Stopped. Written: " << context->written.load()
-            << std::endl;
+void RecorderNode::setup_worker_pool() {
+  // Worker pool is already initialized in constructor
+  // This method sets up message handlers for each topic
+  ros_interface_->log_info("Worker pool configured with " + 
+                           std::to_string(worker_pool_->topic_count()) + " topics");
 }
 
 bool RecorderNode::initialize(int argc, char** argv) {
@@ -189,15 +82,18 @@ bool RecorderNode::initialize(int argc, char** argv) {
     return false;
   }
 
+  // Create topic manager (requires ros_interface_)
+  topic_manager_ = std::make_unique<TopicManager>(ros_interface_.get());
+
   // Load configuration
   if (!load_configuration()) {
     ros_interface_->log_error("Failed to load configuration");
     return false;
   }
 
-  // Initialize MCAP writer
+  // Initialize recording session (opens MCAP file)
   if (!initialize_mcap_writer()) {
-    ros_interface_->log_error("Failed to initialize MCAP writer");
+    ros_interface_->log_error("Failed to initialize recording session");
     return false;
   }
 
@@ -207,10 +103,13 @@ bool RecorderNode::initialize(int argc, char** argv) {
     return false;
   }
 
-  // Setup subscriptions for each topic
+  // Setup subscriptions and worker threads for each topic
   for (const auto& topic_config : config_.topics) {
     setup_topic_recording(topic_config);
   }
+
+  // Setup worker pool
+  setup_worker_pool();
 
   // Setup services
   setup_services();
@@ -238,26 +137,25 @@ void RecorderNode::shutdown() {
 
   // Unsubscribe all topics FIRST to stop new messages
   std::cerr << "[axon_recorder] Unsubscribing topics..." << std::endl;
-  for (auto& pair : subscriptions_) {
-    if (ros_interface_) {
-      ros_interface_->unsubscribe(pair.second);
-    }
+  if (topic_manager_) {
+    topic_manager_->unsubscribe_all();
   }
-  subscriptions_.clear();
 
-  // Clear topic contexts (queues already drained by stop_recording)
-  std::cerr << "[axon_recorder] Clearing topic contexts..." << std::endl;
-  topic_contexts_.clear();
-
-  // Close MCAP writer (writes footer and finalizes file)
-  if (mcap_writer_ && mcap_writer_->is_open()) {
-    std::cerr << "[axon_recorder] Closing MCAP writer..." << std::endl;
-    auto stats = mcap_writer_->get_statistics();
-    std::cerr << "[axon_recorder] MCAP stats: " << stats.messages_written << " messages, "
-              << stats.bytes_written << " bytes" << std::endl;
-    mcap_writer_->close();
+  // Stop and clear worker pool (queues already drained by stop_recording)
+  std::cerr << "[axon_recorder] Clearing worker pool..." << std::endl;
+  if (worker_pool_) {
+    worker_pool_->stop();
   }
-  mcap_writer_.reset();
+
+  // Close recording session (writes footer and finalizes file)
+  if (recording_session_ && recording_session_->is_open()) {
+    std::cerr << "[axon_recorder] Closing recording session..." << std::endl;
+    auto stats = recording_session_->get_stats();
+    std::cerr << "[axon_recorder] Recording stats: " << stats.messages_written << " messages"
+              << std::endl;
+    recording_session_->close();
+  }
+  recording_session_.reset();
 
   // Shutdown service adapter before ROS interface
   if (service_adapter_) {
@@ -352,8 +250,6 @@ std::string RecorderNode::generate_output_path() const {
 }
 
 bool RecorderNode::initialize_mcap_writer() {
-  mcap_writer_ = std::make_unique<mcap_wrapper::McapWriterWrapper>();
-
   output_path_ = generate_output_path();
 
   // Configure MCAP options
@@ -369,12 +265,12 @@ bool RecorderNode::initialize_mcap_writer() {
   options.compression_level = 3;   // Fast compression
   options.chunk_size = 4 * 1024 * 1024;  // 4MB chunks
 
-  if (!mcap_writer_->open(output_path_, options)) {
-    ros_interface_->log_error("Failed to open MCAP file: " + mcap_writer_->get_last_error());
+  if (!recording_session_->open(output_path_, options)) {
+    ros_interface_->log_error("Failed to open recording session: " + recording_session_->get_last_error());
     return false;
   }
 
-  ros_interface_->log_info("MCAP file opened: " + output_path_);
+  ros_interface_->log_info("Recording session opened: " + output_path_);
   return true;
 }
 
@@ -405,26 +301,27 @@ bool RecorderNode::register_topic_schemas() {
   std::string message_encoding = get_message_encoding();
 
   // Register schemas for all unique message types
+  std::unordered_map<std::string, uint16_t> registered_schemas;
   for (const auto& topic_config : config_.topics) {
     const std::string& msg_type = topic_config.message_type;
 
     // Skip if already registered
-    if (message_type_schema_ids_.find(msg_type) != message_type_schema_ids_.end()) {
+    if (registered_schemas.find(msg_type) != registered_schemas.end()) {
       continue;
     }
 
     // Get message definition
     std::string definition = get_message_definition(msg_type);
 
-    // Register schema
-    uint16_t schema_id = mcap_writer_->register_schema(msg_type, schema_encoding, definition);
+    // Register schema with recording session
+    uint16_t schema_id = recording_session_->register_schema(msg_type, schema_encoding, definition);
 
     if (schema_id == 0) {
       ros_interface_->log_warn("Failed to register schema for: " + msg_type);
       // Continue anyway - MCAP can work without schema
     }
 
-    message_type_schema_ids_[msg_type] = schema_id;
+    registered_schemas[msg_type] = schema_id;
     ros_interface_->log_info(
       "Registered schema: " + msg_type + " (id=" + std::to_string(schema_id) + ")"
     );
@@ -432,7 +329,7 @@ bool RecorderNode::register_topic_schemas() {
 
   // Register channels for all topics
   for (const auto& topic_config : config_.topics) {
-    uint16_t schema_id = message_type_schema_ids_[topic_config.message_type];
+    uint16_t schema_id = registered_schemas[topic_config.message_type];
 
     // Build metadata (QoS, frame_id, etc.)
     std::unordered_map<std::string, std::string> metadata;
@@ -440,14 +337,13 @@ bool RecorderNode::register_topic_schemas() {
     metadata["offered_qos_profiles"] = "- history: keep_last\n  depth: 10\n  reliability: reliable";
 
     uint16_t channel_id =
-      mcap_writer_->register_channel(topic_config.name, message_encoding, schema_id, metadata);
+      recording_session_->register_channel(topic_config.name, message_encoding, schema_id, metadata);
 
     if (channel_id == 0) {
       ros_interface_->log_error("Failed to register channel for: " + topic_config.name);
       return false;
     }
 
-    topic_channel_ids_[topic_config.name] = channel_id;
     ros_interface_->log_info(
       "Registered channel: " + topic_config.name + " (id=" + std::to_string(channel_id) + ")"
     );
@@ -457,80 +353,78 @@ bool RecorderNode::register_topic_schemas() {
 }
 
 void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) {
-  // =========================================================================
-  // Step 1: Create lock-free queue and topic context
-  // =========================================================================
-  auto context = std::make_unique<TopicContext>();
-  context->queue = std::make_unique<core::SPSCQueue<MessageItem>>(QUEUE_CAPACITY_PER_TOPIC);
-
-  // Store raw pointer for capture in callback (safe: context outlives subscription)
-  auto* context_ptr = context.get();
-  topic_contexts_[topic_config.name] = std::move(context);
+  const std::string& topic_name = topic_config.name;
 
   // =========================================================================
-  // Step 2: Create zero-copy subscription
+  // Step 1: Get channel ID for this topic from recording session
+  // =========================================================================
+  uint16_t channel_id = recording_session_->get_channel_id(topic_name);
+  if (channel_id == 0) {
+    ros_interface_->log_error("No channel ID found for topic: " + topic_name);
+    return;
+  }
+
+  // =========================================================================
+  // Step 2: Create worker thread with message handler
+  // =========================================================================
+  // Capture recording_session_ pointer for use in handler
+  RecordingSession* session_ptr = recording_session_.get();
+
+  WorkerThreadPool::MessageHandler handler = 
+    [session_ptr, channel_id](const std::string& topic, int64_t timestamp_ns,
+                              const uint8_t* data, size_t data_size, uint32_t sequence) -> bool {
+      return session_ptr->write(channel_id, sequence, 
+                                static_cast<uint64_t>(timestamp_ns),
+                                static_cast<uint64_t>(timestamp_ns),  // publish_time = log_time
+                                data, data_size);
+    };
+
+  if (!worker_pool_->create_topic_worker(topic_name, handler)) {
+    ros_interface_->log_error("Failed to create worker for topic: " + topic_name);
+    return;
+  }
+
+  // =========================================================================
+  // Step 3: Create subscription via TopicManager
   // =========================================================================
   // Configure QoS based on message type
-  // CRITICAL: Match publisher's QoS depth to prevent DDS reliable protocol drops
   SubscriptionConfig sub_config;
-
-  // Use larger history to match or exceed publisher's buffer (1000)
-  // This prevents DDS reliable ACK delays from causing drops
   if (topic_config.message_type.find("Image") != std::string::npos) {
     sub_config = SubscriptionConfig::high_throughput();
     sub_config.history_depth = 1000;  // Match publisher depth
   } else if (topic_config.message_type.find("Imu") != std::string::npos) {
     sub_config = SubscriptionConfig::high_throughput();
-    sub_config.history_depth = 5000;  // IMU is high frequency - need more buffer
+    sub_config.history_depth = 5000;  // IMU is high frequency
   } else {
     sub_config = SubscriptionConfig::high_throughput();
-    sub_config.history_depth = 1000;  // Match publisher default
+    sub_config.history_depth = 1000;
   }
 
-  // Zero-copy callback: minimal work, just enqueue
-  auto zero_copy_callback =
-    [this, topic_name = topic_config.name, context_ptr](SerializedMessageData&& msg_data) {
+  // Callback routes messages to worker pool
+  TopicManager::MessageCallback callback = 
+    [this, topic_name](const std::string& topic, int64_t timestamp_ns, std::vector<uint8_t>&& data) {
       // Fast path: check recording state
-      if (!recording_.load(std::memory_order_acquire)) {
+      if (!is_actively_recording()) {
         return;
       }
 
-      // Check if paused - drop messages while paused
-      if (paused_.load(std::memory_order_acquire)) {
-        return;
-      }
-
-      // Update statistics
-      context_ptr->received.fetch_add(1, std::memory_order_relaxed);
-      messages_received_.fetch_add(1, std::memory_order_relaxed);
-
-      // Create message item with ownership transfer (zero-copy from here)
-      MessageItem item(msg_data.receive_time_ns, std::move(msg_data.data));
-
-      // Try to enqueue to lock-free queue
-      if (!context_ptr->queue->try_push(std::move(item))) {
-        // Queue full - drop message
-        context_ptr->dropped.fetch_add(1, std::memory_order_relaxed);
-        messages_dropped_.fetch_add(1, std::memory_order_relaxed);
-      }
+      // Create message item and push to worker pool
+      MessageItem item(timestamp_ns, std::move(data));
+      worker_pool_->try_push(topic, std::move(item));
     };
 
-  // Use the new zero-copy subscription API
-  void* sub = ros_interface_->subscribe_zero_copy(
-    topic_config.name, topic_config.message_type, zero_copy_callback, sub_config
-  );
-
-  if (sub) {
-    subscriptions_[topic_config.name] = sub;
-    ros_interface_->log_info("Zero-copy subscription created for topic: " + topic_config.name);
-  } else {
-    ros_interface_->log_error("Failed to subscribe to topic: " + topic_config.name);
+  if (!topic_manager_->subscribe(topic_name, topic_config.message_type, callback, sub_config)) {
+    ros_interface_->log_error("Failed to subscribe to topic: " + topic_name);
+    return;
   }
+
+  ros_interface_->log_info("Topic recording setup complete for: " + topic_name);
 }
 
 void RecorderNode::setup_services() {
   // Create and register service adapter
-  service_adapter_ = std::make_unique<ServiceAdapter>(this, ros_interface_.get());
+  // Use shared_from_this() to pass a shared_ptr to the ServiceAdapter
+  service_adapter_ = std::make_unique<ServiceAdapter>(shared_from_this(), ros_interface_.get());
 
   if (service_adapter_->register_services()) {
     ros_interface_->log_info("Recording services registered successfully");
@@ -539,24 +433,18 @@ void RecorderNode::setup_services() {
   }
 }
 
-void RecorderNode::start_recording() {
-  if (recording_.load(std::memory_order_acquire)) {
-    ros_interface_->log_warn("Recording already started");
-    return;
-  }
+bool RecorderNode::start_recording() {
+  // Note: State validation is done by RecordingServiceImpl before calling this method
+  // StateManager is the single source of truth for recording state
 
-  // Start per-topic worker threads
-  start_worker_threads();
+  // Start worker thread pool
+  worker_pool_->start();
 
   // Record start time for duration calculation
   recording_start_time_ = std::chrono::system_clock::now();
 
-  // Enable message acceptance
-  recording_.store(true, std::memory_order_release);
-  paused_.store(false, std::memory_order_release);
-
   ros_interface_->log_info(
-    "Recording started with " + std::to_string(topic_contexts_.size()) + " topics to " +
+    "Recording started with " + std::to_string(worker_pool_->topic_count()) + " topics to " +
     output_path_
   );
 
@@ -572,50 +460,34 @@ void RecorderNode::start_recording() {
 
     http_callback_client_->post_start_callback_async(*config_opt, payload);
   }
+
+  return true;
 }
 
 void RecorderNode::pause_recording() {
-  if (!recording_.load(std::memory_order_acquire)) {
-    ros_interface_->log_warn("Cannot pause: not recording");
-    return;
-  }
-
-  if (paused_.load(std::memory_order_acquire)) {
-    ros_interface_->log_warn("Recording already paused");
-    return;
-  }
-
-  paused_.store(true, std::memory_order_release);
+  // Note: State validation is done by RecordingServiceImpl before calling this method
+  // StateManager is the single source of truth for recording state
   ros_interface_->log_info("Recording paused");
 }
 
 void RecorderNode::resume_recording() {
-  if (!recording_.load(std::memory_order_acquire)) {
-    ros_interface_->log_warn("Cannot resume: not recording");
-    return;
-  }
-
-  if (!paused_.load(std::memory_order_acquire)) {
-    ros_interface_->log_warn("Recording not paused");
-    return;
-  }
-
-  paused_.store(false, std::memory_order_release);
+  // Note: State validation is done by RecordingServiceImpl before calling this method
+  // StateManager is the single source of truth for recording state
   ros_interface_->log_info("Recording resumed");
 }
 
 void RecorderNode::cancel_recording() {
   std::cerr << "[axon_recorder] cancel_recording() called" << std::endl;
 
-  // Stop accepting new messages
-  recording_.store(false, std::memory_order_release);
-  paused_.store(false, std::memory_order_release);
-
+  // Note: State is managed by StateManager - no need to set flags here
   // Brief sleep to allow in-flight callbacks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  // Stop worker threads (will drain remaining queue items)
-  stop_worker_threads();
+  // Stop worker pool (will drain remaining queue items)
+  worker_pool_->stop();
+
+  // Get stats before clearing
+  auto aggregate_stats = worker_pool_->get_aggregate_stats();
 
   // Send finish callback with cancelled status if configured
   auto config_opt = task_config_cache_.get();
@@ -630,7 +502,7 @@ void RecorderNode::cancel_recording() {
     payload.started_at = HttpCallbackClient::get_iso8601_timestamp(recording_start_time_);
     payload.finished_at = HttpCallbackClient::get_iso8601_timestamp(now);
     payload.duration_sec = duration.count() / 1000.0;
-    payload.message_count = messages_written_.load();
+    payload.message_count = aggregate_stats.total_written;
     payload.file_size_bytes = 0;  // Not finalized
     payload.output_path = output_path_;
     payload.topics = config_opt->topics;
@@ -649,32 +521,31 @@ void RecorderNode::stop_recording() {
   // Use std::cerr for shutdown messages since ROS logging may be disabled after rclcpp::shutdown()
   std::cerr << "[axon_recorder] stop_recording() called" << std::endl;
 
-  // Disable new message acceptance
-  recording_.store(false, std::memory_order_release);
-  paused_.store(false, std::memory_order_release);
-
+  // Note: State is managed by StateManager - no need to set flags here
   // Brief sleep to allow in-flight callbacks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  // Stop worker threads (will drain remaining queue items)
-  std::cerr << "[axon_recorder] Stopping worker threads..." << std::endl;
-  stop_worker_threads();
+  // Stop worker pool (will drain remaining queue items)
+  std::cerr << "[axon_recorder] Stopping worker pool..." << std::endl;
+  worker_pool_->stop();
 
-  // Flush MCAP writer to ensure all data is written
-  if (mcap_writer_ && mcap_writer_->is_open()) {
-    std::cerr << "[axon_recorder] Flushing MCAP writer..." << std::endl;
-    mcap_writer_->flush();
+  // Flush recording session to ensure all data is written
+  if (recording_session_ && recording_session_->is_open()) {
+    std::cerr << "[axon_recorder] Flushing recording session..." << std::endl;
+    recording_session_->flush();
   }
-  std::cerr << "[axon_recorder] MCAP writer flushed" << std::endl;
+  std::cerr << "[axon_recorder] Recording session flushed" << std::endl;
+
+  // Get stats before sending callback
+  auto aggregate_stats = worker_pool_->get_aggregate_stats();
+  auto session_stats = recording_session_ ? recording_session_->get_stats()
+                                          : RecordingSession::Stats{};
 
   // Send finish callback if configured
   auto config_opt = task_config_cache_.get();
   if (config_opt && config_opt->has_callbacks()) {
     auto now = std::chrono::system_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - recording_start_time_);
-    
-    auto mcap_stats = mcap_writer_ ? mcap_writer_->get_statistics()
-                                   : mcap_wrapper::McapWriterWrapper::Statistics{};
 
     FinishCallbackPayload payload;
     payload.task_id = config_opt->task_id;
@@ -683,8 +554,8 @@ void RecorderNode::stop_recording() {
     payload.started_at = HttpCallbackClient::get_iso8601_timestamp(recording_start_time_);
     payload.finished_at = HttpCallbackClient::get_iso8601_timestamp(now);
     payload.duration_sec = duration.count() / 1000.0;
-    payload.message_count = messages_written_.load();
-    payload.file_size_bytes = mcap_stats.bytes_written;
+    payload.message_count = aggregate_stats.total_written;
+    payload.file_size_bytes = session_stats.bytes_written;
     payload.output_path = output_path_;
     payload.topics = config_opt->topics;
     payload.error = "";
@@ -731,11 +602,13 @@ bool RecorderNode::configure_from_task_config(const TaskConfig& config) {
   return true;
 }
 
-RecorderNode::RecordingStats RecorderNode::get_stats() const {
+RecordingStats RecorderNode::get_stats() const {
+  auto aggregate = worker_pool_->get_aggregate_stats();
+
   RecordingStats stats;
-  stats.messages_received = messages_received_.load(std::memory_order_relaxed);
-  stats.messages_dropped = messages_dropped_.load(std::memory_order_relaxed);
-  stats.messages_written = messages_written_.load(std::memory_order_relaxed);
+  stats.messages_received = aggregate.total_received;
+  stats.messages_dropped = aggregate.total_dropped;
+  stats.messages_written = aggregate.total_written;
 
   if (stats.messages_received > 0) {
     stats.drop_rate_percent = 100.0 * static_cast<double>(stats.messages_dropped) /
@@ -748,7 +621,8 @@ RecorderNode::RecordingStats RecorderNode::get_stats() const {
 }
 
 double RecorderNode::get_recording_duration_sec() const {
-  if (!recording_.load(std::memory_order_relaxed)) {
+  // Use StateManager to check if recording is active
+  if (!is_recording()) {
     return 0.0;
   }
   auto now = std::chrono::system_clock::now();
@@ -763,8 +637,8 @@ void RecorderNode::write_stats_file() {
   }
 
   auto stats = get_stats();
-  auto mcap_stats = mcap_writer_ ? mcap_writer_->get_statistics()
-                                 : mcap_wrapper::McapWriterWrapper::Statistics{};
+  auto session_stats = recording_session_ ? recording_session_->get_stats()
+                                          : RecordingSession::Stats{};
 
   // Also write per-topic statistics
   stats_file << "{\n"
@@ -773,25 +647,26 @@ void RecorderNode::write_stats_file() {
              << "  \"messages_received\": " << stats.messages_received << ",\n"
              << "  \"messages_dropped\": " << stats.messages_dropped << ",\n"
              << "  \"messages_written\": " << stats.messages_written << ",\n"
-             << "  \"bytes_written\": " << mcap_stats.bytes_written << ",\n"
+             << "  \"bytes_written\": " << session_stats.bytes_written << ",\n"
              << "  \"drop_rate_percent\": " << std::fixed << std::setprecision(2)
              << stats.drop_rate_percent << ",\n"
              << "  \"per_topic_stats\": {\n";
 
   bool first = true;
-  for (const auto& [topic_name, context] : topic_contexts_) {
+  auto topics = worker_pool_->get_topics();
+  for (const auto& topic_name : topics) {
     if (!first) stats_file << ",\n";
     first = false;
 
-    uint64_t topic_received = context->received.load();
-    uint64_t topic_dropped = context->dropped.load();
-    uint64_t topic_written = context->written.load();
-    double topic_drop_rate = (topic_received > 0) ? (100.0 * topic_dropped / topic_received) : 0.0;
+    auto topic_stats = worker_pool_->get_topic_stats(topic_name);
+    double topic_drop_rate = (topic_stats.received > 0) 
+                             ? (100.0 * topic_stats.dropped / topic_stats.received) 
+                             : 0.0;
 
     stats_file << "    \"" << topic_name << "\": {"
-               << "\"received\": " << topic_received << ", "
-               << "\"dropped\": " << topic_dropped << ", "
-               << "\"written\": " << topic_written << ", "
+               << "\"received\": " << topic_stats.received << ", "
+               << "\"dropped\": " << topic_stats.dropped << ", "
+               << "\"written\": " << topic_stats.written << ", "
                << "\"drop_rate\": " << std::fixed << std::setprecision(2) << topic_drop_rate << "}";
   }
 

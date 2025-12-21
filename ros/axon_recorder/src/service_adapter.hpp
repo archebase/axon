@@ -4,12 +4,12 @@
 #include <memory>
 #include <string>
 
+#include "recorder_context.hpp"
 #include "recording_service_impl.hpp"
 
 // Forward declarations for ROS interface
 namespace axon {
 namespace recorder {
-class RecorderNode;
 class RosInterface;
 }  // namespace recorder
 }  // namespace axon
@@ -38,10 +38,18 @@ namespace recorder {
  *
  * This class handles the ROS version-specific service registration and
  * message type conversions.
+ *
+ * Uses IRecorderContext interface for dependency injection, enabling
+ * easier testing and better decoupling from RecorderNode.
  */
 class ServiceAdapter {
 public:
-  ServiceAdapter(RecorderNode* node, RosInterface* ros_interface);
+  /**
+   * Construct with a shared pointer to the recorder context.
+   * @param context Shared pointer to the recorder context (must not be null)
+   * @param ros_interface Raw pointer to ROS interface (owned by RecorderNode)
+   */
+  ServiceAdapter(std::shared_ptr<IRecorderContext> context, RosInterface* ros_interface);
   ~ServiceAdapter();
 
   /**
@@ -56,7 +64,7 @@ public:
   void shutdown();
 
 private:
-  RecorderNode* node_;
+  std::shared_ptr<IRecorderContext> context_;
   RosInterface* ros_interface_;
   std::unique_ptr<RecordingServiceImpl> service_impl_;
 

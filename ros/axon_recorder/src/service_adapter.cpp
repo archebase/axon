@@ -1,15 +1,22 @@
 #include "service_adapter.hpp"
 
-#include "recorder_node.hpp"
+#include "recorder_context.hpp"
 #include "ros_interface.hpp"
 
 namespace axon {
 namespace recorder {
 
-ServiceAdapter::ServiceAdapter(RecorderNode* node, RosInterface* ros_interface)
-    : node_(node)
+ServiceAdapter::ServiceAdapter(std::shared_ptr<IRecorderContext> context, RosInterface* ros_interface)
+    : context_(std::move(context))
     , ros_interface_(ros_interface)
-    , service_impl_(std::make_unique<RecordingServiceImpl>(node)) {}
+    , service_impl_(std::make_unique<RecordingServiceImpl>(context_)) {
+  if (!context_) {
+    throw std::invalid_argument("ServiceAdapter: context cannot be null");
+  }
+  if (!ros_interface_) {
+    throw std::invalid_argument("ServiceAdapter: ros_interface cannot be null");
+  }
+}
 
 ServiceAdapter::~ServiceAdapter() {
   shutdown();

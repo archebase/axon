@@ -163,6 +163,92 @@ private:
   std::unordered_map<RecorderState, std::vector<RecorderState>> valid_transitions_;
 };
 
+/**
+ * StateTransactionGuard provides RAII-style transaction semantics for state transitions.
+ *
+ * When a state transition needs to be followed by additional operations that might fail,
+ * use this guard to automatically rollback the state if the operations don't complete
+ * successfully.
+ *
+ * Usage:
+ *   StateTransactionGuard guard(state_manager, previous_state);
+ *
+ *   if (!state_manager.transition_to(RecorderState::RECORDING, error)) {
+ *       return false;  // No rollback needed - transition didn't happen
+ *   }
+ *
+ *   if (!start_recording_impl()) {
+ *       return false;  // Guard will rollback to previous_state
+ *   }
+ *
+ *   guard.commit();  // Success - don't rollback
+ *   return true;
+ *
+ * Thread Safety:
+ * - The guard should be used from a single thread
+ * - The underlying StateManager is thread-safe
+ */
+class StateTransactionGuard {
+public:
+  /**
+   * Create a transaction guard.
+   *
+   * @param state_manager Reference to the state manager
+   * @param rollback_state State to revert to if not committed
+   */
+  StateTransactionGuard(StateManager& state_manager, RecorderState rollback_state)
+      : state_manager_(state_manager)
+      , rollback_state_(rollback_state)
+      , committed_(false) {}
+
+  /**
+   * Destructor - rolls back if not committed.
+   */
+  ~StateTransactionGuard() {
+    if (!committed_) {
+      std::string error;
+      // Force transition back to rollback state
+      // Note: This might fail if rollback_state is not valid from current state,
+      // but we try anyway as a best-effort recovery
+      state_manager_.transition_to(rollback_state_, error);
+    }
+  }
+
+  /**
+   * Commit the transaction.
+   * Call this when all operations completed successfully.
+   * After commit, the destructor will not rollback.
+   */
+  void commit() {
+    committed_ = true;
+  }
+
+  /**
+   * Check if the transaction has been committed.
+   */
+  bool is_committed() const {
+    return committed_;
+  }
+
+  /**
+   * Get the rollback state.
+   */
+  RecorderState get_rollback_state() const {
+    return rollback_state_;
+  }
+
+  // Non-copyable, non-movable
+  StateTransactionGuard(const StateTransactionGuard&) = delete;
+  StateTransactionGuard& operator=(const StateTransactionGuard&) = delete;
+  StateTransactionGuard(StateTransactionGuard&&) = delete;
+  StateTransactionGuard& operator=(StateTransactionGuard&&) = delete;
+
+private:
+  StateManager& state_manager_;
+  RecorderState rollback_state_;
+  bool committed_;
+};
+
 }  // namespace recorder
 }  // namespace axon
 

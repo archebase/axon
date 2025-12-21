@@ -70,6 +70,18 @@ target_link_libraries(test_state_machine
 )
 add_test(NAME StateMachineTest COMMAND test_state_machine)
 
+# Test StateTransactionGuard
+add_executable(test_state_transaction_guard
+    unit/test_state_transaction_guard.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
+)
+target_link_libraries(test_state_transaction_guard
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+)
+add_test(NAME StateTransactionGuardTest COMMAND test_state_transaction_guard)
+
 # Test HttpCallbackClient (requires Boost and OpenSSL for SSL support)
 if(Boost_FOUND)
     add_executable(test_http_callback_client
@@ -105,6 +117,92 @@ if(Boost_FOUND)
         target_link_libraries(test_recording_workflow ${Boost_LIBRARIES})
     endif()
     add_test(NAME RecordingWorkflowTest COMMAND test_recording_workflow)
+
+    # Test RecordingServiceImpl with MockRecorderContext
+    add_executable(test_recording_service_impl
+        unit/test_recording_service_impl.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_service_impl.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/http_callback_client.cpp
+    )
+    target_include_directories(test_recording_service_impl PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit
+    )
+    target_link_libraries(test_recording_service_impl
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+    if(Boost_SYSTEM_FOUND)
+        target_link_libraries(test_recording_service_impl ${Boost_LIBRARIES})
+    endif()
+    add_test(NAME RecordingServiceImplTest COMMAND test_recording_service_impl)
+
+    # Test IRecorderContext interface and MockRecorderContext
+    add_executable(test_recorder_context_interface
+        unit/test_recorder_context_interface.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/http_callback_client.cpp
+    )
+    target_include_directories(test_recorder_context_interface PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit
+    )
+    target_link_libraries(test_recorder_context_interface
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+    if(Boost_SYSTEM_FOUND)
+        target_link_libraries(test_recorder_context_interface ${Boost_LIBRARIES})
+    endif()
+    add_test(NAME RecorderContextInterfaceTest COMMAND test_recorder_context_interface)
+endif()
+
+# Test TopicManager (requires ros_interface mock)
+add_executable(test_topic_manager
+    unit/test_topic_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/topic_manager.cpp
+)
+target_link_libraries(test_topic_manager
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+)
+add_test(NAME TopicManagerTest COMMAND test_topic_manager)
+
+# Test WorkerThreadPool
+add_executable(test_worker_thread_pool
+    unit/test_worker_thread_pool.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/worker_thread_pool.cpp
+)
+target_link_libraries(test_worker_thread_pool
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+)
+add_test(NAME WorkerThreadPoolTest COMMAND test_worker_thread_pool)
+
+# ============================================================================
+# Tests requiring axon_mcap (only when built as part of ROS package)
+# ============================================================================
+
+if(ROS_INTEGRATED_BUILD)
+    # Test RecordingSession (requires axon_mcap)
+    add_executable(test_recording_session
+        unit/test_recording_session.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
+    )
+    target_link_libraries(test_recording_session
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+        axon_mcap
+    )
+    add_test(NAME RecordingSessionTest COMMAND test_recording_session)
 endif()
 
 # ============================================================================

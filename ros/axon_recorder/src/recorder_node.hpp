@@ -2,22 +2,19 @@
 #define AXON_RECORDER_NODE_HPP
 
 #include <atomic>
-#include <condition_variable>
+#include <chrono>
 #include <memory>
-#include <mutex>
-#include <queue>
 #include <string>
-#include <thread>
-#include <unordered_map>
-#include <vector>
 
 #include "config_parser.hpp"
 #include "http_callback_client.hpp"
-#include "mcap_writer_wrapper.hpp"
+#include "recorder_context.hpp"
+#include "recording_session.hpp"
 #include "ros_interface.hpp"
-#include "spsc_queue.hpp"
 #include "state_machine.hpp"
 #include "task_config.hpp"
+#include "topic_manager.hpp"
+#include "worker_thread_pool.hpp"
 
 // Forward declaration
 namespace axon {
@@ -61,10 +58,21 @@ namespace recorder {
  * - Pre-allocated lock-free queues per topic
  * - Ownership transfer (move semantics) throughout the pipeline
  * - Direct serialized message storage (no Arrow conversion needed)
+ *
+ * This class implements IRecorderContext interface, providing:
+ * - Dependency injection for services (RecordingServiceImpl, ServiceAdapter)
+ * - Single source of truth for recording state (via StateManager)
+ * - Testable interface for mock implementations
  */
-class RecorderNode {
+class RecorderNode : public IRecorderContext,
+                     public std::enable_shared_from_this<RecorderNode> {
 public:
-  RecorderNode();
+  /**
+   * Create a RecorderNode instance.
+   * Use this factory method instead of constructor for proper shared_ptr usage.
+   */
+  static std::shared_ptr<RecorderNode> create();
+
   ~RecorderNode();
 
   // Non-copyable, non-movable (contains threads and atomics)
@@ -91,108 +99,163 @@ public:
    */
   void shutdown();
 
+  // =========================================================================
+  // IRecorderContext Implementation - Recording Operations
+  // =========================================================================
+
   /**
    * Start recording
    * Enables message processing from queues
    */
-  void start_recording();
+  bool start_recording() override;
 
   /**
    * Stop recording
    * Disables new message acceptance, drains existing queues
    */
-  void stop_recording();
+  void stop_recording() override;
 
   /**
    * Pause recording
    * Temporarily stops accepting new messages
    */
-  void pause_recording();
+  void pause_recording() override;
 
   /**
    * Resume recording
    * Resumes accepting messages after pause
    */
-  void resume_recording();
+  void resume_recording() override;
 
   /**
    * Cancel recording
    * Stops recording and cleans up without finalizing
    */
-  void cancel_recording();
+  void cancel_recording() override;
 
   /**
-   * Check if recording is active (recording or paused)
+   * Check if recording is active (RECORDING or PAUSED state).
+   * Derived from StateManager - single source of truth.
    */
   bool is_recording() const {
-    return recording_.load(std::memory_order_acquire);
+    auto state = state_manager_.get_state();
+    return state == RecorderState::RECORDING || state == RecorderState::PAUSED;
   }
 
   /**
-   * Check if recording is paused
+   * Check if recording is paused.
+   * Derived from StateManager - single source of truth.
    */
   bool is_paused() const {
-    return paused_.load(std::memory_order_acquire);
+    return state_manager_.is_state(RecorderState::PAUSED);
   }
+
+  /**
+   * Check if actively recording (not paused).
+   * Derived from StateManager - single source of truth.
+   */
+  bool is_actively_recording() const {
+    return state_manager_.is_state(RecorderState::RECORDING);
+  }
+
+  // =========================================================================
+  // IRecorderContext Implementation - State Management
+  // =========================================================================
 
   /**
    * Get the state manager for external access
    */
-  StateManager& get_state_manager() {
+  StateManager& get_state_manager() override {
     return state_manager_;
   }
 
   /**
    * Get the task config cache for external access
    */
-  TaskConfigCache& get_task_config_cache() {
+  TaskConfigCache& get_task_config_cache() override {
     return task_config_cache_;
   }
 
   /**
    * Get the HTTP callback client for external access
    */
-  std::shared_ptr<HttpCallbackClient> get_http_callback_client() {
+  std::shared_ptr<HttpCallbackClient> get_http_callback_client() override {
     return http_callback_client_;
   }
 
-  /**
-   * Get the ROS interface for logging
-   */
-  RosInterface* get_ros_interface() {
-    return ros_interface_.get();
-  }
+  // =========================================================================
+  // IRecorderContext Implementation - Configuration and Status
+  // =========================================================================
 
   /**
    * Configure topics from task config (used when starting from cached config)
    */
-  bool configure_from_task_config(const TaskConfig& config);
+  bool configure_from_task_config(const TaskConfig& config) override;
 
   /**
    * Get the current output path
    */
-  std::string get_output_path() const {
+  std::string get_output_path() const override {
     return output_path_;
   }
 
   /**
    * Get current statistics
    */
-  struct RecordingStats {
-    uint64_t messages_received;
-    uint64_t messages_dropped;
-    uint64_t messages_written;
-    double drop_rate_percent;
-  };
-  RecordingStats get_stats() const;
+  RecordingStats get_stats() const override;
 
   /**
    * Get recording duration in seconds.
    * Returns 0.0 if not currently recording.
    */
-  double get_recording_duration_sec() const;
+  double get_recording_duration_sec() const override;
+
+  // =========================================================================
+  // IRecorderContext Implementation - Logging
+  // =========================================================================
+
+  /**
+   * Log an informational message.
+   */
+  void log_info(const std::string& msg) override {
+    if (ros_interface_) {
+      ros_interface_->log_info(msg);
+    }
+  }
+
+  /**
+   * Log a warning message.
+   */
+  void log_warn(const std::string& msg) override {
+    if (ros_interface_) {
+      ros_interface_->log_warn(msg);
+    }
+  }
+
+  /**
+   * Log an error message.
+   */
+  void log_error(const std::string& msg) override {
+    if (ros_interface_) {
+      ros_interface_->log_error(msg);
+    }
+  }
+
+  // =========================================================================
+  // Additional Public Methods (not part of IRecorderContext)
+  // =========================================================================
+
+  /**
+   * Get the ROS interface for direct access (internal use)
+   */
+  RosInterface* get_ros_interface() {
+    return ros_interface_.get();
+  }
 
 private:
+  // Private constructor - use create() factory method
+  RecorderNode();
+
   // =========================================================================
   // Initialization
   // =========================================================================
@@ -212,11 +275,9 @@ private:
   std::string get_message_encoding();
 
   // =========================================================================
-  // Worker Thread Management
+  // Worker Thread Management (delegated to WorkerThreadPool)
   // =========================================================================
-  void start_worker_threads();
-  void stop_worker_threads();
-  void worker_thread_func(const std::string& topic_name);
+  void setup_worker_pool();
 
   // =========================================================================
   // Statistics
@@ -230,73 +291,21 @@ private:
   std::unique_ptr<ServiceAdapter> service_adapter_;
   core::RecorderConfig config_;
 
-  // MCAP writer (replaces Lance dataset)
-  std::unique_ptr<mcap_wrapper::McapWriterWrapper> mcap_writer_;
+  // Recording session (encapsulates MCAP lifecycle)
+  std::unique_ptr<RecordingSession> recording_session_;
   std::string output_path_;
 
-  // Channel IDs for each topic (assigned by MCAP writer)
-  std::unordered_map<std::string, uint16_t> topic_channel_ids_;
+  // Topic manager (handles ROS subscriptions)
+  std::unique_ptr<TopicManager> topic_manager_;
 
-  // Schema IDs for each message type (assigned by MCAP writer)
-  std::unordered_map<std::string, uint16_t> message_type_schema_ids_;
-
-  // Subscriptions (handles for cleanup)
-  std::unordered_map<std::string, void*> subscriptions_;
+  // Worker thread pool (handles per-topic queues and workers)
+  std::unique_ptr<WorkerThreadPool> worker_pool_;
 
   // =========================================================================
   // High-Performance Message Queue Architecture
   // =========================================================================
-
-  /**
-   * Message item for the lock-free queue
-   * Uses move-only semantics for zero-copy transfer
-   */
-  struct MessageItem {
-    int64_t timestamp_ns;
-    std::vector<uint8_t> raw_data;  // Owned raw message bytes
-
-    MessageItem()
-        : timestamp_ns(0) {}
-
-    MessageItem(int64_t ts, std::vector<uint8_t>&& data)
-        : timestamp_ns(ts)
-        , raw_data(std::move(data)) {}
-
-    // Move-only for zero-copy
-    MessageItem(MessageItem&&) = default;
-    MessageItem& operator=(MessageItem&&) = default;
-    MessageItem(const MessageItem&) = delete;
-    MessageItem& operator=(const MessageItem&) = delete;
-  };
-
-  /**
-   * Per-topic queue context
-   * Contains the lock-free queue and its dedicated worker thread
-   */
-  struct TopicContext {
-    std::unique_ptr<core::SPSCQueue<MessageItem>> queue;
-    std::thread worker_thread;
-    std::atomic<bool> running{false};
-
-    // Statistics for this topic
-    std::atomic<uint64_t> received{0};
-    std::atomic<uint64_t> dropped{0};
-    std::atomic<uint64_t> written{0};
-
-    // Sequence number for MCAP messages
-    std::atomic<uint32_t> sequence{0};
-
-    TopicContext() = default;
-
-    // Non-copyable, non-movable
-    TopicContext(const TopicContext&) = delete;
-    TopicContext& operator=(const TopicContext&) = delete;
-    TopicContext(TopicContext&&) = delete;
-    TopicContext& operator=(TopicContext&&) = delete;
-  };
-
-  // Per-topic contexts (one per subscribed topic)
-  std::unordered_map<std::string, std::unique_ptr<TopicContext>> topic_contexts_;
+  // Note: MessageItem and TopicContext are now in WorkerThreadPool
+  // Worker threads and queues are managed by worker_pool_
 
   // =========================================================================
   // State Machine & Task Management
@@ -311,26 +320,13 @@ private:
   // =========================================================================
   // State
   // =========================================================================
-  std::atomic<bool> recording_{false};
-  std::atomic<bool> paused_{false};
+  // Note: recording_ and paused_ flags removed - use StateManager as single source of truth
+  // Use is_recording(), is_paused(), is_actively_recording() methods instead
   std::atomic<bool> shutdown_requested_{false};
-
-  // =========================================================================
-  // Global Statistics (aggregated from per-topic stats)
-  // =========================================================================
-  std::atomic<uint64_t> messages_received_{0};
-  std::atomic<uint64_t> messages_dropped_{0};
-  std::atomic<uint64_t> messages_written_{0};
 
   // =========================================================================
   // Configuration Constants
   // =========================================================================
-  // Queue capacity per topic - large enough to handle bursts
-  static constexpr size_t QUEUE_CAPACITY_PER_TOPIC = 4096;
-
-  // Worker thread sleep time when queue is empty (microseconds)
-  static constexpr int WORKER_IDLE_SLEEP_US = 50;
-
   // Statistics file path
   static constexpr const char* STATS_FILE_PATH = "/data/recordings/recorder_stats.json";
 };

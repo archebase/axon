@@ -2,14 +2,17 @@
 
 #include <chrono>
 
-#include "recorder_node.hpp"
-#include "ros_interface.hpp"
+#include "recorder_context.hpp"
 
 namespace axon {
 namespace recorder {
 
-RecordingServiceImpl::RecordingServiceImpl(RecorderNode* node)
-    : node_(node) {}
+RecordingServiceImpl::RecordingServiceImpl(std::shared_ptr<IRecorderContext> context)
+    : context_(std::move(context)) {
+  if (!context_) {
+    throw std::invalid_argument("RecordingServiceImpl: context cannot be null");
+  }
+}
 
 // ============================================================================
 // CachedRecordingConfig Service
@@ -32,7 +35,7 @@ bool RecordingServiceImpl::handle_cached_recording_config(
   }
 
   // Check current state - must be IDLE to cache new config
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
   if (!state_manager.is_state(RecorderState::IDLE)) {
     message = "ERR_INVALID_STATE: Cannot cache config in state " + state_manager.get_state_string();
     return true;
@@ -53,14 +56,14 @@ bool RecordingServiceImpl::handle_cached_recording_config(
   config.user_token = user_token;
 
   // Cache the configuration
-  node_->get_task_config_cache().cache(config);
+  context_->get_task_config_cache().cache(config);
 
   // Transition to READY state
   std::string error_msg;
   if (!state_manager.transition_to(RecorderState::READY, error_msg)) {
     // Rollback - clear the config
-    node_->get_task_config_cache().clear();
-    node_->get_ros_interface()->log_warn("State transition to READY failed: " + error_msg);
+    context_->get_task_config_cache().clear();
+    context_->log_warn("State transition to READY failed: " + error_msg);
     message = error_msg;
     return true;
   }
@@ -83,8 +86,8 @@ bool RecordingServiceImpl::handle_is_recording_ready(
   success = true;
   message = "OK";
 
-  auto& state_manager = node_->get_state_manager();
-  auto& task_cache = node_->get_task_config_cache();
+  auto& state_manager = context_->get_state_manager();
+  auto& task_cache = context_->get_task_config_cache();
 
   // Check state
   RecorderState state = state_manager.get_state();
@@ -129,7 +132,7 @@ bool RecordingServiceImpl::handle_recording_control(
   success = false;
 
   // Get current task_id for response
-  auto config_opt = node_->get_task_config_cache().get();
+  auto config_opt = context_->get_task_config_cache().get();
   task_id_response = config_opt ? config_opt->task_id : "";
 
   // Dispatch based on command
@@ -153,7 +156,7 @@ bool RecordingServiceImpl::handle_recording_control(
 }
 
 bool RecordingServiceImpl::handle_start_command(std::string& message, std::string& task_id_response) {
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
 
   // Must be in READY state
   if (!state_manager.is_state(RecorderState::READY)) {
@@ -162,7 +165,7 @@ bool RecordingServiceImpl::handle_start_command(std::string& message, std::strin
   }
 
   // Get cached config
-  auto config_opt = node_->get_task_config_cache().get();
+  auto config_opt = context_->get_task_config_cache().get();
   if (!config_opt) {
     message = "ERR_CONFIG_NOT_FOUND: No configuration cached";
     return false;
@@ -171,7 +174,7 @@ bool RecordingServiceImpl::handle_start_command(std::string& message, std::strin
   task_id_response = config_opt->task_id;
 
   // Configure from task config (update output path, etc.)
-  if (!node_->configure_from_task_config(*config_opt)) {
+  if (!context_->configure_from_task_config(*config_opt)) {
     message = "ERR_INVALID_STATE: Failed to configure from task config";
     return false;
   }
@@ -179,20 +182,20 @@ bool RecordingServiceImpl::handle_start_command(std::string& message, std::strin
   // Transition to RECORDING state
   std::string error_msg;
   if (!state_manager.transition_to(RecorderState::RECORDING, error_msg)) {
-    node_->get_ros_interface()->log_warn("State transition to RECORDING failed: " + error_msg);
+    context_->log_warn("State transition to RECORDING failed: " + error_msg);
     message = error_msg;
     return false;
   }
 
   // Start recording
-  node_->start_recording();
+  context_->start_recording();
 
   message = "Recording started for task: " + task_id_response;
   return true;
 }
 
 bool RecordingServiceImpl::handle_pause_command(const std::string& task_id, std::string& message) {
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
 
   // Validate task_id
   std::string error_msg;
@@ -209,20 +212,20 @@ bool RecordingServiceImpl::handle_pause_command(const std::string& task_id, std:
 
   // Transition to PAUSED state
   if (!state_manager.transition_to(RecorderState::PAUSED, error_msg)) {
-    node_->get_ros_interface()->log_warn("State transition to PAUSED failed: " + error_msg);
+    context_->log_warn("State transition to PAUSED failed: " + error_msg);
     message = error_msg;
     return false;
   }
 
   // Pause recording
-  node_->pause_recording();
+  context_->pause_recording();
 
   message = "Recording paused";
   return true;
 }
 
 bool RecordingServiceImpl::handle_resume_command(const std::string& task_id, std::string& message) {
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
 
   // Validate task_id
   std::string error_msg;
@@ -239,20 +242,20 @@ bool RecordingServiceImpl::handle_resume_command(const std::string& task_id, std
 
   // Transition to RECORDING state
   if (!state_manager.transition_to(RecorderState::RECORDING, error_msg)) {
-    node_->get_ros_interface()->log_warn("State transition to RECORDING (resume) failed: " + error_msg);
+    context_->log_warn("State transition to RECORDING (resume) failed: " + error_msg);
     message = error_msg;
     return false;
   }
 
   // Resume recording
-  node_->resume_recording();
+  context_->resume_recording();
 
   message = "Recording resumed";
   return true;
 }
 
 bool RecordingServiceImpl::handle_cancel_command(const std::string& task_id, std::string& message) {
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
 
   // Validate task_id
   std::string error_msg;
@@ -268,11 +271,11 @@ bool RecordingServiceImpl::handle_cancel_command(const std::string& task_id, std
   }
 
   // Cancel recording (sends callback and clears config)
-  node_->cancel_recording();
+  context_->cancel_recording();
 
   // Transition to IDLE state
   if (!state_manager.transition_to(RecorderState::IDLE, error_msg)) {
-    node_->get_ros_interface()->log_warn("State transition to IDLE (cancel) failed: " + error_msg);
+    context_->log_warn("State transition to IDLE (cancel) failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -282,7 +285,7 @@ bool RecordingServiceImpl::handle_cancel_command(const std::string& task_id, std
 }
 
 bool RecordingServiceImpl::handle_finish_command(const std::string& task_id, std::string& message) {
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
 
   // Validate task_id
   std::string error_msg;
@@ -298,11 +301,11 @@ bool RecordingServiceImpl::handle_finish_command(const std::string& task_id, std
   }
 
   // Stop recording (sends callback and clears config)
-  node_->stop_recording();
+  context_->stop_recording();
 
   // Transition to IDLE state
   if (!state_manager.transition_to(RecorderState::IDLE, error_msg)) {
-    node_->get_ros_interface()->log_warn("State transition to IDLE (finish) failed: " + error_msg);
+    context_->log_warn("State transition to IDLE (finish) failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -312,7 +315,7 @@ bool RecordingServiceImpl::handle_finish_command(const std::string& task_id, std
 }
 
 bool RecordingServiceImpl::handle_clear_command(std::string& message) {
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
 
   // Must be in READY state
   if (!state_manager.is_state(RecorderState::READY)) {
@@ -321,12 +324,12 @@ bool RecordingServiceImpl::handle_clear_command(std::string& message) {
   }
 
   // Clear the cached config
-  node_->get_task_config_cache().clear();
+  context_->get_task_config_cache().clear();
 
   // Transition to IDLE state
   std::string error_msg;
   if (!state_manager.transition_to(RecorderState::IDLE, error_msg)) {
-    node_->get_ros_interface()->log_warn("State transition to IDLE (clear) failed: " + error_msg);
+    context_->log_warn("State transition to IDLE (clear) failed: " + error_msg);
     message = error_msg;
     return false;
   }
@@ -349,11 +352,11 @@ bool RecordingServiceImpl::handle_recording_status(
   success = true;
   message = "OK";
 
-  auto& state_manager = node_->get_state_manager();
+  auto& state_manager = context_->get_state_manager();
   status = state_manager.get_state_string();
 
   // Get cached config if available
-  auto config_opt = node_->get_task_config_cache().get();
+  auto config_opt = context_->get_task_config_cache().get();
   if (config_opt) {
     task_id = config_opt->task_id;
     device_id = config_opt->device_id;
@@ -375,13 +378,13 @@ bool RecordingServiceImpl::handle_recording_status(
   }
 
   // Get runtime metrics from RecorderNode
-  auto stats = node_->get_stats();
-  output_path = node_->get_output_path();
+  auto stats = context_->get_stats();
+  output_path = context_->get_output_path();
   message_count = static_cast<int64_t>(stats.messages_written);
   last_error = "";  // Would need error tracking in RecorderNode
 
   // Calculate duration if recording
-  duration_sec = node_->get_recording_duration_sec();
+  duration_sec = context_->get_recording_duration_sec();
 
   // Disk usage and throughput would need additional tracking
   disk_usage_gb = 0.0;
@@ -400,7 +403,7 @@ bool RecordingServiceImpl::validate_task_id(const std::string& task_id, std::str
     return false;
   }
 
-  auto& task_cache = node_->get_task_config_cache();
+  auto& task_cache = context_->get_task_config_cache();
   if (!task_cache.matches_task_id(task_id)) {
     error_msg = "ERR_RECORDING_NOT_FOUND: task_id does not match current task";
     return false;

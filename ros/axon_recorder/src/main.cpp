@@ -41,9 +41,11 @@ int main(int argc, char** argv) {
 
   // Use a block scope to ensure RecorderNode is fully destroyed before main() returns
   {
-    axon::recorder::RecorderNode node;
+    // Use factory method to create RecorderNode as shared_ptr
+    // This enables shared_from_this() for dependency injection
+    auto node = axon::recorder::RecorderNode::create();
 
-    if (!node.initialize(argc, argv)) {
+    if (!node->initialize(argc, argv)) {
       std::cerr << "[axon_recorder] Initialization failed" << std::endl;
       return 1;
     }
@@ -56,16 +58,16 @@ int main(int argc, char** argv) {
     std::cerr << "[axon_recorder] Initialization complete, calling run()" << std::endl;
 
     // run() blocks until rclcpp::shutdown() is called (by signal or otherwise)
-    node.run();
+    node->run();
 
     std::cerr << "[axon_recorder] run() returned, calling shutdown()" << std::endl;
 
     // Ensure shutdown is called - this writes the stats file
     // This runs AFTER spin() returns due to SIGTERM/SIGINT
-    node.shutdown();
+    node->shutdown();
 
     std::cerr << "[axon_recorder] Node destroyed" << std::endl;
-  }  // RecorderNode destructor runs here, before main() exits
+  }  // RecorderNode shared_ptr released here, destructor runs before main() exits
 
   std::cerr << "[axon_recorder] main() exiting normally" << std::endl;
   return 0;
