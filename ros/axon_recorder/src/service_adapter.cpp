@@ -1,5 +1,7 @@
 #include "service_adapter.hpp"
 
+#include <stdexcept>
+
 #include "recorder_context.hpp"
 #include "ros_interface.hpp"
 

@@ -1,6 +1,7 @@
 #include "topic_manager.hpp"
 
 #include <iostream>
+#include <stdexcept>
 
 namespace axon {
 namespace recorder {

@@ -1,6 +1,7 @@
 #include "recording_service_impl.hpp"
 
 #include <chrono>
+#include <stdexcept>
 
 #include "recorder_context.hpp"
 
