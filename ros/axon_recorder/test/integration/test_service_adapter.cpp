@@ -87,10 +87,12 @@ TEST_F(ServiceAdapterTest, CachedRecordingConfigRequest_Structure) {
   req.task_id = "task_001";
   req.device_id = "robot_01";
   req.data_collector_id = "collector_01";
+  req.order_id = "order_001";
+  req.operator_name = "operator_01";
   req.scene = "warehouse";
   req.subscene = "picking";
   req.skills = {"navigation", "manipulation"};
-  req.organization = "test_org";
+  req.factory = "test_factory";
   req.topics = {"/camera/image", "/lidar/scan"};
   req.start_callback_url = "http://server/start";
   req.finish_callback_url = "http://server/finish";
@@ -120,16 +122,20 @@ TEST_F(ServiceAdapterTest, IsRecordingReadyResponse_Structure) {
   res.is_recording = false;
   res.task_id = "task_001";
   res.device_id = "robot_01";
+  res.order_id = "order_001";
+  res.operator_name = "operator_01";
   res.scene = "warehouse";
   res.subscene = "picking";
   res.skills = {"skill1"};
-  res.organization = "test_org";
+  res.factory = "test_factory";
   res.data_collector_id = "collector_01";
   res.topics = {"/camera"};
 
   EXPECT_TRUE(res.is_configured);
   EXPECT_FALSE(res.is_recording);
   EXPECT_EQ(res.task_id, "task_001");
+  EXPECT_EQ(res.order_id, "order_001");
+  EXPECT_EQ(res.operator_name, "operator_01");
 }
 
 TEST_F(ServiceAdapterTest, RecordingControlRequest_Structure) {
@@ -162,10 +168,12 @@ TEST_F(ServiceAdapterTest, RecordingStatusResponse_Structure) {
   res.task_id = "task_001";
   res.device_id = "robot_01";
   res.data_collector_id = "collector_01";
+  res.order_id = "order_001";
+  res.operator_name = "operator_01";
   res.scene = "warehouse";
   res.subscene = "picking";
   res.skills = {"skill1"};
-  res.organization = "test_org";
+  res.factory = "test_factory";
   res.active_topics = {"/camera"};
   res.output_path = "/data/task_001.mcap";
   res.disk_usage_gb = 1.5;
@@ -176,6 +184,8 @@ TEST_F(ServiceAdapterTest, RecordingStatusResponse_Structure) {
 
   EXPECT_EQ(res.status, "recording");
   EXPECT_EQ(res.message_count, 10000);
+  EXPECT_EQ(res.order_id, "order_001");
+  EXPECT_EQ(res.operator_name, "operator_01");
 }
 
 #elif defined(AXON_ROS2)
@@ -186,10 +196,12 @@ TEST_F(ServiceAdapterTest, CachedRecordingConfigRequest_Structure) {
   req->task_id = "task_001";
   req->device_id = "robot_01";
   req->data_collector_id = "collector_01";
+  req->order_id = "order_001";
+  req->operator_name = "operator_01";
   req->scene = "warehouse";
   req->subscene = "picking";
   req->skills = {"navigation", "manipulation"};
-  req->organization = "test_org";
+  req->factory = "test_factory";
   req->topics = {"/camera/image", "/lidar/scan"};
   req->start_callback_url = "http://server/start";
   req->finish_callback_url = "http://server/finish";
@@ -219,16 +231,20 @@ TEST_F(ServiceAdapterTest, IsRecordingReadyResponse_Structure) {
   res->is_recording = false;
   res->task_id = "task_001";
   res->device_id = "robot_01";
+  res->order_id = "order_001";
+  res->operator_name = "operator_01";
   res->scene = "warehouse";
   res->subscene = "picking";
   res->skills = {"skill1"};
-  res->organization = "test_org";
+  res->factory = "test_factory";
   res->data_collector_id = "collector_01";
   res->topics = {"/camera"};
 
   EXPECT_TRUE(res->is_configured);
   EXPECT_FALSE(res->is_recording);
   EXPECT_EQ(res->task_id, "task_001");
+  EXPECT_EQ(res->order_id, "order_001");
+  EXPECT_EQ(res->operator_name, "operator_01");
 }
 
 TEST_F(ServiceAdapterTest, RecordingControlRequest_Structure) {
@@ -261,10 +277,12 @@ TEST_F(ServiceAdapterTest, RecordingStatusResponse_Structure) {
   res->task_id = "task_001";
   res->device_id = "robot_01";
   res->data_collector_id = "collector_01";
+  res->order_id = "order_001";
+  res->operator_name = "operator_01";
   res->scene = "warehouse";
   res->subscene = "picking";
   res->skills = {"skill1"};
-  res->organization = "test_org";
+  res->factory = "test_factory";
   res->active_topics = {"/camera"};
   res->output_path = "/data/task_001.mcap";
   res->disk_usage_gb = 1.5;
@@ -275,6 +293,8 @@ TEST_F(ServiceAdapterTest, RecordingStatusResponse_Structure) {
 
   EXPECT_EQ(res->status, "recording");
   EXPECT_EQ(res->message_count, 10000);
+  EXPECT_EQ(res->order_id, "order_001");
+  EXPECT_EQ(res->operator_name, "operator_01");
 }
 
 #endif

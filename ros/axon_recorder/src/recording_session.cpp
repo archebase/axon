@@ -1,5 +1,6 @@
 #include "recording_session.hpp"
 
+#include <filesystem>
 #include <iostream>
 
 namespace axon {
@@ -30,11 +31,21 @@ bool RecordingSession::open(const std::string& path,
   start_time_ = std::chrono::system_clock::now();
   messages_written_.store(0, std::memory_order_relaxed);
 
+  // Set recording start time for metadata
+  metadata_injector_.set_recording_start_time(start_time_);
+
   // Clear registries
   {
     std::lock_guard<std::mutex> lock(registry_mutex_);
     topic_channel_ids_.clear();
     message_type_schema_ids_.clear();
+  }
+
+  // Clear topic stats
+  {
+    std::lock_guard<std::mutex> lock(topic_stats_mutex_);
+    topic_message_counts_.clear();
+    topic_message_types_.clear();
   }
 
   return true;
@@ -46,7 +57,38 @@ void RecordingSession::close() {
   }
 
   writer_->flush();
+
+  // 1. Inject metadata BEFORE close (metadata must be in file before footer)
+  if (has_task_config_) {
+    // Sync topic stats to metadata injector
+    {
+      std::lock_guard<std::mutex> lock(topic_stats_mutex_);
+      for (const auto& [topic, count] : topic_message_counts_) {
+        std::string msg_type;
+        auto it = topic_message_types_.find(topic);
+        if (it != topic_message_types_.end()) {
+          msg_type = it->second;
+        }
+        metadata_injector_.update_topic_stats(topic, msg_type, count);
+      }
+    }
+
+    auto stats = get_stats();
+    metadata_injector_.inject_metadata(*writer_, stats.messages_written, stats.bytes_written);
+  }
+
+  // 2. Close MCAP file (writes footer, finalizes)
   writer_->close();
+
+  // 3. Generate sidecar JSON AFTER close (always enabled, needs actual file size)
+  if (has_task_config_ && !output_path_.empty()) {
+    std::error_code ec;
+    auto actual_size = std::filesystem::file_size(output_path_, ec);
+    if (!ec) {
+      metadata_injector_.generate_sidecar_json(output_path_, actual_size);
+    }
+  }
+
   output_path_.clear();
 }
 
@@ -178,6 +220,31 @@ std::string RecordingSession::get_last_error() const {
 
 std::string RecordingSession::get_path() const {
   return output_path_;
+}
+
+void RecordingSession::set_task_config(const TaskConfig& config) {
+  metadata_injector_.set_task_config(config);
+  has_task_config_ = true;
+}
+
+std::string RecordingSession::get_sidecar_path() const {
+  return metadata_injector_.get_sidecar_path();
+}
+
+std::string RecordingSession::get_checksum() const {
+  return metadata_injector_.get_checksum();
+}
+
+void RecordingSession::update_topic_stats(const std::string& topic, const std::string& message_type) {
+  std::lock_guard<std::mutex> lock(topic_stats_mutex_);
+
+  // Increment message count for this topic
+  topic_message_counts_[topic]++;
+
+  // Store message type if not already set
+  if (topic_message_types_.find(topic) == topic_message_types_.end()) {
+    topic_message_types_[topic] = message_type;
+  }
 }
 
 }  // namespace recorder

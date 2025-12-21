@@ -132,7 +132,7 @@ void RecorderNode::shutdown() {
 
   std::cerr << "[axon_recorder] shutdown() called" << std::endl;
 
-  // Stop recording (drains queues)
+  // Stop recording (drains queues, injects metadata, closes session)
   stop_recording();
 
   // Unsubscribe all topics FIRST to stop new messages
@@ -147,13 +147,11 @@ void RecorderNode::shutdown() {
     worker_pool_->stop();
   }
 
-  // Close recording session (writes footer and finalizes file)
-  if (recording_session_ && recording_session_->is_open()) {
-    std::cerr << "[axon_recorder] Closing recording session..." << std::endl;
+  // Recording session already closed by stop_recording(), just reset
+  if (recording_session_) {
     auto stats = recording_session_->get_stats();
-    std::cerr << "[axon_recorder] Recording stats: " << stats.messages_written << " messages"
+    std::cerr << "[axon_recorder] Final recording stats: " << stats.messages_written << " messages"
               << std::endl;
-    recording_session_->close();
   }
   recording_session_.reset();
 
@@ -369,14 +367,20 @@ void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) 
   // =========================================================================
   // Capture recording_session_ pointer for use in handler
   RecordingSession* session_ptr = recording_session_.get();
+  const std::string& msg_type = topic_config.message_type;
 
   WorkerThreadPool::MessageHandler handler = 
-    [session_ptr, channel_id](const std::string& topic, int64_t timestamp_ns,
+    [session_ptr, channel_id, topic_name, msg_type](const std::string& topic, int64_t timestamp_ns,
                               const uint8_t* data, size_t data_size, uint32_t sequence) -> bool {
-      return session_ptr->write(channel_id, sequence, 
+      bool success = session_ptr->write(channel_id, sequence, 
                                 static_cast<uint64_t>(timestamp_ns),
                                 static_cast<uint64_t>(timestamp_ns),  // publish_time = log_time
                                 data, data_size);
+      if (success) {
+        // Track topic stats for metadata injection
+        session_ptr->update_topic_stats(topic_name, msg_type);
+      }
+      return success;
     };
 
   if (!worker_pool_->create_topic_worker(topic_name, handler)) {
@@ -505,7 +509,13 @@ void RecorderNode::cancel_recording() {
     payload.message_count = aggregate_stats.total_written;
     payload.file_size_bytes = 0;  // Not finalized
     payload.output_path = output_path_;
+    payload.sidecar_path = "";  // Not generated for cancelled recording
     payload.topics = config_opt->topics;
+    // Fill metadata summary
+    payload.metadata.scene = config_opt->scene;
+    payload.metadata.subscene = config_opt->subscene;
+    payload.metadata.skills = config_opt->skills;
+    payload.metadata.factory = config_opt->factory;
     payload.error = "Recording cancelled";
 
     http_callback_client_->post_finish_callback_async(*config_opt, payload);
@@ -536,10 +546,19 @@ void RecorderNode::stop_recording() {
   }
   std::cerr << "[axon_recorder] Recording session flushed" << std::endl;
 
-  // Get stats before sending callback
+  // Get stats before closing (close will inject metadata and generate sidecar)
   auto aggregate_stats = worker_pool_->get_aggregate_stats();
   auto session_stats = recording_session_ ? recording_session_->get_stats()
                                           : RecordingSession::Stats{};
+
+  // Close recording session (this injects metadata and generates sidecar JSON)
+  std::string sidecar_path;
+  if (recording_session_ && recording_session_->is_open()) {
+    std::cerr << "[axon_recorder] Closing recording session (metadata injection)..." << std::endl;
+    recording_session_->close();
+    sidecar_path = recording_session_->get_sidecar_path();
+    std::cerr << "[axon_recorder] Sidecar generated: " << sidecar_path << std::endl;
+  }
 
   // Send finish callback if configured
   auto config_opt = task_config_cache_.get();
@@ -557,7 +576,13 @@ void RecorderNode::stop_recording() {
     payload.message_count = aggregate_stats.total_written;
     payload.file_size_bytes = session_stats.bytes_written;
     payload.output_path = output_path_;
+    payload.sidecar_path = sidecar_path;
     payload.topics = config_opt->topics;
+    // Fill metadata summary
+    payload.metadata.scene = config_opt->scene;
+    payload.metadata.subscene = config_opt->subscene;
+    payload.metadata.skills = config_opt->skills;
+    payload.metadata.factory = config_opt->factory;
     payload.error = "";
 
     http_callback_client_->post_finish_callback_async(*config_opt, payload);
@@ -597,6 +622,12 @@ bool RecorderNode::configure_from_task_config(const TaskConfig& config) {
     }
     output_path_ = base_path + config.generate_output_filename();
     ros_interface_->log_info("Output path set to: " + output_path_);
+  }
+
+  // Pass task config to recording session for metadata injection
+  if (recording_session_) {
+    recording_session_->set_task_config(config);
+    ros_interface_->log_info("Task config set for metadata injection");
   }
 
   return true;

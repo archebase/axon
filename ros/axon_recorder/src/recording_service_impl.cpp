@@ -21,8 +21,9 @@ RecordingServiceImpl::RecordingServiceImpl(std::shared_ptr<IRecorderContext> con
 
 bool RecordingServiceImpl::handle_cached_recording_config(
   const std::string& task_id, const std::string& device_id, const std::string& data_collector_id,
+  const std::string& order_id, const std::string& operator_name,
   const std::string& scene, const std::string& subscene, const std::vector<std::string>& skills,
-  const std::string& organization, const std::vector<std::string>& topics,
+  const std::string& factory, const std::vector<std::string>& topics,
   const std::string& start_callback_url, const std::string& finish_callback_url,
   const std::string& user_token,
   bool& success, std::string& message
@@ -47,10 +48,12 @@ bool RecordingServiceImpl::handle_cached_recording_config(
   config.task_id = task_id;
   config.device_id = device_id;
   config.data_collector_id = data_collector_id;
+  config.order_id = order_id;
+  config.operator_name = operator_name;
   config.scene = scene;
   config.subscene = subscene;
   config.skills = skills;
-  config.organization = organization;
+  config.factory = factory;
   config.topics = topics;
   config.start_callback_url = start_callback_url;
   config.finish_callback_url = finish_callback_url;
@@ -80,8 +83,9 @@ bool RecordingServiceImpl::handle_cached_recording_config(
 
 bool RecordingServiceImpl::handle_is_recording_ready(
   bool& success, std::string& message, bool& is_configured, bool& is_recording,
-  std::string& task_id, std::string& device_id, std::string& scene, std::string& subscene,
-  std::vector<std::string>& skills, std::string& organization, std::string& data_collector_id,
+  std::string& task_id, std::string& device_id, std::string& order_id, std::string& operator_name,
+  std::string& scene, std::string& subscene,
+  std::vector<std::string>& skills, std::string& factory, std::string& data_collector_id,
   std::vector<std::string>& topics
 ) {
   success = true;
@@ -102,19 +106,23 @@ bool RecordingServiceImpl::handle_is_recording_ready(
   if (config_opt) {
     task_id = config_opt->task_id;
     device_id = config_opt->device_id;
+    order_id = config_opt->order_id;
+    operator_name = config_opt->operator_name;
     scene = config_opt->scene;
     subscene = config_opt->subscene;
     skills = config_opt->skills;
-    organization = config_opt->organization;
+    factory = config_opt->factory;
     data_collector_id = config_opt->data_collector_id;
     topics = config_opt->topics;
   } else {
     task_id.clear();
     device_id.clear();
+    order_id.clear();
+    operator_name.clear();
     scene.clear();
     subscene.clear();
     skills.clear();
-    organization.clear();
+    factory.clear();
     data_collector_id.clear();
     topics.clear();
   }
@@ -345,8 +353,9 @@ bool RecordingServiceImpl::handle_clear_command(std::string& message) {
 
 bool RecordingServiceImpl::handle_recording_status(
   const std::string& task_id_request, bool& success, std::string& message, std::string& status,
-  std::string& task_id, std::string& device_id, std::string& data_collector_id, std::string& scene,
-  std::string& subscene, std::vector<std::string>& skills, std::string& organization,
+  std::string& task_id, std::string& device_id, std::string& data_collector_id, std::string& order_id,
+  std::string& operator_name, std::string& scene,
+  std::string& subscene, std::vector<std::string>& skills, std::string& factory,
   std::vector<std::string>& active_topics, std::string& output_path, double& disk_usage_gb,
   double& duration_sec, int64_t& message_count, double& throughput_mb_sec, std::string& last_error
 ) {
@@ -362,19 +371,23 @@ bool RecordingServiceImpl::handle_recording_status(
     task_id = config_opt->task_id;
     device_id = config_opt->device_id;
     data_collector_id = config_opt->data_collector_id;
+    order_id = config_opt->order_id;
+    operator_name = config_opt->operator_name;
     scene = config_opt->scene;
     subscene = config_opt->subscene;
     skills = config_opt->skills;
-    organization = config_opt->organization;
+    factory = config_opt->factory;
     active_topics = config_opt->topics;
   } else {
     task_id.clear();
     device_id.clear();
     data_collector_id.clear();
+    order_id.clear();
+    operator_name.clear();
     scene.clear();
     subscene.clear();
     skills.clear();
-    organization.clear();
+    factory.clear();
     active_topics.clear();
   }
 

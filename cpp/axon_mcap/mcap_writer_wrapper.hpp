@@ -170,6 +170,21 @@ public:
   void flush();
 
   /**
+   * Write a metadata record to the MCAP file
+   *
+   * Metadata records are used for file-level metadata that describes the entire recording
+   * (e.g., task context, device info, recording statistics). This is NOT the hot path.
+   * Thread-safe: uses mutex_ for synchronization.
+   *
+   * @param name Metadata record name (e.g., "axon.task", "axon.device", "axon.recording")
+   * @param metadata Key-value pairs of metadata
+   * @return true on success, false on failure (check get_last_error())
+   */
+  bool write_metadata(
+    const std::string& name, const std::unordered_map<std::string, std::string>& metadata
+  );
+
+  /**
    * Get the last error message
    */
   std::string get_last_error() const;

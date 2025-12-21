@@ -104,11 +104,19 @@ std::string FinishCallbackPayload::to_json() const {
   oss << "\"status\": \"" << escape_json_string(status) << "\", ";
   oss << "\"started_at\": \"" << escape_json_string(started_at) << "\", ";
   oss << "\"finished_at\": \"" << escape_json_string(finished_at) << "\", ";
-  oss << "\"duration_sec\": " << std::fixed << std::setprecision(1) << duration_sec << ", ";
+  oss << "\"duration_sec\": " << std::fixed << std::setprecision(3) << duration_sec << ", ";
   oss << "\"message_count\": " << message_count << ", ";
   oss << "\"file_size_bytes\": " << file_size_bytes << ", ";
   oss << "\"output_path\": \"" << escape_json_string(output_path) << "\", ";
+  oss << "\"sidecar_path\": \"" << escape_json_string(sidecar_path) << "\", ";
   oss << "\"topics\": " << string_array_to_json(topics) << ", ";
+  // Metadata summary
+  oss << "\"metadata\": {";
+  oss << "\"scene\": \"" << escape_json_string(metadata.scene) << "\", ";
+  oss << "\"subscene\": \"" << escape_json_string(metadata.subscene) << "\", ";
+  oss << "\"skills\": " << string_array_to_json(metadata.skills) << ", ";
+  oss << "\"factory\": \"" << escape_json_string(metadata.factory) << "\"";
+  oss << "}, ";
   if (error.empty()) {
     oss << "\"error\": null";
   } else {

@@ -134,8 +134,9 @@ bool ServiceAdapter::handle_cached_recording_config_ros1(
   bool success = false;
   std::string message;
   bool result = service_impl_->handle_cached_recording_config(
-    req.task_id, req.device_id, req.data_collector_id, req.scene, req.subscene, req.skills,
-    req.organization, req.topics, req.start_callback_url, req.finish_callback_url, req.user_token,
+    req.task_id, req.device_id, req.data_collector_id, req.order_id, req.operator_name,
+    req.scene, req.subscene, req.skills, req.factory, req.topics,
+    req.start_callback_url, req.finish_callback_url, req.user_token,
     success, message
   );
   res.success = success;
@@ -152,12 +153,12 @@ bool ServiceAdapter::handle_is_recording_ready_ros1(
   std::string message;
   bool is_configured = false;
   bool is_recording = false;
-  std::string task_id, device_id, scene, subscene, organization, data_collector_id;
+  std::string task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector_id;
   std::vector<std::string> skills, topics;
   
   bool result = service_impl_->handle_is_recording_ready(
     success, message, is_configured, is_recording, task_id, device_id,
-    scene, subscene, skills, organization, data_collector_id, topics
+    order_id, operator_name, scene, subscene, skills, factory, data_collector_id, topics
   );
   
   res.success = success;
@@ -166,10 +167,12 @@ bool ServiceAdapter::handle_is_recording_ready_ros1(
   res.is_recording = is_recording;
   res.task_id = task_id;
   res.device_id = device_id;
+  res.order_id = order_id;
+  res.operator_name = operator_name;
   res.scene = scene;
   res.subscene = subscene;
   res.skills = skills;
-  res.organization = organization;
+  res.factory = factory;
   res.data_collector_id = data_collector_id;
   res.topics = topics;
   return result;
@@ -198,15 +201,15 @@ bool ServiceAdapter::handle_recording_status_ros1(
 ) {
   // Use local variables because ROS 1 message fields may be bit-fields
   bool success = false;
-  std::string message, status, task_id, device_id, data_collector_id;
-  std::string scene, subscene, organization, output_path, last_error;
+  std::string message, status, task_id, device_id, data_collector_id, order_id, operator_name;
+  std::string scene, subscene, factory, output_path, last_error;
   std::vector<std::string> skills, active_topics;
   double disk_usage_gb = 0.0, duration_sec = 0.0, throughput_mb_sec = 0.0;
   int64_t message_count = 0;
   
   bool result = service_impl_->handle_recording_status(
     req.task_id, success, message, status, task_id, device_id,
-    data_collector_id, scene, subscene, skills, organization, active_topics,
+    data_collector_id, order_id, operator_name, scene, subscene, skills, factory, active_topics,
     output_path, disk_usage_gb, duration_sec, message_count, throughput_mb_sec,
     last_error
   );
@@ -217,10 +220,12 @@ bool ServiceAdapter::handle_recording_status_ros1(
   res.task_id = task_id;
   res.device_id = device_id;
   res.data_collector_id = data_collector_id;
+  res.order_id = order_id;
+  res.operator_name = operator_name;
   res.scene = scene;
   res.subscene = subscene;
   res.skills = skills;
-  res.organization = organization;
+  res.factory = factory;
   res.active_topics = active_topics;
   res.output_path = output_path;
   res.disk_usage_gb = disk_usage_gb;
@@ -244,8 +249,9 @@ void ServiceAdapter::handle_cached_recording_config_ros2(
   std::shared_ptr<axon_recorder::srv::CachedRecordingConfig::Response> res
 ) {
   service_impl_->handle_cached_recording_config(
-    req->task_id, req->device_id, req->data_collector_id, req->scene, req->subscene,
-    std::vector<std::string>(req->skills.begin(), req->skills.end()), req->organization,
+    req->task_id, req->device_id, req->data_collector_id, req->order_id, req->operator_name,
+    req->scene, req->subscene,
+    std::vector<std::string>(req->skills.begin(), req->skills.end()), req->factory,
     std::vector<std::string>(req->topics.begin(), req->topics.end()), req->start_callback_url,
     req->finish_callback_url, req->user_token,
     res->success, res->message
@@ -261,7 +267,7 @@ void ServiceAdapter::handle_is_recording_ready_ros2(
 
   service_impl_->handle_is_recording_ready(
     res->success, res->message, res->is_configured, res->is_recording, res->task_id, res->device_id,
-    res->scene, res->subscene, skills, res->organization, res->data_collector_id, topics
+    res->order_id, res->operator_name, res->scene, res->subscene, skills, res->factory, res->data_collector_id, topics
   );
 
   // Convert vectors to ROS 2 sequences
@@ -287,7 +293,7 @@ void ServiceAdapter::handle_recording_status_ros2(
 
   service_impl_->handle_recording_status(
     req->task_id, res->success, res->message, res->status, res->task_id, res->device_id,
-    res->data_collector_id, res->scene, res->subscene, skills, res->organization, active_topics,
+    res->data_collector_id, res->order_id, res->operator_name, res->scene, res->subscene, skills, res->factory, active_topics,
     res->output_path, res->disk_usage_gb, res->duration_sec, res->message_count, res->throughput_mb_sec,
     res->last_error
   );

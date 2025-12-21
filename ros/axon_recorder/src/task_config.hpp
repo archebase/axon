@@ -20,12 +20,14 @@ struct TaskConfig {
   std::string task_id;
   std::string device_id;
   std::string data_collector_id;
+  std::string order_id;       // Parent order/job identifier (optional)
+  std::string operator_name;  // Human operator identifier (optional)
 
   // Recording Context
   std::string scene;
   std::string subscene;
   std::vector<std::string> skills;
-  std::string organization;
+  std::string factory;  // Factory identifier (which factory produced this data)
 
   // Topic Selection
   std::vector<std::string> topics;

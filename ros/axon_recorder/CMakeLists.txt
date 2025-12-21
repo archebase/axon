@@ -72,6 +72,37 @@ endif()
 # Find yaml-cpp
 find_package(yaml-cpp REQUIRED)
 
+# =============================================================================
+# nlohmann/json (header-only JSON library for metadata sidecar generation)
+# =============================================================================
+include(FetchContent)
+FetchContent_Declare(
+  nlohmann_json
+  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+  URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757f21f1eec39f4d3c8c6576b0cccea16e0e9af08
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# =============================================================================
+# Version header generation from package.xml
+# =============================================================================
+# Extract version from package.xml
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/package.xml" PACKAGE_XML_CONTENT)
+string(REGEX MATCH "<version>([0-9]+)\\.([0-9]+)\\.([0-9]+)</version>" VERSION_MATCH "${PACKAGE_XML_CONTENT}")
+set(PROJECT_VERSION_MAJOR ${CMAKE_MATCH_1})
+set(PROJECT_VERSION_MINOR ${CMAKE_MATCH_2})
+set(PROJECT_VERSION_PATCH ${CMAKE_MATCH_3})
+set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}")
+
+message(STATUS "axon_recorder version: ${PROJECT_VERSION}")
+
+# Generate version.hpp from template
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/version.hpp.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/version.hpp"
+  @ONLY
+)
+
 # Find Boost for HTTP callback client (Beast requires system)
 find_package(Boost REQUIRED COMPONENTS system)
 if(Boost_FOUND)
@@ -166,6 +197,7 @@ if(AXON_ROS_VERSION EQUAL 1)
         src
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
     
     # Auto-discover recorder library sources
@@ -185,6 +217,7 @@ if(AXON_ROS_VERSION EQUAL 1)
         OpenSSL::SSL
         OpenSSL::Crypto
         yaml-cpp
+        nlohmann_json::nlohmann_json
     )
     
     # Ensure library waits for message generation (service headers)
@@ -258,6 +291,7 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         ${Boost_INCLUDE_DIRS}
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
     
     # Auto-discover recorder library sources
@@ -285,6 +319,7 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         OpenSSL::SSL
         OpenSSL::Crypto
         yaml-cpp
+        nlohmann_json::nlohmann_json
     )
     
     # Add Boost include directories
