@@ -16,12 +16,14 @@ string status                 # "idle", "ready", "recording", "paused"
 string task_id                # Server-assigned task identifier
 string device_id              # Robot/device identifier
 string data_collector_id      # Data collector identifier
+string order_id               # Parent order/job identifier
+string operator_name          # Human operator name
 
 # Recording Context
 string scene                  # Recording scene/context label
 string subscene               # Recording subscene/sub-context label
 string[] skills               # Associated skills
-string organization           # Organization identifier
+string factory                # Factory identifier (which factory produced this data)
 
 # Runtime Metrics
 string[] active_topics        # Currently subscribed topics

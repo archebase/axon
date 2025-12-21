@@ -43,8 +43,9 @@ public:
   bool handle_cached_recording_config(
     // Request fields
     const std::string& task_id, const std::string& device_id, const std::string& data_collector_id,
+    const std::string& order_id, const std::string& operator_name,
     const std::string& scene, const std::string& subscene,
-    const std::vector<std::string>& skills, const std::string& organization,
+    const std::vector<std::string>& skills, const std::string& factory,
     const std::vector<std::string>& topics, const std::string& start_callback_url,
     const std::string& finish_callback_url, const std::string& user_token,
     // Response fields
@@ -62,8 +63,9 @@ public:
   bool handle_is_recording_ready(
     // Response fields
     bool& success, std::string& message, bool& is_configured, bool& is_recording,
-    std::string& task_id, std::string& device_id, std::string& scene, std::string& subscene,
-    std::vector<std::string>& skills, std::string& organization, std::string& data_collector_id,
+    std::string& task_id, std::string& device_id, std::string& order_id, std::string& operator_name,
+    std::string& scene, std::string& subscene,
+    std::vector<std::string>& skills, std::string& factory, std::string& data_collector_id,
     std::vector<std::string>& topics
   );
 
@@ -95,8 +97,9 @@ public:
     const std::string& task_id_request,
     // Response fields
     bool& success, std::string& message, std::string& status, std::string& task_id,
-    std::string& device_id, std::string& data_collector_id, std::string& scene,
-    std::string& subscene, std::vector<std::string>& skills, std::string& organization,
+    std::string& device_id, std::string& data_collector_id, std::string& order_id,
+    std::string& operator_name, std::string& scene,
+    std::string& subscene, std::vector<std::string>& skills, std::string& factory,
     std::vector<std::string>& active_topics, std::string& output_path, double& disk_usage_gb,
     double& duration_sec, int64_t& message_count, double& throughput_mb_sec, std::string& last_error
   );

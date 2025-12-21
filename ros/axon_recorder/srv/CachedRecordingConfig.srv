@@ -2,15 +2,17 @@
 # ============================================================================
 
 # Task & Device Identification
-string task_id                # Server-assigned task identifier (required)
+string task_id                # Server-assigned task identifier (required for server mode)
 string device_id              # Robot/device identifier
 string data_collector_id      # Data collector identifier
+string order_id               # Parent order/job identifier (optional)
+string operator_name          # Human operator name (optional)
 
 # Recording Context
 string scene                  # Recording scene/context label
 string subscene               # Recording subscene/sub-context label
 string[] skills               # Associated skills for this recording
-string organization           # Organization identifier
+string factory                # Factory identifier (which factory produced this data)
 
 # Topic Selection
 string[] topics               # Topics to record (empty = use default from YAML config)

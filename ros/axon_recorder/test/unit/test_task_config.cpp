@@ -24,10 +24,12 @@ protected:
     config.task_id = "task_001";
     config.device_id = "robot_01";
     config.data_collector_id = "collector_01";
+    config.order_id = "order_batch_001";
+    config.operator_name = "john.doe";
     config.scene = "warehouse";
     config.subscene = "picking";
     config.skills = {"navigation", "manipulation"};
-    config.organization = "test_org";
+    config.factory = "factory_shanghai_01";
     config.topics = {"/camera/image", "/lidar/scan"};
     config.start_callback_url = "http://server/start";
     config.finish_callback_url = "http://server/finish";
@@ -87,6 +89,21 @@ TEST_F(TaskConfigTest, GenerateOutputFilenameWithSpecialChars) {
   config.task_id = "task-abc_123";
 
   EXPECT_EQ(config.generate_output_filename(), "task-abc_123.mcap");
+}
+
+TEST_F(TaskConfigTest, NewFieldsOrderIdAndOperatorName) {
+  TaskConfig config = create_sample_config();
+
+  // Verify new fields are stored correctly
+  EXPECT_EQ(config.order_id, "order_batch_001");
+  EXPECT_EQ(config.operator_name, "john.doe");
+}
+
+TEST_F(TaskConfigTest, FactoryField) {
+  TaskConfig config = create_sample_config();
+
+  // Verify factory field (renamed from organization)
+  EXPECT_EQ(config.factory, "factory_shanghai_01");
 }
 
 // ============================================================================

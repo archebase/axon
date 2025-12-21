@@ -195,6 +195,31 @@ public:
     // but closing chunks happens automatically based on chunk_size
   }
 
+  bool write_metadata(
+    const std::string& name, const std::unordered_map<std::string, std::string>& metadata
+  ) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!is_open_) {
+      last_error_ = "Writer not open";
+      return false;
+    }
+
+    mcap::Metadata mcap_metadata;
+    mcap_metadata.name = name;
+    for (const auto& [key, value] : metadata) {
+      mcap_metadata.metadata[key] = value;
+    }
+
+    auto status = writer_.write(mcap_metadata);
+    if (!status.ok()) {
+      last_error_ = "Failed to write metadata: " + status.message;
+      return false;
+    }
+
+    return true;
+  }
+
   std::string get_last_error() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return last_error_;
@@ -282,6 +307,12 @@ bool McapWriterWrapper::write(
 
 void McapWriterWrapper::flush() {
   impl_->flush();
+}
+
+bool McapWriterWrapper::write_metadata(
+  const std::string& name, const std::unordered_map<std::string, std::string>& metadata
+) {
+  return impl_->write_metadata(name, metadata);
 }
 
 std::string McapWriterWrapper::get_last_error() const {

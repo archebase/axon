@@ -28,6 +28,16 @@ struct StartCallbackPayload {
 };
 
 /**
+ * Metadata summary for finish callback (matches design spec).
+ */
+struct CallbackMetadata {
+  std::string scene;
+  std::string subscene;
+  std::vector<std::string> skills;
+  std::string factory;
+};
+
+/**
  * Payload for the finish recording callback.
  */
 struct FinishCallbackPayload {
@@ -40,7 +50,9 @@ struct FinishCallbackPayload {
   int64_t message_count;
   int64_t file_size_bytes;
   std::string output_path;
+  std::string sidecar_path;  // Path to the JSON sidecar file
   std::vector<std::string> topics;
+  CallbackMetadata metadata;  // Task metadata summary
   std::string error;  // Empty if no error
 
   std::string to_json() const;

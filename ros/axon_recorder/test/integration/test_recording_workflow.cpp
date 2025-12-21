@@ -164,8 +164,9 @@ public:
 
   bool handle_cached_recording_config(
     const std::string& task_id, const std::string& device_id, const std::string& data_collector_id,
+    const std::string& order_id, const std::string& operator_name,
     const std::string& scene, const std::string& subscene, const std::vector<std::string>& skills,
-    const std::string& organization, const std::vector<std::string>& topics,
+    const std::string& factory, const std::vector<std::string>& topics,
     const std::string& start_callback_url, const std::string& finish_callback_url,
     const std::string& user_token,
     bool& success, std::string& message
@@ -187,10 +188,12 @@ public:
     config.task_id = task_id;
     config.device_id = device_id;
     config.data_collector_id = data_collector_id;
+    config.order_id = order_id;
+    config.operator_name = operator_name;
     config.scene = scene;
     config.subscene = subscene;
     config.skills = skills;
-    config.organization = organization;
+    config.factory = factory;
     config.topics = topics;
     config.start_callback_url = start_callback_url;
     config.finish_callback_url = finish_callback_url;
@@ -212,8 +215,9 @@ public:
 
   bool handle_is_recording_ready(
     bool& success, std::string& message, bool& is_configured, bool& is_recording,
-    std::string& task_id, std::string& device_id, std::string& scene, std::string& subscene,
-    std::vector<std::string>& skills, std::string& organization, std::string& data_collector_id,
+    std::string& task_id, std::string& device_id, std::string& order_id, std::string& operator_name,
+    std::string& scene, std::string& subscene,
+    std::vector<std::string>& skills, std::string& factory, std::string& data_collector_id,
     std::vector<std::string>& topics
   ) {
     success = true;
@@ -231,19 +235,23 @@ public:
     if (config_opt) {
       task_id = config_opt->task_id;
       device_id = config_opt->device_id;
+      order_id = config_opt->order_id;
+      operator_name = config_opt->operator_name;
       scene = config_opt->scene;
       subscene = config_opt->subscene;
       skills = config_opt->skills;
-      organization = config_opt->organization;
+      factory = config_opt->factory;
       data_collector_id = config_opt->data_collector_id;
       topics = config_opt->topics;
     } else {
       task_id.clear();
       device_id.clear();
+      order_id.clear();
+      operator_name.clear();
       scene.clear();
       subscene.clear();
       skills.clear();
-      organization.clear();
+      factory.clear();
       data_collector_id.clear();
       topics.clear();
     }
@@ -281,8 +289,9 @@ public:
 
   bool handle_recording_status(
     const std::string& task_id_request, bool& success, std::string& message, std::string& status,
-    std::string& task_id, std::string& device_id, std::string& data_collector_id, std::string& scene,
-    std::string& subscene, std::vector<std::string>& skills, std::string& organization,
+    std::string& task_id, std::string& device_id, std::string& data_collector_id, std::string& order_id,
+    std::string& operator_name, std::string& scene,
+    std::string& subscene, std::vector<std::string>& skills, std::string& factory,
     std::vector<std::string>& active_topics, std::string& output_path, double& disk_usage_gb,
     double& duration_sec, int64_t& message_count, double& throughput_mb_sec, std::string& last_error
   ) {
@@ -297,19 +306,23 @@ public:
       task_id = config_opt->task_id;
       device_id = config_opt->device_id;
       data_collector_id = config_opt->data_collector_id;
+      order_id = config_opt->order_id;
+      operator_name = config_opt->operator_name;
       scene = config_opt->scene;
       subscene = config_opt->subscene;
       skills = config_opt->skills;
-      organization = config_opt->organization;
+      factory = config_opt->factory;
       active_topics = config_opt->topics;
     } else {
       task_id.clear();
       device_id.clear();
       data_collector_id.clear();
+      order_id.clear();
+      operator_name.clear();
       scene.clear();
       subscene.clear();
       skills.clear();
-      organization.clear();
+      factory.clear();
       active_topics.clear();
     }
 
@@ -520,10 +533,12 @@ TEST_F(RecordingServiceImplTest, CachedRecordingConfig_Success) {
     "task_001",       // task_id
     "robot_01",       // device_id
     "collector_01",   // data_collector_id
+    "order_001",      // order_id
+    "operator_01",    // operator_name
     "warehouse",      // scene
     "picking",        // subscene
     {"nav", "manip"}, // skills
-    "test_org",       // organization
+    "test_factory",   // factory
     {"/camera"},      // topics
     "",               // start_callback_url
     "",               // finish_callback_url
@@ -550,7 +565,7 @@ TEST_F(RecordingServiceImplTest, CachedRecordingConfig_EmptyTaskId) {
 
   bool result = service_->handle_cached_recording_config(
     "",               // Empty task_id
-    "robot_01", "collector_01", "warehouse", "picking", {}, "test_org",
+    "robot_01", "collector_01", "", "", "warehouse", "picking", {}, "test_factory",
     {}, "", "", "", success, message
   );
 
@@ -565,14 +580,14 @@ TEST_F(RecordingServiceImplTest, CachedRecordingConfig_NotInIdleState) {
   std::string message;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   ASSERT_TRUE(success);
 
   bool result = service_->handle_cached_recording_config(
-    "task_002", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_002", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
 
   EXPECT_TRUE(result);
@@ -586,12 +601,12 @@ TEST_F(RecordingServiceImplTest, CachedRecordingConfig_NotInIdleState) {
 
 TEST_F(RecordingServiceImplTest, IsRecordingReady_NotConfigured) {
   bool success, is_configured, is_recording;
-  std::string message, task_id, device_id, scene, subscene, org, data_collector;
+  std::string message, task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector;
   std::vector<std::string> skills, topics;
 
   bool result = service_->handle_is_recording_ready(
     success, message, is_configured, is_recording, task_id, device_id,
-    scene, subscene, skills, org, data_collector, topics
+    order_id, operator_name, scene, subscene, skills, factory, data_collector, topics
   );
 
   EXPECT_TRUE(result);
@@ -605,19 +620,19 @@ TEST_F(RecordingServiceImplTest, IsRecordingReady_Configured) {
   bool success;
   std::string message;
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking",
-    {"skill1", "skill2"}, "test_org", {"/camera", "/lidar"}, "", "", "",
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking",
+    {"skill1", "skill2"}, "test_factory", {"/camera", "/lidar"}, "", "", "",
     success, message
   );
   ASSERT_TRUE(success);
 
   bool is_configured, is_recording;
-  std::string task_id, device_id, scene, subscene, org, data_collector;
+  std::string task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector;
   std::vector<std::string> skills, topics;
 
   bool result = service_->handle_is_recording_ready(
     success, message, is_configured, is_recording, task_id, device_id,
-    scene, subscene, skills, org, data_collector, topics
+    order_id, operator_name, scene, subscene, skills, factory, data_collector, topics
   );
 
   EXPECT_TRUE(result);
@@ -641,8 +656,8 @@ TEST_F(RecordingServiceImplTest, RecordingControl_Start_Success) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   ASSERT_TRUE(success);
 
@@ -678,8 +693,8 @@ TEST_F(RecordingServiceImplTest, RecordingControl_Pause_Success) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   ASSERT_TRUE(success);
@@ -701,8 +716,8 @@ TEST_F(RecordingServiceImplTest, RecordingControl_Pause_WrongTaskId) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   ASSERT_TRUE(success);
@@ -721,8 +736,8 @@ TEST_F(RecordingServiceImplTest, RecordingControl_Resume_Success) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   service_->handle_recording_control("pause", "task_001", success, message, task_id_response);
@@ -745,8 +760,8 @@ TEST_F(RecordingServiceImplTest, RecordingControl_Finish_Success) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   ASSERT_TRUE(success);
@@ -768,8 +783,8 @@ TEST_F(RecordingServiceImplTest, RecordingControl_Cancel_Success) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   ASSERT_TRUE(success);
@@ -791,8 +806,8 @@ TEST_F(RecordingServiceImplTest, RecordingControl_Clear_Success) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   ASSERT_TRUE(success);
   ASSERT_EQ(node_->get_state_manager().get_state(), RecorderState::READY);
@@ -826,7 +841,7 @@ TEST_F(RecordingServiceImplTest, RecordingControl_UnknownCommand) {
 
 TEST_F(RecordingServiceImplTest, RecordingStatus_Idle) {
   bool success;
-  std::string message, status, task_id, device_id, data_collector, scene, subscene, org;
+  std::string message, status, task_id, device_id, data_collector, order_id, operator_name, scene, subscene, factory;
   std::string output_path, last_error;
   std::vector<std::string> skills, active_topics;
   double disk_usage, duration, throughput;
@@ -834,7 +849,7 @@ TEST_F(RecordingServiceImplTest, RecordingStatus_Idle) {
 
   bool result = service_->handle_recording_status(
     "", success, message, status, task_id, device_id, data_collector,
-    scene, subscene, skills, org, active_topics, output_path,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
     disk_usage, duration, message_count, throughput, last_error
   );
 
@@ -849,14 +864,14 @@ TEST_F(RecordingServiceImplTest, RecordingStatus_Recording) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_001", "robot_01", "collector_01", "warehouse", "picking",
-    {"skill1"}, "test_org", {"/camera"}, "", "", "",
+    "task_001", "robot_01", "collector_01", "", "", "warehouse", "picking",
+    {"skill1"}, "test_factory", {"/camera"}, "", "", "",
     success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   ASSERT_TRUE(success);
 
-  std::string status, task_id, device_id, data_collector, scene, subscene, org;
+  std::string status, task_id, device_id, data_collector, order_id, operator_name, scene, subscene, factory;
   std::string output_path, last_error;
   std::vector<std::string> skills, active_topics;
   double disk_usage, duration, throughput;
@@ -864,7 +879,7 @@ TEST_F(RecordingServiceImplTest, RecordingStatus_Recording) {
 
   bool result = service_->handle_recording_status(
     "", success, message, status, task_id, device_id, data_collector,
-    scene, subscene, skills, org, active_topics, output_path,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
     disk_usage, duration, message_count, throughput, last_error
   );
 
@@ -886,8 +901,9 @@ TEST_F(RecordingServiceImplTest, FullRecordingWorkflow) {
 
   // 1. Cache config
   bool result = service_->handle_cached_recording_config(
-    "task_workflow_001", "robot_01", "collector_01", "warehouse", "picking",
-    {"navigation", "manipulation"}, "test_org",
+    "task_workflow_001", "robot_01", "collector_01", "order_001", "operator_01",
+    "warehouse", "picking",
+    {"navigation", "manipulation"}, "test_factory",
     {"/camera/image", "/lidar/scan", "/imu/data"},
     "http://server/start", "http://server/finish", "jwt_token_123",
     success, message
@@ -898,11 +914,11 @@ TEST_F(RecordingServiceImplTest, FullRecordingWorkflow) {
 
   // 2. Verify ready
   bool is_configured, is_recording;
-  std::string task_id, device_id, scene, subscene, org, data_collector;
+  std::string task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector;
   std::vector<std::string> skills, topics;
   service_->handle_is_recording_ready(
     success, message, is_configured, is_recording, task_id, device_id,
-    scene, subscene, skills, org, data_collector, topics
+    order_id, operator_name, scene, subscene, skills, factory, data_collector, topics
   );
   EXPECT_TRUE(is_configured);
   EXPECT_FALSE(is_recording);
@@ -922,7 +938,7 @@ TEST_F(RecordingServiceImplTest, FullRecordingWorkflow) {
   int64_t message_count;
   service_->handle_recording_status(
     "", success, message, status, task_id, device_id, data_collector,
-    scene, subscene, skills, org, active_topics, output_path,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
     disk_usage, duration, message_count, throughput, last_error
   );
   EXPECT_EQ(status, "recording");
@@ -948,7 +964,7 @@ TEST_F(RecordingServiceImplTest, FullRecordingWorkflow) {
   // 8. Verify back to idle
   service_->handle_recording_status(
     "", success, message, status, task_id, device_id, data_collector,
-    scene, subscene, skills, org, active_topics, output_path,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
     disk_usage, duration, message_count, throughput, last_error
   );
   EXPECT_EQ(status, "idle");
@@ -959,8 +975,8 @@ TEST_F(RecordingServiceImplTest, CancelWorkflow) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_cancel_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_cancel_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   ASSERT_TRUE(success);
@@ -977,8 +993,8 @@ TEST_F(RecordingServiceImplTest, ClearConfigWorkflow) {
   std::string message, task_id_response;
 
   service_->handle_cached_recording_config(
-    "task_clear_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_clear_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   ASSERT_TRUE(success);
   EXPECT_TRUE(node_->get_task_config_cache().has_config());
@@ -995,8 +1011,8 @@ TEST_F(RecordingServiceImplTest, MultipleTasksSequential) {
 
   // First task
   service_->handle_cached_recording_config(
-    "task_seq_001", "robot_01", "collector_01", "warehouse", "picking", {},
-    "test_org", {}, "", "", "", success, message
+    "task_seq_001", "robot_01", "collector_01", "", "", "warehouse", "picking", {},
+    "test_factory", {}, "", "", "", success, message
   );
   service_->handle_recording_control("start", "", success, message, task_id_response);
   service_->handle_recording_control("finish", "task_seq_001", success, message, task_id_response);
@@ -1004,8 +1020,8 @@ TEST_F(RecordingServiceImplTest, MultipleTasksSequential) {
 
   // Second task
   service_->handle_cached_recording_config(
-    "task_seq_002", "robot_01", "collector_01", "loading_dock", "unloading", {},
-    "test_org", {}, "", "", "", success, message
+    "task_seq_002", "robot_01", "collector_01", "", "", "loading_dock", "unloading", {},
+    "test_factory", {}, "", "", "", success, message
   );
   ASSERT_TRUE(success);
   EXPECT_EQ(node_->get_task_config_cache().get_task_id(), "task_seq_002");

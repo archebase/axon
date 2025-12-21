@@ -38,10 +38,12 @@ protected:
       "test_task_123",    // task_id
       "device_001",       // device_id
       "collector_001",    // data_collector_id
+      "order_001",        // order_id
+      "test.operator",    // operator_name
       "indoor",           // scene
       "kitchen",          // subscene
       {"cooking", "interaction"},  // skills
-      "test_org",         // organization
+      "test_factory",     // factory
       {"/camera/image", "/imu/data"},  // topics
       "http://server/start",  // start_callback_url
       "http://server/finish", // finish_callback_url
@@ -71,9 +73,9 @@ TEST_F(RecordingServiceImplTest, CacheConfigSuccess) {
   std::string message;
 
   bool result = service_impl_->handle_cached_recording_config(
-    "task_123", "device_001", "collector_001",
+    "task_123", "device_001", "collector_001", "", "",
     "indoor", "kitchen", {"skill1"},
-    "test_org", {"/topic1"}, "", "", "",
+    "test_factory", {"/topic1"}, "", "", "",
     success, message
   );
 
@@ -97,9 +99,9 @@ TEST_F(RecordingServiceImplTest, CacheConfigRequiresTaskId) {
 
   service_impl_->handle_cached_recording_config(
     "",  // Empty task_id
-    "device_001", "collector_001",
+    "device_001", "collector_001", "", "",
     "indoor", "kitchen", {},
-    "test_org", {}, "", "", "",
+    "test_factory", {}, "", "", "",
     success, message
   );
 
@@ -117,9 +119,9 @@ TEST_F(RecordingServiceImplTest, CacheConfigOnlyInIdleState) {
   std::string message;
 
   service_impl_->handle_cached_recording_config(
-    "task_456", "device_002", "collector_002",
+    "task_456", "device_002", "collector_002", "", "",
     "outdoor", "garden", {},
-    "test_org", {}, "", "", "",
+    "test_factory", {}, "", "", "",
     success, message
   );
 
@@ -134,12 +136,12 @@ TEST_F(RecordingServiceImplTest, CacheConfigOnlyInIdleState) {
 
 TEST_F(RecordingServiceImplTest, IsRecordingReadyWhenIdle) {
   bool success, is_configured, is_recording;
-  std::string message, task_id, device_id, scene, subscene, organization, data_collector_id;
+  std::string message, task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector_id;
   std::vector<std::string> skills, topics;
 
   service_impl_->handle_is_recording_ready(
     success, message, is_configured, is_recording,
-    task_id, device_id, scene, subscene, skills, organization,
+    task_id, device_id, order_id, operator_name, scene, subscene, skills, factory,
     data_collector_id, topics
   );
 
@@ -152,12 +154,12 @@ TEST_F(RecordingServiceImplTest, IsRecordingReadyWhenReady) {
   cache_test_config();
 
   bool success, is_configured, is_recording;
-  std::string message, task_id, device_id, scene, subscene, organization, data_collector_id;
+  std::string message, task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector_id;
   std::vector<std::string> skills, topics;
 
   service_impl_->handle_is_recording_ready(
     success, message, is_configured, is_recording,
-    task_id, device_id, scene, subscene, skills, organization,
+    task_id, device_id, order_id, operator_name, scene, subscene, skills, factory,
     data_collector_id, topics
   );
 
@@ -166,6 +168,8 @@ TEST_F(RecordingServiceImplTest, IsRecordingReadyWhenReady) {
   EXPECT_FALSE(is_recording);
   EXPECT_EQ(task_id, "test_task_123");
   EXPECT_EQ(device_id, "device_001");
+  EXPECT_EQ(order_id, "order_001");
+  EXPECT_EQ(operator_name, "test.operator");
 }
 
 // ============================================================================
@@ -345,15 +349,15 @@ TEST_F(RecordingServiceImplTest, TaskIdValidation) {
 
 TEST_F(RecordingServiceImplTest, StatusWhenIdle) {
   bool success;
-  std::string message, status, task_id, device_id, data_collector_id;
-  std::string scene, subscene, organization, output_path, last_error;
+  std::string message, status, task_id, device_id, data_collector_id, order_id, operator_name;
+  std::string scene, subscene, factory, output_path, last_error;
   std::vector<std::string> skills, active_topics;
   double disk_usage_gb, duration_sec, throughput_mb_sec;
   int64_t message_count;
 
   service_impl_->handle_recording_status(
     "", success, message, status, task_id, device_id, data_collector_id,
-    scene, subscene, skills, organization, active_topics, output_path,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
     disk_usage_gb, duration_sec, message_count, throughput_mb_sec, last_error
   );
 
@@ -376,15 +380,15 @@ TEST_F(RecordingServiceImplTest, StatusWhenRecording) {
   mock_context_->set_stats(stats);
   mock_context_->set_duration_sec(10.5);
 
-  std::string status, task_id, device_id, data_collector_id;
-  std::string scene, subscene, organization, output_path, last_error;
+  std::string status, task_id, device_id, data_collector_id, order_id, operator_name;
+  std::string scene, subscene, factory, output_path, last_error;
   std::vector<std::string> skills, active_topics;
   double disk_usage_gb, duration_sec, throughput_mb_sec;
   int64_t message_count;
 
   service_impl_->handle_recording_status(
     "test_task_123", success, message, status, task_id, device_id, data_collector_id,
-    scene, subscene, skills, organization, active_topics, output_path,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
     disk_usage_gb, duration_sec, message_count, throughput_mb_sec, last_error
   );
 
@@ -392,6 +396,8 @@ TEST_F(RecordingServiceImplTest, StatusWhenRecording) {
   EXPECT_EQ(status, "recording");
   EXPECT_EQ(task_id, "test_task_123");
   EXPECT_EQ(device_id, "device_001");
+  EXPECT_EQ(order_id, "order_001");
+  EXPECT_EQ(operator_name, "test.operator");
   EXPECT_EQ(message_count, 100);
   EXPECT_DOUBLE_EQ(duration_sec, 10.5);
 }

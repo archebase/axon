@@ -195,14 +195,60 @@ if(ROS_INTEGRATED_BUILD)
     add_executable(test_recording_session
         unit/test_recording_session.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
+    )
+    target_include_directories(test_recording_session PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/../generated
     )
     target_link_libraries(test_recording_session
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         axon_mcap
+        nlohmann_json::nlohmann_json
+        OpenSSL::SSL
+        OpenSSL::Crypto
     )
     add_test(NAME RecordingSessionTest COMMAND test_recording_session)
+
+    # Test MetadataInjector (requires axon_mcap, nlohmann_json, OpenSSL)
+    add_executable(test_metadata_injector
+        unit/test_metadata_injector.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
+    )
+    target_include_directories(test_metadata_injector PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/../generated
+    )
+    target_link_libraries(test_metadata_injector
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+        axon_mcap
+        nlohmann_json::nlohmann_json
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+    add_test(NAME MetadataInjectorTest COMMAND test_metadata_injector)
+
+    # Integration test: Metadata injection end-to-end
+    add_executable(test_metadata_injection
+        integration/test_metadata_injection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
+    )
+    target_include_directories(test_metadata_injection PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/../generated
+    )
+    target_link_libraries(test_metadata_injection
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+        axon_mcap
+        nlohmann_json::nlohmann_json
+        OpenSSL::SSL
+        OpenSSL::Crypto
+    )
+    add_test(NAME MetadataInjectionIntegrationTest COMMAND test_metadata_injection)
 endif()
 
 # ============================================================================
