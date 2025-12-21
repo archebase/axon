@@ -187,6 +187,9 @@ if(AXON_ROS_VERSION EQUAL 1)
         yaml-cpp
     )
     
+    # Ensure library waits for message generation (service headers)
+    add_dependencies(axon_recorder_lib ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+    
     # Executable
     add_executable(axon_recorder_node
         src/main.cpp
