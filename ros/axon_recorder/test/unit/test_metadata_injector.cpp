@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include "metadata_injector.hpp"
 #include "mcap_writer_wrapper.hpp"

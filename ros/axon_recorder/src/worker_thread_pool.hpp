@@ -50,7 +50,7 @@ struct TopicStatsSnapshot {
 /**
  * Per-topic statistics (internal, atomic for thread-safety).
  */
-struct TopicStats {
+struct WorkerTopicStats {
   std::atomic<uint64_t> received{0};
   std::atomic<uint64_t> dropped{0};
   std::atomic<uint64_t> written{0};
@@ -231,7 +231,7 @@ private:
     std::thread worker_thread;
     std::atomic<bool> running{false};
     MessageHandler handler;
-    TopicStats stats;
+    WorkerTopicStats stats;
 
     TopicContext() = default;
 
