@@ -36,9 +36,21 @@ if(ENABLE_ASAN)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
 endif()
 
-# Project paths
+# Project paths - handle both direct build and colcon build scenarios
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-set(CPP_MCAP_DIR ${PROJECT_ROOT}/cpp/axon_mcap)
+
+# Find axon_mcap directory - check multiple possible locations
+if(EXISTS "${PROJECT_ROOT}/cpp/axon_mcap/CMakeLists.txt")
+    set(CPP_MCAP_DIR ${PROJECT_ROOT}/cpp/axon_mcap)
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_mcap/CMakeLists.txt")
+    set(CPP_MCAP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_mcap)
+else()
+    message(FATAL_ERROR "Could not find axon_mcap directory. Searched:\n"
+        "  ${PROJECT_ROOT}/cpp/axon_mcap\n"
+        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_mcap\n"
+        "Please ensure the cpp/axon_mcap directory exists relative to the project root.")
+endif()
+message(STATUS "Found axon_mcap at: ${CPP_MCAP_DIR}")
 
 # Detect ROS version and set appropriate macro
 if(DEFINED ENV{ROS_VERSION})
@@ -59,6 +71,18 @@ endif()
 
 # Find yaml-cpp
 find_package(yaml-cpp REQUIRED)
+
+# Find Boost for HTTP callback client (Beast requires system)
+find_package(Boost REQUIRED COMPONENTS system)
+if(Boost_FOUND)
+    message(STATUS "Found Boost: ${Boost_VERSION}")
+endif()
+
+# Find OpenSSL for HTTPS support in HTTP callback client
+find_package(OpenSSL REQUIRED)
+if(OpenSSL_FOUND)
+    message(STATUS "Found OpenSSL: ${OPENSSL_VERSION}")
+endif()
 
 # Find pkg-config for compression libraries
 find_package(PkgConfig REQUIRED)
@@ -119,10 +143,10 @@ if(AXON_ROS_VERSION EQUAL 1)
     # Note: add_service_files looks in srv/ directory by default
     add_service_files(
         FILES
-        StartRecording.srv
-        StopRecording.srv
-        UpdateConfig.srv
-        GetStatus.srv
+        CachedRecordingConfig.srv
+        IsRecordingReady.srv
+        RecordingControl.srv
+        RecordingStatus.srv
     )
     
     generate_messages(
@@ -138,6 +162,7 @@ if(AXON_ROS_VERSION EQUAL 1)
     
     include_directories(
         ${catkin_INCLUDE_DIRS}
+        ${Boost_INCLUDE_DIRS}
         src
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
@@ -147,8 +172,8 @@ if(AXON_ROS_VERSION EQUAL 1)
     file(GLOB_RECURSE RECORDER_LIB_SOURCES CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
     )
-    # Exclude node main file from library
-    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*recorder_node\\.cpp$")
+    # Exclude main entry point from library
+    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
     
     # Recorder Library
     add_library(axon_recorder_lib ${RECORDER_LIB_SOURCES})
@@ -156,11 +181,18 @@ if(AXON_ROS_VERSION EQUAL 1)
     target_link_libraries(axon_recorder_lib
         ${catkin_LIBRARIES}
         axon_mcap
+        ${Boost_LIBRARIES}
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        yaml-cpp
     )
+    
+    # Ensure library waits for message generation (service headers)
+    add_dependencies(axon_recorder_lib ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
     
     # Executable
     add_executable(axon_recorder_node
-        src/recorder_node.cpp
+        src/main.cpp
     )
     
     target_link_libraries(axon_recorder_node
@@ -179,6 +211,10 @@ if(AXON_ROS_VERSION EQUAL 1)
     
     install(DIRECTORY launch/
         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+    )
+    
+    install(DIRECTORY config/
+        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
     )
     
     install(DIRECTORY srv/
@@ -210,15 +246,16 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     
     # Generate service messages
     rosidl_generate_interfaces(${PROJECT_NAME}
-        "srv/StartRecording.srv"
-        "srv/StopRecording.srv"
-        "srv/UpdateConfig.srv"
-        "srv/GetStatus.srv"
+        "srv/CachedRecordingConfig.srv"
+        "srv/IsRecordingReady.srv"
+        "srv/RecordingControl.srv"
+        "srv/RecordingStatus.srv"
         DEPENDENCIES std_msgs
     )
     
     include_directories(
         src
+        ${Boost_INCLUDE_DIRS}
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
     )
@@ -227,14 +264,15 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     file(GLOB_RECURSE RECORDER_LIB_SOURCES CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
     )
-    # Exclude node main file from library
-    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*recorder_node\\.cpp$")
+    # Exclude main entry point from library
+    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
     
     # Recorder Library
     add_library(axon_recorder_lib SHARED ${RECORDER_LIB_SOURCES})
     
     ament_target_dependencies(axon_recorder_lib
         rclcpp
+        ament_index_cpp
         std_msgs
         sensor_msgs
         nav_msgs
@@ -243,7 +281,18 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     
     target_link_libraries(axon_recorder_lib
         axon_mcap
+        ${Boost_LIBRARIES}
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        yaml-cpp
     )
+    
+    # Add Boost include directories
+    target_include_directories(axon_recorder_lib PRIVATE ${Boost_INCLUDE_DIRS})
+    
+    # Link to generated service typesupport for the library
+    rosidl_get_typesupport_target(cpp_typesupport_target_lib ${PROJECT_NAME} "rosidl_typesupport_cpp")
+    target_link_libraries(axon_recorder_lib "${cpp_typesupport_target_lib}")
     
     # Link compression libraries if available
     if(ZSTD_FOUND)
@@ -255,7 +304,7 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     
     # Executable
     add_executable(axon_recorder_node
-        src/recorder_node.cpp
+        src/main.cpp
     )
     
     ament_target_dependencies(axon_recorder_node

@@ -27,7 +27,6 @@ jobs:
             pkg-config \
             libgtest-dev \
             libgmock-dev \
-            libyaml-cpp-dev \
             libzstd-dev \
             liblz4-dev
 
@@ -44,27 +43,23 @@ jobs:
         run: ctest --output-on-failure --verbose
 
   # ==========================================================================
-  # ROS Tests Jobs - Matrix strategy for all supported ROS distributions
-  # Uses ros-industrial/industrial_ci for standardized ROS CI testing
+  # ROS Unit Tests - Uses industrial_ci for standardized testing
+  # Tests: TaskConfig, StateManager, HttpCallbackClient, RecordingWorkflow
   # ==========================================================================
-  ros-tests:
-    name: ROS ${{ matrix.ros_distro }}
+  ros-unit-tests:
+    name: ROS Unit Tests (${{ matrix.ros_distro }})
     runs-on: ubuntu-latest
     needs: cpp-tests
     strategy:
       fail-fast: false
       matrix:
         include:
-          # ROS 1 Noetic
           - ros_distro: noetic
             ros_repo: main
-          # ROS 2 Humble (LTS)
           - ros_distro: humble
             ros_repo: main
-          # ROS 2 Jazzy
           - ros_distro: jazzy
             ros_repo: main
-          # ROS 2 Rolling (development)
           - ros_distro: rolling
             ros_repo: main
 
@@ -77,10 +72,78 @@ jobs:
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
-          # Install system dependencies required by axon_mcap (not available via rosdep)
-          # Using ADDITIONAL_DEBS instead of deprecated BEFORE_SCRIPT
-          ADDITIONAL_DEBS: libyaml-cpp-dev libzstd-dev liblz4-dev pkg-config
-          # Additional CMake args for release build
+          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
 
+  # ==========================================================================
+  # Integration Tests - End-to-end ROS service tests using industrial_ci
+  # Starts axon_recorder_node and runs actual ROS service calls
+  # ==========================================================================
+  ros-integration-tests:
+    name: ROS Integration Tests (${{ matrix.ros_distro }})
+    runs-on: ubuntu-latest
+    needs: ros-unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ros_distro: noetic
+            ros_repo: main
+          - ros_distro: humble
+            ros_repo: main
+          - ros_distro: jazzy
+            ros_repo: main
+          - ros_distro: rolling
+            ros_repo: main
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run industrial_ci with integration tests
+        uses: ros-industrial/industrial_ci@master
+        env:
+          ROS_DISTRO: ${{ matrix.ros_distro }}
+          ROS_REPO: ${{ matrix.ros_repo }}
+          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+          CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
+          # Skip default tests, we'll run integration tests instead
+          NOT_TEST_BUILD: true
+          # Run integration tests after build using shared script
+          AFTER_SCRIPT: |
+            echo "=== Starting integration tests ==="
+            echo "ROS_DISTRO=$ROS_DISTRO"
+            
+            # Install ROS CLI tools (rosrun/ros2, rosservice/ros2 service)
+            echo "Installing ROS CLI tools..."
+            apt-get update -qq
+            if [ "$ROS_DISTRO" = "noetic" ]; then
+              apt-get install -y -qq ros-noetic-rosbash ros-noetic-rosservice
+            else
+              apt-get install -y -qq ros-${ROS_DISTRO}-ros2cli ros-${ROS_DISTRO}-ros2service ros-${ROS_DISTRO}-ros2run
+            fi
+            
+            # Source ROS (disable strict mode - setup.bash has unbound vars)
+            set +eu
+            . /opt/ros/$ROS_DISTRO/setup.bash
+            if [ -f /root/target_ws/install/setup.bash ]; then
+              . /root/target_ws/install/setup.bash
+            elif [ -f /root/target_ws/devel/setup.bash ]; then
+              . /root/target_ws/devel/setup.bash
+            fi
+            set -e
+            
+            # Verify ROS commands are available
+            echo "Verifying ROS commands..."
+            which ros2 2>/dev/null || which rosrun 2>/dev/null || echo "WARNING: ROS commands not found"
+            
+            # Find source path
+            SRC_PATH="${GITHUB_WORKSPACE:-/root/target_ws/src/Axon}"
+            if [ ! -d "$SRC_PATH/ros" ]; then
+              SRC_PATH="/root/target_ws/src"
+            fi
+            echo "SRC_PATH=$SRC_PATH"
+            
+            export ROS_DISTRO
+            chmod +x $SRC_PATH/ros/axon_recorder/test/integration/run_integration_tests.sh
+            $SRC_PATH/ros/axon_recorder/test/integration/run_integration_tests.sh

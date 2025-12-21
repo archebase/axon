@@ -108,3 +108,5 @@ ros/docker/output/*
 perf.data
 perf.data.*
 *.folded
+
+log

@@ -35,6 +35,7 @@
 
   <!-- ROS 2 dependencies -->
   <depend condition="$ROS_VERSION == 2">rclcpp</depend>
+  <depend condition="$ROS_VERSION == 2">ament_index_cpp</depend>
   <depend condition="$ROS_VERSION == 2">std_msgs</depend>
   <depend condition="$ROS_VERSION == 2">sensor_msgs</depend>
   <depend condition="$ROS_VERSION == 2">nav_msgs</depend>
@@ -42,7 +43,9 @@
   <buildtool_depend condition="$ROS_VERSION == 2">rosidl_default_generators</buildtool_depend>
   <exec_depend condition="$ROS_VERSION == 2">rosidl_default_runtime</exec_depend>
 
-  <!-- Common dependencies -->
+  <!-- Test dependencies (ROS packages only) -->
+  <test_depend condition="$ROS_VERSION == 1">rostest</test_depend>
+  <test_depend condition="$ROS_VERSION == 2">ament_cmake_gtest</test_depend>
 
   <!-- Member of group - Required for packages that generate ROS 2 service/message interfaces -->
   <!-- Only applies to ROS 2 (catkin ignores this tag) -->

@@ -1,7 +1,0 @@
-# Request
-string config_path  # Path to new YAML config file
----
-# Response
-bool success
-string message
-

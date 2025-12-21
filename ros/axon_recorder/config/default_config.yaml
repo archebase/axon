@@ -47,6 +47,5 @@ topics:
     flush_interval_ms: 10000
 
 recording:
-  auto_start: true
   max_disk_usage_gb: 100
 

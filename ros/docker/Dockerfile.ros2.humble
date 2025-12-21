@@ -1,5 +1,11 @@
 FROM ros:humble-ros-base
 
+# =============================================================================
+# IMPORTANT: When adding new dependencies here, also update:
+#   .github/workflows/ci.yml -> ADDITIONAL_DEBS
+# to ensure CI builds have the same dependencies.
+# =============================================================================
+
 # Install system dependencies and ROS build tools
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -32,6 +38,20 @@ RUN apt-get update && apt-get install -y \
     libzstd-dev \
     libre2-dev \
     libturbojpeg0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Boost and OpenSSL (required for HTTP callback client with HTTPS support)
+RUN apt-get update && apt-get install -y \
+    libboost-dev \
+    libboost-system-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ROS CLI tools (required for integration tests)
+RUN apt-get update && apt-get install -y \
+    ros-humble-ros2cli \
+    ros-humble-ros2service \
+    ros-humble-ros2run \
     && rm -rf /var/lib/apt/lists/*
 
 # Install LLVM for Address Sanitizer symbolization (better stack traces)

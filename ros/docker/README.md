@@ -1,191 +1,86 @@
 # Docker Testing Guide
 
-This directory contains Docker configurations for building and testing Axon across different ROS versions.
+Docker configurations for building and testing Axon across different ROS versions.
 
 ## Quick Start
 
-### Run Tests in Docker
-
 ```bash
-# Test in ROS1 (Noetic)
-make docker-test-ros1
-
-# Test in ROS2 Humble
-make docker-test-ros2-humble
-
-# Test in all ROS versions (sequential)
-make docker-test-all
-
-# Test in all ROS versions (parallel)
-make docker-test-compose
-```
-
-### Using Docker Compose
-
-```bash
-# Run tests in all containers
-cd docker
-docker-compose -f docker-compose.test.yml up --build
-
-# Run tests in specific container
-docker-compose -f docker-compose.test.yml up test-ros1
-```
-
-## Docker Images
-
-- `axon:ros1` - ROS1 Noetic
-- `axon:ros2-humble` - ROS2 Humble
-- `axon:ros2-jazzy` - ROS2 Jazzy
-- `axon:ros2-rolling` - ROS2 Rolling
-
-## Test Scripts
-
-### `run_tests.sh`
-Runs all tests (Rust + C++ + Integration):
-- Rust unit tests
-- C++ unit tests
-- Integration tests (if available)
-
-### `run_build.sh`
-Builds the project:
-- Rust library
-- C++ code
-
-## Manual Docker Usage
-
-### Build Image
-```bash
-docker build -f docker/Dockerfile.ros1 -t axon:ros1 .
-```
-
-### Run Tests
-```bash
-docker run --rm \
-  -v $(pwd):/workspace/axon \
-  -e ROS_DISTRO=noetic \
-  -e ROS_VERSION=1 \
-  axon:ros1 \
-  /usr/local/bin/run_tests.sh
-```
-
-### Interactive Shell
-```bash
-docker run -it --rm \
-  -v $(pwd):/workspace/axon \
-  -e ROS_DISTRO=noetic \
-  -e ROS_VERSION=1 \
-  axon:ros1 \
-  /bin/bash
-```
-
-## CI/CD Integration
-
-The Docker setup is designed for CI/CD pipelines:
-
-```yaml
-# Example GitHub Actions
-- name: Test ROS1
-  run: make docker-test-ros1
-
-- name: Test ROS2
-  run: make docker-test-ros2-humble
-```
-
-## Running Performance Tests
-
-Performance tests measure recording throughput, CPU usage, memory, and message drop rates.
-
-### Quick Start
-
-```bash
-# Run perf tests in ROS 2 Humble
 cd ros/docker
+
+# Run tests
+docker-compose -f docker-compose.test.yml up test-ros2-humble --build --abort-on-container-exit
+
+# Run performance tests
 docker-compose -f docker-compose.perf.yml up perf-ros2-humble --build
 
-# Run perf tests in ROS 1 Noetic
-docker-compose -f docker-compose.perf.yml up perf-ros1 --build
+# Interactive shell
+docker-compose -f docker-compose.test.yml run test-ros2-humble /bin/bash
 ```
 
-### Custom Parameters
+## Available Images
+
+| Image | ROS Version |
+|-------|-------------|
+| `test-ros1` | ROS 1 Noetic |
+| `test-ros2-humble` | ROS 2 Humble |
+| `test-ros2-jazzy` | ROS 2 Jazzy |
+| `test-ros2-rolling` | ROS 2 Rolling |
+
+## CI ↔ Local Docker Mapping
+
+Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructure.
+
+| CI Job (`ci.yml`) | Local Docker (`run_tests.sh`) | What it does |
+|-------------------|-------------------------------|--------------|
+| `ros-unit-tests` | Part 1: ROS Tests | `colcon test` / `catkin_make run_tests` |
+| `ros-integration-tests` | Part 2: Integration Tests | `run_integration_tests.sh` |
+
+### Shared Scripts
+
+| Script | Used by |
+|--------|---------|
+| `test/integration/run_integration_tests.sh` | CI `AFTER_SCRIPT` + Docker `run_tests.sh` |
+| `test/integration/test_ros_services.sh` | Called by `run_integration_tests.sh` |
+
+### Test Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Part 1: ROS Tests                                          │
+│    - Build package with colcon/catkin                       │
+│    - Run colcon test / catkin_make run_tests                │
+│    - Executes all GTest-based unit tests                    │
+├─────────────────────────────────────────────────────────────┤
+│  Part 2: Integration Tests                                  │
+│    - Start axon_recorder_node                               │
+│    - Run test_ros_services.sh (actual ROS service calls)    │
+│    - Cleanup                                                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Performance Tests
 
 ```bash
-# Run with custom test duration and rates
+# Basic perf test
+docker-compose -f docker-compose.perf.yml up perf-ros2-humble --build
+
+# Custom parameters
 docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
-  /usr/local/bin/run_perf_tests.sh --duration 30 --imu-rate 2000 --camera-rate 60
+  /usr/local/bin/run_perf_tests.sh --duration 30 --imu-rate 2000
 
-# Available options:
-#   --duration <sec>     Test duration (default: 10)
-#   --imu-rate <hz>      IMU rate (default: 1000)
-#   --camera-rate <hz>   Camera rate (default: 30)
-#   --num-cameras <n>    Number of cameras (default: 3)
-#   --output <file>      JSON output file
-#   --skip-build         Skip building (use cached build)
-```
-
-### Interactive Debugging
-
-```bash
-# Open shell for debugging
-docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble /bin/bash
-
-# Inside container:
-source /opt/ros/humble/setup.bash
-cd /workspace/axon
-# ... debug as needed
-```
-
-### Skip Build (After First Run)
-
-```bash
-# Skip rebuilding to save time on subsequent runs
-docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
-  /usr/local/bin/run_perf_tests.sh --skip-build
-```
-
-### ASAN (Address Sanitizer) Testing
-
-ASAN helps detect memory errors like double-free, use-after-free, and buffer overflows.
-
-```bash
-# Run perf tests with ASAN enabled (full load)
+# With ASAN (memory debugging)
 docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
   /usr/local/bin/run_perf_tests.sh --asan
 
-# Run with reduced load for faster debugging (asan-lite)
-docker-compose -f docker-compose.perf.yml run --rm perf-ros2-humble \
-  /usr/local/bin/run_perf_tests.sh --asan-lite
-```
-
-ASAN options:
-- `--asan` - Enable Address Sanitizer build and runtime checks
-- `--asan-lite` - Enable ASAN with reduced load (faster debugging iterations)
-
-### Flamegraph CPU Profiling
-
-Generate interactive CPU flamegraphs to identify performance bottlenecks:
-
-```bash
-# Run perf tests with flamegraph profiling
+# With flamegraph profiling (Linux host only)
 docker-compose -f docker-compose.perf.yml run --rm --privileged perf-ros2-humble \
   /usr/local/bin/run_perf_tests.sh --flamegraph
-
-# With custom sampling frequency
-docker-compose -f docker-compose.perf.yml run --rm --privileged perf-ros2-humble \
-  /usr/local/bin/run_perf_tests.sh --flamegraph --flamegraph-freq 199
 ```
-
-The flamegraph SVG will be saved to `/data/recordings/flamegraph/recorder_flamegraph.svg`.
 
 ## Troubleshooting
 
-### Build Fails
-- Ensure Docker has enough memory (recommended: 4GB+)
-- Check Docker logs: `docker logs <container_id>`
-
-### Tests Fail
-- Verify source code is mounted correctly
-- Check ROS environment variables are set
-- Review test output for specific failures
-
-### Permission Issues
-- Ensure scripts are executable: `chmod +x docker/scripts/*.sh`
+| Issue | Solution |
+|-------|----------|
+| Build fails | Ensure Docker has 4GB+ memory |
+| Permission issues | Run `chmod +x docker/scripts/*.sh` |
+| Tests fail | Check ROS environment with `printenv \| grep ROS` |
