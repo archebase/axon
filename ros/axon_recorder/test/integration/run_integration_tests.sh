@@ -75,8 +75,15 @@ set -e
 echo "Checking installed packages..."
 echo "AMENT_PREFIX_PATH=$AMENT_PREFIX_PATH"
 echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
-ls -la /root/target_ws/install/ 2>/dev/null | head -10 || echo "No /root/target_ws/install/"
-ls -la /root/target_ws/install/axon_recorder/ 2>/dev/null | head -5 || echo "No axon_recorder install dir"
+ls -la /root/target_ws/install/ 2>/dev/null | head -15 || echo "No /root/target_ws/install/"
+echo "--- axon_recorder install dir ---"
+ls -la /root/target_ws/install/axon_recorder/ 2>/dev/null || echo "No axon_recorder install dir"
+echo "--- share directory (needed for ament index) ---"
+ls -la /root/target_ws/install/axon_recorder/share/ 2>/dev/null || echo "No share dir"
+echo "--- ament_index (needed for ros2 pkg list) ---"
+ls -la /root/target_ws/install/axon_recorder/share/ament_index/resource_index/packages/ 2>/dev/null || echo "No ament_index"
+echo "--- lib directory (executables) ---"
+ls -la /root/target_ws/install/axon_recorder/lib/axon_recorder/ 2>/dev/null || echo "No lib/axon_recorder dir"
 
 # Verify package is available
 echo "Checking if axon_recorder is available..."
