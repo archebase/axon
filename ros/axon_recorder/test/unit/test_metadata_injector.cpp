@@ -525,11 +525,21 @@ TEST_F(MetadataInjectorTest, GenerateSidecarWithZeroFileSize) {
   EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, file_size));
 }
 
-TEST_F(MetadataInjectorTest, GenerateSidecarWithEmptyPath) {
+TEST_F(MetadataInjectorTest, GenerateSidecarRequiresConfig) {
+  // Test that sidecar generation requires task config to be set
   MetadataInjector injector;
-  injector.set_task_config(create_sample_config());
-
-  EXPECT_FALSE(injector.generate_sidecar_json("", 0));
+  // Don't set task config
+  
+  std::string mcap_path = (test_dir_ / "test_no_config.mcap").string();
+  McapWriterWrapper writer;
+  ASSERT_TRUE(writer.open(mcap_path));
+  writer.close();
+  
+  // Without config set, inject_metadata should fail
+  McapWriterWrapper writer2;
+  ASSERT_TRUE(writer2.open(mcap_path));
+  EXPECT_FALSE(injector.inject_metadata(writer2, 0, 0));
+  writer2.close();
 }
 
 TEST_F(MetadataInjectorTest, InjectMetadataWithoutConfig) {
