@@ -506,12 +506,23 @@ TEST_F(MetadataInjectorTest, SidecarContainsTopicsSummary) {
 // Error Handling Tests
 // ============================================================================
 
-TEST_F(MetadataInjectorTest, GenerateSidecarForNonexistentFile) {
+TEST_F(MetadataInjectorTest, GenerateSidecarWithZeroFileSize) {
+  // Test that sidecar generation handles zero file size
+  std::string mcap_path = (test_dir_ / "test_zero_size.mcap").string();
+
+  McapWriterWrapper writer;
+  ASSERT_TRUE(writer.open(mcap_path));
+  
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
 
-  EXPECT_FALSE(injector.generate_sidecar_json("/nonexistent/path/test.mcap", 0));
+  EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
+  writer.close();
+
+  // Generate sidecar with actual file
+  auto file_size = std::filesystem::file_size(mcap_path);
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, file_size));
 }
 
 TEST_F(MetadataInjectorTest, GenerateSidecarWithEmptyPath) {

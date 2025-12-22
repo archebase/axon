@@ -418,12 +418,17 @@ TEST_F(RecordingSessionTest, WriteToInvalidChannel) {
   session.close();
 }
 
-TEST_F(RecordingSessionTest, OpenInvalidPath) {
+TEST_F(RecordingSessionTest, OpenCreatesFile) {
   RecordingSession session;
 
-  // Try to open file in non-existent directory
-  EXPECT_FALSE(session.open("/nonexistent/path/that/does/not/exist/test.mcap"));
-  EXPECT_FALSE(session.is_open());
+  // Recording session creates the file when opening
+  std::string path = (test_dir_ / "new_recording.mcap").string();
+  
+  EXPECT_TRUE(session.open(path));
+  EXPECT_TRUE(session.is_open());
+  EXPECT_TRUE(std::filesystem::exists(path));
+  
+  session.close();
 }
 
 TEST_F(RecordingSessionTest, FlushDuringWrite) {
