@@ -1,0 +1,183 @@
+# =============================================================================
+# Test Coverage Workflow for Axon
+# =============================================================================
+# Runs tests with coverage instrumentation and uploads results to Codecov.
+# Uses ROS 2 Humble as the primary coverage environment.
+# =============================================================================
+
+name: Test Coverage
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  ROS_DISTRO: humble
+  ROS_VERSION: 2
+
+jobs:
+  coverage:
+    name: Coverage (ROS 2 Humble)
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for accurate coverage
+
+      - name: Set up ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libgtest-dev \
+            libgmock-dev \
+            libyaml-cpp-dev \
+            liblz4-dev \
+            libzstd-dev \
+            libre2-dev \
+            libturbojpeg0-dev \
+            libboost-dev \
+            libboost-system-dev \
+            libboost-log-dev \
+            libboost-thread-dev \
+            libboost-filesystem-dev \
+            libssl-dev \
+            lcov
+
+      - name: Build GTest from source
+        run: |
+          if [ -d /usr/src/googletest ]; then
+            cd /usr/src/googletest
+            sudo cmake -B build
+            sudo cmake --build build
+            sudo cmake --install build
+          fi
+
+      - name: Build with coverage
+        run: |
+          source /opt/ros/humble/setup.bash
+          
+          # Build with coverage flags
+          colcon build \
+            --packages-select axon_recorder \
+            --cmake-args \
+              -DCMAKE_BUILD_TYPE=Debug \
+              -DENABLE_COVERAGE=ON \
+            --base-paths ros
+          
+          source install/setup.bash
+
+      - name: Run tests
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/setup.bash
+          
+          # Run tests with coverage
+          colcon test \
+            --packages-select axon_recorder \
+            --event-handlers console_direct+ \
+            --base-paths ros \
+            --return-code-on-test-failure
+          
+          # Show test results
+          colcon test-result --verbose || true
+
+      - name: Generate coverage report
+        run: |
+          # Get lcov version
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          # Build ignore flags based on version (mismatch/unused added in lcov 2.0)
+          IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
+          # Capture coverage data from entire build directory
+          lcov --capture \
+            --directory build \
+            --output-file coverage_raw.info \
+            --rc lcov_branch_coverage=1 \
+            ${IGNORE_FLAGS}
+          
+          # Remove external dependencies from coverage
+          lcov --remove coverage_raw.info \
+            '/usr/*' \
+            '/opt/*' \
+            '*/_deps/*' \
+            '*/generated/*' \
+            '*/googletest/*' \
+            --output-file coverage.info \
+            --rc lcov_branch_coverage=1 \
+            ${IGNORE_FLAGS}
+          
+          # Generate summary
+          lcov --list coverage.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.info
+          flags: unittests
+          name: axon-coverage
+          fail_ci_if_error: false  # Don't fail if upload fails
+          verbose: true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.info
+          retention-days: 30
+
+  # Optional: Generate HTML coverage report
+  coverage-report:
+    name: Generate HTML Report
+    runs-on: ubuntu-22.04
+    needs: coverage
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: Install lcov
+        run: sudo apt-get update && sudo apt-get install -y lcov
+
+      - name: Generate HTML report
+        run: |
+          mkdir -p coverage-html
+          genhtml coverage.info \
+            --output-directory coverage-html \
+            --title "Axon Test Coverage" \
+            --legend \
+            --branch-coverage
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-report
+          path: coverage-html/
+          retention-days: 30
+

@@ -1,5 +1,8 @@
 # Axon
 
+[![Test Coverage](https://github.com/YOUR_USERNAME/Axon/actions/workflows/coverage.yml/badge.svg)](https://github.com/YOUR_USERNAME/Axon/actions/workflows/coverage.yml)
+[![codecov](https://codecov.io/gh/YOUR_USERNAME/Axon/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/Axon)
+
 A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling).
 
 ## Architecture
@@ -337,6 +340,28 @@ make test
 - ✅ ROS integration (message handling, service interface)
 
 See `ros/axon_recorder/test/README.md` for more details on the test suite.
+
+### Generating Coverage Reports
+
+**Local Coverage (requires ROS 2 sourced and lcov installed):**
+
+```bash
+cd ros
+
+# Generate coverage report
+make coverage
+
+# Generate HTML report (opens in browser)
+make coverage-html
+open ../coverage/html/index.html
+
+# Run coverage in Docker (no local ROS required)
+make docker-coverage
+```
+
+**Coverage in CI:**
+
+Coverage reports are automatically generated on every push to `main` and uploaded to [Codecov](https://codecov.io). See the badge at the top of this README for current coverage status.
 
 ## Troubleshooting
 

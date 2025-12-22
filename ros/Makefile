@@ -73,6 +73,12 @@ help:
 	@printf "%s\n" "  $(BLUE)make format$(NC)         - Format code (requires formatters)"
 	@printf "%s\n" "  $(BLUE)make lint$(NC)           - Lint code (requires linters)"
 	@echo ""
+	@printf "%s\n" "$(YELLOW)Coverage:$(NC)"
+	@printf "%s\n" "  $(BLUE)make coverage$(NC)       - Build with coverage and run tests"
+	@printf "%s\n" "  $(BLUE)make coverage-html$(NC)  - Generate HTML coverage report"
+	@printf "%s\n" "  $(BLUE)make docker-coverage$(NC)- Run coverage in Docker container"
+	@printf "%s\n" "  $(BLUE)make clean-coverage$(NC) - Clean coverage data"
+	@echo ""
 	@printf "%s\n" "$(YELLOW)Docker:$(NC)"
 	@printf "%s\n" "  $(BLUE)make docker-build$(NC)        - Build all Docker images"
 	@printf "%s\n" "  $(BLUE)make docker-test$(NC)         - Run tests in Docker (auto-detect ROS)"
@@ -398,6 +404,86 @@ quick-test: rust-test
 # Full test suite
 full-test: test lint
 	@printf "%s\n" "$(GREEN)✓ Full test suite complete$(NC)"
+
+# =============================================================================
+# Coverage Targets
+# =============================================================================
+
+# Coverage output directory
+COVERAGE_DIR := $(PROJECT_ROOT)/coverage
+
+# Build with coverage and run tests (ROS 2)
+coverage-ros2:
+	@printf "%s\n" "$(YELLOW)Building with coverage instrumentation (ROS 2)...$(NC)"
+	@if [ -z "$$ROS_DISTRO" ]; then \
+		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
+		exit 1; \
+	fi
+	@rm -rf $(PROJECT_ROOT)/build $(PROJECT_ROOT)/install $(PROJECT_ROOT)/log
+	@mkdir -p $(COVERAGE_DIR)
+	@cd $(PROJECT_ROOT) && \
+		source /opt/ros/$${ROS_DISTRO}/setup.bash && \
+		colcon build \
+			--packages-select axon_recorder \
+			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON \
+			--base-paths ros && \
+		source install/setup.bash && \
+		colcon test \
+			--packages-select axon_recorder \
+			--event-handlers console_direct+ \
+			--base-paths ros || true
+	@printf "%s\n" "$(GREEN)✓ Tests completed, generating coverage report...$(NC)"
+	@LCOV_MAJOR=$$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9]+' || echo "1"); \
+	IGNORE_FLAGS=""; \
+	if [ "$$LCOV_MAJOR" -ge 2 ]; then IGNORE_FLAGS="--ignore-errors mismatch,unused"; fi; \
+	lcov --capture \
+		--directory $(PROJECT_ROOT)/build \
+		--output-file $(COVERAGE_DIR)/coverage_raw.info \
+		--rc lcov_branch_coverage=1 \
+		$$IGNORE_FLAGS || true; \
+	lcov --remove $(COVERAGE_DIR)/coverage_raw.info \
+		'/usr/*' '/opt/*' '*/_deps/*' '*/generated/*' '*/googletest/*' \
+		--output-file $(COVERAGE_DIR)/coverage.info \
+		--rc lcov_branch_coverage=1 \
+		$$IGNORE_FLAGS || cp $(COVERAGE_DIR)/coverage_raw.info $(COVERAGE_DIR)/coverage.info
+	@lcov --list $(COVERAGE_DIR)/coverage.info || true
+	@printf "%s\n" "$(GREEN)✓ Coverage report: $(COVERAGE_DIR)/coverage.info$(NC)"
+
+# Generate HTML coverage report
+coverage-html: coverage-ros2
+	@printf "%s\n" "$(YELLOW)Generating HTML coverage report...$(NC)"
+	@mkdir -p $(COVERAGE_DIR)/html
+	@genhtml $(COVERAGE_DIR)/coverage.info \
+		--output-directory $(COVERAGE_DIR)/html \
+		--title "Axon Test Coverage" \
+		--legend \
+		--branch-coverage || true
+	@printf "%s\n" "$(GREEN)✓ HTML report: $(COVERAGE_DIR)/html/index.html$(NC)"
+
+# Run coverage in Docker (ROS 2 Humble)
+docker-coverage: docker-build-ros2-humble
+	@printf "%s\n" "$(YELLOW)Running coverage in ROS2 Humble Docker container...$(NC)"
+	@mkdir -p $(PROJECT_ROOT)/coverage
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-v $(PROJECT_ROOT)/coverage:/workspace/coverage \
+		-e ROS_DISTRO=humble \
+		-e ROS_VERSION=2 \
+		axon:ros2-humble \
+		/usr/local/bin/run_coverage.sh /workspace/coverage
+	@printf "%s\n" "$(GREEN)✓ Coverage report: $(PROJECT_ROOT)/coverage/coverage.info$(NC)"
+
+# Clean coverage data
+clean-coverage:
+	@printf "%s\n" "$(YELLOW)Cleaning coverage data...$(NC)"
+	@rm -rf $(COVERAGE_DIR)
+	@find $(PROJECT_ROOT)/build -name "*.gcda" -delete 2>/dev/null || true
+	@find $(PROJECT_ROOT)/build -name "*.gcno" -delete 2>/dev/null || true
+	@printf "%s\n" "$(GREEN)✓ Coverage data cleaned$(NC)"
+
+# Default coverage target
+coverage: coverage-ros2
+	@printf "%s\n" "$(GREEN)✓ Coverage complete$(NC)"
 
 # Check if ROS is sourced
 check-ros:

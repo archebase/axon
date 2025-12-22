@@ -12,6 +12,13 @@ cmake_minimum_required(VERSION 3.15)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ============================================================================
+# Code Coverage Support (inherited from parent or standalone)
+# ============================================================================
+if(ENABLE_COVERAGE)
+    message(STATUS "Test targets built with coverage instrumentation")
+endif()
+
 # Detect if we're being built as part of the ROS package
 if(DEFINED AXON_ROS1 OR DEFINED AXON_ROS2)
     set(ROS_INTEGRATED_BUILD TRUE)
