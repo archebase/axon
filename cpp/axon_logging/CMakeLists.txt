@@ -6,8 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # =============================================================================
 # Find Boost.Log and dependencies
+# Boost 1.71+ required (Ubuntu 20.04/ROS Noetic minimum)
+# Ubuntu 22.04+ ships Boost 1.74+
 # =============================================================================
-find_package(Boost 1.74 REQUIRED COMPONENTS 
+find_package(Boost 1.71 REQUIRED COMPONENTS 
     log 
     log_setup 
     thread 
