@@ -149,8 +149,11 @@ void EdgeUploader::enqueue(
   state_manager_->insert(record);
 
   // Add to queue
-  queue_->enqueue(std::move(item));
+  // Increment pending count BEFORE enqueue to avoid race condition:
+  // enqueue() notifies workers, and a worker could decrement files_pending
+  // before we increment it, causing unsigned underflow to UINT64_MAX
   stats_.files_pending++;
+  queue_->enqueue(std::move(item));
 
   // Check backpressure
   checkBackpressure();
@@ -352,8 +355,9 @@ void EdgeUploader::onUploadFailure(const UploadItem& item, const std::string& er
     UploadItem retry_item = item;
     retry_item.retry_count = current_retry_count;
     retry_item.next_retry_at = retry_handler_->nextRetryTime(current_retry_count);
-    queue_->requeue_for_retry(std::move(retry_item));
+    // Increment pending count BEFORE requeue to avoid race condition
     stats_.files_pending++;
+    queue_->requeue_for_retry(std::move(retry_item));
   } else {
     // Mark as permanently failed
     state_manager_->markFailed(item.mcap_path, error);
