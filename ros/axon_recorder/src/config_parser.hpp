@@ -34,7 +34,7 @@ struct RecordingConfig {
  */
 struct S3ConfigYaml {
   std::string endpoint_url;             // S3-compatible endpoint (empty for AWS S3)
-  std::string bucket = "axon-raw-data"; // Bucket name
+  std::string bucket;                   // Bucket name (required when upload enabled)
   std::string region = "us-east-1";     // AWS region
   bool use_ssl = true;
   bool verify_ssl = true;

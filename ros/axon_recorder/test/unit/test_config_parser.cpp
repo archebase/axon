@@ -234,7 +234,7 @@ topics:
   
   // Upload defaults
   EXPECT_FALSE(config.upload.enabled);
-  EXPECT_EQ(config.upload.s3.bucket, "axon-raw-data");
+  EXPECT_TRUE(config.upload.s3.bucket.empty());  // Bucket must be explicitly configured
   EXPECT_EQ(config.upload.s3.region, "us-east-1");
   EXPECT_TRUE(config.upload.s3.use_ssl);
   EXPECT_TRUE(config.upload.s3.verify_ssl);

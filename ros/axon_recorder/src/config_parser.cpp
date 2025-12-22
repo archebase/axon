@@ -324,16 +324,42 @@ bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload
 }
 
 bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg) {
-  if (!config.validate()) {
-    error_msg = "Configuration validation failed";
-    return false;
-  }
-  
-  // Validate upload config if enabled
+  // Validate upload config first if enabled (to get specific error messages)
   if (config.upload.enabled) {
     if (!validate_upload_config(config.upload, error_msg)) {
       return false;
     }
+  }
+  
+  // Then validate basic config
+  if (config.dataset.path.empty()) {
+    error_msg = "Dataset path is empty";
+    return false;
+  }
+  
+  if (config.topics.empty()) {
+    error_msg = "No topics configured";
+    return false;
+  }
+  
+  for (const auto& topic : config.topics) {
+    if (topic.name.empty()) {
+      error_msg = "Topic name is empty";
+      return false;
+    }
+    if (topic.message_type.empty()) {
+      error_msg = "Topic message_type is empty";
+      return false;
+    }
+    if (topic.batch_size == 0) {
+      error_msg = "Topic batch_size must be > 0";
+      return false;
+    }
+  }
+  
+  if (config.dataset.mode != "create" && config.dataset.mode != "append") {
+    error_msg = "Dataset mode must be 'create' or 'append'";
+    return false;
   }
   
   return true;
