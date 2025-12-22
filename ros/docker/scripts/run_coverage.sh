@@ -122,11 +122,11 @@ if [ "${LCOV_MAJOR}" -ge 2 ]; then
 fi
 
 # Find all directories containing .gcda files
-echo "Searching for coverage data..."
-GCDA_DIRS=$(find /workspace/axon/build -name "*.gcda" -type f -exec dirname {} \; 2>/dev/null | sort -u)
+echo "Searching for coverage data in ${COVERAGE_DIR}..."
+GCDA_DIRS=$(find "${COVERAGE_DIR}" -name "*.gcda" -type f -exec dirname {} \; 2>/dev/null | sort -u)
 
 if [ -z "${GCDA_DIRS}" ]; then
-    echo "ERROR: No .gcda files found!"
+    echo "ERROR: No .gcda files found in ${COVERAGE_DIR}!"
     echo "This may happen if:"
     echo "  - Tests didn't run successfully"
     echo "  - Coverage flags weren't applied correctly"
@@ -136,17 +136,17 @@ fi
 echo "Found .gcda files in directories:"
 echo "${GCDA_DIRS}" | head -10
 
-# Capture coverage data from the entire build directory
+# Capture coverage data from the build directory
 echo ""
-echo "Capturing coverage data..."
+echo "Capturing coverage data from ${COVERAGE_DIR}..."
 lcov --capture \
-    --directory /workspace/axon/build \
+    --directory "${COVERAGE_DIR}" \
     --output-file "${OUTPUT_DIR}/coverage_raw.info" \
     --rc lcov_branch_coverage=1 \
     ${LCOV_IGNORE_FLAGS} || {
     echo "Warning: lcov capture had issues, trying without ignore flags..."
     lcov --capture \
-        --directory /workspace/axon/build \
+        --directory "${COVERAGE_DIR}" \
         --output-file "${OUTPUT_DIR}/coverage_raw.info" \
         --rc lcov_branch_coverage=1 || true
 }
@@ -155,8 +155,8 @@ lcov --capture \
 if [ ! -s "${OUTPUT_DIR}/coverage_raw.info" ]; then
     echo "ERROR: No coverage data captured!"
     echo ""
-    echo "Searching for .gcda files..."
-    find /workspace/axon/build -name "*.gcda" -type f 2>/dev/null | head -20
+    echo "Searching for .gcda files in ${COVERAGE_DIR}..."
+    find "${COVERAGE_DIR}" -name "*.gcda" -type f 2>/dev/null | head -20
     exit 1
 fi
 

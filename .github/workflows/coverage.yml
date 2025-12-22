@@ -135,7 +135,7 @@ jobs:
           files: ./coverage.info
           flags: unittests
           name: axon-coverage
-          fail_ci_if_error: false  # Don't fail if upload fails
+          fail_ci_if_error: true # Fail if upload fails
           verbose: true
 
       - name: Upload coverage artifact
