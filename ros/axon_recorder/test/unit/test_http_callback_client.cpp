@@ -357,7 +357,6 @@ TEST_F(HttpCallbackClientTest, UrlParsing_NoPath) {
 TEST_F(HttpCallbackClientTest, TimeoutConfiguration) {
   HttpCallbackClient::Config config;
   config.request_timeout = std::chrono::seconds(5);
-  config.connect_timeout = std::chrono::seconds(2);
 
   auto client = std::make_shared<HttpCallbackClient>(config);
 
@@ -381,8 +380,7 @@ TEST_F(HttpCallbackClientTest, TimeoutConfiguration) {
 
 TEST_F(HttpCallbackClientTest, ShortTimeout) {
   HttpCallbackClient::Config config;
-  config.request_timeout = std::chrono::milliseconds(100);
-  config.connect_timeout = std::chrono::milliseconds(100);
+  config.request_timeout = std::chrono::seconds(1);  // Shortest practical timeout
 
   auto client = std::make_shared<HttpCallbackClient>(config);
 
