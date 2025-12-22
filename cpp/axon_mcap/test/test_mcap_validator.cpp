@@ -40,12 +40,14 @@ protected:
     bool opened = writer.open(path);
     EXPECT_TRUE(opened) << "Failed to open MCAP writer for: " << path;
     
-    // Optionally add a channel and some data to make it more realistic
-    uint16_t channel_id = writer.addChannel("test_topic", "test_encoding", "test_schema", "");
+    // Register schema first, then channel
+    uint16_t schema_id = writer.register_schema("test_schema", "ros2msg", "string data");
+    uint16_t channel_id = writer.register_channel("test_topic", "cdr", schema_id);
     
-    // Write a simple message
+    // Write a simple message with correct signature:
+    // write(channel_id, log_time_ns, publish_time_ns, data, data_size)
     std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
-    writer.write(channel_id, 1000000000, data);
+    writer.write(channel_id, 1000000000, 1000000000, data.data(), data.size());
     
     writer.close();
     return path;
