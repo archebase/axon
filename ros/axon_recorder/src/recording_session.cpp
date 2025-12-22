@@ -1,7 +1,10 @@
 #include "recording_session.hpp"
 
 #include <filesystem>
-#include <iostream>
+
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "recording_session"
+#include <axon_log_macros.hpp>
 
 namespace axon {
 namespace recorder {
@@ -18,12 +21,12 @@ RecordingSession::~RecordingSession() {
 bool RecordingSession::open(const std::string& path,
                             const mcap_wrapper::McapWriterOptions& options) {
   if (is_open()) {
-    std::cerr << "[RecordingSession] Already open, close first" << std::endl;
+    AXON_LOG_WARN("Already open, close first");
     return false;
   }
 
   if (!writer_->open(path, options)) {
-    std::cerr << "[RecordingSession] Failed to open: " << writer_->get_last_error() << std::endl;
+    AXON_LOG_ERROR("Failed to open" << axon::logging::kv("error", writer_->get_last_error()));
     return false;
   }
 
@@ -105,7 +108,7 @@ void RecordingSession::flush() {
 uint16_t RecordingSession::register_schema(const std::string& name, const std::string& encoding,
                                            const std::string& definition) {
   if (!is_open()) {
-    std::cerr << "[RecordingSession] Cannot register schema, session not open" << std::endl;
+    AXON_LOG_WARN("Cannot register schema, session not open");
     return 0;
   }
 
@@ -120,7 +123,7 @@ uint16_t RecordingSession::register_schema(const std::string& name, const std::s
 
   uint16_t schema_id = writer_->register_schema(name, encoding, definition);
   if (schema_id == 0) {
-    std::cerr << "[RecordingSession] Failed to register schema: " << name << std::endl;
+    AXON_LOG_ERROR("Failed to register schema" << axon::logging::kv("name", name));
     return 0;
   }
 
@@ -137,7 +140,7 @@ uint16_t RecordingSession::register_channel(
   const std::unordered_map<std::string, std::string>& metadata
 ) {
   if (!is_open()) {
-    std::cerr << "[RecordingSession] Cannot register channel, session not open" << std::endl;
+    AXON_LOG_WARN("Cannot register channel, session not open");
     return 0;
   }
 
@@ -152,7 +155,7 @@ uint16_t RecordingSession::register_channel(
 
   uint16_t channel_id = writer_->register_channel(topic, message_encoding, schema_id, metadata);
   if (channel_id == 0) {
-    std::cerr << "[RecordingSession] Failed to register channel: " << topic << std::endl;
+    AXON_LOG_ERROR("Failed to register channel" << axon::logging::kv("topic", topic));
     return 0;
   }
 

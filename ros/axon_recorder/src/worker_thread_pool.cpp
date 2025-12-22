@@ -1,7 +1,10 @@
 #include "worker_thread_pool.hpp"
 
 #include <chrono>
-#include <iostream>
+
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "worker_thread_pool"
+#include <axon_log_macros.hpp>
 
 namespace axon {
 namespace recorder {
@@ -18,7 +21,7 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHand
 
   // Check if topic already exists
   if (topic_contexts_.find(topic) != topic_contexts_.end()) {
-    std::cerr << "[WorkerThreadPool] Topic worker already exists: " << topic << std::endl;
+    AXON_LOG_WARN("Topic worker already exists" << axon::logging::kv("topic", topic));
     return false;
   }
 
@@ -228,7 +231,7 @@ void WorkerThreadPool::worker_thread_func(const std::string& topic) {
         success = context->handler(topic, item.timestamp_ns, item.raw_data.data(),
                                    item.raw_data.size(), seq);
       } catch (const std::exception& e) {
-        std::cerr << "[Worker " << topic << "] Exception: " << e.what() << std::endl;
+        AXON_LOG_ERROR("Worker exception" << axon::logging::kv("topic", topic) << axon::logging::kv("error", e.what()));
       }
 
       if (success) {

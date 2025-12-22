@@ -7,9 +7,15 @@
  */
 
 #include "recorder_node.hpp"
+#include "version.hpp"
 
 #include <csignal>
-#include <iostream>
+
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "main"
+#include <axon_log_macros.hpp>
+#include <axon_log_init.hpp>
+#include "logging/axon_ros_sink.hpp"
 
 #if defined(AXON_ROS1)
 #include <ros/ros.h>
@@ -20,12 +26,18 @@
 namespace {
 // Global flag for signal handling
 volatile std::sig_atomic_t g_shutdown_requested = 0;
+volatile std::sig_atomic_t g_received_signal = 0;
 
 void signal_handler(int signum) {
-  std::cerr << "\n[axon_recorder] Received signal " << signum << ", requesting shutdown..." << std::endl;
+  // IMPORTANT: Signal handlers must only use async-signal-safe functions.
+  // Do NOT call AXON_LOG_* here - Boost.Log uses mutexes and memory allocation
+  // which can deadlock if a signal arrives while logging is in progress.
+  // Simply set flags and return. Logging happens after main loop exits.
+  g_received_signal = signum;
   g_shutdown_requested = 1;
   
-  // Also trigger ROS shutdown
+  // Note: ros::shutdown() and rclcpp::shutdown() are not strictly async-signal-safe,
+  // but they're designed to be callable from signal handlers in practice.
 #if defined(AXON_ROS1)
   ros::shutdown();
 #elif defined(AXON_ROS2)
@@ -37,39 +49,69 @@ void signal_handler(int signum) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::cerr << "[axon_recorder] main() starting (MCAP backend)" << std::endl;
+  // Initialize logging first (console only initially, file sink added via config)
+  axon::logging::LoggingConfig log_config;
+  log_config.console_enabled = true;
+  log_config.console_colors = true;
+  log_config.console_level = axon::logging::severity_level::info;
+  log_config.file_enabled = false;  // Can be enabled via config file later
+  
+  axon::logging::init_logging(log_config);
+  
+  AXON_LOG_INFO("axon_recorder starting (MCAP backend)" << axon::logging::kv("version", AXON_RECORDER_VERSION));
 
   // Use a block scope to ensure RecorderNode is fully destroyed before main() returns
+  int exit_code = 0;
   {
     // Use factory method to create RecorderNode as shared_ptr
     // This enables shared_from_this() for dependency injection
     auto node = axon::recorder::RecorderNode::create();
 
     if (!node->initialize(argc, argv)) {
-      std::cerr << "[axon_recorder] Initialization failed" << std::endl;
+      AXON_LOG_FATAL("Initialization failed");
+      axon::logging::shutdown_logging();
       return 1;
     }
 
+    // Add ROS sink now that ROS is initialized
+    // This bridges AXON_LOG_* to rqt_console, rosout, etc.
+    auto ros_sink = axon::logging::create_ros_sink(
+        node->get_ros_interface(),
+        axon::logging::severity_level::info);
+    axon::logging::add_sink(ros_sink);
+    AXON_LOG_DEBUG("ROS logging sink added");
+
     // Install custom signal handlers AFTER rclcpp::init() to override ROS defaults
-    std::cerr << "[axon_recorder] Installing signal handlers..." << std::endl;
+    AXON_LOG_DEBUG("Installing signal handlers...");
     std::signal(SIGTERM, signal_handler);
     std::signal(SIGINT, signal_handler);
 
-    std::cerr << "[axon_recorder] Initialization complete, calling run()" << std::endl;
+    AXON_LOG_INFO("Initialization complete, starting main loop");
 
     // run() blocks until rclcpp::shutdown() is called (by signal or otherwise)
     node->run();
 
-    std::cerr << "[axon_recorder] run() returned, calling shutdown()" << std::endl;
+    // Log the signal that triggered shutdown (safe to log here, outside signal handler)
+    if (g_received_signal != 0) {
+      AXON_LOG_INFO("Received signal, shutting down" << ::axon::logging::kv("signal", static_cast<int>(g_received_signal)));
+    }
+    AXON_LOG_INFO("Main loop exited, calling shutdown()");
 
     // Ensure shutdown is called - this writes the stats file
     // This runs AFTER spin() returns due to SIGTERM/SIGINT
     node->shutdown();
 
-    std::cerr << "[axon_recorder] Node destroyed" << std::endl;
+    // Remove ROS sink BEFORE destroying RosInterface (lifetime requirement)
+    axon::logging::remove_sink(ros_sink);
+    ros_sink.reset();
+
+    AXON_LOG_INFO("Node shutdown complete");
   }  // RecorderNode shared_ptr released here, destructor runs before main() exits
 
-  std::cerr << "[axon_recorder] main() exiting normally" << std::endl;
-  return 0;
+  AXON_LOG_INFO("Exiting normally");
+  
+  // Shutdown logging (flushes all pending log messages)
+  axon::logging::shutdown_logging();
+  
+  return exit_code;
 }
-

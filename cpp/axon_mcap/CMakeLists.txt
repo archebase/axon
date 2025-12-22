@@ -90,6 +90,25 @@ else()
 endif()
 
 # =============================================================================
+# axon_logging Library (for structured logging)
+# =============================================================================
+
+# Find axon_logging directory - check multiple possible locations
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../axon_logging/CMakeLists.txt")
+    set(AXON_LOGGING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../axon_logging")
+elseif(EXISTS "${PROJECT_ROOT}/cpp/axon_logging/CMakeLists.txt")
+    set(AXON_LOGGING_DIR "${PROJECT_ROOT}/cpp/axon_logging")
+else()
+    message(STATUS "axon_logging not found - logging support disabled for axon_mcap")
+    set(AXON_LOGGING_DIR "")
+endif()
+
+if(AXON_LOGGING_DIR)
+    message(STATUS "Found axon_logging at: ${AXON_LOGGING_DIR}")
+    add_subdirectory(${AXON_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
+endif()
+
+# =============================================================================
 # MCAP Writer Wrapper Library
 # =============================================================================
 
@@ -108,6 +127,12 @@ target_include_directories(axon_mcap PUBLIC
 target_link_libraries(axon_mcap PUBLIC
     mcap_headers
 )
+
+# Link axon_logging if available
+if(AXON_LOGGING_DIR)
+    target_link_libraries(axon_mcap PUBLIC axon_logging)
+    target_compile_definitions(axon_mcap PRIVATE AXON_HAS_LOGGING)
+endif()
 
 # Link compression libraries if available
 if(ZSTD_FOUND)

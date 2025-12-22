@@ -1,7 +1,10 @@
 #include "topic_manager.hpp"
 
-#include <iostream>
 #include <stdexcept>
+
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "topic_manager"
+#include <axon_log_macros.hpp>
 
 namespace axon {
 namespace recorder {
@@ -20,12 +23,12 @@ TopicManager::~TopicManager() {
 bool TopicManager::subscribe(const std::string& topic, const std::string& message_type,
                              MessageCallback callback, const SubscriptionConfig& config) {
   if (!ros_interface_) {
-    std::cerr << "[TopicManager] ROS interface not available" << std::endl;
+    AXON_LOG_ERROR("ROS interface not available");
     return false;
   }
 
   if (topic.empty()) {
-    std::cerr << "[TopicManager] Cannot subscribe to empty topic" << std::endl;
+    AXON_LOG_ERROR("Cannot subscribe to empty topic");
     return false;
   }
 
@@ -33,7 +36,7 @@ bool TopicManager::subscribe(const std::string& topic, const std::string& messag
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (subscriptions_.find(topic) != subscriptions_.end()) {
-      std::cerr << "[TopicManager] Already subscribed to topic: " << topic << std::endl;
+      AXON_LOG_WARN("Already subscribed to topic" << axon::logging::kv("topic", topic));
       return false;
     }
   }
@@ -46,7 +49,7 @@ bool TopicManager::subscribe(const std::string& topic, const std::string& messag
 
   void* handle = ros_interface_->subscribe_zero_copy(topic, message_type, wrapped_callback, config);
   if (!handle) {
-    std::cerr << "[TopicManager] Failed to subscribe to topic: " << topic << std::endl;
+    AXON_LOG_ERROR("Failed to subscribe to topic" << axon::logging::kv("topic", topic));
     return false;
   }
 

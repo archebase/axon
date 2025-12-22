@@ -10,6 +10,11 @@
 #include "topic_manager.hpp"
 #include "worker_thread_pool.hpp"
 
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "recorder_node"
+#include <axon_log_macros.hpp>
+#include <axon_log_init.hpp>
+
 #if defined(AXON_ROS1)
 #include <ros/package.h>
 #include <ros/param.h>
@@ -25,7 +30,6 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -73,12 +77,12 @@ bool RecorderNode::initialize(int argc, char** argv) {
   // Create ROS interface (implementation selected at compile time)
   ros_interface_ = RosInterfaceFactory::create();
   if (!ros_interface_) {
-    std::cerr << "Failed to create ROS interface" << std::endl;
+    AXON_LOG_ERROR("Failed to create ROS interface");
     return false;
   }
 
   if (!ros_interface_->init(argc, argv, "axon_recorder")) {
-    std::cerr << "Failed to initialize ROS" << std::endl;
+    AXON_LOG_ERROR("Failed to initialize ROS");
     return false;
   }
 
@@ -90,6 +94,12 @@ bool RecorderNode::initialize(int argc, char** argv) {
     ros_interface_->log_error("Failed to load configuration");
     return false;
   }
+  
+  // Reconfigure logging based on loaded config (applies YAML settings + env overrides)
+  axon::logging::LoggingConfig log_config;
+  axon::core::convert_logging_config(config_.logging, log_config);
+  axon::logging::reconfigure_logging(log_config);
+  AXON_LOG_INFO("Logging reconfigured from config file");
 
   // Initialize recording session (opens MCAP file)
   if (!initialize_mcap_writer()) {
@@ -119,9 +129,9 @@ bool RecorderNode::initialize(int argc, char** argv) {
 
 void RecorderNode::run() {
   // Recording is started via service calls, not automatically
-  std::cerr << "[axon_recorder] Entering spin()..." << std::endl;
+  AXON_LOG_DEBUG("Entering spin()...");
   ros_interface_->spin();
-  std::cerr << "[axon_recorder] spin() returned" << std::endl;
+  AXON_LOG_DEBUG("spin() returned");
 }
 
 void RecorderNode::shutdown() {
@@ -130,19 +140,19 @@ void RecorderNode::shutdown() {
     return;
   }
 
-  std::cerr << "[axon_recorder] shutdown() called" << std::endl;
+  AXON_LOG_INFO("shutdown() called");
 
   // Stop recording (drains queues, injects metadata, closes session)
   stop_recording();
 
   // Unsubscribe all topics FIRST to stop new messages
-  std::cerr << "[axon_recorder] Unsubscribing topics..." << std::endl;
+  AXON_LOG_DEBUG("Unsubscribing topics...");
   if (topic_manager_) {
     topic_manager_->unsubscribe_all();
   }
 
   // Stop and clear worker pool (queues already drained by stop_recording)
-  std::cerr << "[axon_recorder] Clearing worker pool..." << std::endl;
+  AXON_LOG_DEBUG("Clearing worker pool...");
   if (worker_pool_) {
     worker_pool_->stop();
   }
@@ -150,26 +160,29 @@ void RecorderNode::shutdown() {
   // Recording session already closed by stop_recording(), just reset
   if (recording_session_) {
     auto stats = recording_session_->get_stats();
-    std::cerr << "[axon_recorder] Final recording stats: " << stats.messages_written << " messages"
-              << std::endl;
+    AXON_LOG_INFO("Final recording stats" << axon::logging::kv("messages_written", stats.messages_written));
   }
   recording_session_.reset();
 
   // Shutdown service adapter before ROS interface
   if (service_adapter_) {
-    std::cerr << "[axon_recorder] Shutting down service adapter..." << std::endl;
+    AXON_LOG_DEBUG("Shutting down service adapter...");
     service_adapter_->shutdown();
     service_adapter_.reset();
   }
 
+  // Log completion BEFORE destroying ROS interface
+  // (ROS sink holds pointer to ros_interface_, so must log while it's still valid)
+  AXON_LOG_INFO("Shutdown complete");
+
   // Shutdown ROS interface LAST and release it
+  // NOTE: After this point, do NOT call AXON_LOG_* until ROS sink is removed in main()
+  // because the ROS sink holds a raw pointer to ros_interface_ which becomes dangling.
   if (ros_interface_) {
-    std::cerr << "[axon_recorder] Shutting down ROS interface..." << std::endl;
+    AXON_LOG_DEBUG("Shutting down ROS interface...");  // Safe: ros_interface_ still valid
     ros_interface_->shutdown();
     ros_interface_.reset();  // Explicitly release to avoid static destruction issues
   }
-
-  std::cerr << "[axon_recorder] Shutdown complete" << std::endl;
 }
 
 bool RecorderNode::load_configuration() {
@@ -481,7 +494,7 @@ void RecorderNode::resume_recording() {
 }
 
 void RecorderNode::cancel_recording() {
-  std::cerr << "[axon_recorder] cancel_recording() called" << std::endl;
+  AXON_LOG_INFO("cancel_recording() called");
 
   // Note: State is managed by StateManager - no need to set flags here
   // Brief sleep to allow in-flight callbacks to complete
@@ -524,27 +537,26 @@ void RecorderNode::cancel_recording() {
   // Clear the task config
   task_config_cache_.clear();
 
-  std::cerr << "[axon_recorder] Recording cancelled" << std::endl;
+  AXON_LOG_INFO("Recording cancelled");
 }
 
 void RecorderNode::stop_recording() {
-  // Use std::cerr for shutdown messages since ROS logging may be disabled after rclcpp::shutdown()
-  std::cerr << "[axon_recorder] stop_recording() called" << std::endl;
+  AXON_LOG_INFO("stop_recording() called");
 
   // Note: State is managed by StateManager - no need to set flags here
   // Brief sleep to allow in-flight callbacks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Stop worker pool (will drain remaining queue items)
-  std::cerr << "[axon_recorder] Stopping worker pool..." << std::endl;
+  AXON_LOG_DEBUG("Stopping worker pool...");
   worker_pool_->stop();
 
   // Flush recording session to ensure all data is written
   if (recording_session_ && recording_session_->is_open()) {
-    std::cerr << "[axon_recorder] Flushing recording session..." << std::endl;
+    AXON_LOG_DEBUG("Flushing recording session...");
     recording_session_->flush();
   }
-  std::cerr << "[axon_recorder] Recording session flushed" << std::endl;
+  AXON_LOG_DEBUG("Recording session flushed");
 
   // Get stats before closing (close will inject metadata and generate sidecar)
   auto aggregate_stats = worker_pool_->get_aggregate_stats();
@@ -554,10 +566,10 @@ void RecorderNode::stop_recording() {
   // Close recording session (this injects metadata and generates sidecar JSON)
   std::string sidecar_path;
   if (recording_session_ && recording_session_->is_open()) {
-    std::cerr << "[axon_recorder] Closing recording session (metadata injection)..." << std::endl;
+    AXON_LOG_DEBUG("Closing recording session (metadata injection)...");
     recording_session_->close();
     sidecar_path = recording_session_->get_sidecar_path();
-    std::cerr << "[axon_recorder] Sidecar generated: " << sidecar_path << std::endl;
+    AXON_LOG_INFO("Sidecar generated" << axon::logging::kv("path", sidecar_path));
   }
 
   // Send finish callback if configured
@@ -594,10 +606,7 @@ void RecorderNode::stop_recording() {
   // Write statistics file for performance monitoring
   write_stats_file();
 
-  std::cerr << "[axon_recorder] Recording stopped" << std::endl;
-  if (ros_interface_) {
-    ros_interface_->log_info("Recording stopped");
-  }
+  AXON_LOG_INFO("Recording stopped");
 }
 
 bool RecorderNode::configure_from_task_config(const TaskConfig& config) {
@@ -663,7 +672,7 @@ double RecorderNode::get_recording_duration_sec() const {
 void RecorderNode::write_stats_file() {
   std::ofstream stats_file(STATS_FILE_PATH);
   if (!stats_file.is_open()) {
-    std::cerr << "[axon_recorder] Could not write stats file: " << STATS_FILE_PATH << std::endl;
+    AXON_LOG_WARN("Could not write stats file" << axon::logging::kv("path", STATS_FILE_PATH));
     return;
   }
 
@@ -704,9 +713,7 @@ void RecorderNode::write_stats_file() {
   stats_file << "\n  }\n}\n";
   stats_file.close();
 
-  std::cerr << "[axon_recorder] Stats written: received=" << stats.messages_received
-            << ", dropped=" << stats.messages_dropped << ", written=" << stats.messages_written
-            << ", drop_rate=" << stats.drop_rate_percent << "%" << std::endl;
+  AXON_LOG_INFO("Stats written" << axon::logging::kv("received", stats.messages_received) << axon::logging::kv("dropped", stats.messages_dropped) << axon::logging::kv("written", stats.messages_written) << axon::logging::kv("drop_rate_percent", stats.drop_rate_percent));
 }
 
 }  // namespace recorder

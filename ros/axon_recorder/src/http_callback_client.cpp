@@ -11,10 +11,13 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
-#include <iostream>
 #include <regex>
 #include <sstream>
 #include <thread>
+
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "http_callback_client"
+#include <axon_log_macros.hpp>
 
 namespace beast = boost::beast;
 namespace http = beast::http;
@@ -268,7 +271,7 @@ HttpCallbackResult HttpCallbackClient::http_post(
       stream.shutdown(ec);
       // Ignore truncated error (peer may close without close_notify)
       if (ec && ec != net::ssl::error::stream_truncated && ec != beast::errc::not_connected) {
-        std::cerr << "[HttpCallbackClient] SSL shutdown warning: " << ec.message() << std::endl;
+        AXON_LOG_WARN("SSL shutdown warning" << axon::logging::kv("error", ec.message()));
       }
 
     } else {
@@ -292,7 +295,7 @@ HttpCallbackResult HttpCallbackClient::http_post(
       beast::error_code ec;
       stream.socket().shutdown(tcp::socket::shutdown_both, ec);
       if (ec && ec != beast::errc::not_connected) {
-        std::cerr << "[HttpCallbackClient] Socket shutdown warning: " << ec.message() << std::endl;
+        AXON_LOG_WARN("Socket shutdown warning" << axon::logging::kv("error", ec.message()));
       }
     }
 
@@ -309,7 +312,7 @@ HttpCallbackResult HttpCallbackClient::http_post(
 
   } catch (const std::exception& e) {
     result.error_message = std::string("ERR_CALLBACK_FAILED: ") + e.what();
-    std::cerr << "[HttpCallbackClient] Exception: " << e.what() << std::endl;
+    AXON_LOG_ERROR("HTTP request exception" << axon::logging::kv("error", e.what()));
   }
 
   return result;
@@ -370,11 +373,9 @@ void HttpCallbackClient::post_start_callback_async(
   std::thread([self, task_config, payload]() {
     auto result = self->post_start_callback(task_config, payload, nullptr);
     if (!result.success) {
-      std::cerr << "[HttpCallbackClient] Start callback failed: " << result.error_message
-                << std::endl;
+      AXON_LOG_ERROR("Start callback failed" << axon::logging::kv("error", result.error_message));
     } else {
-      std::cerr << "[HttpCallbackClient] Start callback sent successfully for task: "
-                << task_config.task_id << std::endl;
+      AXON_LOG_INFO("Start callback sent successfully" << axon::logging::kv("task_id", task_config.task_id));
     }
   }).detach();
 }
@@ -388,11 +389,9 @@ void HttpCallbackClient::post_finish_callback_async(
   std::thread([self, task_config, payload]() {
     auto result = self->post_finish_callback(task_config, payload, nullptr);
     if (!result.success) {
-      std::cerr << "[HttpCallbackClient] Finish callback failed: " << result.error_message
-                << std::endl;
+      AXON_LOG_ERROR("Finish callback failed" << axon::logging::kv("error", result.error_message));
     } else {
-      std::cerr << "[HttpCallbackClient] Finish callback sent successfully for task: "
-                << task_config.task_id << std::endl;
+      AXON_LOG_INFO("Finish callback sent successfully" << axon::logging::kv("task_id", task_config.task_id));
     }
   }).detach();
 }
