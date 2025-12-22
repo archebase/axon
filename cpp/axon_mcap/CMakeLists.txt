@@ -114,6 +114,7 @@ endif()
 
 add_library(axon_mcap
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_writer_wrapper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/mcap_validator.cpp
 )
 
 # Enable position-independent code for linking into shared libraries (e.g., ROS 2 ament packages)

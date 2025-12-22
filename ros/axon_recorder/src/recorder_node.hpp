@@ -16,7 +16,7 @@
 #include "topic_manager.hpp"
 #include "worker_thread_pool.hpp"
 
-// Forward declaration
+// Forward declarations
 namespace axon {
 namespace recorder {
 class ServiceAdapter;
@@ -313,6 +313,15 @@ private:
   StateManager state_manager_;
   TaskConfigCache task_config_cache_;
   std::shared_ptr<HttpCallbackClient> http_callback_client_;
+
+  // =========================================================================
+  // Edge Uploader (optional - uploads MCAP files to S3)
+  // =========================================================================
+  // Note: EdgeUploader is conditionally compiled. When AXON_HAS_UPLOADER is
+  // defined, the recorder will upload MCAP files to S3 after finalization.
+  // The uploader_ member is managed via void* to avoid incomplete type issues
+  // with forward declarations. See recorder_node.cpp for the actual type.
+  void* uploader_ = nullptr;  // Actually uploader::EdgeUploader* when enabled
 
   // Recording start time (for duration calculation)
   std::chrono::system_clock::time_point recording_start_time_;

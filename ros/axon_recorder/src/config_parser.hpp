@@ -30,6 +30,43 @@ struct RecordingConfig {
 };
 
 /**
+ * S3 upload configuration for edge uploader
+ */
+struct S3ConfigYaml {
+  std::string endpoint_url;             // S3-compatible endpoint (empty for AWS S3)
+  std::string bucket = "axon-raw-data"; // Bucket name
+  std::string region = "us-east-1";     // AWS region
+  bool use_ssl = true;
+  bool verify_ssl = true;
+};
+
+/**
+ * Retry configuration for uploads
+ */
+struct RetryConfigYaml {
+  int max_retries = 5;
+  int initial_delay_ms = 1000;
+  int max_delay_ms = 300000;
+  double exponential_base = 2.0;
+  bool jitter = true;
+};
+
+/**
+ * Edge upload configuration
+ */
+struct UploadConfigYaml {
+  bool enabled = false;
+  S3ConfigYaml s3;
+  RetryConfigYaml retry;
+  int num_workers = 2;
+  std::string state_db_path = "/var/lib/axon/uploader_state.db";
+  bool delete_after_upload = true;
+  std::string failed_uploads_dir = "/data/failed_uploads/";
+  double warn_pending_gb = 8.0;
+  double alert_pending_gb = 20.0;
+};
+
+/**
  * Logging configuration parsed from YAML.
  * This mirrors axon::logging::LoggingConfig structure.
  */
@@ -61,7 +98,8 @@ struct RecorderConfig {
   DatasetConfig dataset;
   std::vector<TopicConfig> topics;
   RecordingConfig recording;
-  LoggingConfigYaml logging;  // Logging configuration
+  LoggingConfigYaml logging;       // Logging configuration
+  UploadConfigYaml upload;         // Edge upload configuration
 
   static RecorderConfig from_yaml(const std::string& yaml_path);
   static RecorderConfig from_yaml_string(const std::string& yaml_content);
@@ -99,6 +137,7 @@ private:
   bool parse_topics(const YAML::Node& node, std::vector<TopicConfig>& topics);
   bool parse_recording(const YAML::Node& node, RecordingConfig& recording);
   bool parse_logging(const YAML::Node& node, LoggingConfigYaml& logging);
+  bool parse_upload(const YAML::Node& node, UploadConfigYaml& upload);
 };
 
 }  // namespace core

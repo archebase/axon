@@ -101,6 +101,11 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_logging(node["logging"], config.logging);
     }
 
+    // Parse upload config (optional - disabled by default)
+    if (node["upload"]) {
+      parse_upload(node["upload"], config.upload);
+    }
+
     return config.validate();
   } catch (const YAML::Exception& e) {
     AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
@@ -223,6 +228,74 @@ bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfigYaml& logg
     if (file["rotate_at_midnight"]) {
       logging.rotate_at_midnight = file["rotate_at_midnight"].as<bool>();
     }
+  }
+  
+  return true;
+}
+
+bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload) {
+  if (node["enabled"]) {
+    upload.enabled = node["enabled"].as<bool>();
+  }
+  
+  // Parse S3 section
+  if (node["s3"]) {
+    const auto& s3 = node["s3"];
+    if (s3["endpoint_url"]) {
+      upload.s3.endpoint_url = s3["endpoint_url"].as<std::string>();
+    }
+    if (s3["bucket"]) {
+      upload.s3.bucket = s3["bucket"].as<std::string>();
+    }
+    if (s3["region"]) {
+      upload.s3.region = s3["region"].as<std::string>();
+    }
+    if (s3["use_ssl"]) {
+      upload.s3.use_ssl = s3["use_ssl"].as<bool>();
+    }
+    if (s3["verify_ssl"]) {
+      upload.s3.verify_ssl = s3["verify_ssl"].as<bool>();
+    }
+  }
+  
+  // Parse retry section
+  if (node["retry"]) {
+    const auto& retry = node["retry"];
+    if (retry["max_retries"]) {
+      upload.retry.max_retries = retry["max_retries"].as<int>();
+    }
+    if (retry["initial_delay_ms"]) {
+      upload.retry.initial_delay_ms = retry["initial_delay_ms"].as<int>();
+    }
+    if (retry["max_delay_ms"]) {
+      upload.retry.max_delay_ms = retry["max_delay_ms"].as<int>();
+    }
+    if (retry["exponential_base"]) {
+      upload.retry.exponential_base = retry["exponential_base"].as<double>();
+    }
+    if (retry["jitter"]) {
+      upload.retry.jitter = retry["jitter"].as<bool>();
+    }
+  }
+  
+  // Parse other upload settings
+  if (node["num_workers"]) {
+    upload.num_workers = node["num_workers"].as<int>();
+  }
+  if (node["state_db_path"]) {
+    upload.state_db_path = node["state_db_path"].as<std::string>();
+  }
+  if (node["delete_after_upload"]) {
+    upload.delete_after_upload = node["delete_after_upload"].as<bool>();
+  }
+  if (node["failed_uploads_dir"]) {
+    upload.failed_uploads_dir = node["failed_uploads_dir"].as<std::string>();
+  }
+  if (node["warn_pending_gb"]) {
+    upload.warn_pending_gb = node["warn_pending_gb"].as<double>();
+  }
+  if (node["alert_pending_gb"]) {
+    upload.alert_pending_gb = node["alert_pending_gb"].as<double>();
   }
   
   return true;
