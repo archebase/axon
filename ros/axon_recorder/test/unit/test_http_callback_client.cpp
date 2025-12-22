@@ -4,8 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <regex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "http_callback_client.hpp"
 #include "task_config.hpp"
