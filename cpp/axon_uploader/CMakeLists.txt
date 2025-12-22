@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(axon_uploader)
 
+# Export compile commands for clangd/IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -41,14 +44,23 @@ message(STATUS "axon_uploader: All dependencies found, building uploader")
 
 include(FetchContent)
 
-# Fetch minio-cpp
-FetchContent_Declare(
-    miniocpp
-    GIT_REPOSITORY https://github.com/minio/minio-cpp.git
-    GIT_TAG        v0.3.0
-)
+# Fetch minio-cpp using URL (more reliable in CI than GIT_REPOSITORY)
+# GIT_REPOSITORY can hang waiting for SSH auth or GitHub rate limits
+set(MINIO_CPP_VERSION "v0.3.0" CACHE STRING "minio-cpp version")
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+    FetchContent_Declare(
+        miniocpp
+        URL "https://github.com/minio/minio-cpp/archive/refs/tags/${MINIO_CPP_VERSION}.tar.gz"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+else()
+    FetchContent_Declare(
+        miniocpp
+        URL "https://github.com/minio/minio-cpp/archive/refs/tags/${MINIO_CPP_VERSION}.tar.gz"
+    )
+endif()
 
-# Set minio-cpp build options
+# Set minio-cpp build options before FetchContent_MakeAvailable
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 

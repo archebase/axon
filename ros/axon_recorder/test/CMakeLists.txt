@@ -60,6 +60,9 @@ endif()
 # Unit Tests (Both standalone and ROS-integrated)
 # ============================================================================
 
+# Default test timeout (seconds) - prevents CI hangs
+set(AXON_TEST_TIMEOUT 60 CACHE STRING "Default test timeout in seconds")
+
 # Test TaskConfig and TaskConfigCache
 add_executable(test_task_config
     unit/test_task_config.cpp
@@ -70,6 +73,7 @@ target_link_libraries(test_task_config
     Threads::Threads
 )
 add_test(NAME TaskConfigTest COMMAND test_task_config)
+set_tests_properties(TaskConfigTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # Test StateManager
 add_executable(test_state_machine
@@ -82,6 +86,7 @@ target_link_libraries(test_state_machine
     Threads::Threads
 )
 add_test(NAME StateMachineTest COMMAND test_state_machine)
+set_tests_properties(StateMachineTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # Test StateTransactionGuard
 add_executable(test_state_transaction_guard
@@ -94,6 +99,7 @@ target_link_libraries(test_state_transaction_guard
     Threads::Threads
 )
 add_test(NAME StateTransactionGuardTest COMMAND test_state_transaction_guard)
+set_tests_properties(StateTransactionGuardTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # Test HttpCallbackClient (requires Boost and OpenSSL for SSL support)
 if(Boost_FOUND)
@@ -112,6 +118,7 @@ if(Boost_FOUND)
         ${Boost_LIBRARIES}
     )
     add_test(NAME HttpCallbackClientTest COMMAND test_http_callback_client)
+    set_tests_properties(HttpCallbackClientTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
     # Test Recording Workflow (mock node)
     add_executable(test_recording_workflow
@@ -130,6 +137,7 @@ if(Boost_FOUND)
         ${Boost_LIBRARIES}
     )
     add_test(NAME RecordingWorkflowTest COMMAND test_recording_workflow)
+    set_tests_properties(RecordingWorkflowTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
     # Test RecordingServiceImpl with MockRecorderContext
     add_executable(test_recording_service_impl
@@ -152,6 +160,7 @@ if(Boost_FOUND)
         ${Boost_LIBRARIES}
     )
     add_test(NAME RecordingServiceImplTest COMMAND test_recording_service_impl)
+    set_tests_properties(RecordingServiceImplTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
     # Test IRecorderContext interface and MockRecorderContext
     add_executable(test_recorder_context_interface
@@ -173,6 +182,7 @@ if(Boost_FOUND)
         ${Boost_LIBRARIES}
     )
     add_test(NAME RecorderContextInterfaceTest COMMAND test_recorder_context_interface)
+    set_tests_properties(RecorderContextInterfaceTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 endif()
 
 # Test TopicManager (requires ros_interface mock)
@@ -189,6 +199,7 @@ target_link_libraries(test_topic_manager
     ${Boost_LIBRARIES}
 )
 add_test(NAME TopicManagerTest COMMAND test_topic_manager)
+set_tests_properties(TopicManagerTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # Test WorkerThreadPool
 add_executable(test_worker_thread_pool
@@ -204,6 +215,7 @@ target_link_libraries(test_worker_thread_pool
     ${Boost_LIBRARIES}
 )
 add_test(NAME WorkerThreadPoolTest COMMAND test_worker_thread_pool)
+set_tests_properties(WorkerThreadPoolTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # Test ConfigParser (YAML parsing and validation)
 add_executable(test_config_parser
@@ -220,6 +232,7 @@ target_link_libraries(test_config_parser
     ${Boost_LIBRARIES}
 )
 add_test(NAME ConfigParserTest COMMAND test_config_parser)
+set_tests_properties(ConfigParserTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # Test SPSCQueue (lock-free queue)
 add_executable(test_spsc_queue
@@ -231,6 +244,7 @@ target_link_libraries(test_spsc_queue
     Threads::Threads
 )
 add_test(NAME SPSCQueueTest COMMAND test_spsc_queue)
+set_tests_properties(SPSCQueueTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # ============================================================================
 # Tests requiring ROS message types (only when built with ROS)
@@ -269,6 +283,7 @@ if(ROS_INTEGRATED_BUILD AND BUILD_MESSAGE_FACTORY_TEST)
         )
     endif()
     add_test(NAME MessageFactoryTest COMMAND test_message_factory)
+    set_tests_properties(MessageFactoryTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 endif()
 
 # ============================================================================
@@ -298,6 +313,7 @@ if(ROS_INTEGRATED_BUILD)
         ${Boost_LIBRARIES}
     )
     add_test(NAME RecordingSessionTest COMMAND test_recording_session)
+    set_tests_properties(RecordingSessionTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
     # Test MetadataInjector (requires axon_mcap, nlohmann_json, OpenSSL)
     add_executable(test_metadata_injector
@@ -320,6 +336,7 @@ if(ROS_INTEGRATED_BUILD)
         ${Boost_LIBRARIES}
     )
     add_test(NAME MetadataInjectorTest COMMAND test_metadata_injector)
+    set_tests_properties(MetadataInjectorTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
     # Integration test: Metadata injection end-to-end
     add_executable(test_metadata_injection
@@ -343,6 +360,7 @@ if(ROS_INTEGRATED_BUILD)
         ${Boost_LIBRARIES}
     )
     add_test(NAME MetadataInjectionIntegrationTest COMMAND test_metadata_injection)
+    set_tests_properties(MetadataInjectionIntegrationTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 endif()
 
 # ============================================================================
@@ -376,6 +394,7 @@ if(ROS_INTEGRATED_BUILD AND Boost_FOUND)
             )
             add_dependencies(test_service_adapter_ros1 ${${PROJECT_NAME}_EXPORTED_TARGETS})
             add_test(NAME ServiceAdapterROS1Test COMMAND test_service_adapter_ros1)
+            set_tests_properties(ServiceAdapterROS1Test PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
         endif()
         
     elseif(DEFINED AXON_ROS2)

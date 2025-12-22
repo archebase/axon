@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.14)  # FetchContent requires 3.14+
 project(axon_mcap)
 
+# Export compile commands for clangd/IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -50,7 +53,8 @@ endif()
 # =============================================================================
 
 add_library(mcap_headers INTERFACE)
-target_include_directories(mcap_headers INTERFACE
+# Use SYSTEM to suppress warnings from external MCAP headers
+target_include_directories(mcap_headers SYSTEM INTERFACE
     $<BUILD_INTERFACE:${mcap_SOURCE_DIR}/cpp/mcap/include>
     $<INSTALL_INTERFACE:include>
 )
