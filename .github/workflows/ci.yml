@@ -14,6 +14,7 @@ jobs:
   cpp-tests:
     name: C++ Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # Prevent infinite hangs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -54,6 +55,7 @@ jobs:
     name: ROS Unit Tests (${{ matrix.ros_distro }})
     runs-on: ubuntu-latest
     needs: cpp-tests
+    timeout-minutes: 15  # Prevent infinite hangs
     strategy:
       fail-fast: false
       matrix:
@@ -76,8 +78,11 @@ jobs:
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
-          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+          # Added git for FetchContent operations
+          ADDITIONAL_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
+          # Limit parallel jobs to reduce memory pressure on Rolling
+          PARALLEL_BUILDS: 2
 
   # ==========================================================================
   # Integration Tests - End-to-end ROS service tests using industrial_ci
@@ -87,6 +92,7 @@ jobs:
     name: ROS Integration Tests (${{ matrix.ros_distro }})
     runs-on: ubuntu-latest
     needs: ros-unit-tests
+    timeout-minutes: 45  # Prevent infinite hangs
     strategy:
       fail-fast: false
       matrix:
@@ -109,8 +115,11 @@ jobs:
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
-          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+          # Added git for FetchContent operations
+          ADDITIONAL_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
+          # Limit parallel jobs to reduce memory pressure on Rolling
+          PARALLEL_BUILDS: 2
           # Skip default tests, we'll run integration tests instead
           NOT_TEST_BUILD: true
           # Run integration tests after build using shared script
