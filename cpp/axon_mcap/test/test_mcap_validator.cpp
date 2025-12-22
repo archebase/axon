@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "mcap_validator.hpp"
+#include "mcap_writer_wrapper.hpp"
 
 namespace fs = std::filesystem;
 using namespace axon::mcap_wrapper;
@@ -30,8 +31,41 @@ protected:
     fs::remove_all(test_dir_, ec);
   }
 
-  // Create a minimal valid MCAP file
+  // Create a truly valid MCAP file using the McapWriterWrapper
+  // This ensures the file passes full MCAP library validation
   std::string createValidMcapFile(const std::string& name) {
+    std::string path = test_dir_ + "/" + name;
+    
+    axon::mcap_wrapper::McapWriterWrapper writer;
+    bool opened = writer.open(path);
+    EXPECT_TRUE(opened) << "Failed to open MCAP writer for: " << path;
+    
+    // Optionally add a channel and some data to make it more realistic
+    uint16_t channel_id = writer.addChannel("test_topic", "test_encoding", "test_schema", "");
+    
+    // Write a simple message
+    std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
+    writer.write(channel_id, 1000000000, data);
+    
+    writer.close();
+    return path;
+  }
+  
+  // Create a minimal valid MCAP file (just header/footer, no data)
+  std::string createMinimalValidMcapFile(const std::string& name) {
+    std::string path = test_dir_ + "/" + name;
+    
+    axon::mcap_wrapper::McapWriterWrapper writer;
+    bool opened = writer.open(path);
+    EXPECT_TRUE(opened) << "Failed to open MCAP writer for: " << path;
+    writer.close();
+    
+    return path;
+  }
+  
+  // Create a file with correct magic bytes but invalid internal structure
+  // (for testing header/footer validation separately)
+  std::string createMagicOnlyFile(const std::string& name) {
     std::string path = test_dir_ + "/" + name;
     std::ofstream file(path, std::ios::binary);
     
@@ -41,17 +75,9 @@ protected:
     // Write header magic
     file.write(MAGIC, 8);
     
-    // Write minimal header record (opcode 0x01, length 0)
-    const char header_record[] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    file.write(header_record, sizeof(header_record));
-    
-    // Write footer (includes summary offset and opcode 0x02)
-    const char footer_record[] = {
-      0x02, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Footer opcode + length
-      0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,       // Summary start (offset 8)
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00        // Summary offset length (0)
-    };
-    file.write(footer_record, sizeof(footer_record));
+    // Write some padding (invalid records, but has correct magic)
+    std::vector<char> padding(100, 0);
+    file.write(padding.data(), padding.size());
     
     // Write footer magic
     file.write(MAGIC, 8);
@@ -129,11 +155,20 @@ protected:
 // =============================================================================
 
 TEST_F(McapValidatorTest, ValidMcapHeader) {
+  // Use real MCAP file created by writer
   std::string path = createValidMcapFile("valid_header.mcap");
   
   auto result = validateMcapHeader(path);
-  EXPECT_TRUE(result.valid);
+  EXPECT_TRUE(result.valid) << "Error: " << result.error_message;
   EXPECT_TRUE(result.error_message.empty());
+}
+
+TEST_F(McapValidatorTest, ValidMcapHeaderMagicOnly) {
+  // Test with file that only has correct magic bytes (invalid structure)
+  std::string path = createMagicOnlyFile("magic_only.mcap");
+  
+  auto result = validateMcapHeader(path);
+  EXPECT_TRUE(result.valid) << "Header magic should be valid";
 }
 
 TEST_F(McapValidatorTest, InvalidMcapHeader) {
@@ -164,7 +199,8 @@ TEST_F(McapValidatorTest, HeaderPartialRead) {
   
   auto result = validateMcapHeader(path);
   EXPECT_FALSE(result.valid);
-  EXPECT_NE(result.error_message.find("too small"), std::string::npos);
+  // File is 10 bytes, can read 8 byte header but magic won't match
+  EXPECT_FALSE(result.error_message.empty());
 }
 
 // =============================================================================
@@ -172,11 +208,20 @@ TEST_F(McapValidatorTest, HeaderPartialRead) {
 // =============================================================================
 
 TEST_F(McapValidatorTest, ValidMcapFooter) {
+  // Use real MCAP file created by writer
   std::string path = createValidMcapFile("valid_footer.mcap");
   
   auto result = validateMcapFooter(path);
-  EXPECT_TRUE(result.valid);
+  EXPECT_TRUE(result.valid) << "Error: " << result.error_message;
   EXPECT_TRUE(result.error_message.empty());
+}
+
+TEST_F(McapValidatorTest, ValidMcapFooterMagicOnly) {
+  // Test with file that only has correct magic bytes (invalid structure)
+  std::string path = createMagicOnlyFile("magic_only_footer.mcap");
+  
+  auto result = validateMcapFooter(path);
+  EXPECT_TRUE(result.valid) << "Footer magic should be valid";
 }
 
 TEST_F(McapValidatorTest, InvalidMcapFooter) {
@@ -206,11 +251,20 @@ TEST_F(McapValidatorTest, FooterFileTooSmall) {
 // =============================================================================
 
 TEST_F(McapValidatorTest, ValidMcapStructure) {
+  // Use McapWriterWrapper to create a truly valid MCAP file
   std::string path = createValidMcapFile("valid_structure.mcap");
   
   auto result = validateMcapStructure(path);
-  EXPECT_TRUE(result.valid);
+  EXPECT_TRUE(result.valid) << "Error: " << result.error_message;
   EXPECT_TRUE(result.error_message.empty());
+}
+
+TEST_F(McapValidatorTest, MinimalValidMcapStructure) {
+  // Empty but valid MCAP (no channels, no messages)
+  std::string path = createMinimalValidMcapFile("minimal.mcap");
+  
+  auto result = validateMcapStructure(path);
+  EXPECT_TRUE(result.valid) << "Error: " << result.error_message;
 }
 
 TEST_F(McapValidatorTest, StructureInvalidHeader) {
@@ -240,8 +294,10 @@ TEST_F(McapValidatorTest, StructureFileNotFound) {
 // =============================================================================
 
 TEST_F(McapValidatorTest, IsValidMcapTrue) {
+  // Use McapWriterWrapper to create a truly valid MCAP file
   std::string path = createValidMcapFile("valid.mcap");
-  EXPECT_TRUE(isValidMcap(path));
+  
+  EXPECT_TRUE(isValidMcap(path)) << "Valid MCAP file should pass validation";
 }
 
 TEST_F(McapValidatorTest, IsValidMcapFalse) {
@@ -288,6 +344,7 @@ TEST_F(McapValidatorTest, DirectoryPath) {
 }
 
 TEST_F(McapValidatorTest, SymbolicLink) {
+  // Use McapWriterWrapper to create a truly valid MCAP file
   std::string valid_file = createValidMcapFile("original.mcap");
   std::string link_path = test_dir_ + "/link.mcap";
   
@@ -296,8 +353,9 @@ TEST_F(McapValidatorTest, SymbolicLink) {
   fs::create_symlink(valid_file, link_path, ec);
   
   if (!ec) {
+    // Full structure validation should work through symlinks
     auto result = validateMcapStructure(link_path);
-    EXPECT_TRUE(result.valid) << "Symbolic links should be followed";
+    EXPECT_TRUE(result.valid) << "Symbolic links should be followed: " << result.error_message;
   }
 }
 
