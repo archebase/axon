@@ -145,8 +145,21 @@ if(LZ4_FOUND)
 endif()
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+
+option(AXON_MCAP_ENABLE_COVERAGE "Enable code coverage" OFF)
+
+if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(STATUS "axon_mcap: Coverage instrumentation enabled")
+    target_compile_options(axon_mcap PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+    target_link_options(axon_mcap PRIVATE --coverage)
+endif()
+
+# =============================================================================
 # Tests (optional)
 # =============================================================================
+
 option(AXON_MCAP_BUILD_TESTS "Build MCAP tests" OFF)
 
 if(AXON_MCAP_BUILD_TESTS)
@@ -166,6 +179,12 @@ if(AXON_MCAP_BUILD_TESTS)
         GTest::gtest
         GTest::gtest_main
     )
+    
+    # Apply coverage flags to test executable
+    if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_mcap_writer PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+        target_link_options(test_mcap_writer PRIVATE --coverage)
+    endif()
     
     # Link compression libraries for tests
     if(ZSTD_FOUND)

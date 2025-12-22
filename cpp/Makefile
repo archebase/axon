@@ -1,7 +1,7 @@
-# Makefile for Axon C++ SDK (axon_mcap)
-# Core library providing MCAP writer and configuration parsing
+# Makefile for Axon C++ SDK (axon_mcap, axon_uploader, axon_logging)
+# Core libraries providing MCAP writer, uploader, and logging
 
-.PHONY: all build test clean install help debug release format lint check-deps dev-setup verify coverage coverage-html
+.PHONY: all build test clean install help debug release format lint check-deps dev-setup verify coverage coverage-html build-uploader test-uploader coverage-all
 
 .DEFAULT_GOAL := help
 
@@ -11,6 +11,8 @@ SHELL := /bin/bash
 # Project directories
 PROJECT_ROOT := $(shell cd .. && pwd)
 BUILD_DIR := build
+UPLOADER_BUILD_DIR := build_uploader
+LOGGING_BUILD_DIR := build_logging
 TEST_BUILD_DIR := $(BUILD_DIR)
 
 # Build configuration
@@ -39,12 +41,26 @@ endif
 # Help target
 help:
 	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
-	@printf "%s\n" "$(GREEN)║     Axon C++ SDK (axon_mcap) - Build System              ║$(NC)"
+	@printf "%s\n" "$(GREEN)║     Axon C++ SDK - Build System                          ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Available targets:$(NC)"
-	@printf "%s\n" "  $(BLUE)make build$(NC)          - Build the library"
-	@printf "%s\n" "  $(BLUE)make test$(NC)           - Build and run all tests"
+	@printf "%s\n" "$(YELLOW)axon_mcap targets:$(NC)"
+	@printf "%s\n" "  $(BLUE)make build$(NC)          - Build the axon_mcap library"
+	@printf "%s\n" "  $(BLUE)make test$(NC)           - Build and run axon_mcap tests"
+	@printf "%s\n" "  $(BLUE)make coverage$(NC)       - Run axon_mcap tests with coverage"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)axon_uploader targets:$(NC)"
+	@printf "%s\n" "  $(BLUE)make build-uploader$(NC) - Build the axon_uploader library"
+	@printf "%s\n" "  $(BLUE)make test-uploader$(NC)  - Build and run uploader tests"
+	@printf "%s\n" "  $(BLUE)make coverage-uploader$(NC) - Run uploader tests with coverage"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)axon_logging targets:$(NC)"
+	@printf "%s\n" "  $(BLUE)make build-logging$(NC)  - Build the axon_logging library"
+	@printf "%s\n" "  $(BLUE)make test-logging$(NC)   - Build and run logging tests"
+	@printf "%s\n" "  $(BLUE)make coverage-logging$(NC) - Run logging tests with coverage"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)Combined targets:$(NC)"
+	@printf "%s\n" "  $(BLUE)make coverage-all$(NC)   - Run all tests with coverage"
 	@printf "%s\n" "  $(BLUE)make clean$(NC)          - Clean all build artifacts"
 	@printf "%s\n" "  $(BLUE)make install$(NC)        - Install the library (requires sudo)"
 	@echo ""
@@ -55,7 +71,6 @@ help:
 	@printf "%s\n" "$(YELLOW)Code quality:$(NC)"
 	@printf "%s\n" "  $(BLUE)make format$(NC)         - Format code (requires clang-format)"
 	@printf "%s\n" "  $(BLUE)make lint$(NC)           - Lint code (requires cppcheck)"
-	@printf "%s\n" "  $(BLUE)make coverage$(NC)       - Run tests with coverage report (requires lcov)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Environment variables:$(NC)"
 	@printf "%s\n" "  $(BLUE)BUILD_TYPE$(NC)          - Release or Debug (default: Release)"
@@ -97,7 +112,7 @@ test: build
 # Clean build artifacts
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
-	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
+	@rm -rf $(BUILD_DIR) $(UPLOADER_BUILD_DIR) $(LOGGING_BUILD_DIR) $(COVERAGE_DIR)
 	@printf "%s\n" "$(GREEN)✓ Build artifacts cleaned$(NC)"
 
 # Install the library
@@ -211,3 +226,133 @@ coverage-html: coverage
 	elif command -v xdg-open >/dev/null 2>&1; then \
 		xdg-open $(COVERAGE_DIR)/index.html; \
 	fi
+
+# =============================================================================
+# axon_uploader Targets
+# =============================================================================
+
+# Build uploader with tests
+build-uploader:
+	@printf "%s\n" "$(YELLOW)Building axon_uploader library with tests...$(NC)"
+	@mkdir -p $(UPLOADER_BUILD_DIR)
+	@cd $(UPLOADER_BUILD_DIR) && \
+		cmake ../axon_uploader \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_UPLOADER_BUILD_TESTS=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_uploader build complete$(NC)"
+
+# Run uploader tests
+test-uploader: build-uploader
+	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
+	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
+
+# Build uploader with coverage and run tests
+coverage-uploader:
+	@printf "%s\n" "$(YELLOW)Building axon_uploader with coverage instrumentation...$(NC)"
+	@rm -rf $(UPLOADER_BUILD_DIR)
+	@mkdir -p $(UPLOADER_BUILD_DIR)
+	@cd $(UPLOADER_BUILD_DIR) && \
+		cmake ../axon_uploader \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_UPLOADER_BUILD_TESTS=ON \
+			-DAXON_UPLOADER_ENABLE_COVERAGE=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
+	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(YELLOW)Generating uploader coverage report...$(NC)"
+	@if command -v lcov >/dev/null 2>&1; then \
+		cd $(UPLOADER_BUILD_DIR) && \
+		lcov --capture --directory . --output-file coverage_raw.info $(LCOV_IGNORE) && \
+		lcov --remove coverage_raw.info \
+			'/usr/*' \
+			'/opt/*' \
+			'/Library/*' \
+			'*/test/*' \
+			'*/_deps/*' \
+			'*/c++/*' \
+			--output-file coverage.info $(LCOV_IGNORE) && \
+		echo "" && \
+		echo "================================================================================" && \
+		echo "                    AXON_UPLOADER COVERAGE SUMMARY" && \
+		echo "================================================================================" && \
+		lcov --list coverage.info $(LCOV_IGNORE) && \
+		echo "================================================================================" && \
+		printf "%s\n" "$(GREEN)✓ Uploader coverage report generated$(NC)"; \
+	else \
+		printf "%s\n" "$(RED)Error: lcov not found$(NC)"; \
+		exit 1; \
+	fi
+
+# =============================================================================
+# axon_logging Targets
+# =============================================================================
+
+# Build logging with tests
+build-logging:
+	@printf "%s\n" "$(YELLOW)Building axon_logging library with tests...$(NC)"
+	@mkdir -p $(LOGGING_BUILD_DIR)
+	@cd $(LOGGING_BUILD_DIR) && \
+		cmake ../axon_logging \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_LOGGING_BUILD_TESTS=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_logging build complete$(NC)"
+
+# Run logging tests
+test-logging: build-logging
+	@printf "%s\n" "$(YELLOW)Running axon_logging tests...$(NC)"
+	@cd $(LOGGING_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_logging tests passed$(NC)"
+
+# Build logging with coverage and run tests
+coverage-logging:
+	@printf "%s\n" "$(YELLOW)Building axon_logging with coverage instrumentation...$(NC)"
+	@rm -rf $(LOGGING_BUILD_DIR)
+	@mkdir -p $(LOGGING_BUILD_DIR)
+	@cd $(LOGGING_BUILD_DIR) && \
+		cmake ../axon_logging \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_LOGGING_BUILD_TESTS=ON \
+			-DAXON_LOGGING_ENABLE_COVERAGE=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
+	@cd $(LOGGING_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(YELLOW)Generating logging coverage report...$(NC)"
+	@if command -v lcov >/dev/null 2>&1; then \
+		cd $(LOGGING_BUILD_DIR) && \
+		lcov --capture --directory . --output-file coverage_raw.info $(LCOV_IGNORE) && \
+		lcov --remove coverage_raw.info \
+			'/usr/*' \
+			'/opt/*' \
+			'/Library/*' \
+			'*/test/*' \
+			'*/_deps/*' \
+			'*/c++/*' \
+			--output-file coverage.info $(LCOV_IGNORE) && \
+		echo "" && \
+		echo "================================================================================" && \
+		echo "                    AXON_LOGGING COVERAGE SUMMARY" && \
+		echo "================================================================================" && \
+		lcov --list coverage.info $(LCOV_IGNORE) && \
+		echo "================================================================================" && \
+		printf "%s\n" "$(GREEN)✓ Logging coverage report generated$(NC)"; \
+	else \
+		printf "%s\n" "$(RED)Error: lcov not found$(NC)"; \
+		exit 1; \
+	fi
+
+# =============================================================================
+# Combined Coverage (all cpp libraries)
+# =============================================================================
+
+coverage-all: coverage coverage-uploader coverage-logging
+	@printf "%s\n" "$(GREEN)✓ All coverage reports generated$(NC)"
+	@printf "%s\n" "$(YELLOW)  - axon_mcap: $(BUILD_DIR)/coverage.info$(NC)"
+	@printf "%s\n" "$(YELLOW)  - axon_uploader: $(UPLOADER_BUILD_DIR)/coverage.info$(NC)"
+	@printf "%s\n" "$(YELLOW)  - axon_logging: $(LOGGING_BUILD_DIR)/coverage.info$(NC)"

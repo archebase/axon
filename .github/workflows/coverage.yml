@@ -121,6 +121,11 @@ jobs:
             '*/_deps/*' \
             '*/generated/*' \
             '*/googletest/*' \
+            '*/gtest/*' \
+            '*/mcap-*/*' \
+            '*/mcap/include/*' \
+            '*/minio-cpp/*' \
+            '*/test/*' \
             --output-file coverage.info \
             --rc lcov_branch_coverage=1 \
             ${IGNORE_FLAGS}
@@ -167,12 +172,29 @@ jobs:
 
       - name: Generate HTML report
         run: |
+          # Get lcov/genhtml version for flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          
+          IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            IGNORE_FLAGS="--ignore-errors source,unmapped"
+          fi
+          
           mkdir -p coverage-html
           genhtml coverage.info \
             --output-directory coverage-html \
             --title "Axon Test Coverage" \
             --legend \
-            --branch-coverage
+            --branch-coverage \
+            ${IGNORE_FLAGS} || {
+            echo "Warning: genhtml had some issues, trying with more ignore flags..."
+            genhtml coverage.info \
+              --output-directory coverage-html \
+              --title "Axon Test Coverage" \
+              --legend \
+              --ignore-errors source 2>/dev/null || true
+          }
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v4

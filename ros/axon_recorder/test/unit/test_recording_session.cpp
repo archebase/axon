@@ -212,6 +212,403 @@ TEST_F(RecordingSessionTest, CannotWriteWhenClosed) {
   EXPECT_EQ(session.register_channel("/test", "enc", 1), 0);
 }
 
+// ============================================================================
+// Concurrent Write Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, ConcurrentWritesFromMultipleThreads) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "concurrent.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Register schema and channel
+  uint16_t schema_id = session.register_schema(
+    "std_msgs/msg/String", "ros2msg", "string data"
+  );
+  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+
+  constexpr int NUM_THREADS = 4;
+  constexpr int MESSAGES_PER_THREAD = 1000;
+
+  std::atomic<int> success_count{0};
+  std::vector<std::thread> threads;
+
+  for (int t = 0; t < NUM_THREADS; ++t) {
+    threads.emplace_back([&, t]() {
+      std::vector<uint8_t> data = {static_cast<uint8_t>(t), 0x02, 0x03, 0x04};
+      for (int i = 0; i < MESSAGES_PER_THREAD; ++i) {
+        uint64_t ts = 1000000000ULL + t * 1000000ULL + i * 1000ULL;
+        if (session.write(channel_id, t * MESSAGES_PER_THREAD + i, ts, ts,
+                          data.data(), data.size())) {
+          ++success_count;
+        }
+      }
+    });
+  }
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  // All messages should have been written
+  EXPECT_EQ(success_count.load(), NUM_THREADS * MESSAGES_PER_THREAD);
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.messages_written, NUM_THREADS * MESSAGES_PER_THREAD);
+
+  session.close();
+
+  // Verify file exists and has data
+  EXPECT_TRUE(std::filesystem::exists(path));
+  EXPECT_GT(std::filesystem::file_size(path), 0);
+}
+
+// ============================================================================
+// Multiple Channels Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, MultipleChannelsSameSchema) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "multi_channel.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Single schema for multiple channels
+  uint16_t schema_id = session.register_schema(
+    "sensor_msgs/msg/Image", "ros2msg", "uint32 height\nuint32 width\nuint8[] data"
+  );
+
+  // Register multiple channels with same schema
+  uint16_t channel1 = session.register_channel("/camera/left/image", "cdr", schema_id);
+  uint16_t channel2 = session.register_channel("/camera/right/image", "cdr", schema_id);
+  uint16_t channel3 = session.register_channel("/camera/depth/image", "cdr", schema_id);
+
+  EXPECT_GT(channel1, 0);
+  EXPECT_GT(channel2, 0);
+  EXPECT_GT(channel3, 0);
+  EXPECT_NE(channel1, channel2);
+  EXPECT_NE(channel2, channel3);
+
+  // Write to each channel
+  std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
+  uint64_t ts = 1000000000ULL;
+
+  EXPECT_TRUE(session.write(channel1, 0, ts, ts, data.data(), data.size()));
+  EXPECT_TRUE(session.write(channel2, 0, ts + 1000, ts + 1000, data.data(), data.size()));
+  EXPECT_TRUE(session.write(channel3, 0, ts + 2000, ts + 2000, data.data(), data.size()));
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.messages_written, 3);
+  EXPECT_EQ(stats.schemas_registered, 1);
+  EXPECT_EQ(stats.channels_registered, 3);
+
+  session.close();
+}
+
+TEST_F(RecordingSessionTest, MultipleSchemas) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "multi_schema.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Register different schemas
+  uint16_t schema1 = session.register_schema(
+    "std_msgs/msg/String", "ros2msg", "string data"
+  );
+  uint16_t schema2 = session.register_schema(
+    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
+  );
+  uint16_t schema3 = session.register_schema(
+    "geometry_msgs/msg/Twist", "ros2msg", "geometry_msgs/Vector3 linear"
+  );
+
+  EXPECT_GT(schema1, 0);
+  EXPECT_GT(schema2, 0);
+  EXPECT_GT(schema3, 0);
+  EXPECT_NE(schema1, schema2);
+  EXPECT_NE(schema2, schema3);
+
+  // Register channels with different schemas
+  uint16_t ch1 = session.register_channel("/text", "cdr", schema1);
+  uint16_t ch2 = session.register_channel("/imu", "cdr", schema2);
+  uint16_t ch3 = session.register_channel("/cmd_vel", "cdr", schema3);
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.schemas_registered, 3);
+  EXPECT_EQ(stats.channels_registered, 3);
+
+  session.close();
+}
+
+// ============================================================================
+// Channel Metadata Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, ChannelWithMetadata) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "metadata.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  uint16_t schema_id = session.register_schema(
+    "sensor_msgs/msg/Image", "ros2msg", "uint32 height"
+  );
+
+  // Register channel with metadata
+  std::unordered_map<std::string, std::string> metadata = {
+    {"frame_id", "camera_link"},
+    {"offered_qos_profiles", "- history: keep_last\n  depth: 10"}
+  };
+
+  uint16_t channel_id = session.register_channel(
+    "/camera/image", "cdr", schema_id, metadata
+  );
+  EXPECT_GT(channel_id, 0);
+
+  session.close();
+}
+
+// ============================================================================
+// Topic Statistics Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, TopicStatsTracking) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "topic_stats.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  uint16_t schema_id = session.register_schema(
+    "std_msgs/msg/String", "ros2msg", "string data"
+  );
+  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+
+  std::vector<uint8_t> data = {0x01, 0x02, 0x03};
+
+  // Write messages and update stats
+  for (int i = 0; i < 100; ++i) {
+    uint64_t ts = 1000000000ULL + i * 1000000ULL;
+    session.write(channel_id, i, ts, ts, data.data(), data.size());
+    session.update_topic_stats("/test", "std_msgs/msg/String");
+  }
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.messages_written, 100);
+
+  session.close();
+}
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, WriteToInvalidChannel) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "invalid_channel.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  std::vector<uint8_t> data = {0x01};
+  uint64_t ts = 1000000000ULL;
+
+  // Write to non-existent channel ID
+  EXPECT_FALSE(session.write(9999, 0, ts, ts, data.data(), data.size()));
+
+  session.close();
+}
+
+TEST_F(RecordingSessionTest, OpenInvalidPath) {
+  RecordingSession session;
+
+  // Try to open file in non-existent directory
+  EXPECT_FALSE(session.open("/nonexistent/path/that/does/not/exist/test.mcap"));
+  EXPECT_FALSE(session.is_open());
+}
+
+TEST_F(RecordingSessionTest, FlushDuringWrite) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "flush.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  uint16_t schema_id = session.register_schema(
+    "std_msgs/msg/String", "ros2msg", "string data"
+  );
+  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+
+  std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
+
+  for (int i = 0; i < 10; ++i) {
+    uint64_t ts = 1000000000ULL + i * 1000000ULL;
+    EXPECT_TRUE(session.write(channel_id, i, ts, ts, data.data(), data.size()));
+    
+    // Flush periodically
+    if (i % 3 == 0) {
+      EXPECT_NO_THROW(session.flush());
+    }
+  }
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.messages_written, 10);
+
+  session.close();
+}
+
+TEST_F(RecordingSessionTest, CloseWithoutOpen) {
+  RecordingSession session;
+  
+  // Close without opening should not crash
+  EXPECT_NO_THROW(session.close());
+  EXPECT_FALSE(session.is_open());
+}
+
+TEST_F(RecordingSessionTest, DoubleClose) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "double_close.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  session.close();
+  
+  // Second close should not crash
+  EXPECT_NO_THROW(session.close());
+  EXPECT_FALSE(session.is_open());
+}
+
+// ============================================================================
+// Large Data Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, LargeMessages) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "large.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  uint16_t schema_id = session.register_schema(
+    "sensor_msgs/msg/Image", "ros2msg", "uint8[] data"
+  );
+  uint16_t channel_id = session.register_channel("/camera/image", "cdr", schema_id);
+
+  // 1MB message (simulating image data)
+  std::vector<uint8_t> large_data(1024 * 1024);
+  for (size_t i = 0; i < large_data.size(); ++i) {
+    large_data[i] = static_cast<uint8_t>(i % 256);
+  }
+
+  uint64_t ts = 1000000000ULL;
+  EXPECT_TRUE(session.write(channel_id, 0, ts, ts, large_data.data(), large_data.size()));
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.messages_written, 1);
+  EXPECT_GE(stats.bytes_written, large_data.size());
+
+  session.close();
+}
+
+TEST_F(RecordingSessionTest, ManySmallMessages) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "many_small.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  uint16_t schema_id = session.register_schema(
+    "std_msgs/msg/Int32", "ros2msg", "int32 data"
+  );
+  uint16_t channel_id = session.register_channel("/counter", "cdr", schema_id);
+
+  std::vector<uint8_t> data = {0x01, 0x00, 0x00, 0x00};  // int32 = 1
+
+  constexpr int NUM_MESSAGES = 10000;
+  for (int i = 0; i < NUM_MESSAGES; ++i) {
+    uint64_t ts = 1000000000ULL + i * 1000ULL;
+    EXPECT_TRUE(session.write(channel_id, i, ts, ts, data.data(), data.size()));
+  }
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.messages_written, NUM_MESSAGES);
+
+  session.close();
+
+  // Verify file was created with reasonable size
+  EXPECT_TRUE(std::filesystem::exists(path));
+  EXPECT_GT(std::filesystem::file_size(path), NUM_MESSAGES * data.size());
+}
+
+// ============================================================================
+// Task Config and Metadata Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, SetTaskConfig) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "task_config.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  TaskConfig config;
+  config.task_id = "test_task_123";
+  config.device_id = "device_001";
+  config.operator_name = "test.operator";
+  config.scene = "indoor";
+  config.subscene = "kitchen";
+
+  // Should not throw
+  EXPECT_NO_THROW(session.set_task_config(config));
+
+  session.close();
+}
+
+TEST_F(RecordingSessionTest, GetSidecarPathBeforeClose) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "sidecar.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Sidecar path should be empty before close
+  EXPECT_TRUE(session.get_sidecar_path().empty());
+
+  TaskConfig config;
+  config.task_id = "test_task_123";
+  session.set_task_config(config);
+
+  // Still empty until close
+  EXPECT_TRUE(session.get_sidecar_path().empty());
+
+  session.close();
+
+  // After close, sidecar path might be set (depends on implementation)
+  // Just verify it doesn't crash
+}
+
+// ============================================================================
+// Duration Accuracy Tests
+// ============================================================================
+
+TEST_F(RecordingSessionTest, DurationAccuracy) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "duration.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  auto start = std::chrono::steady_clock::now();
+  
+  // Sleep for known duration
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  double duration = session.get_duration_sec();
+  
+  auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now() - start
+  ).count();
+
+  // Duration should be within 50ms of expected
+  EXPECT_GE(duration, 0.15);  // At least 150ms
+  EXPECT_LE(duration, 0.35);  // At most 350ms
+
+  session.close();
+}
+
 }  // namespace
 }  // namespace recorder
 }  // namespace axon

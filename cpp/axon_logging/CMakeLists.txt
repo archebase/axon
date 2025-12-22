@@ -51,3 +51,25 @@ target_link_libraries(axon_logging PUBLIC
     Boost::filesystem
 )
 
+# =============================================================================
+# Coverage Support
+# =============================================================================
+
+option(AXON_LOGGING_ENABLE_COVERAGE "Enable code coverage" OFF)
+
+if(AXON_LOGGING_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(STATUS "axon_logging: Coverage instrumentation enabled")
+    target_compile_options(axon_logging PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+    target_link_options(axon_logging PRIVATE --coverage)
+endif()
+
+# =============================================================================
+# Tests (optional)
+# =============================================================================
+
+option(AXON_LOGGING_BUILD_TESTS "Build logging tests" OFF)
+
+if(AXON_LOGGING_BUILD_TESTS)
+    add_subdirectory(test)
+endif()
+

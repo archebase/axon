@@ -112,6 +112,18 @@ if(AXON_MCAP_DIR AND TARGET axon_mcap)
 endif()
 
 # =============================================================================
+# Coverage support
+# =============================================================================
+
+option(AXON_UPLOADER_ENABLE_COVERAGE "Enable code coverage" OFF)
+
+if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(STATUS "axon_uploader: Coverage instrumentation enabled")
+    target_compile_options(axon_uploader PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+    target_link_options(axon_uploader PRIVATE --coverage)
+endif()
+
+# =============================================================================
 # Tests (optional)
 # =============================================================================
 
@@ -121,38 +133,32 @@ if(AXON_UPLOADER_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
     
+    # Helper function to create test with coverage
+    function(add_uploader_test TEST_NAME TEST_SOURCE)
+        add_executable(${TEST_NAME}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/${TEST_SOURCE}
+        )
+        target_link_libraries(${TEST_NAME}
+            axon_uploader
+            GTest::gtest
+            GTest::gtest_main
+        )
+        # Apply coverage flags to test executables
+        if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(${TEST_NAME} PRIVATE --coverage)
+        endif()
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endfunction()
+    
     # Test upload queue
-    add_executable(test_upload_queue
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/test_upload_queue.cpp
-    )
-    target_link_libraries(test_upload_queue
-        axon_uploader
-        GTest::gtest
-        GTest::gtest_main
-    )
-    add_test(NAME test_upload_queue COMMAND test_upload_queue)
+    add_uploader_test(test_upload_queue test_upload_queue.cpp)
     
     # Test retry handler
-    add_executable(test_retry_handler
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/test_retry_handler.cpp
-    )
-    target_link_libraries(test_retry_handler
-        axon_uploader
-        GTest::gtest
-        GTest::gtest_main
-    )
-    add_test(NAME test_retry_handler COMMAND test_retry_handler)
+    add_uploader_test(test_retry_handler test_retry_handler.cpp)
     
     # Test state manager
-    add_executable(test_state_manager
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/test_state_manager.cpp
-    )
-    target_link_libraries(test_state_manager
-        axon_uploader
-        GTest::gtest
-        GTest::gtest_main
-    )
-    add_test(NAME test_state_manager COMMAND test_state_manager)
+    add_uploader_test(test_state_manager test_state_manager.cpp)
     
     # Integration test (requires MinIO)
     add_executable(test_edge_uploader
@@ -163,19 +169,12 @@ if(AXON_UPLOADER_BUILD_TESTS)
         GTest::gtest
         GTest::gtest_main
     )
+    if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_edge_uploader PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+        target_link_options(test_edge_uploader PRIVATE --coverage)
+    endif()
     # Note: Integration test is not added to CTest by default
     # It requires MinIO to be running. Run manually:
     #   MINIO_ENDPOINT=http://localhost:9000 ./test_edge_uploader
-endif()
-
-# =============================================================================
-# Coverage support
-# =============================================================================
-
-option(AXON_UPLOADER_ENABLE_COVERAGE "Enable code coverage" OFF)
-
-if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(axon_uploader PRIVATE --coverage -fprofile-arcs -ftest-coverage)
-    target_link_options(axon_uploader PRIVATE --coverage)
 endif()
 

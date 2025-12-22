@@ -171,6 +171,10 @@ lcov --remove "${OUTPUT_DIR}/coverage_raw.info" \
     '*/generated/*' \
     '*/googletest/*' \
     '*/gtest/*' \
+    '*/mcap-*/*' \
+    '*/mcap/include/*' \
+    '*/minio-cpp/*' \
+    '*/test/*' \
     --output-file "${OUTPUT_DIR}/coverage.info" \
     --rc lcov_branch_coverage=1 \
     ${LCOV_IGNORE_FLAGS} || {
@@ -194,13 +198,25 @@ if command -v genhtml &> /dev/null; then
     echo "Part 3: Generating HTML report..."
     echo "============================================"
     
+    # Build genhtml flags based on lcov version
+    GENHTML_IGNORE_FLAGS=""
+    if [ "${LCOV_MAJOR}" -ge 2 ]; then
+        GENHTML_IGNORE_FLAGS="--ignore-errors source,unmapped"
+    fi
+    
     mkdir -p "${OUTPUT_DIR}/html"
     genhtml "${OUTPUT_DIR}/coverage.info" \
         --output-directory "${OUTPUT_DIR}/html" \
         --title "Axon Test Coverage" \
         --legend \
-        --branch-coverage || {
-        echo "Warning: HTML generation had issues"
+        --branch-coverage \
+        ${GENHTML_IGNORE_FLAGS} || {
+        echo "Warning: HTML generation had issues, trying with --ignore-errors source..."
+        genhtml "${OUTPUT_DIR}/coverage.info" \
+            --output-directory "${OUTPUT_DIR}/html" \
+            --title "Axon Test Coverage" \
+            --legend \
+            --ignore-errors source 2>/dev/null || true
     }
     
     echo ""

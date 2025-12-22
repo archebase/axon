@@ -34,6 +34,7 @@ find_package(GTest REQUIRED)
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system log log_setup thread filesystem)
+find_package(yaml-cpp REQUIRED)
 
 # Path to axon_logging (needed for tests that compile source files directly)
 if(NOT DEFINED CPP_LOGGING_DIR)
@@ -203,6 +204,70 @@ target_link_libraries(test_worker_thread_pool
     ${Boost_LIBRARIES}
 )
 add_test(NAME WorkerThreadPoolTest COMMAND test_worker_thread_pool)
+
+# Test ConfigParser (YAML parsing and validation)
+add_executable(test_config_parser
+    unit/test_config_parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config_parser.cpp
+)
+target_compile_definitions(test_config_parser PRIVATE BOOST_LOG_DYN_LINK)
+target_link_libraries(test_config_parser
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    axon_logging
+    yaml-cpp
+    ${Boost_LIBRARIES}
+)
+add_test(NAME ConfigParserTest COMMAND test_config_parser)
+
+# Test SPSCQueue (lock-free queue)
+add_executable(test_spsc_queue
+    unit/test_spsc_queue.cpp
+)
+target_link_libraries(test_spsc_queue
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+)
+add_test(NAME SPSCQueueTest COMMAND test_spsc_queue)
+
+# ============================================================================
+# Tests requiring ROS message types (only when built with ROS)
+# ============================================================================
+
+if(ROS_INTEGRATED_BUILD)
+    # Test MessageFactory (requires ROS message types)
+    add_executable(test_message_factory
+        unit/test_message_factory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/message_factory.cpp
+    )
+    if(DEFINED AXON_ROS1)
+        target_compile_definitions(test_message_factory PRIVATE AXON_ROS1)
+        target_include_directories(test_message_factory PRIVATE
+            ${catkin_INCLUDE_DIRS}
+        )
+        target_link_libraries(test_message_factory
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+            ${catkin_LIBRARIES}
+        )
+    elseif(DEFINED AXON_ROS2)
+        target_compile_definitions(test_message_factory PRIVATE AXON_ROS2)
+        ament_target_dependencies(test_message_factory
+            rclcpp
+            std_msgs
+            geometry_msgs
+        )
+        target_link_libraries(test_message_factory
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+        )
+    endif()
+    add_test(NAME MessageFactoryTest COMMAND test_message_factory)
+endif()
 
 # ============================================================================
 # Tests requiring axon_mcap (only when built as part of ROS package)
