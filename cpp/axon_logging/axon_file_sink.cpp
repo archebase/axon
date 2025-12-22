@@ -6,6 +6,7 @@
 #include <boost/log/attributes/current_thread_id.hpp>
 #include <boost/make_shared.hpp>
 #include <boost/filesystem.hpp>
+#include <cstdio>
 #include <iostream>
 
 namespace axon {
@@ -16,19 +17,30 @@ namespace keywords = boost::log::keywords;
 namespace sinks = boost::log::sinks;
 
 /**
- * Escape a string for JSON output.
+ * Escape a string for JSON output per RFC 8259.
+ * All control characters U+0000 through U+001F must be escaped.
  */
 std::string escape_json(const std::string& s) {
     std::string result;
     result.reserve(s.size() + 16);
-    for (char c : s) {
+    for (unsigned char c : s) {
         switch (c) {
             case '"':  result += "\\\""; break;
             case '\\': result += "\\\\"; break;
-            case '\n': result += "\\n"; break;
-            case '\r': result += "\\r"; break;
-            case '\t': result += "\\t"; break;
-            default:   result += c;
+            case '\b': result += "\\b"; break;   // backspace (U+0008)
+            case '\f': result += "\\f"; break;   // form feed (U+000C)
+            case '\n': result += "\\n"; break;   // newline (U+000A)
+            case '\r': result += "\\r"; break;   // carriage return (U+000D)
+            case '\t': result += "\\t"; break;   // tab (U+0009)
+            default:
+                // Escape other control characters (U+0000-U+001F) as \uXXXX
+                if (c < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    result += buf;
+                } else {
+                    result += static_cast<char>(c);
+                }
         }
     }
     return result;

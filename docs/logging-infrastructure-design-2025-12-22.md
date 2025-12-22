@@ -68,6 +68,8 @@ if (!status.ok()) {
 6. **Production-Ready** - Async I/O, bounded queues, time-based rotation (via Boost.Log)
 7. **ROS Compatible** - Custom sink bridges to ROS logging infrastructure
 8. **Simplicity** - Single logging implementation (Boost.Log) across all components
+9. **Log Sampling** - Built-in macros for count-based and time-based sampling of high-frequency events
+10. **Runtime Configurable** - YAML config file + environment variable overrides for deployment flexibility
 
 ## Technology Choice: Boost.Log
 
@@ -336,6 +338,42 @@ inline boost::log::aux::add_value_manip<T> kv(const char* name, const T& value) 
         boost::log::attributes::constant<std::string>(task_id_val)); \
     BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID", \
         boost::log::attributes::constant<std::string>(device_id_val))
+
+// =============================================================================
+// Log Sampling Macros
+// =============================================================================
+
+// Count-based sampling: Log every Nth occurrence
+// Useful for high-frequency loops where you want periodic status updates
+#define AXON_LOG_INFO_EVERY_N(n, msg) \
+    do { \
+        static std::atomic<uint64_t> _axon_log_counter{0}; \
+        if ((++_axon_log_counter % (n)) == 1) { \
+            AXON_LOG_INFO(msg); \
+        } \
+    } while(0)
+
+// Time-based throttling: Log at most once per specified interval (seconds)
+// Useful for error conditions that may repeat rapidly
+#define AXON_LOG_WARN_THROTTLE(interval_sec, msg) \
+    do { \
+        static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
+        static std::mutex _axon_throttle_mutex; \
+        auto _axon_now = std::chrono::steady_clock::now(); \
+        bool _axon_should_log = false; \
+        { \
+            std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
+            if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
+                _axon_last_log_time = _axon_now; \
+                _axon_should_log = true; \
+            } \
+        } \
+        if (_axon_should_log) { \
+            AXON_LOG_WARN(msg); \
+        } \
+    } while(0)
+
+// Both macro families available for DEBUG, INFO, WARN, ERROR levels
 ```
 
 **Usage Examples**:
@@ -349,9 +387,9 @@ void RecorderNode::start_recording() {
     // Set context for this recording session (scoped - auto-cleared on function exit)
     AXON_LOG_SCOPED_CONTEXT(task_config_.task_id, config_.device.id);
     
-    AXON_LOG_INFO("Recording started") 
+    AXON_LOG_INFO("Recording started" 
         << kv("scene", task_config_.scene)
-        << kv("topics", topic_configs_.size());
+        << kv("topics", topic_configs_.size()));
 }
 
 // In recording_session.cpp
@@ -359,17 +397,36 @@ void RecorderNode::start_recording() {
 #include "axon_log_macros.hpp"
 
 bool RecordingSession::open(const std::string& path) {
-    AXON_LOG_DEBUG("Opening MCAP file") << kv("path", path);
+    AXON_LOG_DEBUG("Opening MCAP file" << kv("path", path));
     
     if (!writer_->open(path)) {
-        AXON_LOG_ERROR("Failed to open MCAP file")
+        AXON_LOG_ERROR("Failed to open MCAP file"
             << kv("path", path)
-            << kv("error", writer_->get_last_error());
+            << kv("error", writer_->get_last_error()));
         return false;
     }
     
-    AXON_LOG_INFO("MCAP file opened") << kv("path", path);
+    AXON_LOG_INFO("MCAP file opened" << kv("path", path));
     return true;
+}
+
+// Log sampling for high-frequency events
+void WorkerThread::process_messages() {
+    for (int i = 0; i < 1000000; ++i) {
+        // Log every 10000th message (count-based sampling)
+        AXON_LOG_DEBUG_EVERY_N(10000, "Processing message" << kv("iteration", i));
+        
+        // ... process message ...
+    }
+}
+
+// Rate-limited error logging
+void RecorderNode::check_disk_space() {
+    if (is_disk_full()) {
+        // Log at most once per 10 seconds (time-based throttling)
+        AXON_LOG_ERROR_THROTTLE(10.0, "Disk full, cannot write" 
+            << kv("free_mb", get_free_space_mb()));
+    }
 }
 ```
 
@@ -1084,61 +1141,96 @@ AXON_LOG_ERROR("Failed to write") << kv("error", error);
 
 ## Configuration
 
-### YAML Configuration
+### Integrated YAML Configuration
+
+Logging configuration is integrated into the recorder's main config file (`ros/axon_recorder/config/default_config.yaml`):
 
 ```yaml
-# /etc/axon/recorder_config.yaml
+# Axon Recorder Configuration
+# This configuration includes recorder settings AND logging configuration
 
-# Logging Configuration (maps to Boost.Log sinks)
+dataset:
+  path: /data/recordings
+  mode: append
+
+topics:
+  - name: /imu/data
+    message_type: sensor_msgs/Imu
+    batch_size: 5000
+    flush_interval_ms: 5000
+  # ... more topics ...
+
+recording:
+  max_disk_usage_gb: 100
+
+# Logging configuration (parsed by ConfigParser, applied at startup)
+# Environment variables can override these settings (see below)
 logging:
-  # Global log level (debug, info, warn, error, fatal)
-  level: info
-  
-  # Console sink (async with bounded queue)
   console:
     enabled: true
-    level: info
-    colors: true            # ANSI colors for severity levels
-    queue_size: 1000        # Bounded queue size (drops on overflow)
-  
-  # File sink (async with rotation - Boost.Log text_file_backend)
+    level: info      # debug, info, warn, error, fatal
+    colors: true
   file:
-    enabled: true
-    level: debug            # File captures more detail
-    directory: "/var/log/axon"
-    file_pattern: "recorder_%Y%m%d_%H%M%S.log"
-    format: json            # "json" or "text"
-    rotation_size_mb: 100   # Rotate at 100MB
-    rotate_at_midnight: true # Also rotate daily
-    max_files: 10           # Keep 10 rotated files
-    queue_size: 5000        # Larger queue for slower I/O
-  
-  # ROS sink (sync - ROS logging is fast)
-  ros:
-    enabled: true
-    level: info             # Only INFO+ to ROS (avoid noise)
+    enabled: false   # Set to true to enable file logging
+    level: debug
+    directory: /var/log/axon
+    pattern: "axon_%Y%m%d_%H%M%S.log"
+    format: json     # json or text
+    rotation_size_mb: 100
+    max_files: 10
+    rotate_at_midnight: true
 ```
 
 ### Environment Variable Overrides
 
+Environment variables take precedence over YAML configuration. This allows runtime customization without modifying config files (useful for Docker/K8s deployments):
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `AXON_LOG_LEVEL` | Global level (overrides both console and file) | `debug` |
+| `AXON_LOG_CONSOLE_LEVEL` | Console sink level | `info` |
+| `AXON_LOG_FILE_LEVEL` | File sink level | `debug` |
+| `AXON_LOG_FILE_DIR` | Log file directory | `/var/log/axon` |
+| `AXON_LOG_FORMAT` | File format | `json` or `text` |
+| `AXON_LOG_FILE_ENABLED` | Enable file logging | `true` or `false` |
+| `AXON_LOG_CONSOLE_ENABLED` | Enable console logging | `true` or `false` |
+
+**Priority Order** (highest to lowest):
+1. Environment variables
+2. YAML config file settings
+3. Hardcoded defaults
+
 ```bash
-# Override log level at runtime (debug, info, warn, error, fatal)
+# Example: Enable debug logging with file output for troubleshooting
 export AXON_LOG_LEVEL=debug
+export AXON_LOG_FILE_ENABLED=true
+export AXON_LOG_FILE_DIR=/tmp/axon_debug_logs
 
-# Override log file directory
-export AXON_LOG_DIRECTORY=/tmp/axon_logs
+# Example: Production deployment with JSON file logging
+export AXON_LOG_CONSOLE_LEVEL=warn
+export AXON_LOG_FILE_ENABLED=true
+export AXON_LOG_FORMAT=json
+```
 
-# Disable file logging
-export AXON_LOG_FILE_ENABLED=false
+### Configuration Loading Flow
 
-# Disable colors (for CI/non-TTY)
-export AXON_LOG_COLORS=false
-
-# Force JSON format for console (useful for structured log collectors)
-export AXON_LOG_CONSOLE_FORMAT=json
-
-# Override rotation size (MB)
-export AXON_LOG_ROTATION_SIZE_MB=50
+```
+┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
+│  default_config.yaml│────►│    ConfigParser     │────►│   LoggingConfig     │
+│  (logging section)  │     │  parse_logging()    │     │    (struct)         │
+└─────────────────────┘     └─────────────────────┘     └──────────┬──────────┘
+                                                                   │
+                                                                   ▼
+┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
+│  Environment Vars   │────►│ apply_env_overrides │────►│  Final LoggingConfig│
+│  (AXON_LOG_*)       │     │       ()            │     │                     │
+└─────────────────────┘     └─────────────────────┘     └──────────┬──────────┘
+                                                                   │
+                                                                   ▼
+                                                        ┌─────────────────────┐
+                                                        │ reconfigure_logging │
+                                                        │       ()            │
+                                                        └─────────────────────┘
 ```
 
 ## Performance Considerations
@@ -1152,18 +1244,48 @@ The recording hot path (message callback → queue → worker → MCAP write) mu
 2. **Drop on overflow** - Under extreme load, logs are dropped rather than blocking
 3. **DEBUG compiled out** - `AXON_LOG_ENABLE_DEBUG` is `false` in release builds
 4. **Level filtering at source** - Boost.Log filters before record creation
+5. **Log sampling macros** - Reduce log volume for high-frequency events
 
 ```cpp
 // Hot path - async sink + compile-time DEBUG elimination
 void WorkerThread::process_message(const MessageItem& item) {
     // In release: expands to nothing
     // In debug: async enqueue, returns immediately
-    AXON_LOG_DEBUG("Processing message")
+    AXON_LOG_DEBUG("Processing message"
         << kv("topic", topic_)
-        << kv("size", item.data.size());
+        << kv("size", item.data.size()));
     
     // ... actual processing (not blocked by logging) ...
 }
+
+// High-frequency loops - use count-based sampling
+for (const auto& msg : messages) {
+    // Log only every 1000th message
+    AXON_LOG_DEBUG_EVERY_N(1000, "Processed message" << kv("seq", msg.seq));
+}
+
+// Error conditions that may repeat - use time-based throttling
+if (buffer_full) {
+    // Log at most once per 5 seconds
+    AXON_LOG_WARN_THROTTLE(5.0, "Buffer full, dropping messages");
+}
+```
+
+### Log Sampling Macros
+
+For high-frequency logging scenarios, use the sampling macros to reduce log volume:
+
+| Macro | Pattern | Use Case |
+|-------|---------|----------|
+| `AXON_LOG_*_EVERY_N(n, msg)` | Log 1st, then every Nth | High-frequency loops, progress updates |
+| `AXON_LOG_*_THROTTLE(sec, msg)` | At most once per N seconds | Repeating errors, rate-limited warnings |
+
+```cpp
+// Count-based: Logs at count 1, 101, 201, 301, ...
+AXON_LOG_INFO_EVERY_N(100, "Processing batch" << kv("count", i));
+
+// Time-based: Logs at most once per 10 seconds regardless of call frequency
+AXON_LOG_ERROR_THROTTLE(10.0, "Disk space low" << kv("free_mb", free));
 ```
 
 ### Async Sink Architecture
@@ -1515,32 +1637,41 @@ target_link_libraries(axon_recorder_lib
 
 ```
 cpp/
-└── axon_mcap/                          # MCAP wrapper (uses Boost.Log from axon_recorder)
-    ├── CMakeLists.txt
+├── axon_logging/                       # Standalone logging library (no ROS deps)
+│   ├── CMakeLists.txt
+│   ├── axon_log_severity.hpp           # Severity enum + keywords
+│   ├── axon_log_macros.hpp             # AXON_LOG_* macros + sampling macros
+│   ├── axon_console_sink.hpp           # Async console sink
+│   ├── axon_console_sink.cpp
+│   ├── axon_file_sink.hpp              # Async file sink + rotation
+│   ├── axon_file_sink.cpp
+│   ├── axon_log_init.hpp               # Initialization + env var overrides
+│   └── axon_log_init.cpp
+│
+└── axon_mcap/                          # MCAP wrapper (uses axon_logging)
+    ├── CMakeLists.txt                  # Links to axon_logging
     ├── mcap_writer_wrapper.hpp
     └── mcap_writer_wrapper.cpp         # Uses AXON_LOG_* macros
 
 ros/
 └── axon_recorder/
-    ├── CMakeLists.txt
-    ├── include/
-    │   └── axon_recorder/
-    │       └── logging/
-    │           ├── axon_log_severity.hpp    # Severity enum + keywords
-    │           ├── axon_log_macros.hpp      # AXON_LOG_* macros (header-only)
-    │           ├── axon_console_sink.hpp    # Async console (Boost.Log)
-    │           ├── axon_file_sink.hpp       # Async file + rotation
-    │           ├── axon_ros_sink.hpp        # Custom ROS backend
-    │           └── axon_log_init.hpp        # Initialization
+    ├── CMakeLists.txt                  # Links axon_logging + axon_mcap
+    ├── config/
+    │   └── default_config.yaml         # Includes logging: section
     └── src/
+        ├── config_parser.hpp           # Parses logging: section from YAML
+        ├── config_parser.cpp           # convert_logging_config() helper
+        ├── recorder_node.cpp           # Calls reconfigure_logging() after config load
         └── logging/
-            ├── axon_log_init.cpp
-            ├── axon_console_sink.cpp
-            ├── axon_file_sink.cpp
+            ├── axon_ros_sink.hpp       # Custom ROS backend (ROS-specific)
             └── axon_ros_sink.cpp
 ```
 
-**Note**: `axon_mcap` includes `axon_recorder/logging/axon_log_macros.hpp` and uses the same `AXON_LOG_*` macros. No separate logging implementation needed.
+**Key Points**:
+- `cpp/axon_logging/` is a standalone library with no ROS dependencies
+- `cpp/axon_mcap/` links to `axon_logging` and uses the same macros
+- `ros/axon_recorder/` links both and adds ROS-specific sink
+- Logging config is integrated into `default_config.yaml`, not a separate file
 
 ### Docker Integration
 
@@ -1601,13 +1732,17 @@ volumes:
 
 ## Future Enhancements
 
-| Enhancement | Priority | Description |
-|-------------|----------|-------------|
-| **Async file sink** | Medium | Background thread for file writes |
-| **Runtime level change** | Low | ROS service to change log level |
-| **Log aggregation** | Low | Integration with Fluentd/Logstash |
-| **Metrics emission** | Medium | Export log counts to Prometheus |
-| **Structured context** | Medium | Typed context fields for JSON |
+| Enhancement | Priority | Status | Description |
+|-------------|----------|--------|-------------|
+| **Async file sink** | Medium | ✅ Done | Background thread for file writes |
+| **Log sampling** | High | ✅ Done | Count-based and time-based sampling macros |
+| **Config file support** | High | ✅ Done | YAML configuration integrated into recorder config |
+| **Environment variables** | High | ✅ Done | Runtime overrides via `AXON_LOG_*` env vars |
+| **Runtime level change** | Low | Planned | ROS service to change log level dynamically |
+| **Log aggregation** | Low | Planned | Integration with Fluentd/Logstash |
+| **Metrics emission** | Medium | Planned | Export log counts to Prometheus |
+| **Structured context** | Medium | Planned | Typed context fields for JSON |
+| **Remote log shipping** | Low | Planned | Syslog, cloud backend integration |
 
 ## Revision History
 
@@ -1616,4 +1751,5 @@ volumes:
 | 1.0 | 2025-12-22 | - | Initial design |
 | 1.1 | 2025-12-22 | - | Added `cpp/axon_mcap/` logging support with callback-based approach for ROS-independent operation |
 | 1.2 | 2025-12-22 | - | Replaced custom logging with Boost.Log for all components. Since `axon_mcap` is only a wrapper for Foxglove MCAP and exclusively used by `axon_recorder`, it uses the same Boost.Log infrastructure (no separate callback-based system needed). |
+| 1.3 | 2025-12-22 | - | Added log sampling macros (`AXON_LOG_*_EVERY_N`, `AXON_LOG_*_THROTTLE`) for high-frequency events. Integrated logging config into recorder's `default_config.yaml`. Added environment variable overrides with priority system. Reorganized file structure with standalone `cpp/axon_logging/` library. |
 

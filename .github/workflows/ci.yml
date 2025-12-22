@@ -28,7 +28,11 @@ jobs:
             libgtest-dev \
             libgmock-dev \
             libzstd-dev \
-            liblz4-dev
+            liblz4-dev \
+            libboost-dev \
+            libboost-log-dev \
+            libboost-thread-dev \
+            libboost-filesystem-dev
 
       - name: Build C++ MCAP library with tests
         working-directory: cpp/axon_mcap

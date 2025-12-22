@@ -25,12 +25,18 @@
 namespace {
 // Global flag for signal handling
 volatile std::sig_atomic_t g_shutdown_requested = 0;
+volatile std::sig_atomic_t g_received_signal = 0;
 
 void signal_handler(int signum) {
-  AXON_LOG_INFO("Received signal, requesting shutdown..." << axon::logging::kv("signal", signum));
+  // IMPORTANT: Signal handlers must only use async-signal-safe functions.
+  // Do NOT call AXON_LOG_* here - Boost.Log uses mutexes and memory allocation
+  // which can deadlock if a signal arrives while logging is in progress.
+  // Simply set flags and return. Logging happens after main loop exits.
+  g_received_signal = signum;
   g_shutdown_requested = 1;
   
-  // Also trigger ROS shutdown
+  // Note: ros::shutdown() and rclcpp::shutdown() are not strictly async-signal-safe,
+  // but they're designed to be callable from signal handlers in practice.
 #if defined(AXON_ROS1)
   ros::shutdown();
 #elif defined(AXON_ROS2)
@@ -76,6 +82,10 @@ int main(int argc, char** argv) {
     // run() blocks until rclcpp::shutdown() is called (by signal or otherwise)
     node->run();
 
+    // Log the signal that triggered shutdown (safe to log here, outside signal handler)
+    if (g_received_signal != 0) {
+      AXON_LOG_INFO("Received signal, shutting down" << ::axon::logging::kv("signal", static_cast<int>(g_received_signal)));
+    }
     AXON_LOG_INFO("Main loop exited, calling shutdown()");
 
     // Ensure shutdown is called - this writes the stats file
