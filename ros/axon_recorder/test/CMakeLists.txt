@@ -236,7 +236,11 @@ add_test(NAME SPSCQueueTest COMMAND test_spsc_queue)
 # Tests requiring ROS message types (only when built with ROS)
 # ============================================================================
 
-if(ROS_INTEGRATED_BUILD)
+# Note: test_message_factory is disabled by default due to long compilation times
+# from heavy ROS message header includes. Enable with -DBUILD_MESSAGE_FACTORY_TEST=ON
+option(BUILD_MESSAGE_FACTORY_TEST "Build MessageFactory test (slow compilation)" OFF)
+
+if(ROS_INTEGRATED_BUILD AND BUILD_MESSAGE_FACTORY_TEST)
     # Test MessageFactory (requires ROS message types)
     add_executable(test_message_factory
         unit/test_message_factory.cpp
@@ -255,15 +259,13 @@ if(ROS_INTEGRATED_BUILD)
         )
     elseif(DEFINED AXON_ROS2)
         target_compile_definitions(test_message_factory PRIVATE AXON_ROS2)
-        ament_target_dependencies(test_message_factory
-            rclcpp
-            std_msgs
-            geometry_msgs
-        )
         target_link_libraries(test_message_factory
             GTest::gtest
             GTest::gtest_main
             Threads::Threads
+            rclcpp::rclcpp
+            ${std_msgs_TARGETS}
+            ${geometry_msgs_TARGETS}
         )
     endif()
     add_test(NAME MessageFactoryTest COMMAND test_message_factory)
