@@ -11,39 +11,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# Pin to a specific release for reproducibility
+# Pin to a specific commit for reproducibility
 # releases/cpp/v2.1.1 -> commit b2953496735e7b89d5b2ea58be73abed85317c5f
 # Check https://github.com/foxglove/mcap/releases for latest C++ releases
-set(MCAP_COMMIT_HASH "b2953496735e7b89d5b2ea58be73abed85317c5f" CACHE STRING "MCAP commit hash for releases/cpp/v2.1.1")
-set(MCAP_DOWNLOAD_URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT_HASH}.tar.gz")
-set(MCAP_TARBALL "${CMAKE_CURRENT_BINARY_DIR}/mcap-${MCAP_COMMIT_HASH}.tar.gz")
-set(mcap_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/mcap-${MCAP_COMMIT_HASH}")
+set(MCAP_COMMIT "b2953496735e7b89d5b2ea58be73abed85317c5f" CACHE STRING "MCAP commit hash")
 
-# Download if not already present
-if(NOT EXISTS "${mcap_SOURCE_DIR}")
-    message(STATUS "Downloading MCAP library from ${MCAP_DOWNLOAD_URL}")
-    file(DOWNLOAD "${MCAP_DOWNLOAD_URL}" "${MCAP_TARBALL}" 
-         STATUS DOWNLOAD_STATUS
-         SHOW_PROGRESS)
-    list(GET DOWNLOAD_STATUS 0 DOWNLOAD_ERROR)
-    if(DOWNLOAD_ERROR)
-        message(FATAL_ERROR "Failed to download MCAP: ${DOWNLOAD_STATUS}")
-    endif()
-    
-    # Extract
-    message(STATUS "Extracting MCAP library to ${CMAKE_CURRENT_BINARY_DIR}")
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E tar xzf "${MCAP_TARBALL}"
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-        RESULT_VARIABLE EXTRACT_RESULT
+# Use URL-based FetchContent (more reliable in CI Docker environments than GIT_REPOSITORY)
+# GIT_REPOSITORY can hang waiting for SSH auth or GitHub rate limits
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+    FetchContent_Declare(
+        mcap
+        URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
-    if(EXTRACT_RESULT)
-        message(FATAL_ERROR "Failed to extract MCAP: ${EXTRACT_RESULT}")
-    endif()
-    
-    # Clean up tarball
-    file(REMOVE "${MCAP_TARBALL}")
+else()
+    FetchContent_Declare(
+        mcap
+        URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz"
+    )
 endif()
+
+FetchContent_MakeAvailable(mcap)
 
 message(STATUS "MCAP library located at: ${mcap_SOURCE_DIR}")
 

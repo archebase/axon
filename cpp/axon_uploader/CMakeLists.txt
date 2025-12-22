@@ -137,12 +137,12 @@ if(AXON_UPLOADER_BUILD_TESTS)
     function(add_uploader_test TEST_NAME TEST_SOURCE)
         add_executable(${TEST_NAME}
             ${CMAKE_CURRENT_SOURCE_DIR}/test/${TEST_SOURCE}
-        )
+    )
         target_link_libraries(${TEST_NAME}
-            axon_uploader
-            GTest::gtest
-            GTest::gtest_main
-        )
+        axon_uploader
+        GTest::gtest
+        GTest::gtest_main
+    )
         # Apply coverage flags to test executables
         if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
