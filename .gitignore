@@ -110,3 +110,6 @@ perf.data.*
 *.folded
 
 log
+
+# ignore coverage files
+coverage

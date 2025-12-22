@@ -36,6 +36,36 @@ if(ENABLE_ASAN)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
 endif()
 
+# ============================================================================
+# Code Coverage Support (gcov/lcov)
+# Enable with: cmake -DENABLE_COVERAGE=ON or set ENABLE_COVERAGE=1 environment variable
+# ============================================================================
+option(ENABLE_COVERAGE "Enable code coverage instrumentation (gcov)" OFF)
+
+# Also check environment variable
+if(DEFINED ENV{ENABLE_COVERAGE} AND "$ENV{ENABLE_COVERAGE}" STREQUAL "1")
+    set(ENABLE_COVERAGE ON)
+endif()
+
+if(ENABLE_COVERAGE)
+    message(STATUS "=== CODE COVERAGE ENABLED ===")
+    message(STATUS "Building with coverage instrumentation (gcov)")
+    
+    # Coverage compiler flags for GCC/Clang
+    set(COVERAGE_FLAGS "-fprofile-arcs -ftest-coverage -g -O0")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COVERAGE_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COVERAGE_FLAGS}")
+    
+    # Link with gcov library
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
+    
+    # Ensure debug symbols are included
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message(WARNING "Coverage is most accurate with Debug build. Consider using -DCMAKE_BUILD_TYPE=Debug")
+    endif()
+endif()
+
 # Project paths - handle both direct build and colcon build scenarios
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 
