@@ -235,26 +235,17 @@ public:
 
   /**
    * Try to push an element (any producer thread)
-   * Uses thread-local queue selection for reduced contention.
+   * Uses thread-local queue assignment to maintain SPSC guarantee.
+   * Each producer thread is pinned to a dedicated queue on first call.
    */
   bool try_push(T&& value) {
-    // Get a queue slot using atomic increment (distributes load)
-    size_t slot = current_push_queue_.fetch_add(1, std::memory_order_relaxed) % num_queues_;
+    // Thread-local queue index - each thread gets assigned to one queue on first use
+    // This maintains the single-producer guarantee for each underlying SPSC queue
+    thread_local size_t my_queue =
+      current_push_queue_.fetch_add(1, std::memory_order_relaxed) % num_queues_;
 
-    // Try the selected queue first
-    if (queues_[slot]->try_push(std::move(value))) {
-      return true;
-    }
-
-    // If failed, try other queues (queue was full)
-    for (size_t i = 1; i < num_queues_; ++i) {
-      size_t other_slot = (slot + i) % num_queues_;
-      if (queues_[other_slot]->try_push(std::move(value))) {
-        return true;
-      }
-    }
-
-    return false;
+    // Only use assigned queue - maintains SPSC contract (no concurrent producers)
+    return queues_[my_queue]->try_push(std::move(value));
   }
 
   /**

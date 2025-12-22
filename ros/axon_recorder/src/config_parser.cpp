@@ -51,6 +51,14 @@ bool RecorderConfig::validate() const {
     return false;
   }
 
+  // Validate upload config if enabled
+  if (upload.enabled) {
+    std::string error_msg;
+    if (!ConfigParser::validate_upload_config(upload, error_msg)) {
+      return false;
+    }
+  }
+
   return true;
 }
 

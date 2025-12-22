@@ -369,28 +369,32 @@ TEST_F(MPSCQueueTest, MultipleProducersCorrectness) {
   EXPECT_TRUE(queue.empty());
 }
 
-TEST_F(MPSCQueueTest, RoundRobinFairness) {
-  // Test that multiple internal queues are used
-  MPSCQueue<int> queue(4, 4);  // Small queues to force spillover
+TEST_F(MPSCQueueTest, ThreadLocalQueueAssignment) {
+  // Test that each producer thread is pinned to its own queue
+  // With thread_local assignment, a single thread can only use one underlying queue
+  MPSCQueue<int> queue(4, 4);  // 4 queues, each with capacity 4
   
-  // Fill from multiple "threads" (single thread simulating)
-  for (int i = 0; i < 16; ++i) {
+  // Single thread can only push to its assigned queue (capacity 4)
+  for (int i = 0; i < 4; ++i) {
     int value = i;
     EXPECT_TRUE(queue.try_push(std::move(value)));
   }
   
-  // Pop all - values should all be retrieved (order may vary)
+  // 5th push should fail - queue is full (single thread pinned to one queue)
+  int overflow_value = 100;
+  EXPECT_FALSE(queue.try_push(std::move(overflow_value)));
+  
+  // Pop all - should get exactly 4 items
   std::vector<int> results;
   int result;
   while (queue.try_pop(result)) {
     results.push_back(result);
   }
   
-  EXPECT_EQ(results.size(), 16);
+  EXPECT_EQ(results.size(), 4);
   
-  // All values 0-15 should be present
-  std::sort(results.begin(), results.end());
-  for (int i = 0; i < 16; ++i) {
+  // Values 0-3 should be present in order (FIFO from single queue)
+  for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(results[i], i);
   }
 }
