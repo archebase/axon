@@ -1,0 +1,58 @@
+---
+description: Ensure code supports both ROS1 and ROS2
+globs: ["ros/**/*.cpp", "ros/**/*.hpp", "ros/**/*.h", "ros/**/CMakeLists.txt"]
+alwaysApply: true
+---
+
+# ROS1 and ROS2 Dual Support
+
+When writing code for the Axon project, **always ensure compatibility with both ROS1 and ROS2**.
+
+## Conditional Compilation
+
+Use preprocessor directives for ROS-specific code:
+
+```cpp
+#if defined(AXON_ROS1)
+  // ROS1-specific code
+  #include <ros/ros.h>
+#elif defined(AXON_ROS2)
+  // ROS2-specific code
+  #include <rclcpp/rclcpp.hpp>
+#endif
+```
+
+## Build Systems
+
+- **ROS1**: Uses `catkin` build system
+- **ROS2**: Uses `colcon` build system
+
+CMakeLists.txt files must handle both:
+
+```cmake
+if(DEFINED AXON_ROS1)
+  # catkin-specific configuration
+  find_package(catkin REQUIRED COMPONENTS roscpp std_msgs)
+elseif(DEFINED AXON_ROS2)
+  # ament-specific configuration
+  find_package(ament_cmake REQUIRED)
+  find_package(rclcpp REQUIRED)
+endif()
+```
+
+## Testing
+
+- Test code paths for both ROS versions
+- CI/CD runs tests on both ROS1 (Noetic) and ROS2 (Humble)
+- Use `MockRosInterface` pattern for unit tests that don't require full ROS
+
+## Common Patterns
+
+| Feature | ROS1 | ROS2 |
+|---------|------|------|
+| Node | `ros::NodeHandle` | `rclcpp::Node` |
+| Publisher | `ros::Publisher` | `rclcpp::Publisher<T>` |
+| Subscriber | `ros::Subscriber` | `rclcpp::Subscription<T>` |
+| Service | `ros::ServiceServer` | `rclcpp::Service<T>` |
+| Timer | `ros::Timer` | `rclcpp::TimerBase` |
+| Logging | `ROS_INFO()` | `RCLCPP_INFO()` |

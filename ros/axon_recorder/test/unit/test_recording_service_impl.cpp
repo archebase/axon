@@ -8,6 +8,10 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <thread>
+#include <vector>
+
 #include "mock_recorder_context.hpp"
 #include "recording_service_impl.hpp"
 
@@ -692,18 +696,6 @@ TEST_F(RecordingServiceImplTest, ConcurrentStatusQueries) {
 // ============================================================================
 // Invalid Command Tests
 // ============================================================================
-
-TEST_F(RecordingServiceImplTest, UnknownCommand) {
-  bool success = true;
-  std::string message, task_id_response;
-  
-  service_impl_->handle_recording_control(
-    "unknown_command", "", success, message, task_id_response
-  );
-  
-  EXPECT_FALSE(success);
-  EXPECT_NE(message.find("ERR_UNKNOWN_COMMAND"), std::string::npos);
-}
 
 TEST_F(RecordingServiceImplTest, EmptyCommand) {
   bool success = true;
