@@ -110,6 +110,7 @@ FetchContent_Declare(
   nlohmann_json
   URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
   URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
@@ -355,15 +356,9 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     # Enable Boost.Log dynamic linking
     target_compile_definitions(axon_recorder_lib PRIVATE BOOST_LOG_DYN_LINK)
     
-    ament_target_dependencies(axon_recorder_lib
-        rclcpp
-        ament_index_cpp
-        std_msgs
-        sensor_msgs
-        nav_msgs
-        geometry_msgs
-    )
-    
+    # Use modern CMake target_link_libraries() instead of deprecated ament_target_dependencies()
+    # This is required for ROS2 Rolling compatibility and avoids slow builds/warnings.
+    # See: .cursor/rules/ros-dual-support.mdc for details
     target_link_libraries(axon_recorder_lib
         axon_mcap
         ${Boost_LIBRARIES}
@@ -371,6 +366,13 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         OpenSSL::Crypto
         yaml-cpp
         nlohmann_json::nlohmann_json
+        rclcpp::rclcpp
+        ament_index_cpp::ament_index_cpp
+        sensor_msgs::sensor_msgs_library
+        ${std_msgs_TARGETS}
+        ${sensor_msgs_TARGETS}
+        ${nav_msgs_TARGETS}
+        ${geometry_msgs_TARGETS}
     )
     
     # Add Boost include directories
@@ -393,17 +395,15 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         src/main.cpp
     )
     
-    ament_target_dependencies(axon_recorder_node
-        rclcpp
-        std_msgs
-        sensor_msgs
-        nav_msgs
-        geometry_msgs
-        ament_index_cpp
-    )
-    
     target_link_libraries(axon_recorder_node
         axon_recorder_lib
+        rclcpp::rclcpp
+        ament_index_cpp::ament_index_cpp
+        sensor_msgs::sensor_msgs_library
+        ${std_msgs_TARGETS}
+        ${sensor_msgs_TARGETS}
+        ${nav_msgs_TARGETS}
+        ${geometry_msgs_TARGETS}
     )
     
     # Link to generated service typesupport (replaces deprecated rosidl_target_interfaces)

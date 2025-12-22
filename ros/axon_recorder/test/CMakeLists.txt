@@ -393,14 +393,12 @@ if(ROS_INTEGRATED_BUILD AND Boost_FOUND)
             target_include_directories(test_service_adapter_ros2 PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}/../src
             )
-            ament_target_dependencies(test_service_adapter_ros2
-                rclcpp
-                std_msgs
-            )
             target_link_libraries(test_service_adapter_ros2
                 axon_recorder_lib
                 Threads::Threads
                 ${Boost_LIBRARIES}
+                rclcpp::rclcpp
+                ${std_msgs_TARGETS}
             )
             # Link to generated service types
             rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
