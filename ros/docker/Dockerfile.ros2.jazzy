@@ -40,10 +40,13 @@ RUN apt-get update && apt-get install -y \
     libturbojpeg0-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Boost and OpenSSL (required for HTTP callback client with HTTPS support)
+# Install Boost and OpenSSL (required for HTTP callback client with HTTPS support and logging)
 RUN apt-get update && apt-get install -y \
     libboost-dev \
     libboost-system-dev \
+    libboost-log-dev \
+    libboost-thread-dev \
+    libboost-filesystem-dev \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 

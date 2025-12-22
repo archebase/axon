@@ -72,7 +72,7 @@ jobs:
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
-          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
 
   # ==========================================================================
@@ -105,7 +105,7 @@ jobs:
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
-          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+          ADDITIONAL_DEBS: libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
           # Skip default tests, we'll run integration tests instead
           NOT_TEST_BUILD: true

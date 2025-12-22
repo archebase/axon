@@ -26,10 +26,13 @@ endif()
 find_package(GTest REQUIRED)
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(Boost QUIET COMPONENTS system)
-if(NOT Boost_FOUND)
-    find_package(Boost QUIET)
+find_package(Boost REQUIRED COMPONENTS system log log_setup thread filesystem)
+
+# Path to axon_logging (needed for tests that compile source files directly)
+if(NOT DEFINED CPP_LOGGING_DIR)
+    set(CPP_LOGGING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging)
 endif()
+include_directories(${CPP_LOGGING_DIR})
 
 enable_testing()
 
@@ -37,10 +40,12 @@ enable_testing()
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
     ${GTEST_INCLUDE_DIRS}
+    ${Boost_INCLUDE_DIRS}
 )
 
-if(Boost_FOUND)
-    include_directories(${Boost_INCLUDE_DIRS})
+# Build axon_logging for tests (unless already available from parent)
+if(NOT TARGET axon_logging)
+    add_subdirectory(${CPP_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
 endif()
 
 # ============================================================================
@@ -88,16 +93,16 @@ if(Boost_FOUND)
         unit/test_http_callback_client.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/http_callback_client.cpp
     )
+    target_compile_definitions(test_http_callback_client PRIVATE BOOST_LOG_DYN_LINK)
     target_link_libraries(test_http_callback_client
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         OpenSSL::SSL
         OpenSSL::Crypto
+        axon_logging
+        ${Boost_LIBRARIES}
     )
-    if(Boost_SYSTEM_FOUND)
-        target_link_libraries(test_http_callback_client ${Boost_LIBRARIES})
-    endif()
     add_test(NAME HttpCallbackClientTest COMMAND test_http_callback_client)
 
     # Test Recording Workflow (mock node)
@@ -106,16 +111,16 @@ if(Boost_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/http_callback_client.cpp
     )
+    target_compile_definitions(test_recording_workflow PRIVATE BOOST_LOG_DYN_LINK)
     target_link_libraries(test_recording_workflow
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         OpenSSL::SSL
         OpenSSL::Crypto
+        axon_logging
+        ${Boost_LIBRARIES}
     )
-    if(Boost_SYSTEM_FOUND)
-        target_link_libraries(test_recording_workflow ${Boost_LIBRARIES})
-    endif()
     add_test(NAME RecordingWorkflowTest COMMAND test_recording_workflow)
 
     # Test RecordingServiceImpl with MockRecorderContext
@@ -128,16 +133,16 @@ if(Boost_FOUND)
     target_include_directories(test_recording_service_impl PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/unit
     )
+    target_compile_definitions(test_recording_service_impl PRIVATE BOOST_LOG_DYN_LINK)
     target_link_libraries(test_recording_service_impl
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         OpenSSL::SSL
         OpenSSL::Crypto
+        axon_logging
+        ${Boost_LIBRARIES}
     )
-    if(Boost_SYSTEM_FOUND)
-        target_link_libraries(test_recording_service_impl ${Boost_LIBRARIES})
-    endif()
     add_test(NAME RecordingServiceImplTest COMMAND test_recording_service_impl)
 
     # Test IRecorderContext interface and MockRecorderContext
@@ -149,16 +154,16 @@ if(Boost_FOUND)
     target_include_directories(test_recorder_context_interface PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/unit
     )
+    target_compile_definitions(test_recorder_context_interface PRIVATE BOOST_LOG_DYN_LINK)
     target_link_libraries(test_recorder_context_interface
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         OpenSSL::SSL
         OpenSSL::Crypto
+        axon_logging
+        ${Boost_LIBRARIES}
     )
-    if(Boost_SYSTEM_FOUND)
-        target_link_libraries(test_recorder_context_interface ${Boost_LIBRARIES})
-    endif()
     add_test(NAME RecorderContextInterfaceTest COMMAND test_recorder_context_interface)
 endif()
 
@@ -167,10 +172,13 @@ add_executable(test_topic_manager
     unit/test_topic_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/topic_manager.cpp
 )
+target_compile_definitions(test_topic_manager PRIVATE BOOST_LOG_DYN_LINK)
 target_link_libraries(test_topic_manager
     GTest::gtest
     GTest::gtest_main
     Threads::Threads
+    axon_logging
+    ${Boost_LIBRARIES}
 )
 add_test(NAME TopicManagerTest COMMAND test_topic_manager)
 
@@ -179,10 +187,13 @@ add_executable(test_worker_thread_pool
     unit/test_worker_thread_pool.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/worker_thread_pool.cpp
 )
+target_compile_definitions(test_worker_thread_pool PRIVATE BOOST_LOG_DYN_LINK)
 target_link_libraries(test_worker_thread_pool
     GTest::gtest
     GTest::gtest_main
     Threads::Threads
+    axon_logging
+    ${Boost_LIBRARIES}
 )
 add_test(NAME WorkerThreadPoolTest COMMAND test_worker_thread_pool)
 
@@ -200,14 +211,17 @@ if(ROS_INTEGRATED_BUILD)
     target_include_directories(test_recording_session PRIVATE
         ${CMAKE_CURRENT_BINARY_DIR}/../generated
     )
+    target_compile_definitions(test_recording_session PRIVATE BOOST_LOG_DYN_LINK)
     target_link_libraries(test_recording_session
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         axon_mcap
+        axon_logging
         nlohmann_json::nlohmann_json
         OpenSSL::SSL
         OpenSSL::Crypto
+        ${Boost_LIBRARIES}
     )
     add_test(NAME RecordingSessionTest COMMAND test_recording_session)
 
@@ -219,14 +233,17 @@ if(ROS_INTEGRATED_BUILD)
     target_include_directories(test_metadata_injector PRIVATE
         ${CMAKE_CURRENT_BINARY_DIR}/../generated
     )
+    target_compile_definitions(test_metadata_injector PRIVATE BOOST_LOG_DYN_LINK)
     target_link_libraries(test_metadata_injector
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         axon_mcap
+        axon_logging
         nlohmann_json::nlohmann_json
         OpenSSL::SSL
         OpenSSL::Crypto
+        ${Boost_LIBRARIES}
     )
     add_test(NAME MetadataInjectorTest COMMAND test_metadata_injector)
 
@@ -239,14 +256,17 @@ if(ROS_INTEGRATED_BUILD)
     target_include_directories(test_metadata_injection PRIVATE
         ${CMAKE_CURRENT_BINARY_DIR}/../generated
     )
+    target_compile_definitions(test_metadata_injection PRIVATE BOOST_LOG_DYN_LINK)
     target_link_libraries(test_metadata_injection
         GTest::gtest
         GTest::gtest_main
         Threads::Threads
         axon_mcap
+        axon_logging
         nlohmann_json::nlohmann_json
         OpenSSL::SSL
         OpenSSL::Crypto
+        ${Boost_LIBRARIES}
     )
     add_test(NAME MetadataInjectionIntegrationTest COMMAND test_metadata_injection)
 endif()

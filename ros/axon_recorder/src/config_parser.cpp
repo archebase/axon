@@ -1,8 +1,11 @@
 #include "config_parser.hpp"
 
 #include <fstream>
-#include <iostream>
 #include <sstream>
+
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "config_parser"
+#include <axon_log_macros.hpp>
 
 namespace axon {
 namespace core {
@@ -11,7 +14,7 @@ RecorderConfig RecorderConfig::from_yaml(const std::string& yaml_path) {
   ConfigParser parser;
   RecorderConfig config;
   if (!parser.load_from_file(yaml_path, config)) {
-    std::cerr << "Failed to load config from: " << yaml_path << std::endl;
+    AXON_LOG_ERROR("Failed to load config from file" << axon::logging::kv("path", yaml_path));
   }
   return config;
 }
@@ -20,7 +23,7 @@ RecorderConfig RecorderConfig::from_yaml_string(const std::string& yaml_content)
   ConfigParser parser;
   RecorderConfig config;
   if (!parser.load_from_string(yaml_content, config)) {
-    std::cerr << "Failed to load config from string" << std::endl;
+    AXON_LOG_ERROR("Failed to load config from string");
   }
   return config;
 }
@@ -68,7 +71,7 @@ bool ConfigParser::load_from_file(const std::string& path, RecorderConfig& confi
     YAML::Node node = YAML::LoadFile(path);
     return load_from_string(YAML::Dump(node), config);
   } catch (const YAML::Exception& e) {
-    std::cerr << "YAML parsing error: " << e.what() << std::endl;
+    AXON_LOG_ERROR("YAML parsing error" << axon::logging::kv("error", e.what()));
     return false;
   }
 }
@@ -94,7 +97,7 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
 
     return config.validate();
   } catch (const YAML::Exception& e) {
-    std::cerr << "YAML parsing error: " << e.what() << std::endl;
+    AXON_LOG_ERROR("YAML parsing error" << axon::logging::kv("error", e.what()));
     return false;
   }
 }
@@ -125,7 +128,7 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
     file << node;
     return true;
   } catch (const std::exception& e) {
-    std::cerr << "Failed to save config: " << e.what() << std::endl;
+    AXON_LOG_ERROR("Failed to save config" << axon::logging::kv("error", e.what()));
     return false;
   }
 }

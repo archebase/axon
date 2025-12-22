@@ -103,11 +103,24 @@ configure_file(
   @ONLY
 )
 
-# Find Boost for HTTP callback client (Beast requires system)
-find_package(Boost REQUIRED COMPONENTS system)
+# Find Boost for HTTP callback client (Beast requires system) and logging
+find_package(Boost REQUIRED COMPONENTS system log log_setup thread filesystem)
 if(Boost_FOUND)
     message(STATUS "Found Boost: ${Boost_VERSION}")
 endif()
+
+# Find axon_logging directory
+if(EXISTS "${PROJECT_ROOT}/cpp/axon_logging/CMakeLists.txt")
+    set(CPP_LOGGING_DIR ${PROJECT_ROOT}/cpp/axon_logging)
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_logging/CMakeLists.txt")
+    set(CPP_LOGGING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_logging)
+else()
+    message(FATAL_ERROR "Could not find axon_logging directory. Searched:\n"
+        "  ${PROJECT_ROOT}/cpp/axon_logging\n"
+        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_logging\n"
+        "Please ensure the cpp/axon_logging directory exists relative to the project root.")
+endif()
+message(STATUS "Found axon_logging at: ${CPP_LOGGING_DIR}")
 
 # Find OpenSSL for HTTPS support in HTTP callback client
 find_package(OpenSSL REQUIRED)
@@ -197,6 +210,7 @@ if(AXON_ROS_VERSION EQUAL 1)
         src
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
+        ${CPP_LOGGING_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
     
@@ -209,6 +223,9 @@ if(AXON_ROS_VERSION EQUAL 1)
     
     # Recorder Library
     add_library(axon_recorder_lib ${RECORDER_LIB_SOURCES})
+    
+    # Enable Boost.Log dynamic linking
+    target_compile_definitions(axon_recorder_lib PRIVATE BOOST_LOG_DYN_LINK)
     
     target_link_libraries(axon_recorder_lib
         ${catkin_LIBRARIES}
@@ -291,6 +308,7 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         ${Boost_INCLUDE_DIRS}
         ${CPP_MCAP_DIR}
         ${CPP_MCAP_DIR}/include
+        ${CPP_LOGGING_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
     
@@ -303,6 +321,9 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     
     # Recorder Library
     add_library(axon_recorder_lib SHARED ${RECORDER_LIB_SOURCES})
+    
+    # Enable Boost.Log dynamic linking
+    target_compile_definitions(axon_recorder_lib PRIVATE BOOST_LOG_DYN_LINK)
     
     ament_target_dependencies(axon_recorder_lib
         rclcpp
