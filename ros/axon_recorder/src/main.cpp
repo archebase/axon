@@ -15,6 +15,7 @@
 #define AXON_LOG_COMPONENT "main"
 #include <axon_log_macros.hpp>
 #include <axon_log_init.hpp>
+#include "logging/axon_ros_sink.hpp"
 
 #if defined(AXON_ROS1)
 #include <ros/ros.h>
@@ -72,6 +73,14 @@ int main(int argc, char** argv) {
       return 1;
     }
 
+    // Add ROS sink now that ROS is initialized
+    // This bridges AXON_LOG_* to rqt_console, rosout, etc.
+    auto ros_sink = axon::logging::create_ros_sink(
+        node->get_ros_interface(),
+        axon::logging::severity_level::info);
+    axon::logging::add_sink(ros_sink);
+    AXON_LOG_DEBUG("ROS logging sink added");
+
     // Install custom signal handlers AFTER rclcpp::init() to override ROS defaults
     AXON_LOG_DEBUG("Installing signal handlers...");
     std::signal(SIGTERM, signal_handler);
@@ -91,6 +100,10 @@ int main(int argc, char** argv) {
     // Ensure shutdown is called - this writes the stats file
     // This runs AFTER spin() returns due to SIGTERM/SIGINT
     node->shutdown();
+
+    // Remove ROS sink BEFORE destroying RosInterface (lifetime requirement)
+    axon::logging::remove_sink(ros_sink);
+    ros_sink.reset();
 
     AXON_LOG_INFO("Node shutdown complete");
   }  // RecorderNode shared_ptr released here, destructor runs before main() exits

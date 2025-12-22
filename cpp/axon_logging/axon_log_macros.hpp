@@ -136,12 +136,13 @@ inline std::string kv(const char* name, const char* value) {
 // Useful for high-frequency loops where you want periodic status updates.
 //
 // Usage: AXON_LOG_INFO_EVERY_N(100, "Processed messages" << kv("count", i));
+// Logs on calls: 1, n+1, 2n+1, ... (i.e., first call, then every n calls)
 // =============================================================================
 
 #define AXON_LOG_DEBUG_EVERY_N(n, msg) \
     do { \
         static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((++_axon_log_counter % (n)) == 1) { \
+        if ((_axon_log_counter++ % (n)) == 0) { \
             AXON_LOG_DEBUG(msg); \
         } \
     } while(0)
@@ -149,7 +150,7 @@ inline std::string kv(const char* name, const char* value) {
 #define AXON_LOG_INFO_EVERY_N(n, msg) \
     do { \
         static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((++_axon_log_counter % (n)) == 1) { \
+        if ((_axon_log_counter++ % (n)) == 0) { \
             AXON_LOG_INFO(msg); \
         } \
     } while(0)
@@ -157,7 +158,7 @@ inline std::string kv(const char* name, const char* value) {
 #define AXON_LOG_WARN_EVERY_N(n, msg) \
     do { \
         static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((++_axon_log_counter % (n)) == 1) { \
+        if ((_axon_log_counter++ % (n)) == 0) { \
             AXON_LOG_WARN(msg); \
         } \
     } while(0)
@@ -165,7 +166,7 @@ inline std::string kv(const char* name, const char* value) {
 #define AXON_LOG_ERROR_EVERY_N(n, msg) \
     do { \
         static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((++_axon_log_counter % (n)) == 1) { \
+        if ((_axon_log_counter++ % (n)) == 0) { \
             AXON_LOG_ERROR(msg); \
         } \
     } while(0)
