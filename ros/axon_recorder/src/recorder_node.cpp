@@ -171,14 +171,18 @@ void RecorderNode::shutdown() {
     service_adapter_.reset();
   }
 
+  // Log completion BEFORE destroying ROS interface
+  // (ROS sink holds pointer to ros_interface_, so must log while it's still valid)
+  AXON_LOG_INFO("Shutdown complete");
+
   // Shutdown ROS interface LAST and release it
+  // NOTE: After this point, do NOT call AXON_LOG_* until ROS sink is removed in main()
+  // because the ROS sink holds a raw pointer to ros_interface_ which becomes dangling.
   if (ros_interface_) {
-    AXON_LOG_DEBUG("Shutting down ROS interface...");
+    AXON_LOG_DEBUG("Shutting down ROS interface...");  // Safe: ros_interface_ still valid
     ros_interface_->shutdown();
     ros_interface_.reset();  // Explicitly release to avoid static destruction issues
   }
-
-  AXON_LOG_INFO("Shutdown complete");
 }
 
 bool RecorderNode::load_configuration() {
