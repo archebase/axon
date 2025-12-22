@@ -54,10 +54,10 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
 else()
-    FetchContent_Declare(
-        miniocpp
+FetchContent_Declare(
+    miniocpp
         URL "https://github.com/minio/minio-cpp/archive/refs/tags/${MINIO_CPP_VERSION}.tar.gz"
-    )
+)
 endif()
 
 # Set minio-cpp build options before FetchContent_MakeAvailable
