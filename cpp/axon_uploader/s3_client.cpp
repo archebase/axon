@@ -5,7 +5,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <set>
+
+#include "retry_handler.hpp"
 
 // Logging infrastructure (optional - only if axon_logging is linked)
 #ifdef AXON_HAS_LOGGING
@@ -21,21 +22,6 @@
 
 namespace axon {
 namespace uploader {
-
-// Set of retryable S3 error codes
-static const std::set<std::string> RETRYABLE_ERRORS = {
-    "RequestTimeout",
-    "ServiceUnavailable",
-    "InternalError",
-    "SlowDown",
-    "RequestTimeTooSkewed",
-    "ConnectionReset",
-    "ConnectionTimeout",
-    "XMinioServerNotInitialized",
-    "XAmzContentSHA256Mismatch",
-    "OperationAborted",
-    "NetworkingError"
-};
 
 class S3Client::Impl {
 public:
@@ -183,7 +169,8 @@ bool S3Client::verifyUpload(const std::string& s3_key, const std::string& expect
 }
 
 bool S3Client::isRetryableError(const std::string& error_code) {
-  return RETRYABLE_ERRORS.count(error_code) > 0;
+  // Delegate to RetryHandler for single source of truth on retryable errors
+  return RetryHandler::isRetryableError(error_code);
 }
 
 const std::string& S3Client::bucket() const { return impl_->config.bucket; }

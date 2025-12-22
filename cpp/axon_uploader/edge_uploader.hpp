@@ -73,6 +73,23 @@ struct HealthStatus {
 using UploadCallback = std::function<void(const std::string& task_id, bool success, const std::string& error)>;
 
 /**
+ * Result of a single file upload attempt
+ *
+ * Used internally by uploadSingleFile to communicate results to processItem,
+ * which handles all retry logic with the complete UploadItem context.
+ */
+struct UploadResult {
+  bool success;
+  bool is_retryable;
+  std::string error_message;
+
+  static UploadResult ok() { return {true, false, ""}; }
+  static UploadResult fail(const std::string& error, bool retryable) {
+    return {false, retryable, error};
+  }
+};
+
+/**
  * Edge Uploader - Main orchestrator for uploading MCAP files to S3
  *
  * Features:
@@ -177,9 +194,10 @@ private:
   void processItem(const UploadItem& item);
 
   // Upload a single file (MCAP or JSON)
-  bool uploadSingleFile(
+  // Returns result - caller (processItem) handles retry logic with complete item context
+  UploadResult uploadSingleFile(
       const std::string& local_path, const std::string& s3_key,
-      const std::string& checksum, const std::string& task_id
+      const std::string& checksum
   );
 
   // Construct S3 key from components

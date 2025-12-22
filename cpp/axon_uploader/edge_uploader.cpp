@@ -52,6 +52,21 @@ void EdgeUploader::start() {
     item.retry_count = record.retry_count;
     item.created_at = std::chrono::steady_clock::now();
 
+    // Reconstruct s3_key_prefix from stored s3_key
+    // s3_key format: "factory/device/date/task_id.mcap"
+    // s3_key_prefix: "factory/device/date"
+    if (!record.s3_key.empty()) {
+      size_t last_slash = record.s3_key.rfind('/');
+      if (last_slash != std::string::npos) {
+        item.s3_key_prefix = record.s3_key.substr(0, last_slash);
+      }
+    }
+    // Fallback: reconstruct from components if s3_key is missing
+    if (item.s3_key_prefix.empty() && !record.factory_id.empty() && !record.device_id.empty()) {
+      item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString();
+      AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path);
+    }
+
     // Reset status to pending for re-upload
     state_manager_->updateStatus(record.file_path, UploadStatus::PENDING);
     queue_->enqueue(std::move(item));
@@ -204,36 +219,36 @@ void EdgeUploader::processItem(const UploadItem& item) {
   std::string json_s3_key = item.s3_key_prefix + "/" + item.task_id + ".json";
 
   // Step 1: Upload MCAP file (skip if already in S3 from previous retry)
-  bool mcap_success = false;
+  UploadResult mcap_result = UploadResult::ok();
   if (s3_client_->objectExists(mcap_s3_key)) {
     // MCAP already uploaded (retry after JSON failure) - verify checksum
     if (item.checksum_sha256.empty() || 
         s3_client_->verifyUpload(mcap_s3_key, item.checksum_sha256)) {
       AXON_LOG_INFO("MCAP already in S3, skipping upload: " << mcap_s3_key);
-      mcap_success = true;
+      // mcap_result already set to ok()
     } else {
       AXON_LOG_WARN("MCAP in S3 has wrong checksum, re-uploading: " << mcap_s3_key);
-      mcap_success = uploadSingleFile(item.mcap_path, mcap_s3_key, item.checksum_sha256, item.task_id);
+      mcap_result = uploadSingleFile(item.mcap_path, mcap_s3_key, item.checksum_sha256);
     }
   } else {
-    mcap_success = uploadSingleFile(item.mcap_path, mcap_s3_key, item.checksum_sha256, item.task_id);
+    mcap_result = uploadSingleFile(item.mcap_path, mcap_s3_key, item.checksum_sha256);
   }
 
-  if (!mcap_success) {
-    // MCAP upload failed - don't upload JSON
-    return;  // Error handling done in uploadSingleFile
+  if (!mcap_result.success) {
+    // MCAP upload failed - handle with complete item context
+    onUploadFailure(item, mcap_result.error_message, mcap_result.is_retryable);
+    return;
   }
 
   // Step 2: Upload JSON sidecar (signals completion)
-  bool json_success = uploadSingleFile(item.json_path, json_s3_key, "", item.task_id);
+  UploadResult json_result = uploadSingleFile(item.json_path, json_s3_key, "");
 
-  if (!json_success) {
+  if (!json_result.success) {
     // JSON upload failed after MCAP succeeded
-    // Re-queue the entire upload - on retry, MCAP upload will succeed quickly
-    // since the file is already in S3 (or we can add objectExists check)
-    UploadItem retry_item = item;
-    // Note: onUploadFailure will read retry_count from state DB, avoiding race
-    onUploadFailure(retry_item, "JSON sidecar upload failed after MCAP succeeded", true);
+    // Re-queue with complete item - on retry, MCAP upload will succeed quickly
+    // since the file is already in S3 (objectExists check above)
+    onUploadFailure(item, "JSON sidecar upload failed: " + json_result.error_message, 
+                    json_result.is_retryable);
     return;
   }
 
@@ -241,30 +256,19 @@ void EdgeUploader::processItem(const UploadItem& item) {
   onUploadSuccess(item);
 }
 
-bool EdgeUploader::uploadSingleFile(
+UploadResult EdgeUploader::uploadSingleFile(
     const std::string& local_path, const std::string& s3_key,
-    const std::string& checksum, const std::string& task_id
+    const std::string& checksum
 ) {
   // Check file exists
   if (!fs::exists(local_path)) {
-    // File missing - this is a non-retryable error
-    // Need to construct UploadItem and call onUploadFailure to invoke callback
     std::string error_msg = "File not found: " + local_path;
     AXON_LOG_ERROR(error_msg);
-    
-    UploadItem failed_item;
-    failed_item.mcap_path = local_path;
-    failed_item.task_id = task_id;
-    failed_item.checksum_sha256 = checksum;
-    
-    // This will mark as failed in state DB and invoke callback
-    onUploadFailure(failed_item, error_msg, false);  // not retryable
-    return false;
+    return UploadResult::fail(error_msg, false);  // Not retryable
   }
 
   // Prepare metadata
   std::map<std::string, std::string> metadata;
-  metadata["task-id"] = task_id;
   if (!checksum.empty()) {
     metadata["checksum-sha256"] = checksum;
   }
@@ -276,26 +280,12 @@ bool EdgeUploader::uploadSingleFile(
     // Verify checksum if provided
     if (!checksum.empty()) {
       if (!s3_client_->verifyUpload(s3_key, checksum)) {
-        // Checksum mismatch - treat as retryable error
-        UploadItem retry_item;
-        retry_item.mcap_path = local_path;
-        retry_item.task_id = task_id;
-        retry_item.checksum_sha256 = checksum;
-        onUploadFailure(retry_item, "Checksum verification failed", true);
-        return false;
+        return UploadResult::fail("Checksum verification failed", true);  // Retryable
       }
     }
-    return true;
+    return UploadResult::ok();
   } else {
-    // Upload failed
-    UploadItem retry_item;
-    retry_item.mcap_path = local_path;
-    retry_item.task_id = task_id;
-    retry_item.checksum_sha256 = checksum;
-
-    // Note: onUploadFailure will read retry_count from state DB
-    onUploadFailure(retry_item, result.error_message, result.is_retryable);
-    return false;
+    return UploadResult::fail(result.error_message, result.is_retryable);
   }
 }
 

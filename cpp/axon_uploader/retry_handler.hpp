@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <mutex>
 #include <random>
 #include <set>
 #include <string>
@@ -58,8 +59,9 @@ public:
     // Cap at maximum delay
     delay_ms = std::min(delay_ms, static_cast<double>(config_.max_delay.count()));
 
-    // Apply jitter if enabled
+    // Apply jitter if enabled (thread-safe via mutex)
     if (config_.jitter) {
+      std::lock_guard<std::mutex> lock(rng_mutex_);
       std::uniform_real_distribution<> dist(1.0 - config_.jitter_factor, 1.0 + config_.jitter_factor);
       delay_ms *= dist(rng_);
     }
@@ -139,7 +141,8 @@ public:
 
 private:
   RetryConfig config_;
-  mutable std::mt19937 rng_;  // mutable for const getDelay()
+  mutable std::mt19937 rng_;     // mutable for const getDelay()
+  mutable std::mutex rng_mutex_; // protects rng_ for thread-safe jitter
 };
 
 }  // namespace uploader
