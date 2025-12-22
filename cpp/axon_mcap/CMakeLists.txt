@@ -158,33 +158,40 @@ if(AXON_MCAP_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
     
-    add_executable(test_mcap_writer
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/test_mcap_writer.cpp
-    )
+    # Helper function to create test with coverage
+    function(add_mcap_test TEST_NAME TEST_SOURCE)
+        add_executable(${TEST_NAME}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/${TEST_SOURCE}
+        )
+        
+        target_include_directories(${TEST_NAME} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        
+        target_link_libraries(${TEST_NAME}
+            axon_mcap
+            GTest::gtest
+            GTest::gtest_main
+        )
+        
+        # Apply coverage flags to test executable
+        if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(${TEST_NAME} PRIVATE --coverage)
+        endif()
+        
+        # Link compression libraries for tests
+        if(ZSTD_FOUND)
+            target_link_libraries(${TEST_NAME} ${ZSTD_LIBRARIES})
+        endif()
+        if(LZ4_FOUND)
+            target_link_libraries(${TEST_NAME} ${LZ4_LIBRARIES})
+        endif()
+        
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endfunction()
     
-    target_include_directories(test_mcap_writer PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-    
-    target_link_libraries(test_mcap_writer
-        axon_mcap
-        GTest::gtest
-        GTest::gtest_main
-    )
-    
-    # Apply coverage flags to test executable
-    if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(test_mcap_writer PRIVATE --coverage -fprofile-arcs -ftest-coverage)
-        target_link_options(test_mcap_writer PRIVATE --coverage)
-    endif()
-    
-    # Link compression libraries for tests
-    if(ZSTD_FOUND)
-        target_link_libraries(test_mcap_writer ${ZSTD_LIBRARIES})
-    endif()
-    if(LZ4_FOUND)
-        target_link_libraries(test_mcap_writer ${LZ4_LIBRARIES})
-    endif()
-    
-    add_test(NAME test_mcap_writer COMMAND test_mcap_writer)
+    # Add test executables
+    add_mcap_test(test_mcap_writer test_mcap_writer.cpp)
+    add_mcap_test(test_mcap_validator test_mcap_validator.cpp)
 endif()

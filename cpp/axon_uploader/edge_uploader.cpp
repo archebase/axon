@@ -232,10 +232,7 @@ void EdgeUploader::processItem(const UploadItem& item) {
     // Re-queue the entire upload - on retry, MCAP upload will succeed quickly
     // since the file is already in S3 (or we can add objectExists check)
     UploadItem retry_item = item;
-    auto record = state_manager_->get(item.mcap_path);
-    if (record) {
-      retry_item.retry_count = record->retry_count;
-    }
+    // Note: onUploadFailure will read retry_count from state DB, avoiding race
     onUploadFailure(retry_item, "JSON sidecar upload failed after MCAP succeeded", true);
     return;
   }
@@ -250,11 +247,18 @@ bool EdgeUploader::uploadSingleFile(
 ) {
   // Check file exists
   if (!fs::exists(local_path)) {
-    // File missing - mark as failed
+    // File missing - this is a non-retryable error
+    // Need to construct UploadItem and call onUploadFailure to invoke callback
     std::string error_msg = "File not found: " + local_path;
     AXON_LOG_ERROR(error_msg);
-    state_manager_->markFailed(local_path, error_msg);
-    stats_.files_failed++;
+    
+    UploadItem failed_item;
+    failed_item.mcap_path = local_path;
+    failed_item.task_id = task_id;
+    failed_item.checksum_sha256 = checksum;
+    
+    // This will mark as failed in state DB and invoke callback
+    onUploadFailure(failed_item, error_msg, false);  // not retryable
     return false;
   }
 
@@ -289,12 +293,7 @@ bool EdgeUploader::uploadSingleFile(
     retry_item.task_id = task_id;
     retry_item.checksum_sha256 = checksum;
 
-    // Get current retry count from state DB
-    auto record = state_manager_->get(local_path);
-    if (record) {
-      retry_item.retry_count = record->retry_count;
-    }
-
+    // Note: onUploadFailure will read retry_count from state DB
     onUploadFailure(retry_item, result.error_message, result.is_retryable);
     return false;
   }
@@ -350,15 +349,19 @@ void EdgeUploader::onUploadSuccess(const UploadItem& item) {
 }
 
 void EdgeUploader::onUploadFailure(const UploadItem& item, const std::string& error, bool retryable) {
-  // Increment retry count in state DB
+  // Increment retry count in state DB (reads current count internally)
   state_manager_->incrementRetry(item.mcap_path, error);
 
+  // Read the updated retry count from state DB to ensure consistency
+  auto record = state_manager_->get(item.mcap_path);
+  int current_retry_count = record ? record->retry_count : 0;
+
   // Check if should retry
-  if (retryable && retry_handler_->shouldRetry(item.retry_count)) {
+  if (retryable && retry_handler_->shouldRetry(current_retry_count)) {
     // Re-queue with delay
     UploadItem retry_item = item;
-    retry_item.retry_count++;
-    retry_item.next_retry_at = retry_handler_->nextRetryTime(retry_item.retry_count);
+    retry_item.retry_count = current_retry_count;
+    retry_item.next_retry_at = retry_handler_->nextRetryTime(current_retry_count);
     queue_->requeue_for_retry(std::move(retry_item));
     stats_.files_pending++;
   } else {

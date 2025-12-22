@@ -131,6 +131,11 @@ public:
    * Validate configuration
    */
   static bool validate(const RecorderConfig& config, std::string& error_msg);
+  
+  /**
+   * Validate upload configuration when enabled
+   */
+  static bool validate_upload_config(const UploadConfigYaml& upload, std::string& error_msg);
 
 private:
   bool parse_dataset(const YAML::Node& node, DatasetConfig& dataset);

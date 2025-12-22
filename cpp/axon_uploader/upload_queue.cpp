@@ -156,8 +156,9 @@ void UploadQueue::process_retry_queue() {
       break;
     }
 
-    // Move to main queue (const_cast needed because priority_queue::top() returns const ref)
-    UploadItem item = std::move(const_cast<UploadItem&>(retry_queue_.top()));
+    // Copy the item from priority queue (avoids const_cast)
+    // Items are relatively small (strings + metadata), so copy is acceptable
+    UploadItem item = retry_queue_.top();
     retry_queue_.pop();
     main_queue_.push(std::move(item));
   }

@@ -123,11 +123,14 @@ UploadResult S3Client::uploadFile(
     AXON_LOG_DEBUG("S3 upload succeeded: " << s3_key);
     return UploadResult::Success(resp.etag, resp.version_id);
   } else {
-    std::string error_msg = resp.Error().String();
-    bool retryable = isRetryableError(error_msg);
+    // Extract both error code (for retry logic) and message (for logging)
+    auto error = resp.Error();
+    std::string error_code = error.Code();
+    std::string error_msg = error.String();
+    bool retryable = isRetryableError(error_code);
     AXON_LOG_ERROR("S3 upload failed: " << s3_key << " - " << error_msg 
-                   << " (retryable: " << (retryable ? "yes" : "no") << ")");
-    return UploadResult::Failure(error_msg, error_msg, retryable);
+                   << " (code: " << error_code << ", retryable: " << (retryable ? "yes" : "no") << ")");
+    return UploadResult::Failure(error_msg, error_code, retryable);
   }
 }
 

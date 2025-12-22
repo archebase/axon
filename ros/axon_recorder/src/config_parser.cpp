@@ -106,7 +106,21 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_upload(node["upload"], config.upload);
     }
 
-    return config.validate();
+    // Validate the full configuration
+    if (!config.validate()) {
+      return false;
+    }
+    
+    // Validate upload config if enabled
+    if (config.upload.enabled) {
+      std::string error_msg;
+      if (!validate_upload_config(config.upload, error_msg)) {
+        AXON_LOG_ERROR("Upload configuration validation failed" << ::axon::logging::kv("error", error_msg));
+        return false;
+      }
+    }
+    
+    return true;
   } catch (const YAML::Exception& e) {
     AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
     return false;
@@ -306,6 +320,77 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
     error_msg = "Configuration validation failed";
     return false;
   }
+  
+  // Validate upload config if enabled
+  if (config.upload.enabled) {
+    if (!validate_upload_config(config.upload, error_msg)) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+bool ConfigParser::validate_upload_config(const UploadConfigYaml& upload, std::string& error_msg) {
+  if (!upload.enabled) {
+    return true;  // Nothing to validate if disabled
+  }
+  
+  // Validate S3 bucket (required)
+  if (upload.s3.bucket.empty()) {
+    error_msg = "Upload enabled but s3.bucket is not configured";
+    return false;
+  }
+  
+  // Validate endpoint_url format if provided
+  if (!upload.s3.endpoint_url.empty()) {
+    // Basic URL validation - should start with http:// or https://
+    if (upload.s3.endpoint_url.find("http://") != 0 && 
+        upload.s3.endpoint_url.find("https://") != 0) {
+      error_msg = "Invalid s3.endpoint_url - must start with http:// or https://";
+      return false;
+    }
+  }
+  
+  // Validate num_workers
+  if (upload.num_workers < 1 || upload.num_workers > 16) {
+    error_msg = "Invalid num_workers - must be between 1 and 16";
+    return false;
+  }
+  
+  // Validate retry configuration
+  if (upload.retry.max_retries < 0 || upload.retry.max_retries > 100) {
+    error_msg = "Invalid retry.max_retries - must be between 0 and 100";
+    return false;
+  }
+  
+  if (upload.retry.initial_delay_ms < 0) {
+    error_msg = "Invalid retry.initial_delay_ms - must be >= 0";
+    return false;
+  }
+  
+  if (upload.retry.max_delay_ms < upload.retry.initial_delay_ms) {
+    error_msg = "Invalid retry.max_delay_ms - must be >= initial_delay_ms";
+    return false;
+  }
+  
+  // Validate backpressure thresholds
+  if (upload.warn_pending_gb < 0 || upload.alert_pending_gb < 0) {
+    error_msg = "Invalid backpressure thresholds - must be >= 0";
+    return false;
+  }
+  
+  if (upload.alert_pending_gb < upload.warn_pending_gb) {
+    error_msg = "Invalid backpressure thresholds - alert_pending_gb must be >= warn_pending_gb";
+    return false;
+  }
+  
+  // Validate state_db_path is not empty
+  if (upload.state_db_path.empty()) {
+    error_msg = "Upload enabled but state_db_path is empty";
+    return false;
+  }
+  
   return true;
 }
 
