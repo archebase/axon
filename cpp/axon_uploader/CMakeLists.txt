@@ -5,15 +5,41 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # =============================================================================
+# Check Dependencies (optional build)
+# =============================================================================
+
+# The uploader requires CURL, OpenSSL, and SQLite3. If these are not available,
+# the module will be skipped. Install them with:
+#   Ubuntu/Debian: sudo apt-get install libcurl4-openssl-dev libssl-dev libsqlite3-dev
+#   macOS: brew install curl openssl sqlite3
+
+find_package(CURL QUIET)
+find_package(OpenSSL QUIET)
+find_package(SQLite3 QUIET)
+
+if(NOT CURL_FOUND)
+    message(WARNING "axon_uploader: CURL not found - skipping build. Install with: sudo apt-get install libcurl4-openssl-dev")
+    return()
+endif()
+
+if(NOT OPENSSL_FOUND)
+    message(WARNING "axon_uploader: OpenSSL not found - skipping build. Install with: sudo apt-get install libssl-dev")
+    return()
+endif()
+
+if(NOT SQLite3_FOUND)
+    message(WARNING "axon_uploader: SQLite3 not found - skipping build. Install with: sudo apt-get install libsqlite3-dev")
+    return()
+endif()
+
+message(STATUS "axon_uploader: All dependencies found, building uploader")
+
+# =============================================================================
 # Fetch minio-cpp Library
 # Source: https://github.com/minio/minio-cpp
 # =============================================================================
 
 include(FetchContent)
-
-# minio-cpp requires these dependencies
-find_package(CURL REQUIRED)
-find_package(OpenSSL REQUIRED)
 
 # Fetch minio-cpp
 FetchContent_Declare(
@@ -29,12 +55,6 @@ set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(miniocpp)
 
 message(STATUS "axon_uploader: minio-cpp fetched")
-
-# =============================================================================
-# Find SQLite3 (system library)
-# =============================================================================
-
-find_package(SQLite3 REQUIRED)
 message(STATUS "axon_uploader: Found SQLite3 ${SQLite3_VERSION}")
 
 # =============================================================================
