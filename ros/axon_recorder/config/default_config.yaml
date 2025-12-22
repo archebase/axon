@@ -49,3 +49,27 @@ topics:
 recording:
   max_disk_usage_gb: 100
 
+# Logging configuration
+# Can be overridden by environment variables:
+#   AXON_LOG_LEVEL          - Global level (overrides both console and file)
+#   AXON_LOG_CONSOLE_LEVEL  - Console sink level
+#   AXON_LOG_FILE_LEVEL     - File sink level
+#   AXON_LOG_FILE_DIR       - Log file directory
+#   AXON_LOG_FORMAT         - File format ("json" or "text")
+#   AXON_LOG_FILE_ENABLED   - Enable file logging ("true" or "false")
+#   AXON_LOG_CONSOLE_ENABLED - Enable console logging ("true" or "false")
+logging:
+  console:
+    enabled: true
+    level: info      # debug, info, warn, error, fatal
+    colors: true
+  file:
+    enabled: false   # Set to true to enable file logging
+    level: debug
+    directory: /var/log/axon
+    pattern: "axon_%Y%m%d_%H%M%S.log"
+    format: json     # json or text
+    rotation_size_mb: 100
+    max_files: 10
+    rotate_at_midnight: true
+

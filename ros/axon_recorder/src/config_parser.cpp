@@ -6,6 +6,7 @@
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "config_parser"
 #include <axon_log_macros.hpp>
+#include <axon_log_init.hpp>
 
 namespace axon {
 namespace core {
@@ -14,7 +15,7 @@ RecorderConfig RecorderConfig::from_yaml(const std::string& yaml_path) {
   ConfigParser parser;
   RecorderConfig config;
   if (!parser.load_from_file(yaml_path, config)) {
-    AXON_LOG_ERROR("Failed to load config from file" << axon::logging::kv("path", yaml_path));
+    AXON_LOG_ERROR("Failed to load config from file" << ::axon::logging::kv("path", yaml_path));
   }
   return config;
 }
@@ -71,7 +72,7 @@ bool ConfigParser::load_from_file(const std::string& path, RecorderConfig& confi
     YAML::Node node = YAML::LoadFile(path);
     return load_from_string(YAML::Dump(node), config);
   } catch (const YAML::Exception& e) {
-    AXON_LOG_ERROR("YAML parsing error" << axon::logging::kv("error", e.what()));
+    AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
     return false;
   }
 }
@@ -95,9 +96,14 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_recording(node["recording"], config.recording);
     }
 
+    // Parse logging config (optional - uses defaults if not present)
+    if (node["logging"]) {
+      parse_logging(node["logging"], config.logging);
+    }
+
     return config.validate();
   } catch (const YAML::Exception& e) {
-    AXON_LOG_ERROR("YAML parsing error" << axon::logging::kv("error", e.what()));
+    AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
     return false;
   }
 }
@@ -128,7 +134,7 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
     file << node;
     return true;
   } catch (const std::exception& e) {
-    AXON_LOG_ERROR("Failed to save config" << axon::logging::kv("error", e.what()));
+    AXON_LOG_ERROR("Failed to save config" << ::axon::logging::kv("error", e.what()));
     return false;
   }
 }
@@ -175,12 +181,87 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
   return true;
 }
 
+bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfigYaml& logging) {
+  // Parse console section
+  if (node["console"]) {
+    const auto& console = node["console"];
+    if (console["enabled"]) {
+      logging.console_enabled = console["enabled"].as<bool>();
+    }
+    if (console["colors"]) {
+      logging.console_colors = console["colors"].as<bool>();
+    }
+    if (console["level"]) {
+      logging.console_level = console["level"].as<std::string>();
+    }
+  }
+  
+  // Parse file section
+  if (node["file"]) {
+    const auto& file = node["file"];
+    if (file["enabled"]) {
+      logging.file_enabled = file["enabled"].as<bool>();
+    }
+    if (file["level"]) {
+      logging.file_level = file["level"].as<std::string>();
+    }
+    if (file["directory"]) {
+      logging.file_directory = file["directory"].as<std::string>();
+    }
+    if (file["pattern"]) {
+      logging.file_pattern = file["pattern"].as<std::string>();
+    }
+    if (file["format"]) {
+      logging.file_format = file["format"].as<std::string>();
+    }
+    if (file["rotation_size_mb"]) {
+      logging.rotation_size_mb = file["rotation_size_mb"].as<size_t>();
+    }
+    if (file["max_files"]) {
+      logging.max_files = file["max_files"].as<size_t>();
+    }
+    if (file["rotate_at_midnight"]) {
+      logging.rotate_at_midnight = file["rotate_at_midnight"].as<bool>();
+    }
+  }
+  
+  return true;
+}
+
 bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg) {
   if (!config.validate()) {
     error_msg = "Configuration validation failed";
     return false;
   }
   return true;
+}
+
+void convert_logging_config(const LoggingConfigYaml& yaml_config, 
+                             ::axon::logging::LoggingConfig& log_config) {
+  // Console settings
+  log_config.console_enabled = yaml_config.console_enabled;
+  log_config.console_colors = yaml_config.console_colors;
+  
+  // Parse console level
+  if (auto level = ::axon::logging::parse_severity_level(yaml_config.console_level)) {
+    log_config.console_level = *level;
+  }
+  
+  // File settings
+  log_config.file_enabled = yaml_config.file_enabled;
+  
+  // Parse file level
+  if (auto level = ::axon::logging::parse_severity_level(yaml_config.file_level)) {
+    log_config.file_level = *level;
+  }
+  
+  // File sink config
+  log_config.file_config.directory = yaml_config.file_directory;
+  log_config.file_config.file_pattern = yaml_config.file_pattern;
+  log_config.file_config.format_json = (yaml_config.file_format == "json");
+  log_config.file_config.rotation_size_mb = yaml_config.rotation_size_mb;
+  log_config.file_config.max_files = yaml_config.max_files;
+  log_config.file_config.rotate_at_midnight = yaml_config.rotate_at_midnight;
 }
 
 }  // namespace core

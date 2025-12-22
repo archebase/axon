@@ -13,6 +13,7 @@
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "recorder_node"
 #include <axon_log_macros.hpp>
+#include <axon_log_init.hpp>
 
 #if defined(AXON_ROS1)
 #include <ros/package.h>
@@ -93,6 +94,12 @@ bool RecorderNode::initialize(int argc, char** argv) {
     ros_interface_->log_error("Failed to load configuration");
     return false;
   }
+  
+  // Reconfigure logging based on loaded config (applies YAML settings + env overrides)
+  axon::logging::LoggingConfig log_config;
+  axon::core::convert_logging_config(config_.logging, log_config);
+  axon::logging::reconfigure_logging(log_config);
+  AXON_LOG_INFO("Logging reconfigured from config file");
 
   // Initialize recording session (opens MCAP file)
   if (!initialize_mcap_writer()) {

@@ -5,6 +5,8 @@
 #include "axon_console_sink.hpp"
 #include "axon_file_sink.hpp"
 #include <boost/log/sinks/sink.hpp>
+#include <string>
+#include <optional>
 
 namespace axon {
 namespace logging {
@@ -25,6 +27,31 @@ struct LoggingConfig {
     FileSinkConfig file_config;  // Uses FileSinkConfig defaults
     severity_level file_level = severity_level::debug;
 };
+
+/**
+ * Parse a string to severity_level.
+ * Accepts: "debug", "info", "warn", "warning", "error", "fatal" (case-insensitive)
+ * 
+ * @param level_str The string representation of the level
+ * @return The parsed severity_level, or std::nullopt if invalid
+ */
+std::optional<severity_level> parse_severity_level(const std::string& level_str);
+
+/**
+ * Apply environment variable overrides to a LoggingConfig.
+ * 
+ * Supported environment variables:
+ *   AXON_LOG_LEVEL          - Global level (overrides both console and file)
+ *   AXON_LOG_CONSOLE_LEVEL  - Console sink level
+ *   AXON_LOG_FILE_LEVEL     - File sink level
+ *   AXON_LOG_FILE_DIR       - Log file directory
+ *   AXON_LOG_FORMAT         - File format ("json" or "text")
+ *   AXON_LOG_FILE_ENABLED   - Enable file logging ("true" or "false")
+ *   AXON_LOG_CONSOLE_ENABLED - Enable console logging ("true" or "false")
+ * 
+ * @param config The configuration to modify (in-place)
+ */
+void apply_env_overrides(LoggingConfig& config);
 
 /**
  * Initialize core logging (console and file sinks).
@@ -69,6 +96,20 @@ void remove_sink(boost::shared_ptr<boost::log::sinks::sink> sink);
  * Flush all sinks.
  */
 void flush_logging();
+
+/**
+ * Reconfigure logging with new settings.
+ * This shuts down existing sinks and reinitializes with the new config.
+ * Environment variable overrides are applied automatically.
+ * 
+ * @param config New logging configuration
+ */
+void reconfigure_logging(const LoggingConfig& config);
+
+/**
+ * Check if logging is initialized.
+ */
+bool is_logging_initialized();
 
 }  // namespace logging
 }  // namespace axon
