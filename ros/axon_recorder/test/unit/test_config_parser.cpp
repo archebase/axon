@@ -587,6 +587,277 @@ topics:
   EXPECT_TRUE(config.validate());
 }
 
+// ============================================================================
+// Upload Configuration Tests
+// ============================================================================
+
+TEST_F(ConfigParserTest, UploadConfigDisabled) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: false
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.upload.enabled);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, UploadConfigValidFull) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    endpoint_url: "https://s3.amazonaws.com"
+    bucket: "my-bucket"
+    region: "us-west-2"
+    use_ssl: true
+    verify_ssl: true
+  retry:
+    max_retries: 3
+    initial_delay_ms: 500
+    max_delay_ms: 60000
+  num_workers: 4
+  state_db_path: "/var/lib/axon/state.db"
+  delete_after_upload: true
+  failed_uploads_dir: "/data/failed"
+  warn_pending_gb: 5.0
+  alert_pending_gb: 10.0
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_TRUE(config.upload.enabled);
+  EXPECT_EQ(config.upload.s3.endpoint_url, "https://s3.amazonaws.com");
+  EXPECT_EQ(config.upload.s3.bucket, "my-bucket");
+  EXPECT_EQ(config.upload.s3.region, "us-west-2");
+  EXPECT_EQ(config.upload.retry.max_retries, 3);
+  EXPECT_EQ(config.upload.num_workers, 4);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, UploadConfigMissingBucket) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    endpoint_url: "https://s3.amazonaws.com"
+    # bucket missing!
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.validate());
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_NE(error_msg.find("bucket"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, UploadConfigInvalidEndpointURL) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    endpoint_url: "invalid-url-without-protocol"
+    bucket: "my-bucket"
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.validate());
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_NE(error_msg.find("endpoint_url"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, UploadConfigInvalidNumWorkers) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: "my-bucket"
+  num_workers: 0
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.validate());
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_NE(error_msg.find("num_workers"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, UploadConfigInvalidRetryCount) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: "my-bucket"
+  retry:
+    max_retries: -1
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.validate());
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_NE(error_msg.find("max_retries"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, UploadConfigInvalidRetryDelays) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: "my-bucket"
+  retry:
+    initial_delay_ms: 5000
+    max_delay_ms: 1000
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.validate());
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_NE(error_msg.find("max_delay_ms"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, UploadConfigInvalidBackpressureThresholds) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: "my-bucket"
+  warn_pending_gb: 10.0
+  alert_pending_gb: 5.0
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.validate());
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_NE(error_msg.find("alert_pending_gb"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, UploadConfigEmptyStateDbPath) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: "my-bucket"
+  state_db_path: ""
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_FALSE(config.validate());
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_NE(error_msg.find("state_db_path"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, UploadConfigHTTPEndpoint) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    endpoint_url: "http://localhost:9000"
+    bucket: "test-bucket"
+    use_ssl: false
+    verify_ssl: false
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_TRUE(config.upload.enabled);
+  EXPECT_EQ(config.upload.s3.endpoint_url, "http://localhost:9000");
+  EXPECT_FALSE(config.upload.s3.use_ssl);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, UploadConfigDefaultValues) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: "my-bucket"
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_TRUE(config.upload.enabled);
+  EXPECT_EQ(config.upload.s3.bucket, "my-bucket");
+  EXPECT_EQ(config.upload.num_workers, 2); // default
+  EXPECT_EQ(config.upload.retry.max_retries, 5); // default
+  EXPECT_TRUE(config.upload.delete_after_upload); // default
+  EXPECT_TRUE(config.validate());
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
