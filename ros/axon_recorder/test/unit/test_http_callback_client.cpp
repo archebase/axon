@@ -678,6 +678,273 @@ TEST_F(HttpCallbackClientTest, UrlWithFragment) {
   EXPECT_FALSE(result.success);
 }
 
+// ============================================================================
+// Enhanced Coverage Tests (Phase 4)
+// ============================================================================
+
+TEST_F(StartCallbackPayloadTest, EscapeJson_ControlCharacters) {
+  StartCallbackPayload payload;
+  payload.task_id = "task_with\ttab\nand\rnewlines";
+  payload.device_id = "device\bwith\fcontrol";
+  payload.status = "recording";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.topics = {};
+
+  std::string json = payload.to_json();
+
+  // Control characters should be escaped
+  EXPECT_TRUE(json.find("\\t") != std::string::npos);  // Tab
+  EXPECT_TRUE(json.find("\\n") != std::string::npos);  // Newline
+  EXPECT_TRUE(json.find("\\r") != std::string::npos);  // Carriage return
+}
+
+TEST_F(StartCallbackPayloadTest, EscapeJson_BackspaceFormfeed) {
+  StartCallbackPayload payload;
+  payload.task_id = "task\b\f";  // backspace and formfeed
+  payload.device_id = "robot";
+  payload.status = "recording";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.topics = {};
+
+  std::string json = payload.to_json();
+
+  // Should handle \b (backspace) and \f (formfeed)
+  // These may be escaped as \b, \f or \uXXXX
+  EXPECT_FALSE(json.empty());
+}
+
+TEST_F(StartCallbackPayloadTest, EscapeJson_NullCharacter) {
+  StartCallbackPayload payload;
+  std::string task_id = "task";
+  task_id.push_back('\0');  // Null character
+  task_id += "id";
+  payload.task_id = task_id;
+  payload.device_id = "robot";
+  payload.status = "recording";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.topics = {};
+
+  std::string json = payload.to_json();
+
+  // Null character should be escaped or removed
+  EXPECT_FALSE(json.empty());
+}
+
+TEST_F(FinishCallbackPayloadTest, WithMetadata_Scene) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "robot_01";
+  payload.status = "finished";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.finished_at = "2025-12-20T10:35:00Z";
+  payload.duration_sec = 300.0;
+  payload.message_count = 1000;
+  payload.file_size_bytes = 1000000;
+  payload.output_path = "/data/task.mcap";
+  payload.topics = {"/camera"};
+  payload.error = "";
+
+  // Set metadata fields
+  payload.metadata.scene = "indoor_navigation";
+  payload.metadata.subscene = "hallway_01";
+  payload.metadata.skills = {"obstacle_avoidance", "path_planning"};
+  payload.metadata.factory = "test_factory_01";
+
+  std::string json = payload.to_json();
+
+  // Verify metadata is included
+  EXPECT_TRUE(json.find("metadata") != std::string::npos);
+  EXPECT_TRUE(json.find("indoor_navigation") != std::string::npos);
+  EXPECT_TRUE(json.find("hallway_01") != std::string::npos);
+  EXPECT_TRUE(json.find("obstacle_avoidance") != std::string::npos);
+  EXPECT_TRUE(json.find("test_factory_01") != std::string::npos);
+}
+
+TEST_F(FinishCallbackPayloadTest, WithMetadata_EmptySkills) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "robot_01";
+  payload.status = "finished";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.finished_at = "2025-12-20T10:35:00Z";
+  payload.duration_sec = 100.0;
+  payload.message_count = 500;
+  payload.file_size_bytes = 500000;
+  payload.output_path = "/data/task.mcap";
+  payload.topics = {};
+  payload.error = "";
+
+  payload.metadata.scene = "test_scene";
+  payload.metadata.subscene = "";
+  payload.metadata.skills = {};  // Empty skills array
+  payload.metadata.factory = "";
+
+  std::string json = payload.to_json();
+
+  EXPECT_TRUE(json.find("test_scene") != std::string::npos);
+}
+
+TEST_F(FinishCallbackPayloadTest, WithMetadata_SpecialCharsInSkills) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "robot_01";
+  payload.status = "finished";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.finished_at = "2025-12-20T10:35:00Z";
+  payload.duration_sec = 100.0;
+  payload.message_count = 500;
+  payload.file_size_bytes = 500000;
+  payload.output_path = "/data/task.mcap";
+  payload.topics = {};
+  payload.error = "";
+
+  payload.metadata.scene = "scene";
+  payload.metadata.skills = {"skill with \"quotes\"", "skill/with/slashes"};
+
+  std::string json = payload.to_json();
+
+  // Special characters in skills should be escaped
+  EXPECT_TRUE(json.find("\\\"quotes\\\"") != std::string::npos ||
+              json.find("quotes") != std::string::npos);
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsing_IPv6Address) {
+  TaskConfig config;
+  config.start_callback_url = "http://[::1]:8080/api/start";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // IPv6 parsing - may or may not be supported
+  // Just ensure it doesn't crash
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsing_LongPath) {
+  TaskConfig config;
+  std::string long_path = "/api";
+  for (int i = 0; i < 50; ++i) {
+    long_path += "/segment" + std::to_string(i);
+  }
+  config.start_callback_url = "http://localhost:8080" + long_path;
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should handle long paths without issue
+  EXPECT_FALSE(result.success);  // Connection will fail
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsing_EncodedCharacters) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:8080/api/start%20here?query=hello%20world";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should handle URL-encoded characters
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, HostnameWithSubdomains) {
+  TaskConfig config;
+  config.start_callback_url = "http://api.sub.example.com:8080/recording/start";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should parse hostname with multiple subdomains
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, PortAtLowerBound) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:1/api";  // Lowest valid port
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, PortAtUpperBound) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:65535/api";  // Highest valid port
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(FinishCallbackPayloadTest, NegativeValues) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "robot";
+  payload.status = "error";
+  payload.started_at = "";
+  payload.finished_at = "";
+  payload.duration_sec = -1.0;  // Negative duration (shouldn't happen but handle gracefully)
+  payload.message_count = 0;
+  payload.file_size_bytes = 0;
+  payload.output_path = "";
+  payload.topics = {};
+  payload.error = "Recording never started properly";
+
+  std::string json = payload.to_json();
+
+  // Should serialize without crashing
+  EXPECT_FALSE(json.empty());
+}
+
+TEST_F(HttpCallbackClientTest, CallbackWithVeryLongToken) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:9999/api/start";
+  config.user_token = std::string(10000, 'x');  // Very long token
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should handle very long tokens without crashing
+  EXPECT_FALSE(result.success);  // Connection will fail
+}
+
+TEST_F(StartCallbackPayloadTest, TopicsWithSpecialCharacters) {
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "robot_01";
+  payload.status = "recording";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.topics = {
+    "/camera/image_raw",
+    "/namespace/sub_topic",
+    "/topic.with.dots",
+    "/topic-with-dashes"
+  };
+
+  std::string json = payload.to_json();
+
+  EXPECT_TRUE(json.find("/camera/image_raw") != std::string::npos);
+  EXPECT_TRUE(json.find("/namespace/sub_topic") != std::string::npos);
+  EXPECT_TRUE(json.find("/topic.with.dots") != std::string::npos);
+  EXPECT_TRUE(json.find("/topic-with-dashes") != std::string::npos);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

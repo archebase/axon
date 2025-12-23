@@ -246,6 +246,69 @@ target_link_libraries(test_spsc_queue
 add_test(NAME SPSCQueueTest COMMAND test_spsc_queue)
 set_tests_properties(SPSCQueueTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
+# Test ROS Introspection (pure logic - no ROS required)
+# Note: Requires ROS build for full introspection, but can test factory pattern standalone
+if(ROS_INTEGRATED_BUILD)
+    add_executable(test_ros_introspection
+        unit/test_ros_introspection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/ros_introspection.cpp
+    )
+    if(DEFINED AXON_ROS1)
+        target_compile_definitions(test_ros_introspection PRIVATE AXON_ROS1)
+        target_include_directories(test_ros_introspection PRIVATE ${catkin_INCLUDE_DIRS})
+        target_link_libraries(test_ros_introspection
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+            ${catkin_LIBRARIES}
+        )
+    elseif(DEFINED AXON_ROS2)
+        target_compile_definitions(test_ros_introspection PRIVATE AXON_ROS2)
+        target_link_libraries(test_ros_introspection
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+            rclcpp::rclcpp
+        )
+    endif()
+    add_test(NAME RosIntrospectionTest COMMAND test_ros_introspection)
+    set_tests_properties(RosIntrospectionTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
+endif()
+
+# Test MessageFactory Standalone (registry pattern - no ROS required)
+add_executable(test_message_factory_standalone
+    unit/test_message_factory_standalone.cpp
+)
+target_link_libraries(test_message_factory_standalone
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+)
+add_test(NAME MessageFactoryStandaloneTest COMMAND test_message_factory_standalone)
+set_tests_properties(MessageFactoryStandaloneTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
+
+# Test ROS Sink (Boost.Log to ROS logging bridge)
+if(Boost_FOUND)
+    add_executable(test_ros_sink
+        unit/test_ros_sink.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/logging/axon_ros_sink.cpp
+    )
+    target_include_directories(test_ros_sink PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit
+        ${CPP_LOGGING_DIR}
+    )
+    target_compile_definitions(test_ros_sink PRIVATE BOOST_LOG_DYN_LINK)
+    target_link_libraries(test_ros_sink
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+        ${Boost_LIBRARIES}
+    )
+    add_test(NAME RosSinkTest COMMAND test_ros_sink)
+    set_tests_properties(RosSinkTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
+endif()
+
 # ============================================================================
 # Tests requiring ROS message types (only when built with ROS)
 # ============================================================================
@@ -425,6 +488,41 @@ if(ROS_INTEGRATED_BUILD AND Boost_FOUND)
         endif()
     endif()
 endif()
+
+# ============================================================================
+# Regression Tests (Phase 5)
+# ============================================================================
+
+# Exhaustive State Transition Tests
+add_executable(test_state_transitions_exhaustive
+    regression/test_state_transitions_exhaustive.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
+)
+target_link_libraries(test_state_transitions_exhaustive
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+)
+add_test(NAME StateTransitionsExhaustiveTest COMMAND test_state_transitions_exhaustive)
+set_tests_properties(StateTransitionsExhaustiveTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
+
+# Error Recovery Tests
+add_executable(test_error_recovery
+    regression/test_error_recovery.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config_parser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
+)
+target_compile_definitions(test_error_recovery PRIVATE BOOST_LOG_DYN_LINK)
+target_link_libraries(test_error_recovery
+    GTest::gtest
+    GTest::gtest_main
+    Threads::Threads
+    axon_logging
+    yaml-cpp
+    ${Boost_LIBRARIES}
+)
+add_test(NAME ErrorRecoveryTest COMMAND test_error_recovery)
+set_tests_properties(ErrorRecoveryTest PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 
 # ============================================================================
 # Performance Tests
