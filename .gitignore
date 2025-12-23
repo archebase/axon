@@ -122,4 +122,4 @@ log
 coverage
 
 .cursor/plans
-cpp/build_uploaders
+cpp/build_uploader/
