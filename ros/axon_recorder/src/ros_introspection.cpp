@@ -59,11 +59,18 @@ public:
   ) override {
     descriptor.full_name = message_type;
 
-    // Parse package/name
+    // Parse package/name - handle both ROS1 (pkg/Msg) and ROS2 (pkg/msg/Msg) styles
     size_t slash_pos = message_type.find('/');
     if (slash_pos != std::string::npos) {
       descriptor.package = message_type.substr(0, slash_pos);
-      descriptor.name = message_type.substr(slash_pos + 1);
+      std::string remainder = message_type.substr(slash_pos + 1);
+      // Check for ROS2 style (has another slash)
+      size_t second_slash = remainder.find('/');
+      if (second_slash != std::string::npos) {
+        descriptor.name = remainder.substr(second_slash + 1);
+      } else {
+        descriptor.name = remainder;
+      }
     } else {
       descriptor.name = message_type;
     }
