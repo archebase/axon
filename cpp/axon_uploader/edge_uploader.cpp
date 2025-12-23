@@ -110,6 +110,10 @@ void EdgeUploader::enqueue(
     AXON_LOG_ERROR("Cannot enqueue upload - mcap_path is empty");
     return;
   }
+  if (json_path.empty()) {
+    AXON_LOG_ERROR("Cannot enqueue upload - json_path is empty (JSON sidecar is required)");
+    return;
+  }
   if (task_id.empty()) {
     AXON_LOG_ERROR("Cannot enqueue upload - task_id is empty");
     return;
@@ -123,11 +127,20 @@ void EdgeUploader::enqueue(
     return;
   }
 
-  // Get file size
-  uint64_t file_size = 0;
-  if (fs::exists(mcap_path)) {
-    file_size = fs::file_size(mcap_path);
+  // Validate both files exist before enqueueing to prevent orphaned uploads:
+  // If MCAP uploads successfully but JSON fails (file not found), the entire
+  // upload is marked as permanently failed, leaving MCAP orphaned in S3.
+  if (!fs::exists(mcap_path)) {
+    AXON_LOG_ERROR("Cannot enqueue upload - mcap_path does not exist: " << mcap_path);
+    return;
   }
+  if (!fs::exists(json_path)) {
+    AXON_LOG_ERROR("Cannot enqueue upload - json_path does not exist: " << json_path);
+    return;
+  }
+
+  // Get file size (file existence already verified above)
+  uint64_t file_size = fs::file_size(mcap_path);
 
   // Create upload item
   UploadItem item(mcap_path, json_path, task_id, factory_id, device_id, checksum_sha256, file_size);
@@ -135,7 +148,7 @@ void EdgeUploader::enqueue(
   // Construct S3 key prefix
   item.s3_key_prefix = factory_id + "/" + device_id + "/" + currentDateString();
 
-  // Persist to state DB first (for crash recovery)
+  // Build state DB record for crash recovery
   UploadRecord record;
   record.file_path = mcap_path;
   record.json_path = json_path;
@@ -146,14 +159,28 @@ void EdgeUploader::enqueue(
   record.file_size_bytes = file_size;
   record.checksum_sha256 = checksum_sha256;
   record.status = UploadStatus::PENDING;
-  state_manager_->insert(record);
+  
+  // Persist to state DB - if this fails (disk full, DB corruption),
+  // do NOT queue the upload as we cannot track it for retry/recovery
+  if (!state_manager_->insert(record)) {
+    AXON_LOG_ERROR("Failed to persist upload state for " << mcap_path 
+                   << " - upload not queued (disk full or DB error?)");
+    return;
+  }
 
   // Add to queue
   // Increment pending count BEFORE enqueue to avoid race condition:
   // enqueue() notifies workers, and a worker could decrement files_pending
   // before we increment it, causing unsigned underflow to UINT64_MAX
   stats_.files_pending++;
-  queue_->enqueue(std::move(item));
+  if (!queue_->enqueue(std::move(item))) {
+    // Queue full (capacity exceeded) - revert the pending count and clean up orphan state record
+    stats_.files_pending--;
+    state_manager_->remove(mcap_path);
+    AXON_LOG_ERROR("Failed to enqueue upload for " << mcap_path 
+                   << " - queue at capacity");
+    return;
+  }
 
   // Check backpressure
   checkBackpressure();
@@ -347,7 +374,27 @@ void EdgeUploader::onUploadFailure(const UploadItem& item, const std::string& er
 
   // Read the updated retry count from state DB to ensure consistency
   auto record = state_manager_->get(item.mcap_path);
-  int current_retry_count = record ? record->retry_count : 0;
+  
+  // Defensive check: if record is missing, treat as permanent failure
+  // This should not happen if enqueue() worked correctly, but handles
+  // edge cases like DB corruption during upload
+  if (!record) {
+    AXON_LOG_ERROR("Upload state record missing for " << item.mcap_path 
+                   << " - marking as permanent failure (cannot track retries)");
+    stats_.files_failed++;
+    
+    if (!config_.failed_uploads_dir.empty()) {
+      moveToFailedDir(item.mcap_path, item.json_path);
+    }
+    
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    if (callback_) {
+      callback_(item.task_id, false, "Upload state record missing: " + error);
+    }
+    return;
+  }
+  
+  int current_retry_count = record->retry_count;
 
   // Check if should retry
   if (retryable && retry_handler_->shouldRetry(current_retry_count)) {
