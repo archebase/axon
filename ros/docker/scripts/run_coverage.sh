@@ -174,7 +174,10 @@ lcov --remove "${OUTPUT_DIR}/coverage_raw.info" \
     '*/mcap-*/*' \
     '*/mcap/include/*' \
     '*/minio-cpp/*' \
-    '*/test/*' \
+    '*/axon_recorder/test/*' \
+    '*/axon_logging/test/*' \
+    '*/axon_mcap/test/*' \
+    '*/axon_uploader/test/*' \
     --output-file "${OUTPUT_DIR}/coverage.info" \
     --rc lcov_branch_coverage=1 \
     ${LCOV_IGNORE_FLAGS} || {
