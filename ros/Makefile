@@ -443,7 +443,12 @@ coverage-ros2:
 		$$IGNORE_FLAGS || true; \
 	lcov --remove $(COVERAGE_DIR)/coverage_raw.info \
 		'/usr/*' '/opt/*' '*/_deps/*' '*/generated/*' '*/googletest/*' \
-		'*/gtest/*' '*/gmock/*' '*/test/*' '*/mcap-*/*' '*/mcap/include/*' \
+		'*/gtest/*' '*/gmock/*' \
+		'*/axon_recorder/test/*' \
+		'*/axon_logging/test/*' \
+		'*/axon_mcap/test/*' \
+		'*/axon_uploader/test/*' \
+		'*/mcap-*/*' '*/mcap/include/*' \
 		--output-file $(COVERAGE_DIR)/coverage.info \
 		--rc lcov_branch_coverage=1 \
 		$$IGNORE_FLAGS || cp $(COVERAGE_DIR)/coverage_raw.info $(COVERAGE_DIR)/coverage.info
