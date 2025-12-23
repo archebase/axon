@@ -1,8 +1,18 @@
 cmake_minimum_required(VERSION 3.12)
 project(axon_recorder)
 
+# Export compile commands for clangd/IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Allow linking libraries to targets defined in subdirectories
 cmake_policy(SET CMP0079 NEW)
+
+# Suppress warning about unused variables passed by industrial_ci/catkin
+# These are only used in ROS1 builds but get passed to ROS2 builds too
+set(ignored_variables
+    "${CATKIN_INSTALL_INTO_PREFIX_ROOT}"
+    "${CATKIN_DEVEL_PREFIX}"
+)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -82,21 +92,21 @@ else()
 endif()
 message(STATUS "Found axon_mcap at: ${CPP_MCAP_DIR}")
 
-# Detect ROS version and set appropriate macro
+# Detect ROS version (definitions applied per-target below, not globally)
 if(DEFINED ENV{ROS_VERSION})
     if($ENV{ROS_VERSION} EQUAL 1)
         message(STATUS "Building for ROS 1")
-        add_definitions(-DAXON_ROS1)
         set(AXON_ROS_VERSION 1)
+        set(AXON_ROS_DEFINITION "AXON_ROS1")
     elseif($ENV{ROS_VERSION} EQUAL 2)
         message(STATUS "Building for ROS 2")
-        add_definitions(-DAXON_ROS2)
         set(AXON_ROS_VERSION 2)
+        set(AXON_ROS_DEFINITION "AXON_ROS2")
     endif()
 else()
     message(WARNING "ROS_VERSION not set, defaulting to ROS 1")
-    add_definitions(-DAXON_ROS1)
     set(AXON_ROS_VERSION 1)
+    set(AXON_ROS_DEFINITION "AXON_ROS1")
 endif()
 
 # Find yaml-cpp
@@ -106,11 +116,22 @@ find_package(yaml-cpp REQUIRED)
 # nlohmann/json (header-only JSON library for metadata sidecar generation)
 # =============================================================================
 include(FetchContent)
+# DOWNLOAD_EXTRACT_TIMESTAMP requires CMake 3.24+
+# Use it conditionally to avoid errors on older CMake (Humble uses 3.22, Noetic uses 3.16)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+  FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+else()
 FetchContent_Declare(
   nlohmann_json
   URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
   URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
 )
+endif()
 FetchContent_MakeAvailable(nlohmann_json)
 
 # =============================================================================
@@ -199,6 +220,15 @@ message(STATUS "Building with MCAP backend")
 add_subdirectory(${CPP_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
 
 # ============================================================================
+# Auto-discover recorder library sources (shared by ROS1 and ROS2)
+# ============================================================================
+file(GLOB_RECURSE RECORDER_LIB_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+)
+# Exclude main entry point from library
+list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
+
+# ============================================================================
 # ROS 1 specific setup
 # ============================================================================
 if(AXON_ROS_VERSION EQUAL 1)
@@ -244,18 +274,14 @@ if(AXON_ROS_VERSION EQUAL 1)
         ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
     
-    # Auto-discover recorder library sources
-    file(GLOB_RECURSE RECORDER_LIB_SOURCES CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-    )
-    # Exclude main entry point from library
-    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
-    
-    # Recorder Library
+    # Recorder Library (sources discovered above)
     add_library(axon_recorder_lib ${RECORDER_LIB_SOURCES})
     
-    # Enable Boost.Log dynamic linking
-    target_compile_definitions(axon_recorder_lib PRIVATE BOOST_LOG_DYN_LINK)
+    # Per-target compile definitions (not global add_definitions)
+    target_compile_definitions(axon_recorder_lib PRIVATE 
+        ${AXON_ROS_DEFINITION}
+        BOOST_LOG_DYN_LINK
+    )
     
     target_link_libraries(axon_recorder_lib
         ${catkin_LIBRARIES}
@@ -342,28 +368,18 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
     
-    # Auto-discover recorder library sources
-    file(GLOB_RECURSE RECORDER_LIB_SOURCES CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-    )
-    # Exclude main entry point from library
-    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*main\\.cpp$")
-    
-    # Recorder Library
+    # Recorder Library (sources discovered above)
     add_library(axon_recorder_lib SHARED ${RECORDER_LIB_SOURCES})
     
-    # Enable Boost.Log dynamic linking
-    target_compile_definitions(axon_recorder_lib PRIVATE BOOST_LOG_DYN_LINK)
-    
-    ament_target_dependencies(axon_recorder_lib
-        rclcpp
-        ament_index_cpp
-        std_msgs
-        sensor_msgs
-        nav_msgs
-        geometry_msgs
+    # Per-target compile definitions (not global add_definitions)
+    target_compile_definitions(axon_recorder_lib PRIVATE 
+        ${AXON_ROS_DEFINITION}
+        BOOST_LOG_DYN_LINK
     )
     
+    # Use modern CMake target_link_libraries() instead of deprecated ament_target_dependencies()
+    # This is required for ROS2 Rolling compatibility and avoids slow builds/warnings.
+    # See: .cursor/rules/ros-dual-support.mdc for details
     target_link_libraries(axon_recorder_lib
         axon_mcap
         ${Boost_LIBRARIES}
@@ -371,6 +387,13 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         OpenSSL::Crypto
         yaml-cpp
         nlohmann_json::nlohmann_json
+        rclcpp::rclcpp
+        ament_index_cpp::ament_index_cpp
+        sensor_msgs::sensor_msgs_library
+        ${std_msgs_TARGETS}
+        ${sensor_msgs_TARGETS}
+        ${nav_msgs_TARGETS}
+        ${geometry_msgs_TARGETS}
     )
     
     # Add Boost include directories
@@ -393,17 +416,15 @@ elseif(AXON_ROS_VERSION EQUAL 2)
         src/main.cpp
     )
     
-    ament_target_dependencies(axon_recorder_node
-        rclcpp
-        std_msgs
-        sensor_msgs
-        nav_msgs
-        geometry_msgs
-        ament_index_cpp
-    )
-    
     target_link_libraries(axon_recorder_node
         axon_recorder_lib
+        rclcpp::rclcpp
+        ament_index_cpp::ament_index_cpp
+        sensor_msgs::sensor_msgs_library
+        ${std_msgs_TARGETS}
+        ${sensor_msgs_TARGETS}
+        ${nav_msgs_TARGETS}
+        ${geometry_msgs_TARGETS}
     )
     
     # Link to generated service typesupport (replaces deprecated rosidl_target_interfaces)

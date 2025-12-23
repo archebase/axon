@@ -73,3 +73,38 @@ logging:
     max_files: 10
     rotate_at_midnight: true
 
+# Edge Upload Configuration
+# Uploads MCAP and sidecar JSON to S3-compatible storage after recording
+upload:
+  enabled: false           # Set to true to enable automatic uploads
+  
+  # S3 Configuration
+  s3:
+    endpoint_url: ""       # S3-compatible endpoint (empty for AWS S3)
+    bucket: "axon-raw-data"
+    region: "us-east-1"
+    use_ssl: true
+    verify_ssl: true
+    
+  # Worker configuration
+  num_workers: 2
+  
+  # Retry configuration
+  retry:
+    max_retries: 5
+    initial_delay_ms: 1000
+    max_delay_ms: 300000
+    exponential_base: 2.0
+    jitter: true
+    
+  # State persistence for crash recovery
+  state_db_path: "/var/lib/axon/uploader_state.db"
+  
+  # Cleanup policy
+  delete_after_upload: true               # Delete device copy after successful upload
+  failed_uploads_dir: "/data/failed_uploads/"
+  
+  # Backpressure thresholds (GB)
+  warn_pending_gb: 8      # ~2 files - emit warning
+  alert_pending_gb: 20    # ~5 files - alert operator
+

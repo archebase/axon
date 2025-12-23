@@ -1,8 +1,10 @@
 // Define MCAP_IMPLEMENTATION in exactly one .cpp file
+// This must be before including ANY mcap headers to get the implementation
 #define MCAP_IMPLEMENTATION
 #include "mcap_writer_wrapper.hpp"
 
 #include <mcap/writer.hpp>
+#include <mcap/reader.hpp>  // Also need reader implementation for mcap_validator
 
 #include <chrono>
 #include <filesystem>

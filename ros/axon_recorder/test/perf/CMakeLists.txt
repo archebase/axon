@@ -27,14 +27,12 @@ if(AXON_ROS1)
     )
 endif()
 
-# ROS 2 dependencies - use plain linking style for ament compatibility
+# ROS 2 dependencies - use modern CMake targets (ament_target_dependencies is deprecated in Rolling)
 if(AXON_ROS2)
     target_link_libraries(synthetic_publisher
         Threads::Threads
-    )
-    ament_target_dependencies(synthetic_publisher
-        rclcpp
-        sensor_msgs
+        rclcpp::rclcpp
+        ${sensor_msgs_TARGETS}
     )
 endif()
 
@@ -60,14 +58,12 @@ if(AXON_ROS1)
     )
 endif()
 
-# ROS 2 dependencies - use plain linking style for ament compatibility
+# ROS 2 dependencies - use modern CMake targets (ament_target_dependencies is deprecated in Rolling)
 if(AXON_ROS2)
     target_link_libraries(perf_test_node
         Threads::Threads
-    )
-    ament_target_dependencies(perf_test_node
-        rclcpp
-        sensor_msgs
+        rclcpp::rclcpp
+        ${sensor_msgs_TARGETS}
     )
 endif()
 

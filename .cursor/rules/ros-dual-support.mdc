@@ -1,0 +1,123 @@
+---
+description: Ensure code supports both ROS1 and ROS2
+globs: ["ros/**/*.cpp", "ros/**/*.hpp", "ros/**/*.h", "ros/**/CMakeLists.txt"]
+alwaysApply: true
+---
+
+# ROS1 and ROS2 Dual Support
+
+When writing code for the Axon project, **always ensure compatibility with both ROS1 and ROS2**.
+
+## Conditional Compilation
+
+Use preprocessor directives for ROS-specific code:
+
+```cpp
+#if defined(AXON_ROS1)
+  // ROS1-specific code
+  #include <ros/ros.h>
+#elif defined(AXON_ROS2)
+  // ROS2-specific code
+  #include <rclcpp/rclcpp.hpp>
+#endif
+```
+
+## Build Systems
+
+- **ROS1**: Uses `catkin` build system
+- **ROS2**: Uses `colcon` build system
+
+CMakeLists.txt files must handle both:
+
+```cmake
+if(DEFINED AXON_ROS1)
+  # catkin-specific configuration
+  find_package(catkin REQUIRED COMPONENTS roscpp std_msgs)
+elseif(DEFINED AXON_ROS2)
+  # ament-specific configuration
+  find_package(ament_cmake REQUIRED)
+  find_package(rclcpp REQUIRED)
+endif()
+```
+
+## ROS2 CMake Target Linking (Important!)
+
+**DO NOT use `ament_target_dependencies()`** - it is deprecated in ROS2 Rolling and will be removed.
+
+Use modern CMake `target_link_libraries()` with explicit targets instead:
+
+```cmake
+# BAD (deprecated, causes slow builds and warnings in Rolling):
+ament_target_dependencies(my_target
+    rclcpp
+    std_msgs
+    geometry_msgs
+)
+
+# GOOD (modern CMake, works on Humble/Jazzy/Rolling):
+target_link_libraries(my_target
+    rclcpp::rclcpp
+    ${std_msgs_TARGETS}
+    ${geometry_msgs_TARGETS}
+)
+```
+
+### Why This Matters
+
+| Distribution | `ament_target_dependencies()` Status |
+|--------------|--------------------------------------|
+| Humble (LTS) | Works, no warnings |
+| Jazzy | Works, mild warnings |
+| Rolling | **Deprecated**, loud warnings, slower builds |
+
+Rolling is the development branch that receives breaking changes first. Using modern CMake targets ensures forward compatibility.
+
+### Common Target Mappings
+
+| Package | Modern CMake Target |
+|---------|---------------------|
+| rclcpp | `rclcpp::rclcpp` |
+| ament_index_cpp | `ament_index_cpp::ament_index_cpp` |
+| std_msgs | `${std_msgs_TARGETS}` |
+| sensor_msgs | `${sensor_msgs_TARGETS}`, `sensor_msgs::sensor_msgs_library` |
+| geometry_msgs | `${geometry_msgs_TARGETS}` |
+| nav_msgs | `${nav_msgs_TARGETS}` |
+
+### FetchContent Best Practice
+
+When using `FetchContent_Declare()` with URLs, add `DOWNLOAD_EXTRACT_TIMESTAMP TRUE` to avoid CMake policy CMP0135 warnings. **However**, this option requires CMake 3.24+, so use a version check for compatibility with Humble (3.22) and Noetic (3.16):
+
+```cmake
+# DOWNLOAD_EXTRACT_TIMESTAMP requires CMake 3.24+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+  FetchContent_Declare(
+    my_dependency
+    URL https://example.com/file.tar.gz
+    URL_HASH SHA256=abc123...
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+else()
+  FetchContent_Declare(
+    my_dependency
+    URL https://example.com/file.tar.gz
+    URL_HASH SHA256=abc123...
+  )
+endif()
+```
+
+## Testing
+
+- Test code paths for both ROS versions
+- CI/CD runs tests on both ROS1 (Noetic) and ROS2 (Humble)
+- Use `MockRosInterface` pattern for unit tests that don't require full ROS
+
+## Common Patterns
+
+| Feature | ROS1 | ROS2 |
+|---------|------|------|
+| Node | `ros::NodeHandle` | `rclcpp::Node` |
+| Publisher | `ros::Publisher` | `rclcpp::Publisher<T>` |
+| Subscriber | `ros::Subscriber` | `rclcpp::Subscription<T>` |
+| Service | `ros::ServiceServer` | `rclcpp::Service<T>` |
+| Timer | `ros::Timer` | `rclcpp::TimerBase` |
+| Logging | `ROS_INFO()` | `RCLCPP_INFO()` |

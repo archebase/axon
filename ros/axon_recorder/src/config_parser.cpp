@@ -51,6 +51,14 @@ bool RecorderConfig::validate() const {
     return false;
   }
 
+  // Validate upload config if enabled
+  if (upload.enabled) {
+    std::string error_msg;
+    if (!ConfigParser::validate_upload_config(upload, error_msg)) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -101,7 +109,26 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_logging(node["logging"], config.logging);
     }
 
-    return config.validate();
+    // Parse upload config (optional - disabled by default)
+    if (node["upload"]) {
+      parse_upload(node["upload"], config.upload);
+    }
+
+    // Validate the full configuration
+    if (!config.validate()) {
+      return false;
+    }
+    
+    // Validate upload config if enabled
+    if (config.upload.enabled) {
+      std::string error_msg;
+      if (!validate_upload_config(config.upload, error_msg)) {
+        AXON_LOG_ERROR("Upload configuration validation failed" << ::axon::logging::kv("error", error_msg));
+        return false;
+      }
+    }
+    
+    return true;
   } catch (const YAML::Exception& e) {
     AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
     return false;
@@ -228,11 +255,176 @@ bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfigYaml& logg
   return true;
 }
 
+bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload) {
+  if (node["enabled"]) {
+    upload.enabled = node["enabled"].as<bool>();
+  }
+  
+  // Parse S3 section
+  if (node["s3"]) {
+    const auto& s3 = node["s3"];
+    if (s3["endpoint_url"]) {
+      upload.s3.endpoint_url = s3["endpoint_url"].as<std::string>();
+    }
+    if (s3["bucket"]) {
+      upload.s3.bucket = s3["bucket"].as<std::string>();
+    }
+    if (s3["region"]) {
+      upload.s3.region = s3["region"].as<std::string>();
+    }
+    if (s3["use_ssl"]) {
+      upload.s3.use_ssl = s3["use_ssl"].as<bool>();
+    }
+    if (s3["verify_ssl"]) {
+      upload.s3.verify_ssl = s3["verify_ssl"].as<bool>();
+    }
+  }
+  
+  // Parse retry section
+  if (node["retry"]) {
+    const auto& retry = node["retry"];
+    if (retry["max_retries"]) {
+      upload.retry.max_retries = retry["max_retries"].as<int>();
+    }
+    if (retry["initial_delay_ms"]) {
+      upload.retry.initial_delay_ms = retry["initial_delay_ms"].as<int>();
+    }
+    if (retry["max_delay_ms"]) {
+      upload.retry.max_delay_ms = retry["max_delay_ms"].as<int>();
+    }
+    if (retry["exponential_base"]) {
+      upload.retry.exponential_base = retry["exponential_base"].as<double>();
+    }
+    if (retry["jitter"]) {
+      upload.retry.jitter = retry["jitter"].as<bool>();
+    }
+  }
+  
+  // Parse other upload settings
+  if (node["num_workers"]) {
+    upload.num_workers = node["num_workers"].as<int>();
+  }
+  if (node["state_db_path"]) {
+    upload.state_db_path = node["state_db_path"].as<std::string>();
+  }
+  if (node["delete_after_upload"]) {
+    upload.delete_after_upload = node["delete_after_upload"].as<bool>();
+  }
+  if (node["failed_uploads_dir"]) {
+    upload.failed_uploads_dir = node["failed_uploads_dir"].as<std::string>();
+  }
+  if (node["warn_pending_gb"]) {
+    upload.warn_pending_gb = node["warn_pending_gb"].as<double>();
+  }
+  if (node["alert_pending_gb"]) {
+    upload.alert_pending_gb = node["alert_pending_gb"].as<double>();
+  }
+  
+  return true;
+}
+
 bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg) {
-  if (!config.validate()) {
-    error_msg = "Configuration validation failed";
+  // Validate upload config first if enabled (to get specific error messages)
+  if (config.upload.enabled) {
+    if (!validate_upload_config(config.upload, error_msg)) {
+      return false;
+    }
+  }
+  
+  // Then validate basic config
+  if (config.dataset.path.empty()) {
+    error_msg = "Dataset path is empty";
     return false;
   }
+  
+  if (config.topics.empty()) {
+    error_msg = "No topics configured";
+    return false;
+  }
+  
+  for (const auto& topic : config.topics) {
+    if (topic.name.empty()) {
+      error_msg = "Topic name is empty";
+      return false;
+    }
+    if (topic.message_type.empty()) {
+      error_msg = "Topic message_type is empty";
+      return false;
+    }
+    if (topic.batch_size == 0) {
+      error_msg = "Topic batch_size must be > 0";
+      return false;
+    }
+  }
+  
+  if (config.dataset.mode != "create" && config.dataset.mode != "append") {
+    error_msg = "Dataset mode must be 'create' or 'append'";
+    return false;
+  }
+  
+  return true;
+}
+
+bool ConfigParser::validate_upload_config(const UploadConfigYaml& upload, std::string& error_msg) {
+  if (!upload.enabled) {
+    return true;  // Nothing to validate if disabled
+  }
+  
+  // Validate S3 bucket (required)
+  if (upload.s3.bucket.empty()) {
+    error_msg = "Upload enabled but s3.bucket is not configured";
+    return false;
+  }
+  
+  // Validate endpoint_url format if provided
+  if (!upload.s3.endpoint_url.empty()) {
+    // Basic URL validation - should start with http:// or https://
+    if (upload.s3.endpoint_url.find("http://") != 0 && 
+        upload.s3.endpoint_url.find("https://") != 0) {
+      error_msg = "Invalid s3.endpoint_url - must start with http:// or https://";
+      return false;
+    }
+  }
+  
+  // Validate num_workers
+  if (upload.num_workers < 1 || upload.num_workers > 16) {
+    error_msg = "Invalid num_workers - must be between 1 and 16";
+    return false;
+  }
+  
+  // Validate retry configuration
+  if (upload.retry.max_retries < 0 || upload.retry.max_retries > 100) {
+    error_msg = "Invalid retry.max_retries - must be between 0 and 100";
+    return false;
+  }
+  
+  if (upload.retry.initial_delay_ms < 0) {
+    error_msg = "Invalid retry.initial_delay_ms - must be >= 0";
+    return false;
+  }
+  
+  if (upload.retry.max_delay_ms < upload.retry.initial_delay_ms) {
+    error_msg = "Invalid retry.max_delay_ms - must be >= initial_delay_ms";
+    return false;
+  }
+  
+  // Validate backpressure thresholds
+  if (upload.warn_pending_gb < 0 || upload.alert_pending_gb < 0) {
+    error_msg = "Invalid backpressure thresholds - must be >= 0";
+    return false;
+  }
+  
+  if (upload.alert_pending_gb < upload.warn_pending_gb) {
+    error_msg = "Invalid backpressure thresholds - alert_pending_gb must be >= warn_pending_gb";
+    return false;
+  }
+  
+  // Validate state_db_path is not empty
+  if (upload.state_db_path.empty()) {
+    error_msg = "Upload enabled but state_db_path is empty";
+    return false;
+  }
+  
   return true;
 }
 

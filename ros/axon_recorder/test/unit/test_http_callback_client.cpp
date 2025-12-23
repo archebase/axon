@@ -4,8 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <regex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "http_callback_client.hpp"
 #include "task_config.hpp"
@@ -348,6 +352,330 @@ TEST_F(HttpCallbackClientTest, UrlParsing_NoPath) {
   // Should use "/" as default path
   EXPECT_FALSE(result.success);
   EXPECT_FALSE(result.error_message.find("Invalid URL format") != std::string::npos);
+}
+
+// ============================================================================
+// Timeout Configuration Tests
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, TimeoutConfiguration) {
+  HttpCallbackClient::Config config;
+  config.request_timeout = std::chrono::seconds(5);
+
+  auto client = std::make_shared<HttpCallbackClient>(config);
+
+  // Use localhost with a port that's unlikely to be listening
+  // This fails fast (connection refused) rather than hanging
+  TaskConfig task_config;
+  task_config.start_callback_url = "http://127.0.0.1:59999/timeout";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client->post_start_callback(task_config, payload);
+
+  // Should fail (connection refused)
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, CustomTimeoutValue) {
+  HttpCallbackClient::Config config;
+  config.request_timeout = std::chrono::seconds(10);
+
+  auto client = std::make_shared<HttpCallbackClient>(config);
+
+  // Just verify construction with custom timeout works
+  TaskConfig task_config;
+  // No URL - should be a no-op
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client->post_start_callback(task_config, payload);
+  
+  // No URL configured - should succeed as no-op
+  EXPECT_TRUE(result.success);
+}
+
+// ============================================================================
+// HTTPS Tests
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, HttpsUrlParsing) {
+  TaskConfig config;
+  config.start_callback_url = "https://api.example.com:443/recording/start";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should fail to connect (no actual server), but URL parsing should work
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, HttpsDefaultPort) {
+  TaskConfig config;
+  config.start_callback_url = "https://api.example.com/recording/start";  // Default 443
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  EXPECT_FALSE(result.success);
+  // Error should be about connection, not URL parsing
+}
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, MalformedUrlScheme) {
+  TaskConfig config;
+  config.start_callback_url = "ftp://localhost:8080/api/start";  // Unsupported scheme
+
+  StartCallbackPayload payload;
+  auto result = client_->post_start_callback(config, payload);
+
+  EXPECT_FALSE(result.success);
+  EXPECT_TRUE(result.error_message.find("ERR_CALLBACK_FAILED") != std::string::npos);
+}
+
+TEST_F(HttpCallbackClientTest, EmptyHost) {
+  TaskConfig config;
+  config.start_callback_url = "http:///path";  // Empty host
+
+  StartCallbackPayload payload;
+  auto result = client_->post_start_callback(config, payload);
+
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, InvalidPort) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:invalid/api";  // Non-numeric port
+
+  StartCallbackPayload payload;
+  auto result = client_->post_start_callback(config, payload);
+
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, PortOutOfRange) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:99999/api";  // Port > 65535
+
+  StartCallbackPayload payload;
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should either fail URL parsing or connection
+  EXPECT_FALSE(result.success);
+}
+
+// ============================================================================
+// Payload Edge Cases
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, EmptyPayload) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:9999/test";
+
+  StartCallbackPayload payload;  // All defaults/empty
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should fail due to connection, not payload validation
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, LongTaskId) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:9999/test";
+
+  StartCallbackPayload payload;
+  payload.task_id = std::string(10000, 'a');  // Very long task ID
+
+  std::string json = payload.to_json();
+  EXPECT_TRUE(json.find("\"task_id\": \"") != std::string::npos);
+  EXPECT_GT(json.size(), 10000);
+}
+
+TEST_F(HttpCallbackClientTest, UnicodeInPayload) {
+  StartCallbackPayload payload;
+  payload.task_id = "task_日本語_123";
+  payload.device_id = "robot_中文_01";
+  payload.status = "recording";
+  payload.started_at = "2025-12-20T10:30:00Z";
+  payload.topics = {"/camera/日本語"};
+
+  std::string json = payload.to_json();
+
+  EXPECT_TRUE(json.find("日本語") != std::string::npos);
+  EXPECT_TRUE(json.find("中文") != std::string::npos);
+}
+
+TEST_F(HttpCallbackClientTest, ManyTopics) {
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "robot_01";
+  payload.status = "recording";
+  payload.started_at = "2025-12-20T10:30:00Z";
+
+  // Add many topics
+  for (int i = 0; i < 100; ++i) {
+    payload.topics.push_back("/topic_" + std::to_string(i));
+  }
+
+  std::string json = payload.to_json();
+
+  EXPECT_TRUE(json.find("/topic_0") != std::string::npos);
+  EXPECT_TRUE(json.find("/topic_99") != std::string::npos);
+}
+
+// ============================================================================
+// FinishCallbackPayload Extended Tests
+// ============================================================================
+
+TEST_F(FinishCallbackPayloadTest, ZeroDuration) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.status = "cancelled";
+  payload.duration_sec = 0.0;
+  payload.message_count = 0;
+  payload.file_size_bytes = 0;
+
+  std::string json = payload.to_json();
+
+  EXPECT_TRUE(json.find("\"duration_sec\": 0.0") != std::string::npos || 
+              json.find("\"duration_sec\": 0") != std::string::npos);
+  EXPECT_TRUE(json.find("\"message_count\": 0") != std::string::npos);
+  EXPECT_TRUE(json.find("\"file_size_bytes\": 0") != std::string::npos);
+}
+
+TEST_F(FinishCallbackPayloadTest, FloatingPointDuration) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.status = "finished";
+  payload.duration_sec = 123.456789;
+  payload.message_count = 1000;
+  payload.file_size_bytes = 1000000;
+
+  std::string json = payload.to_json();
+
+  // Should contain decimal part
+  EXPECT_TRUE(json.find("123.") != std::string::npos);
+}
+
+TEST_F(FinishCallbackPayloadTest, ErrorWithSpecialCharacters) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.status = "failed";
+  payload.error = "Error: Disk full. Path \"/data/recordings\" is read-only";
+
+  std::string json = payload.to_json();
+
+  // Special characters should be escaped
+  EXPECT_TRUE(json.find("\\\"") != std::string::npos);  // Escaped quotes
+}
+
+// ============================================================================
+// Concurrent Request Tests
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, ConcurrentCallbacks) {
+  TaskConfig config;
+  config.start_callback_url = "http://127.0.0.1:59997/concurrent";
+
+  const int NUM_THREADS = 4;
+  const int REQUESTS_PER_THREAD = 5;
+
+  std::atomic<int> completed{0};
+  std::vector<std::thread> threads;
+
+  for (int t = 0; t < NUM_THREADS; ++t) {
+    threads.emplace_back([&, t]() {
+      for (int i = 0; i < REQUESTS_PER_THREAD; ++i) {
+        StartCallbackPayload payload;
+        payload.task_id = "task_" + std::to_string(t) + "_" + std::to_string(i);
+        payload.status = "recording";
+
+        auto result = client_->post_start_callback(config, payload);
+        // All should fail (no server) but shouldn't crash
+        ++completed;
+      }
+    });
+  }
+
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  EXPECT_EQ(completed.load(), NUM_THREADS * REQUESTS_PER_THREAD);
+}
+
+// ============================================================================
+// Token Authentication Tests
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, WithUserToken) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:9999/api/start";
+  config.user_token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Will fail to connect, but token should be included in request
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, EmptyUserToken) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:9999/api/start";
+  config.user_token = "";  // Empty token
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // Should still attempt request
+  EXPECT_FALSE(result.success);
+}
+
+// ============================================================================
+// URL with Query Parameters
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, UrlWithQueryParams) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:8080/api/start?format=json&version=2";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  // URL parsing should handle query params
+  EXPECT_FALSE(result.success);
+  EXPECT_FALSE(result.error_message.find("Invalid URL format") != std::string::npos);
+}
+
+TEST_F(HttpCallbackClientTest, UrlWithFragment) {
+  TaskConfig config;
+  config.start_callback_url = "http://localhost:8080/api/start#section";
+
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+
+  auto result = client_->post_start_callback(config, payload);
+
+  EXPECT_FALSE(result.success);
 }
 
 int main(int argc, char** argv) {

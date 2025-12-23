@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.14)  # FetchContent requires 3.14+
 project(axon_mcap)
 
+# Export compile commands for clangd/IDE support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -11,39 +14,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# Pin to a specific release for reproducibility
+# Pin to a specific commit for reproducibility
 # releases/cpp/v2.1.1 -> commit b2953496735e7b89d5b2ea58be73abed85317c5f
 # Check https://github.com/foxglove/mcap/releases for latest C++ releases
-set(MCAP_COMMIT_HASH "b2953496735e7b89d5b2ea58be73abed85317c5f" CACHE STRING "MCAP commit hash for releases/cpp/v2.1.1")
-set(MCAP_DOWNLOAD_URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT_HASH}.tar.gz")
-set(MCAP_TARBALL "${CMAKE_CURRENT_BINARY_DIR}/mcap-${MCAP_COMMIT_HASH}.tar.gz")
-set(mcap_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/mcap-${MCAP_COMMIT_HASH}")
+set(MCAP_COMMIT "b2953496735e7b89d5b2ea58be73abed85317c5f" CACHE STRING "MCAP commit hash")
 
-# Download if not already present
-if(NOT EXISTS "${mcap_SOURCE_DIR}")
-    message(STATUS "Downloading MCAP library from ${MCAP_DOWNLOAD_URL}")
-    file(DOWNLOAD "${MCAP_DOWNLOAD_URL}" "${MCAP_TARBALL}" 
-         STATUS DOWNLOAD_STATUS
-         SHOW_PROGRESS)
-    list(GET DOWNLOAD_STATUS 0 DOWNLOAD_ERROR)
-    if(DOWNLOAD_ERROR)
-        message(FATAL_ERROR "Failed to download MCAP: ${DOWNLOAD_STATUS}")
-    endif()
-    
-    # Extract
-    message(STATUS "Extracting MCAP library to ${CMAKE_CURRENT_BINARY_DIR}")
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E tar xzf "${MCAP_TARBALL}"
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-        RESULT_VARIABLE EXTRACT_RESULT
+# Use URL-based FetchContent (more reliable in CI Docker environments than GIT_REPOSITORY)
+# GIT_REPOSITORY can hang waiting for SSH auth or GitHub rate limits
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+    FetchContent_Declare(
+        mcap
+        URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
-    if(EXTRACT_RESULT)
-        message(FATAL_ERROR "Failed to extract MCAP: ${EXTRACT_RESULT}")
-    endif()
-    
-    # Clean up tarball
-    file(REMOVE "${MCAP_TARBALL}")
+else()
+    FetchContent_Declare(
+        mcap
+        URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz"
+    )
 endif()
+
+FetchContent_MakeAvailable(mcap)
 
 message(STATUS "MCAP library located at: ${mcap_SOURCE_DIR}")
 
@@ -62,7 +53,8 @@ endif()
 # =============================================================================
 
 add_library(mcap_headers INTERFACE)
-target_include_directories(mcap_headers INTERFACE
+# Use SYSTEM to suppress warnings from external MCAP headers
+target_include_directories(mcap_headers SYSTEM INTERFACE
     $<BUILD_INTERFACE:${mcap_SOURCE_DIR}/cpp/mcap/include>
     $<INSTALL_INTERFACE:include>
 )
@@ -114,6 +106,7 @@ endif()
 
 add_library(axon_mcap
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_writer_wrapper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/mcap_validator.cpp
 )
 
 # Enable position-independent code for linking into shared libraries (e.g., ROS 2 ament packages)
@@ -144,35 +137,61 @@ if(LZ4_FOUND)
 endif()
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+
+option(AXON_MCAP_ENABLE_COVERAGE "Enable code coverage" OFF)
+
+if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(STATUS "axon_mcap: Coverage instrumentation enabled")
+    target_compile_options(axon_mcap PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+    target_link_options(axon_mcap PRIVATE --coverage)
+endif()
+
+# =============================================================================
 # Tests (optional)
 # =============================================================================
+
 option(AXON_MCAP_BUILD_TESTS "Build MCAP tests" OFF)
 
 if(AXON_MCAP_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
     
-    add_executable(test_mcap_writer
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/test_mcap_writer.cpp
-    )
+    # Helper function to create test with coverage
+    function(add_mcap_test TEST_NAME TEST_SOURCE)
+        add_executable(${TEST_NAME}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/${TEST_SOURCE}
+        )
+        
+        target_include_directories(${TEST_NAME} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        
+        target_link_libraries(${TEST_NAME}
+            axon_mcap
+            GTest::gtest
+            GTest::gtest_main
+        )
+        
+        # Apply coverage flags to test executable
+        if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(${TEST_NAME} PRIVATE --coverage)
+        endif()
+        
+        # Link compression libraries for tests
+        if(ZSTD_FOUND)
+            target_link_libraries(${TEST_NAME} ${ZSTD_LIBRARIES})
+        endif()
+        if(LZ4_FOUND)
+            target_link_libraries(${TEST_NAME} ${LZ4_LIBRARIES})
+        endif()
+        
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endfunction()
     
-    target_include_directories(test_mcap_writer PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
-    
-    target_link_libraries(test_mcap_writer
-        axon_mcap
-        GTest::gtest
-        GTest::gtest_main
-    )
-    
-    # Link compression libraries for tests
-    if(ZSTD_FOUND)
-        target_link_libraries(test_mcap_writer ${ZSTD_LIBRARIES})
-    endif()
-    if(LZ4_FOUND)
-        target_link_libraries(test_mcap_writer ${LZ4_LIBRARIES})
-    endif()
-    
-    add_test(NAME test_mcap_writer COMMAND test_mcap_writer)
+    # Add test executables
+    add_mcap_test(test_mcap_writer test_mcap_writer.cpp)
+    add_mcap_test(test_mcap_validator test_mcap_validator.cpp)
 endif()

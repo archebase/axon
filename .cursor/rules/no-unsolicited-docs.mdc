@@ -1,0 +1,50 @@
+---
+description: Do not create documentation files without explicit request
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# No Unsolicited Documentation
+
+**NEVER create documentation files unless the user explicitly asks for them.**
+
+## Prohibited Actions (unless explicitly requested)
+
+- Creating README files
+- Creating SUMMARY, CHANGELOG, or FIXES_SUMMARY files
+- Creating markdown documentation (*.md)
+- Creating design docs or architecture docs
+- Adding inline documentation beyond necessary code comments
+
+## What to Do Instead
+
+1. **Fix the code** - Make the changes directly
+2. **Explain in chat** - Describe what you did in your response
+3. **Wait for request** - Only create docs if user says "create a doc", "write documentation", etc.
+
+## Examples
+
+### ❌ BAD: Creating unsolicited docs
+```
+User: "Fix the bug in upload_queue.cpp"
+AI: *fixes bug AND creates FIXES_SUMMARY.md*
+```
+
+### ✅ GOOD: Just fix the code
+```
+User: "Fix the bug in upload_queue.cpp"
+AI: *fixes bug, explains changes in chat response*
+```
+
+### ✅ GOOD: Create docs when asked
+```
+User: "Fix the bug and document the changes in a markdown file"
+AI: *fixes bug AND creates documentation*
+```
+
+## Rationale
+
+- Keeps the codebase clean
+- Avoids merge conflicts with existing docs
+- Respects that documentation strategy varies by team
+- Follows the principle: code changes are the deliverable, not docs about code changes

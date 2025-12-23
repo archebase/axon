@@ -10,6 +10,12 @@
 #include "topic_manager.hpp"
 #include "worker_thread_pool.hpp"
 
+// Edge Uploader (optional - for S3 uploads)
+#ifdef AXON_HAS_UPLOADER
+#include "edge_uploader.hpp"
+#include "mcap_validator.hpp"
+#endif
+
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "recorder_node"
 #include <axon_log_macros.hpp>
@@ -28,6 +34,7 @@
 #include <chrono>
 #include <csignal>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <memory>
@@ -124,6 +131,52 @@ bool RecorderNode::initialize(int argc, char** argv) {
   // Setup services
   setup_services();
 
+#ifdef AXON_HAS_UPLOADER
+  // Initialize Edge Uploader if configured
+  if (config_.upload.enabled) {
+    uploader::UploaderConfig uploader_config;
+    
+    // S3 configuration
+    uploader_config.s3.endpoint_url = config_.upload.s3.endpoint_url;
+    uploader_config.s3.bucket = config_.upload.s3.bucket;
+    uploader_config.s3.region = config_.upload.s3.region;
+    uploader_config.s3.use_ssl = config_.upload.s3.use_ssl;
+    uploader_config.s3.verify_ssl = config_.upload.s3.verify_ssl;
+    
+    // Retry configuration
+    uploader_config.retry.max_retries = config_.upload.retry.max_retries;
+    uploader_config.retry.initial_delay = 
+        std::chrono::milliseconds(config_.upload.retry.initial_delay_ms);
+    uploader_config.retry.max_delay = 
+        std::chrono::milliseconds(config_.upload.retry.max_delay_ms);
+    uploader_config.retry.exponential_base = config_.upload.retry.exponential_base;
+    uploader_config.retry.jitter = config_.upload.retry.jitter;
+    
+    // Worker configuration
+    uploader_config.num_workers = config_.upload.num_workers;
+    uploader_config.state_db_path = config_.upload.state_db_path;
+    uploader_config.delete_after_upload = config_.upload.delete_after_upload;
+    uploader_config.failed_uploads_dir = config_.upload.failed_uploads_dir;
+    uploader_config.warn_pending_bytes = 
+        static_cast<uint64_t>(config_.upload.warn_pending_gb * 1024 * 1024 * 1024);
+    uploader_config.alert_pending_bytes = 
+        static_cast<uint64_t>(config_.upload.alert_pending_gb * 1024 * 1024 * 1024);
+    
+    auto* uploader = new uploader::EdgeUploader(uploader_config);
+    uploader_ = uploader;
+    
+    // start() performs crash recovery:
+    // - Queries State DB for incomplete uploads from previous run
+    // - Re-queues them for upload
+    // - Then starts worker threads
+    uploader->start();
+    
+    AXON_LOG_INFO("Edge Uploader started" 
+                  << axon::logging::kv("workers", config_.upload.num_workers)
+                  << axon::logging::kv("bucket", config_.upload.s3.bucket));
+  }
+#endif
+
   return true;
 }
 
@@ -163,6 +216,22 @@ void RecorderNode::shutdown() {
     AXON_LOG_INFO("Final recording stats" << axon::logging::kv("messages_written", stats.messages_written));
   }
   recording_session_.reset();
+
+#ifdef AXON_HAS_UPLOADER
+  // Stop Edge Uploader (waits for current uploads to complete)
+  if (uploader_) {
+    auto* uploader = static_cast<uploader::EdgeUploader*>(uploader_);
+    AXON_LOG_DEBUG("Stopping Edge Uploader...");
+    uploader->stop();
+    
+    auto health = uploader->getHealthStatus();
+    AXON_LOG_INFO("Edge Uploader stopped"
+                  << axon::logging::kv("pending", health.pending_count)
+                  << axon::logging::kv("failed", health.failed_count));
+    delete uploader;
+    uploader_ = nullptr;
+  }
+#endif
 
   // Shutdown service adapter before ROS interface
   if (service_adapter_) {
@@ -565,12 +634,44 @@ void RecorderNode::stop_recording() {
 
   // Close recording session (this injects metadata and generates sidecar JSON)
   std::string sidecar_path;
+  std::string checksum;
   if (recording_session_ && recording_session_->is_open()) {
     AXON_LOG_DEBUG("Closing recording session (metadata injection)...");
     recording_session_->close();
     sidecar_path = recording_session_->get_sidecar_path();
+    checksum = recording_session_->get_checksum();
     AXON_LOG_INFO("Sidecar generated" << axon::logging::kv("path", sidecar_path));
   }
+
+#ifdef AXON_HAS_UPLOADER
+  // Queue for upload if uploader is enabled
+  if (uploader_ && !output_path_.empty() && !sidecar_path.empty()) {
+    auto task_config_for_upload = task_config_cache_.get();
+    if (task_config_for_upload) {
+      // Validate MCAP structure before upload
+      if (mcap_wrapper::isValidMcap(output_path_)) {
+        auto* uploader = static_cast<uploader::EdgeUploader*>(uploader_);
+        uploader->enqueue(
+            output_path_,
+            sidecar_path,
+            task_config_for_upload->task_id,
+            task_config_for_upload->factory,
+            task_config_for_upload->device_id,
+            checksum
+        );
+        AXON_LOG_INFO("Recording queued for upload"
+                      << axon::logging::kv("task_id", task_config_for_upload->task_id)
+                      << axon::logging::kv("path", output_path_));
+      } else {
+        AXON_LOG_ERROR("MCAP validation failed - skipping upload"
+                       << axon::logging::kv("path", output_path_));
+        // Delete corrupt file
+        std::filesystem::remove(output_path_);
+        std::filesystem::remove(sidecar_path);
+      }
+    }
+  }
+#endif
 
   // Send finish callback if configured
   auto config_opt = task_config_cache_.get();
