@@ -249,7 +249,7 @@ void EdgeUploader::processItem(const UploadItem& item) {
   std::string json_s3_key = item.s3_key_prefix + "/" + item.task_id + ".json";
 
   // Step 1: Upload MCAP file (skip if already in S3 from previous retry)
-  UploadResult mcap_result = UploadResult::ok();
+  FileUploadResult mcap_result = FileUploadResult::ok();
   if (s3_client_->objectExists(mcap_s3_key)) {
     // MCAP already uploaded (retry after JSON failure) - verify checksum
     if (item.checksum_sha256.empty() || 
@@ -271,7 +271,7 @@ void EdgeUploader::processItem(const UploadItem& item) {
   }
 
   // Step 2: Upload JSON sidecar (signals completion)
-  UploadResult json_result = uploadSingleFile(item.json_path, json_s3_key, "");
+  FileUploadResult json_result = uploadSingleFile(item.json_path, json_s3_key, "");
 
   if (!json_result.success) {
     // JSON upload failed after MCAP succeeded
@@ -286,7 +286,7 @@ void EdgeUploader::processItem(const UploadItem& item) {
   onUploadSuccess(item);
 }
 
-UploadResult EdgeUploader::uploadSingleFile(
+FileUploadResult EdgeUploader::uploadSingleFile(
     const std::string& local_path, const std::string& s3_key,
     const std::string& checksum
 ) {
@@ -294,7 +294,7 @@ UploadResult EdgeUploader::uploadSingleFile(
   if (!fs::exists(local_path)) {
     std::string error_msg = "File not found: " + local_path;
     AXON_LOG_ERROR(error_msg);
-    return UploadResult::fail(error_msg, false);  // Not retryable
+    return FileUploadResult::fail(error_msg, false);  // Not retryable
   }
 
   // Prepare metadata
@@ -310,12 +310,12 @@ UploadResult EdgeUploader::uploadSingleFile(
     // Verify checksum if provided
     if (!checksum.empty()) {
       if (!s3_client_->verifyUpload(s3_key, checksum)) {
-        return UploadResult::fail("Checksum verification failed", true);  // Retryable
+        return FileUploadResult::fail("Checksum verification failed", true);  // Retryable
       }
     }
-    return UploadResult::ok();
+    return FileUploadResult::ok();
   } else {
-    return UploadResult::fail(result.error_message, result.is_retryable);
+    return FileUploadResult::fail(result.error_message, result.is_retryable);
   }
 }
 

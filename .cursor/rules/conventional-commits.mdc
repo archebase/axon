@@ -1,0 +1,105 @@
+# Conventional Commit Messages
+
+When asked to generate a commit message or crate an pull request by curosr, follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+
+## Format
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+## Types
+
+| Type | Description | SemVer |
+|------|-------------|--------|
+| `feat` | New feature | MINOR |
+| `fix` | Bug fix | PATCH |
+| `docs` | Documentation only | - |
+| `style` | Code style (formatting, semicolons) | - |
+| `refactor` | Code change that neither fixes nor adds | - |
+| `perf` | Performance improvement | - |
+| `test` | Adding or correcting tests | - |
+| `build` | Build system or dependencies | - |
+| `ci` | CI configuration | - |
+| `chore` | Other changes (e.g., .gitignore) | - |
+
+## Rules
+
+1. **Type is required** - Must be one of the types above
+2. **Scope is optional** - Noun in parentheses describing the section of codebase: `feat(parser):`
+3. **Description is required** - Short summary in imperative mood, no period at end
+4. **Body is optional** - Detailed explanation, blank line after description
+5. **Footer is optional** - For breaking changes and issue references
+
+## Breaking Changes
+
+Indicate breaking changes with:
+- `!` after type/scope: `feat(api)!: remove deprecated endpoint`
+- Footer: `BREAKING CHANGE: description`
+
+## Examples
+
+### Simple fix
+```
+fix: prevent racing of requests
+```
+
+### Feature with scope
+```
+feat(lang): add Polish language support
+```
+
+### Breaking change with body
+```
+feat(api)!: send email notification on task completion
+
+Emails are now sent to users when their recording task completes.
+This replaces the previous webhook-only notification system.
+
+BREAKING CHANGE: webhook payload structure has changed
+```
+
+### Multi-paragraph body with footer
+```
+fix(upload): resolve S3 multipart upload memory leak
+
+The upload buffer was not being released after successful uploads,
+causing memory to grow unbounded during long recording sessions.
+
+Added explicit buffer cleanup in the completion handler and
+implemented a maximum buffer pool size.
+
+Fixes: #123
+Reviewed-by: Z
+```
+
+### Test changes
+```
+test(recorder): improve coverage from 50% to 85%
+
+- Add unit tests for ros_introspection and message_factory
+- Add minimal mock and tests for axon_ros_sink
+- Enhance existing tests for config_parser, http_client, worker_pool
+- Add regression tests for state transitions and error recovery
+- Fix coverage config to exclude test directories from reports
+```
+
+## Guidelines for This Project
+
+1. **Scope suggestions for Axon**:
+   - `recorder` - axon_recorder package
+   - `mcap` - MCAP writer/validator
+   - `uploader` - Edge uploader/S3 client
+   - `logging` - Logging infrastructure
+   - `config` - Configuration parsing
+   - `test` - Test infrastructure
+
+2. **Keep descriptions under 72 characters**
+
+3. **Use imperative mood**: "add" not "added", "fix" not "fixed"
+
+4. **Reference issues in footer**: `Fixes: #123` or `Refs: #456`

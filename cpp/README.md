@@ -1,29 +1,15 @@
 # Axon C++ SDK
 
-C++ core libraries for Axon - provides MCAP recording, configuration parsing, and message utilities.
+C++ core libraries for Axon - provides MCAP recording, S3 upload, logging, and configuration parsing.
 
 ## Overview
 
 The C++ SDK provides core functionality that is **not** ROS-specific:
 
 - **MCAP Writer** (`axon_mcap/`) - High-performance MCAP file writer with compression support
+- **S3 Uploader** (`axon_uploader/`) - Upload files to S3-compatible storage (AWS S3, MinIO)
+- **Logging** (`axon_logging/`) - Structured logging infrastructure
 - **Config Parser** (`axon_mcap/config_parser`) - Parse YAML configuration files
-
-## Directory Structure
-
-```
-cpp/
-├── README.md                             # This file
-└── axon_mcap/                            # MCAP recording library
-    ├── CMakeLists.txt                    # CMake build configuration
-    ├── mcap_writer_wrapper.hpp           # Thread-safe MCAP writer API
-    ├── mcap_writer_wrapper.cpp           # Implementation
-    ├── config_parser.hpp                 # YAML config parser
-    ├── config_parser.cpp                 # Config parser implementation
-    ├── include/mcap/                     # Foxglove MCAP header-only library
-    └── test/
-        └── test_mcap_writer.cpp          # MCAP writer tests
-```
 
 ## MCAP Format
 
@@ -39,22 +25,59 @@ The recorder uses MCAP (append-only container) format for efficient storage and 
 
 ### Required Dependencies
 
+**All libraries:**
 - **yaml-cpp** - YAML configuration parsing
+- **GoogleTest** - Unit testing framework (for tests only)
+
+**axon_mcap:**
 - **zstd** (optional) - Zstd compression for MCAP
 - **lz4** (optional) - LZ4 compression for MCAP
-- **GoogleTest** - Unit testing framework (for tests only)
+
+**axon_uploader:**
+- **AWS SDK for C++** (S3, Transfer) - S3-compatible storage operations
+- **OpenSSL** - TLS/SSL support
+- **SQLite3** - Persistent upload state
+
+**axon_logging:**
+- **Boost.Log** - Logging backend
 
 ### Installing Dependencies
 
 **macOS (Homebrew):**
 ```bash
+# Core dependencies
 brew install yaml-cpp zstd lz4 googletest
+
+# For axon_uploader
+brew install aws-sdk-cpp openssl sqlite3
+
+# For axon_logging
+brew install boost
 ```
 
 **Ubuntu/Debian:**
 ```bash
 sudo apt-get update
-sudo apt-get install -y libyaml-cpp-dev libzstd-dev liblz4-dev libgtest-dev
+
+# Core dependencies
+sudo apt-get install -y \
+    libyaml-cpp-dev \
+    libzstd-dev \
+    liblz4-dev \
+    libgtest-dev
+
+# For axon_uploader
+sudo apt-get install -y \
+    libaws-cpp-sdk-s3-dev \
+    libaws-cpp-sdk-transfer-dev \
+    libssl-dev \
+    libsqlite3-dev
+
+# For axon_logging
+sudo apt-get install -y \
+    libboost-log-dev \
+    libboost-thread-dev \
+    libboost-filesystem-dev
 ```
 
 ## Building
@@ -97,6 +120,21 @@ cmake --build . -j$(nproc)
 | Option | Default | Description |
 |--------|---------|-------------|
 | `AXON_MCAP_BUILD_TESTS` | `OFF` | Build MCAP unit tests |
+| `AXON_MCAP_ENABLE_COVERAGE` | `OFF` | Enable code coverage |
+
+#### Uploader Library (axon_uploader)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `AXON_UPLOADER_BUILD_TESTS` | `OFF` | Build uploader unit tests |
+| `AXON_UPLOADER_ENABLE_COVERAGE` | `OFF` | Enable code coverage |
+
+#### Logging Library (axon_logging)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `AXON_LOGGING_BUILD_TESTS` | `OFF` | Build logging unit tests |
+| `AXON_LOGGING_ENABLE_COVERAGE` | `OFF` | Enable code coverage |
 
 ## API Documentation
 
@@ -147,6 +185,45 @@ if (config.validate()) {
     for (const auto& topic : config.topics) {
         std::cout << "Topic: " << topic.name << std::endl;
     }
+}
+```
+
+### S3Client
+
+Upload files to S3-compatible storage (AWS S3, MinIO):
+
+```cpp
+#include "s3_client.hpp"
+
+using namespace axon::uploader;
+
+// Configure S3 client
+S3Config config;
+config.endpoint_url = "http://localhost:9000";  // MinIO endpoint
+config.bucket = "my-bucket";
+config.region = "us-east-1";
+// Credentials loaded from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars
+
+// Create client
+S3Client client(config);
+
+// Upload file with metadata
+std::map<std::string, std::string> metadata;
+metadata["checksum-sha256"] = "abc123...";
+
+auto result = client.uploadFile(
+    "/path/to/local/file.mcap",
+    "recordings/file.mcap",
+    metadata,
+    [](uint64_t transferred, uint64_t total) {
+        std::cout << "Progress: " << transferred << "/" << total << std::endl;
+    }
+);
+
+if (result.success) {
+    std::cout << "Upload succeeded, ETag: " << result.etag << std::endl;
+} else {
+    std::cerr << "Upload failed: " << result.error_message << std::endl;
 }
 ```
 

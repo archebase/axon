@@ -73,18 +73,19 @@ struct HealthStatus {
 using UploadCallback = std::function<void(const std::string& task_id, bool success, const std::string& error)>;
 
 /**
- * Result of a single file upload attempt
+ * Result of a single file upload attempt (internal use)
  *
  * Used internally by uploadSingleFile to communicate results to processItem,
  * which handles all retry logic with the complete UploadItem context.
+ * Note: This is different from S3Client::UploadResult which is for S3 operations.
  */
-struct UploadResult {
+struct FileUploadResult {
   bool success;
   bool is_retryable;
   std::string error_message;
 
-  static UploadResult ok() { return {true, false, ""}; }
-  static UploadResult fail(const std::string& error, bool retryable) {
+  static FileUploadResult ok() { return {true, false, ""}; }
+  static FileUploadResult fail(const std::string& error, bool retryable) {
     return {false, retryable, error};
   }
 };
@@ -195,7 +196,7 @@ private:
 
   // Upload a single file (MCAP or JSON)
   // Returns result - caller (processItem) handles retry logic with complete item context
-  UploadResult uploadSingleFile(
+  FileUploadResult uploadSingleFile(
       const std::string& local_path, const std::string& s3_key,
       const std::string& checksum
   );

@@ -1,11 +1,8 @@
 # =============================================================================
 # C++ Libraries Coverage Workflow for Axon
 # =============================================================================
-# Runs coverage for standalone C++ libraries (axon_mcap, axon_logging)
+# Runs coverage for standalone C++ libraries (axon_mcap, axon_uploader, axon_logging)
 # These don't require ROS and can run in a simpler environment.
-#
-# NOTE: axon_uploader coverage is disabled until minio-cpp is replaced with
-# aws-sdk-cpp S3. See: https://github.com/your-org/Axon/issues/XXX
 # =============================================================================
 
 name: C++ Libraries Coverage
@@ -29,8 +26,13 @@ jobs:
         include:
           - library: axon_mcap
             cmake_flag: AXON_MCAP
+            extra_packages: ""
+          - library: axon_uploader
+            cmake_flag: AXON_UPLOADER
+            extra_packages: "libsqlite3-dev libaws-cpp-sdk-s3-dev libaws-cpp-sdk-transfer-dev"
           - library: axon_logging
             cmake_flag: AXON_LOGGING
+            extra_packages: ""
 
     steps:
       - name: Checkout repository
@@ -43,6 +45,12 @@ jobs:
         with:
           packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libyaml-cpp-dev liblz4-dev libzstd-dev libre2-dev libturbojpeg0-dev libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libssl-dev lcov
           version: 1.0
+
+      - name: Install extra packages for ${{ matrix.library }}
+        if: matrix.extra_packages != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.extra_packages }}
 
       - name: Cache ccache
         uses: actions/cache@v4

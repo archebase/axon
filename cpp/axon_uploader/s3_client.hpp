@@ -26,7 +26,7 @@ struct S3Config {
   std::string access_key;
   std::string secret_key;
 
-  // Multipart upload settings (minio-cpp handles this automatically)
+  // Multipart upload settings (AWS SDK handles this via TransferManager if needed)
   uint64_t part_size = 64 * 1024 * 1024;  // 64MB per part
 
   // Timeouts (in milliseconds)
@@ -65,14 +65,16 @@ struct UploadResult {
 using ProgressCallback = std::function<void(uint64_t bytes_transferred, uint64_t total_bytes)>;
 
 /**
- * S3 client wrapper around minio-cpp
+ * S3 client wrapper around AWS SDK for C++
  *
  * Provides a simplified interface for uploading files to S3-compatible storage.
+ * Supports both AWS S3 and S3-compatible storage like MinIO.
+ *
  * Features:
- * - Automatic multipart upload for large files
+ * - File upload with progress callbacks
  * - Credential auto-detection from environment variables
  * - Custom metadata support (for checksum verification)
- * - Progress callbacks
+ * - S3-compatible endpoint support (MinIO, etc.)
  */
 class S3Client {
 public:
