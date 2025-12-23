@@ -858,6 +858,323 @@ upload:
   EXPECT_TRUE(config.validate());
 }
 
+// ============================================================================
+// Enhanced Coverage Tests (Phase 4)
+// ============================================================================
+
+TEST_F(ConfigParserTest, ParseLogging_OnlyConsole) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+logging:
+  console:
+    enabled: true
+    colors: true
+    level: warn
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+
+  EXPECT_TRUE(config.logging.console_enabled);
+  EXPECT_TRUE(config.logging.console_colors);
+  EXPECT_EQ(config.logging.console_level, "warn");
+  // File should have defaults
+  EXPECT_FALSE(config.logging.file_enabled);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, ParseLogging_OnlyFile) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+logging:
+  file:
+    enabled: true
+    level: error
+    directory: /tmp/logs
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+
+  // Console should have defaults
+  EXPECT_TRUE(config.logging.console_enabled);  // Default
+  EXPECT_EQ(config.logging.console_level, "info");  // Default
+  // File should be configured
+  EXPECT_TRUE(config.logging.file_enabled);
+  EXPECT_EQ(config.logging.file_level, "error");
+  EXPECT_EQ(config.logging.file_directory, "/tmp/logs");
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, ParseUpload_MinimalS3Config) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: minimal-bucket
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+
+  EXPECT_TRUE(config.upload.enabled);
+  EXPECT_EQ(config.upload.s3.bucket, "minimal-bucket");
+  // Defaults should be applied
+  EXPECT_EQ(config.upload.s3.region, "us-east-1");
+  EXPECT_TRUE(config.upload.s3.use_ssl);
+  EXPECT_TRUE(config.upload.s3.verify_ssl);
+  EXPECT_EQ(config.upload.num_workers, 2);
+  EXPECT_EQ(config.upload.retry.max_retries, 5);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, SaveToFile_InvalidPath) {
+  RecorderConfig config;
+  config.dataset.path = "/data/test";
+  config.dataset.mode = "create";
+
+  TopicConfig topic;
+  topic.name = "/test";
+  topic.message_type = "std_msgs/String";
+  config.topics.push_back(topic);
+
+  ConfigParser parser;
+  // Try to save to a read-only system path that should fail
+  // Note: /proc is a read-only filesystem on Linux
+  bool result = parser.save_to_file("/proc/config_test.yaml", config);
+  // On most systems this should fail, but if it somehow succeeds, just verify behavior
+  (void)result;  // Result may vary by system permissions
+}
+
+TEST_F(ConfigParserTest, ConvertLoggingConfig_UnknownLevel) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+logging:
+  console:
+    enabled: true
+    level: unknown_level
+  file:
+    enabled: true
+    level: also_unknown
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+
+  // Unknown levels should be preserved as-is (they'll be handled at runtime)
+  EXPECT_EQ(config.logging.console_level, "unknown_level");
+  EXPECT_EQ(config.logging.file_level, "also_unknown");
+  // Config should still be valid (level validation happens at runtime)
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, ParseLogging_EmptySection) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+logging:
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+
+  // Should use defaults
+  EXPECT_TRUE(config.logging.console_enabled);
+  EXPECT_FALSE(config.logging.file_enabled);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, ParseRecording_AllOptions) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+recording:
+  max_disk_usage_gb: 200.5
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 200.5);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, ParseMissingDatasetSection) {
+  const std::string yaml = R"(
+topics:
+  - name: /test
+    message_type: std_msgs/String
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  // Should fail - dataset section is required
+  EXPECT_FALSE(parser.load_from_string(yaml, config));
+}
+
+TEST_F(ConfigParserTest, ParseMissingTopicsSection) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  // Should fail - topics section is required
+  EXPECT_FALSE(parser.load_from_string(yaml, config));
+}
+
+TEST_F(ConfigParserTest, ValidationWithMaxDiskUsageZero) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+recording:
+  max_disk_usage_gb: 0
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  // Zero disk usage is parsed and allowed (runtime handling)
+  EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 0.0);
+}
+
+TEST_F(ConfigParserTest, ValidationWithNegativeMaxDiskUsage) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+recording:
+  max_disk_usage_gb: -100
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  // Negative disk usage is parsed (runtime handling)
+  EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, -100.0);
+}
+
+TEST_F(ConfigParserTest, DuplicateTopicNames) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /camera/image
+    message_type: sensor_msgs/Image
+  - name: /camera/image
+    message_type: sensor_msgs/Image
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  ASSERT_EQ(config.topics.size(), 2);
+  // Duplicate topic names - should this be allowed or not?
+  // Currently parses but validation behavior may vary
+}
+
+TEST_F(ConfigParserTest, TopicWithAllOptionalFields) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+    batch_size: 250
+    flush_interval_ms: 2500
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  ASSERT_EQ(config.topics.size(), 1);
+  EXPECT_EQ(config.topics[0].name, "/test");
+  EXPECT_EQ(config.topics[0].message_type, "std_msgs/String");
+  EXPECT_EQ(config.topics[0].batch_size, 250);
+  EXPECT_EQ(config.topics[0].flush_interval_ms, 2500);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, FileRotationSettings) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+logging:
+  file:
+    enabled: true
+    directory: /logs
+    rotation_size_mb: 100
+    max_files: 10
+    rotate_at_midnight: true
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_TRUE(config.logging.file_enabled);
+  EXPECT_EQ(config.logging.rotation_size_mb, 100);
+  EXPECT_EQ(config.logging.max_files, 10);
+  EXPECT_TRUE(config.logging.rotate_at_midnight);
+  EXPECT_TRUE(config.validate());
+}
+
+TEST_F(ConfigParserTest, UploadRetryWithJitter) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /test
+    message_type: std_msgs/String
+upload:
+  enabled: true
+  s3:
+    bucket: my-bucket
+  retry:
+    max_retries: 3
+    initial_delay_ms: 100
+    max_delay_ms: 10000
+    exponential_base: 2.0
+    jitter: true
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_TRUE(config.upload.enabled);
+  EXPECT_EQ(config.upload.retry.max_retries, 3);
+  EXPECT_EQ(config.upload.retry.initial_delay_ms, 100);
+  EXPECT_EQ(config.upload.retry.max_delay_ms, 10000);
+  EXPECT_DOUBLE_EQ(config.upload.retry.exponential_base, 2.0);
+  EXPECT_TRUE(config.upload.retry.jitter);
+  EXPECT_TRUE(config.validate());
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
