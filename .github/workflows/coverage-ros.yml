@@ -32,71 +32,6 @@ jobs:
       ROS_DISTRO: humble
       ROS_REPO: main
       CCACHE_DIR: /github/home/.ccache
-      # Coverage configuration
-      ADDITIONAL_DEBS: lcov
-      TARGET_CMAKE_ARGS: >-
-        -DCMAKE_BUILD_TYPE=Debug
-        -DENABLE_COVERAGE=ON
-        -DAXON_ROS2=ON
-      # Mount entire repo + coverage output volume
-      DOCKER_RUN_OPTS: -v ${{ github.workspace }}:/github_repo -v ${{ github.workspace }}/coverage_output:/coverage_output
-      # Create symlinks before build so axon_recorder can find cpp/axon_mcap
-      BEFORE_SCRIPT: |
-        echo "=== Setting up cpp/ symlink for axon_recorder ==="
-        # axon_recorder expects cpp/axon_mcap at ../../cpp/axon_mcap relative to ros/axon_recorder
-        # industrial_ci puts packages at /root/upstream_ws/src/<pkg>/
-        # So we need cpp/ at /root/upstream_ws/cpp/
-        mkdir -p /root/upstream_ws
-        ln -sf /github_repo/cpp /root/upstream_ws/cpp
-        ls -la /root/upstream_ws/
-        ls -la /root/upstream_ws/cpp/
-        echo "=== Symlink setup complete ==="
-      # Script to collect coverage after tests
-      AFTER_SCRIPT: |
-        echo "=== Collecting coverage data ==="
-        cd $CATKIN_WORKSPACE
-        
-        # Detect lcov version
-        LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-        LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-        echo "lcov version: ${LCOV_VERSION}"
-        
-        IGNORE_FLAGS=""
-        if [ "${LCOV_MAJOR}" -ge 2 ]; then
-          IGNORE_FLAGS="--ignore-errors mismatch,unused"
-        fi
-        
-        # Capture coverage
-        lcov --capture \
-          --directory build \
-          --output-file /coverage_output/coverage_raw.info \
-          --rc lcov_branch_coverage=1 \
-          ${IGNORE_FLAGS} || true
-        
-        # Filter coverage
-        lcov --remove /coverage_output/coverage_raw.info \
-          '/usr/*' \
-          '/opt/*' \
-          '*/_deps/*' \
-          '*/generated/*' \
-          '*/googletest/*' \
-          '*/gtest/*' \
-          '*/mcap-*/*' \
-          '*/mcap/include/*' \
-          '*/minio-cpp/*' \
-          '*/axon_recorder/test/*' \
-          '*/axon_logging/test/*' \
-          '*/axon_mcap/test/*' \
-          '*/axon_uploader/test/*' \
-          '*/rosidl_typesupport_cpp/*' \
-          '*/rosidl_typesupport_introspection_cpp/*' \
-          '*/rosidl_generator_cpp/*' \
-          --output-file /coverage_output/coverage.info \
-          --rc lcov_branch_coverage=1 \
-          ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
-        
-        lcov --list /coverage_output/coverage.info || true
-        echo "=== Coverage collection complete ==="
 
     steps:
       - name: Checkout repository
@@ -104,8 +39,77 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create coverage output directory
-        run: mkdir -p ${{ github.workspace }}/coverage_output
+      - name: Create directories and hook scripts
+        run: |
+          mkdir -p ${{ github.workspace }}/coverage_output
+          mkdir -p ${{ github.workspace }}/.industrial_ci_hooks
+          
+          # Create before_build hook script
+          cat > ${{ github.workspace }}/.industrial_ci_hooks/before_build.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          echo "=== Setting up cpp/ symlink for axon_recorder ==="
+          # axon_recorder expects cpp/axon_mcap at ../../cpp/axon_mcap relative to ros/axon_recorder
+          # industrial_ci puts packages at /root/upstream_ws/src/<pkg>/
+          # So we need cpp/ at /root/upstream_ws/cpp/
+          mkdir -p /root/upstream_ws
+          ln -sf /github_repo/cpp /root/upstream_ws/cpp
+          ls -la /root/upstream_ws/
+          ls -la /root/upstream_ws/cpp/ || echo "cpp directory listing failed"
+          echo "=== Symlink setup complete ==="
+          EOF
+          chmod +x ${{ github.workspace }}/.industrial_ci_hooks/before_build.sh
+          
+          # Create after_test hook script for coverage collection
+          cat > ${{ github.workspace }}/.industrial_ci_hooks/after_test.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          echo "=== Collecting coverage data ==="
+          cd ${CATKIN_WORKSPACE:-/root/target_ws}
+          
+          # Detect lcov version
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
+          # Capture coverage
+          lcov --capture \
+            --directory build \
+            --output-file /coverage_output/coverage_raw.info \
+            --rc lcov_branch_coverage=1 \
+            ${IGNORE_FLAGS} || true
+          
+          # Filter coverage
+          lcov --remove /coverage_output/coverage_raw.info \
+            '/usr/*' \
+            '/opt/*' \
+            '*/_deps/*' \
+            '*/generated/*' \
+            '*/googletest/*' \
+            '*/gtest/*' \
+            '*/mcap-*/*' \
+            '*/mcap/include/*' \
+            '*/minio-cpp/*' \
+            '*/axon_recorder/test/*' \
+            '*/axon_logging/test/*' \
+            '*/axon_mcap/test/*' \
+            '*/axon_uploader/test/*' \
+            '*/rosidl_typesupport_cpp/*' \
+            '*/rosidl_typesupport_introspection_cpp/*' \
+            '*/rosidl_generator_cpp/*' \
+            --output-file /coverage_output/coverage.info \
+            --rc lcov_branch_coverage=1 \
+            ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
+          
+          lcov --list /coverage_output/coverage.info || true
+          echo "=== Coverage collection complete ==="
+          EOF
+          chmod +x ${{ github.workspace }}/.industrial_ci_hooks/after_test.sh
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -120,16 +124,19 @@ jobs:
         env:
           ROS_DISTRO: ${{ env.ROS_DISTRO }}
           ROS_REPO: ${{ env.ROS_REPO }}
-          # Use entire repo - axon_recorder depends on cpp/axon_mcap
           BASEDIR: ${{ github.workspace }}
-          # Only build/test the ROS package (colcon will find it in ros/)
           CATKIN_LINT: false
           CCACHE_DIR: ${{ env.CCACHE_DIR }}
-          ADDITIONAL_DEBS: ${{ env.ADDITIONAL_DEBS }}
-          TARGET_CMAKE_ARGS: ${{ env.TARGET_CMAKE_ARGS }}
-          DOCKER_RUN_OPTS: ${{ env.DOCKER_RUN_OPTS }}
-          BEFORE_SCRIPT: ${{ env.BEFORE_SCRIPT }}
-          AFTER_SCRIPT: ${{ env.AFTER_SCRIPT }}
+          ADDITIONAL_DEBS: lcov
+          TARGET_CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DAXON_ROS2=ON
+          # Mount repo and coverage output, plus hooks directory
+          DOCKER_RUN_OPTS: >-
+            -v ${{ github.workspace }}:/github_repo
+            -v ${{ github.workspace }}/coverage_output:/coverage_output
+            -v ${{ github.workspace }}/.industrial_ci_hooks:/industrial_ci_hooks
+          # Use new hook system
+          BEFORE_BUILD: /industrial_ci_hooks/before_build.sh
+          AFTER_TEST: /industrial_ci_hooks/after_test.sh
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -158,68 +165,6 @@ jobs:
       ROS_DISTRO: noetic
       ROS_REPO: main
       CCACHE_DIR: /github/home/.ccache
-      # Coverage configuration
-      ADDITIONAL_DEBS: lcov
-      TARGET_CMAKE_ARGS: >-
-        -DCMAKE_BUILD_TYPE=Debug
-        -DENABLE_COVERAGE=ON
-        -DAXON_ROS1=ON
-      # Mount entire repo + coverage output volume
-      DOCKER_RUN_OPTS: -v ${{ github.workspace }}:/github_repo -v ${{ github.workspace }}/coverage_output:/coverage_output
-      # Create symlinks before build so axon_recorder can find cpp/axon_mcap
-      BEFORE_SCRIPT: |
-        echo "=== Setting up cpp/ symlink for axon_recorder ==="
-        # axon_recorder expects cpp/axon_mcap at ../../cpp/axon_mcap relative to ros/axon_recorder
-        # industrial_ci puts packages at /root/upstream_ws/src/<pkg>/
-        # So we need cpp/ at /root/upstream_ws/cpp/
-        mkdir -p /root/upstream_ws
-        ln -sf /github_repo/cpp /root/upstream_ws/cpp
-        ls -la /root/upstream_ws/
-        ls -la /root/upstream_ws/cpp/
-        echo "=== Symlink setup complete ==="
-      # Script to collect coverage after tests
-      AFTER_SCRIPT: |
-        echo "=== Collecting coverage data ==="
-        cd $CATKIN_WORKSPACE
-        
-        # Detect lcov version
-        LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-        LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-        echo "lcov version: ${LCOV_VERSION}"
-        
-        IGNORE_FLAGS=""
-        if [ "${LCOV_MAJOR}" -ge 2 ]; then
-          IGNORE_FLAGS="--ignore-errors mismatch,unused"
-        fi
-        
-        # Capture coverage
-        lcov --capture \
-          --directory build \
-          --output-file /coverage_output/coverage_raw.info \
-          --rc lcov_branch_coverage=1 \
-          ${IGNORE_FLAGS} || true
-        
-        # Filter coverage
-        lcov --remove /coverage_output/coverage_raw.info \
-          '/usr/*' \
-          '/opt/*' \
-          '*/_deps/*' \
-          '*/generated/*' \
-          '*/googletest/*' \
-          '*/gtest/*' \
-          '*/mcap-*/*' \
-          '*/mcap/include/*' \
-          '*/minio-cpp/*' \
-          '*/axon_recorder/test/*' \
-          '*/axon_logging/test/*' \
-          '*/axon_mcap/test/*' \
-          '*/axon_uploader/test/*' \
-          --output-file /coverage_output/coverage.info \
-          --rc lcov_branch_coverage=1 \
-          ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
-        
-        lcov --list /coverage_output/coverage.info || true
-        echo "=== Coverage collection complete ==="
 
     steps:
       - name: Checkout repository
@@ -227,8 +172,74 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create coverage output directory
-        run: mkdir -p ${{ github.workspace }}/coverage_output
+      - name: Create directories and hook scripts
+        run: |
+          mkdir -p ${{ github.workspace }}/coverage_output
+          mkdir -p ${{ github.workspace }}/.industrial_ci_hooks
+          
+          # Create before_build hook script
+          cat > ${{ github.workspace }}/.industrial_ci_hooks/before_build.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          echo "=== Setting up cpp/ symlink for axon_recorder ==="
+          # axon_recorder expects cpp/axon_mcap at ../../cpp/axon_mcap relative to ros/axon_recorder
+          # industrial_ci puts packages at /root/upstream_ws/src/<pkg>/
+          # So we need cpp/ at /root/upstream_ws/cpp/
+          mkdir -p /root/upstream_ws
+          ln -sf /github_repo/cpp /root/upstream_ws/cpp
+          ls -la /root/upstream_ws/
+          ls -la /root/upstream_ws/cpp/ || echo "cpp directory listing failed"
+          echo "=== Symlink setup complete ==="
+          EOF
+          chmod +x ${{ github.workspace }}/.industrial_ci_hooks/before_build.sh
+          
+          # Create after_test hook script for coverage collection
+          cat > ${{ github.workspace }}/.industrial_ci_hooks/after_test.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          echo "=== Collecting coverage data ==="
+          cd ${CATKIN_WORKSPACE:-/root/target_ws}
+          
+          # Detect lcov version
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
+          # Capture coverage
+          lcov --capture \
+            --directory build \
+            --output-file /coverage_output/coverage_raw.info \
+            --rc lcov_branch_coverage=1 \
+            ${IGNORE_FLAGS} || true
+          
+          # Filter coverage
+          lcov --remove /coverage_output/coverage_raw.info \
+            '/usr/*' \
+            '/opt/*' \
+            '*/_deps/*' \
+            '*/generated/*' \
+            '*/googletest/*' \
+            '*/gtest/*' \
+            '*/mcap-*/*' \
+            '*/mcap/include/*' \
+            '*/minio-cpp/*' \
+            '*/axon_recorder/test/*' \
+            '*/axon_logging/test/*' \
+            '*/axon_mcap/test/*' \
+            '*/axon_uploader/test/*' \
+            --output-file /coverage_output/coverage.info \
+            --rc lcov_branch_coverage=1 \
+            ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
+          
+          lcov --list /coverage_output/coverage.info || true
+          echo "=== Coverage collection complete ==="
+          EOF
+          chmod +x ${{ github.workspace }}/.industrial_ci_hooks/after_test.sh
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -243,16 +254,19 @@ jobs:
         env:
           ROS_DISTRO: ${{ env.ROS_DISTRO }}
           ROS_REPO: ${{ env.ROS_REPO }}
-          # Use entire repo - axon_recorder depends on cpp/axon_mcap
           BASEDIR: ${{ github.workspace }}
-          # Only build/test the ROS package (catkin will find it in ros/)
           CATKIN_LINT: false
           CCACHE_DIR: ${{ env.CCACHE_DIR }}
-          ADDITIONAL_DEBS: ${{ env.ADDITIONAL_DEBS }}
-          TARGET_CMAKE_ARGS: ${{ env.TARGET_CMAKE_ARGS }}
-          DOCKER_RUN_OPTS: ${{ env.DOCKER_RUN_OPTS }}
-          BEFORE_SCRIPT: ${{ env.BEFORE_SCRIPT }}
-          AFTER_SCRIPT: ${{ env.AFTER_SCRIPT }}
+          ADDITIONAL_DEBS: lcov
+          TARGET_CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DAXON_ROS1=ON
+          # Mount repo and coverage output, plus hooks directory
+          DOCKER_RUN_OPTS: >-
+            -v ${{ github.workspace }}:/github_repo
+            -v ${{ github.workspace }}/coverage_output:/coverage_output
+            -v ${{ github.workspace }}/.industrial_ci_hooks:/industrial_ci_hooks
+          # Use new hook system
+          BEFORE_BUILD: /industrial_ci_hooks/before_build.sh
+          AFTER_TEST: /industrial_ci_hooks/after_test.sh
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
