@@ -3,56 +3,55 @@
 [![Test Coverage](https://github.com/ArcheBase/Axon/actions/workflows/coverage.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/coverage.yml)
 [![codecov](https://codecov.io/gh/ArcheBase/Axon/branch/main/graph/badge.svg)](https://codecov.io/gh/ArcheBase/Axon)
 
-A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling).
+A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling). Designed for fleet management with server-controlled recording via ros-bridge.
 
 ## Architecture
 
-The system uses a layered architecture:
-
-- **C++ Core Layer**: MCAP writer, message serialization, configuration parsing
-- **ROS Abstraction Layer**: ROS 1/2 compatibility with unified interface
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
 
 ```
-ROS Messages → Message Serialization → MCAP Writer → Disk
-     ↓                    ↓                  ↓
-  YAML Config        Batch Queue      Async Write Thread
-     ↓                    ↓
-  ROS Service      Status/Control
+Server (ros-bridge) → Recording Services → State Machine → MCAP
+         ↓                    ↓                 ↓
+   Task Config          HTTP Callbacks    Worker Threads
+         ↓                    ↓                 ↓
+   CachedRecording      Start/Finish      SPSC Queues
+       Config             Notify           (lock-free)
 ```
 
 ## Features
 
-- **MCAP Format**: Efficient append-only container format compatible with Foxglove Studio
-- **Asynchronous Writes**: Background thread prevents blocking ROS callbacks
-- **Multi-ROS Support**: Compatible with ROS 1 Noetic and ROS 2 Humble/Jazzy/Rolling
-- **All Message Types**: Dynamically handles all ROS message types via introspection
-- **YAML Configuration**: Flexible configuration via YAML files
-- **ROS Services**: Control recording via ROS services (compatible with rosbridge)
+- **Task-Centric Design**: One task = one MCAP file with full lifecycle management
+- **Server Integration**: Fleet management via ros-bridge with HTTP callbacks
+- **MCAP Format**: Efficient append-only container compatible with Foxglove Studio
+- **Lock-Free Queues**: Per-topic SPSC queues for zero-copy message handling
+- **Multi-ROS Support**: ROS 1 Noetic and ROS 2 Humble/Jazzy/Rolling
+- **Metadata Injection**: Embeds task/device/recording metadata + sidecar JSON
+- **Edge Uploader**: S3 upload with retry, crash recovery, and backpressure
+- **Structured Logging**: Boost.Log with console/file/ROS sinks
 
 ## Dependencies
 
 ### System Dependencies
 
-- CMake 3.15+
-- yaml-cpp (libyaml-cpp-dev)
-- zstd (optional, for compression)
-- lz4 (optional, for compression)
+- CMake 3.12+
+- Boost 1.71+ (`libboost-log-dev`, `libboost-filesystem-dev`, `libboost-thread-dev`)
+- yaml-cpp (`libyaml-cpp-dev`)
+- OpenSSL (`libssl-dev`) - for HTTPS callbacks
+- zstd (`libzstd-dev`) - optional, for MCAP compression
+- lz4 (`liblz4-dev`) - optional, for MCAP compression
 
 ### ROS Dependencies
 
-**ROS 1:**
-- roscpp
-- std_msgs
-- sensor_msgs
-- nav_msgs
-- message_generation
+**ROS 1 (Noetic):**
+- roscpp, roslib
+- std_msgs, sensor_msgs, nav_msgs, geometry_msgs
+- topic_tools
+- message_generation, message_runtime
 
-**ROS 2:**
-- rclcpp
-- std_msgs
-- sensor_msgs
-- nav_msgs
-- rosidl_default_generators
+**ROS 2 (Humble/Jazzy/Rolling):**
+- rclcpp, ament_index_cpp
+- std_msgs, sensor_msgs, nav_msgs, geometry_msgs
+- rosidl_default_generators, rosidl_default_runtime
 
 ## Building
 
@@ -216,55 +215,62 @@ ros2 launch axon recorder_ros2.launch.py config_path:=/path/to/config.yaml
 
 ## ROS Services
 
-The recorder provides the following services:
+The recorder uses a task-centric service API designed for server integration:
 
-### StartRecording
+| Service | Purpose |
+|---------|---------|
+| `CachedRecordingConfig` | Cache task configuration (IDLE → READY) |
+| `IsRecordingReady` | Query if recorder has cached config |
+| `RecordingControl` | Control lifecycle: start/pause/resume/cancel/finish/clear |
+| `RecordingStatus` | Query status, metrics, and task info |
 
-Start recording with optional config override.
+### CachedRecordingConfig
 
-```bash
-# ROS 1
-rosservice call /axon/start_recording "config_path: ''"
-
-# ROS 2
-ros2 service call /axon/start_recording axon_recorder/srv/StartRecording "{config_path: ''}"
-```
-
-### StopRecording
-
-Stop recording and flush current batch.
+Cache task configuration from server before starting.
 
 ```bash
-# ROS 1
-rosservice call /axon/stop_recording
-
 # ROS 2
-ros2 service call /axon/stop_recording axon_recorder/srv/StopRecording
+ros2 service call /axon_recorder/cached_recording_config axon_recorder/srv/CachedRecordingConfig "{
+  task_id: 'task_123',
+  device_id: 'robot_01',
+  scene: 'warehouse',
+  topics: ['/camera/image', '/lidar/scan'],
+  start_callback_url: 'http://server/api/start',
+  finish_callback_url: 'http://server/api/finish',
+  user_token: 'jwt_token'
+}"
 ```
 
-### UpdateConfig
+### RecordingControl
 
-Update configuration at runtime.
+Unified control interface for all lifecycle operations.
 
 ```bash
-# ROS 1
-rosservice call /axon/update_config "config_path: '/path/to/new_config.yaml'"
+# Start recording (requires READY state)
+ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'start'}"
 
-# ROS 2
-ros2 service call /axon/update_config axon_recorder/srv/UpdateConfig "{config_path: '/path/to/new_config.yaml'}"
+# Pause recording
+ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'pause', task_id: 'task_123'}"
+
+# Resume recording
+ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'resume', task_id: 'task_123'}"
+
+# Finish recording (finalizes MCAP, triggers upload)
+ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'finish', task_id: 'task_123'}"
+
+# Cancel recording (cleanup without upload)
+ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'cancel', task_id: 'task_123'}"
 ```
 
-### GetStatus
+### RecordingStatus
 
-Get current recording status.
+Query current status and metrics.
 
 ```bash
-# ROS 1
-rosservice call /axon/get_status
-
-# ROS 2
-ros2 service call /axon/get_status axon_recorder/srv/GetStatus
+ros2 service call /axon_recorder/recording_status axon_recorder/srv/RecordingStatus "{}"
 ```
+
+See [docs/recording-service-api-design-2025-12-20.md](docs/recording-service-api-design-2025-12-20.md) for complete API documentation.
 
 ## Docker
 
@@ -294,31 +300,25 @@ docker-compose exec ros1-noetic /bin/bash
 
 ## Performance Considerations
 
-- **Batch Size**: Larger batch sizes improve write throughput but increase memory usage
-- **Flush Interval**: Shorter intervals reduce data loss risk but may impact performance
-- **Direct Serialization**: MCAP format stores ROS messages directly without conversion overhead
-- **Async Writes**: Background writer thread prevents blocking ROS callbacks
-
-## Project Structure
-
-```
-axon/
-├── cpp/                 # C++ SDK - Core library
-│   └── axon_mcap/       # MCAP writer and utilities
-├── ros/                 # ROS packages
-│   └── axon_recorder/   # Unified ROS 1/2 recorder
-├── config/              # Configuration files
-├── docs/                # Documentation
-└── ros/docker/          # Docker images and test scripts
-```
+- **Lock-Free Queues**: Per-topic SPSC queues with cache-line alignment prevent false sharing
+- **Zero-Copy Transfer**: Messages moved through queue without copying
+- **Direct Serialization**: MCAP stores ROS messages directly without conversion overhead
+- **Bounded Memory**: Fixed-capacity queues (default 4096 per topic) with backpressure
+- **Async I/O**: Non-blocking HTTP callbacks and S3 uploads
 
 ## Testing
 
-The project includes a comprehensive test suite covering C++ components.
+The project includes comprehensive unit and integration tests.
 
 ### Running Tests
 
-**C++ Tests:**
+**ROS Package Tests:**
+```bash
+cd ros
+make test  # Builds and runs all tests
+```
+
+**C++ Library Tests:**
 ```bash
 cd cpp/axon_mcap
 mkdir -p build && cd build
@@ -327,19 +327,18 @@ cmake --build .
 ctest --output-on-failure
 ```
 
-**ROS Integration Tests:**
-```bash
-cd ros
-make test
-```
-
 ### Test Coverage
 
 - ✅ MCAP writer (file operations, compression, thread safety)
-- ✅ Configuration parser (YAML loading, validation)
-- ✅ ROS integration (message handling, service interface)
+- ✅ MCAP validator (file integrity checks)
+- ✅ Logging infrastructure (console/file sinks)
+- ✅ Edge uploader (retry, state management)
+- ✅ SPSC queue (lock-free operations)
+- ✅ State machine (transitions, guards)
+- ✅ Metadata injector (MCAP metadata, sidecar JSON)
+- ✅ Recording service (all 4 services)
 
-See `ros/axon_recorder/test/README.md` for more details on the test suite.
+See `ros/axon_recorder/test/` for the full test suite.
 
 ### Generating Coverage Reports
 
