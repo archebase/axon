@@ -11,9 +11,40 @@ coverage:
       default:
         target: auto
         threshold: 1%  # Allow 1% coverage drop before failing
+      # Separate status checks for each component
+      ros2:
+        target: auto
+        flags:
+          - ros2
+      ros1:
+        target: auto
+        flags:
+          - ros1
+      cpp:
+        target: auto
+        flags:
+          - cpp
     patch:
       default:
         target: auto
+
+# Coverage flags for different components
+# Each flag represents a separate test suite
+flags:
+  ros2:
+    paths:
+      - ros/axon_recorder/src/
+    carryforward: true
+  ros1:
+    paths:
+      - ros/axon_recorder/src/
+    carryforward: true
+  cpp:
+    paths:
+      - cpp/axon_mcap/
+      - cpp/axon_uploader/
+      - cpp/axon_logging/
+    carryforward: true
 
 # Ignore test files from coverage metrics
 # These should not count toward coverage since they ARE the tests
@@ -31,3 +62,8 @@ ignore:
   - "**/rosidl_typesupport_introspection_cpp/**/*"
   - "**/rosidl_generator_cpp/**/*"
 
+# Comment configuration for PR feedback
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true
