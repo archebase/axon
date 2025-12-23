@@ -178,6 +178,9 @@ lcov --remove "${OUTPUT_DIR}/coverage_raw.info" \
     '*/axon_logging/test/*' \
     '*/axon_mcap/test/*' \
     '*/axon_uploader/test/*' \
+    '*/rosidl_typesupport_cpp/*' \
+    '*/rosidl_typesupport_introspection_cpp/*' \
+    '*/rosidl_generator_cpp/*' \
     --output-file "${OUTPUT_DIR}/coverage.info" \
     --rc lcov_branch_coverage=1 \
     ${LCOV_IGNORE_FLAGS} || {

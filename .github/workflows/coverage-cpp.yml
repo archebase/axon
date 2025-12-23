@@ -1,0 +1,179 @@
+# =============================================================================
+# C++ Libraries Coverage Workflow for Axon
+# =============================================================================
+# Runs coverage for standalone C++ libraries (axon_mcap, axon_logging)
+# These don't require ROS and can run in a simpler environment.
+#
+# NOTE: axon_uploader coverage is disabled until minio-cpp is replaced with
+# aws-sdk-cpp S3. See: https://github.com/your-org/Axon/issues/XXX
+# =============================================================================
+
+name: C++ Libraries Coverage
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'cpp/**'
+      - '.github/workflows/coverage-cpp.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'cpp/**'
+      - '.github/workflows/coverage-cpp.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  coverage-cpp:
+    name: C++ Libraries Coverage
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libgtest-dev \
+            libgmock-dev \
+            libyaml-cpp-dev \
+            liblz4-dev \
+            libzstd-dev \
+            libre2-dev \
+            libturbojpeg0-dev \
+            libboost-dev \
+            libboost-system-dev \
+            libboost-log-dev \
+            libboost-thread-dev \
+            libboost-filesystem-dev \
+            libssl-dev \
+            lcov
+
+      - name: Build GTest from source
+        run: |
+          if [ -d /usr/src/googletest ]; then
+            cd /usr/src/googletest
+            sudo cmake -B build
+            sudo cmake --build build
+            sudo cmake --install build
+          fi
+
+      - name: Run axon_mcap coverage
+        run: |
+          cd cpp
+          
+          # Build with coverage
+          mkdir -p build && cd build
+          cmake ../axon_mcap \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DAXON_MCAP_ENABLE_COVERAGE=ON \
+            -DAXON_MCAP_BUILD_TESTS=ON
+          make -j$(nproc)
+          
+          # Run tests
+          ctest --output-on-failure
+          
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
+          # Generate coverage
+          lcov --capture --directory . --output-file coverage_mcap_raw.info \
+            --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+          lcov --remove coverage_mcap_raw.info \
+            '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
+            --output-file coverage_mcap.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+
+      # =========================================================================
+      # axon_uploader coverage is DISABLED
+      # =========================================================================
+      # minio-cpp requires unofficial-curlpp from vcpkg which adds CI complexity.
+      # TODO: Re-enable after replacing minio-cpp with aws-sdk-cpp S3.
+      # =========================================================================
+
+      - name: Run axon_logging coverage
+        run: |
+          cd cpp
+          
+          # Build with coverage
+          mkdir -p build_logging && cd build_logging
+          cmake ../axon_logging \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DAXON_LOGGING_ENABLE_COVERAGE=ON \
+            -DAXON_LOGGING_BUILD_TESTS=ON
+          make -j$(nproc)
+          
+          # Run tests
+          ctest --output-on-failure
+          
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
+          # Generate coverage
+          lcov --capture --directory . --output-file coverage_logging_raw.info \
+            --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+          lcov --remove coverage_logging_raw.info \
+            '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
+            --output-file coverage_logging.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+
+      - name: Merge coverage reports
+        run: |
+          cd cpp
+          
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
+          # Merge axon_mcap and axon_logging coverage
+          # NOTE: axon_uploader is excluded until aws-sdk-cpp migration
+          lcov \
+            -a build/coverage_mcap.info \
+            -a build_logging/coverage_logging.info \
+            -o coverage_cpp_merged.info \
+            --rc lcov_branch_coverage=1 \
+            ${LCOV_IGNORE_FLAGS}
+          
+          lcov --list coverage_cpp_merged.info ${LCOV_IGNORE_FLAGS}
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: cpp/coverage_cpp_merged.info
+          flags: cpp
+          name: axon-cpp-coverage
+          fail_ci_if_error: false  # Don't fail if upload fails
+          verbose: true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-coverage-report
+          path: cpp/coverage_cpp_merged.info
+          retention-days: 30
+

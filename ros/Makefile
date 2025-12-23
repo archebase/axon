@@ -448,6 +448,9 @@ coverage-ros2:
 		'*/axon_logging/test/*' \
 		'*/axon_mcap/test/*' \
 		'*/axon_uploader/test/*' \
+		'*/rosidl_typesupport_cpp/*' \
+		'*/rosidl_typesupport_introspection_cpp/*' \
+		'*/rosidl_generator_cpp/*' \
 		'*/mcap-*/*' '*/mcap/include/*' \
 		--output-file $(COVERAGE_DIR)/coverage.info \
 		--rc lcov_branch_coverage=1 \
