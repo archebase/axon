@@ -73,6 +73,7 @@ endif()
 option(AXON_LOGGING_BUILD_TESTS "Build logging tests" OFF)
 
 if(AXON_LOGGING_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(test)
 endif()
 

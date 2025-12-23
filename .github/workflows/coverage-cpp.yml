@@ -80,11 +80,22 @@ jobs:
           # Run tests
           ctest --output-on-failure
           
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
           # Generate coverage
-          lcov --capture --directory . --output-file coverage_mcap_raw.info --rc lcov_branch_coverage=1
+          lcov --capture --directory . --output-file coverage_mcap_raw.info \
+            --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
           lcov --remove coverage_mcap_raw.info \
             '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
-            --output-file coverage_mcap.info --rc lcov_branch_coverage=1
+            --output-file coverage_mcap.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
 
       # =========================================================================
       # axon_uploader coverage is DISABLED
@@ -108,15 +119,35 @@ jobs:
           # Run tests
           ctest --output-on-failure
           
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
           # Generate coverage
-          lcov --capture --directory . --output-file coverage_logging_raw.info --rc lcov_branch_coverage=1
+          lcov --capture --directory . --output-file coverage_logging_raw.info \
+            --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
           lcov --remove coverage_logging_raw.info \
             '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
-            --output-file coverage_logging.info --rc lcov_branch_coverage=1
+            --output-file coverage_logging.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
 
       - name: Merge coverage reports
         run: |
           cd cpp
+          
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
           
           # Merge axon_mcap and axon_logging coverage
           # NOTE: axon_uploader is excluded until aws-sdk-cpp migration
@@ -124,9 +155,10 @@ jobs:
             -a build/coverage_mcap.info \
             -a build_logging/coverage_logging.info \
             -o coverage_cpp_merged.info \
-            --rc lcov_branch_coverage=1
+            --rc lcov_branch_coverage=1 \
+            ${LCOV_IGNORE_FLAGS}
           
-          lcov --list coverage_cpp_merged.info
+          lcov --list coverage_cpp_merged.info ${LCOV_IGNORE_FLAGS}
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
