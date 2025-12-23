@@ -2,6 +2,7 @@
 # ROS Coverage Workflow for Axon
 # =============================================================================
 # Runs tests with coverage instrumentation for both ROS 1 and ROS 2.
+# Uses ros-industrial/industrial_ci for Docker-based builds.
 # Uploads results to Codecov with separate flags for each distribution.
 # =============================================================================
 
@@ -22,128 +23,104 @@ on:
 
 jobs:
   # ===========================================================================
-  # ROS 2 Humble Coverage
+  # ROS 2 Humble Coverage (via industrial_ci)
   # ===========================================================================
   coverage-humble:
     name: ROS 2 Humble Coverage
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     env:
       ROS_DISTRO: humble
-      ROS_VERSION: 2
-    
+      ROS_REPO: main
+      CCACHE_DIR: /github/home/.ccache
+      # Coverage configuration
+      ADDITIONAL_DEBS: lcov
+      TARGET_CMAKE_ARGS: >-
+        -DCMAKE_BUILD_TYPE=Debug
+        -DENABLE_COVERAGE=ON
+        -DAXON_ROS2=ON
+      # Mount volume for coverage output
+      DOCKER_RUN_OPTS: -v ${{ github.workspace }}/coverage_output:/coverage_output
+      # Script to collect coverage after tests
+      AFTER_SCRIPT: |
+        echo "=== Collecting coverage data ==="
+        cd $CATKIN_WORKSPACE
+        
+        # Detect lcov version
+        LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+        LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+        echo "lcov version: ${LCOV_VERSION}"
+        
+        IGNORE_FLAGS=""
+        if [ "${LCOV_MAJOR}" -ge 2 ]; then
+          IGNORE_FLAGS="--ignore-errors mismatch,unused"
+        fi
+        
+        # Capture coverage
+        lcov --capture \
+          --directory build \
+          --output-file /coverage_output/coverage_raw.info \
+          --rc lcov_branch_coverage=1 \
+          ${IGNORE_FLAGS} || true
+        
+        # Filter coverage
+        lcov --remove /coverage_output/coverage_raw.info \
+          '/usr/*' \
+          '/opt/*' \
+          '*/_deps/*' \
+          '*/generated/*' \
+          '*/googletest/*' \
+          '*/gtest/*' \
+          '*/mcap-*/*' \
+          '*/mcap/include/*' \
+          '*/minio-cpp/*' \
+          '*/axon_recorder/test/*' \
+          '*/axon_logging/test/*' \
+          '*/axon_mcap/test/*' \
+          '*/axon_uploader/test/*' \
+          '*/rosidl_typesupport_cpp/*' \
+          '*/rosidl_typesupport_introspection_cpp/*' \
+          '*/rosidl_generator_cpp/*' \
+          --output-file /coverage_output/coverage.info \
+          --rc lcov_branch_coverage=1 \
+          ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
+        
+        lcov --list /coverage_output/coverage.info || true
+        echo "=== Coverage collection complete ==="
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up ROS 2 Humble
-        uses: ros-tooling/setup-ros@v0.7
+      - name: Create coverage output directory
+        run: mkdir -p ${{ github.workspace }}/coverage_output
+
+      - name: Cache ccache
+        uses: actions/cache@v4
         with:
-          required-ros-distributions: humble
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libgtest-dev \
-            libgmock-dev \
-            libyaml-cpp-dev \
-            liblz4-dev \
-            libzstd-dev \
-            libre2-dev \
-            libturbojpeg0-dev \
-            libboost-dev \
-            libboost-system-dev \
-            libboost-log-dev \
-            libboost-thread-dev \
-            libboost-filesystem-dev \
-            libssl-dev \
-            lcov
-
-      - name: Build GTest from source
-        run: |
-          if [ -d /usr/src/googletest ]; then
-            cd /usr/src/googletest
-            sudo cmake -B build
-            sudo cmake --build build
-            sudo cmake --install build
-          fi
-
-      - name: Build with coverage
-        run: |
-          source /opt/ros/humble/setup.bash
-          
-          colcon build \
-            --packages-select axon_recorder \
-            --cmake-args \
-              -DCMAKE_BUILD_TYPE=Debug \
-              -DENABLE_COVERAGE=ON \
-              -DAXON_ROS2=ON \
-            --base-paths ros
-          
-          source install/setup.bash
-
-      - name: Run tests
-        run: |
-          source /opt/ros/humble/setup.bash
-          source install/setup.bash
-          
-          colcon test \
-            --packages-select axon_recorder \
-            --event-handlers console_direct+ \
-            --base-paths ros \
-            --return-code-on-test-failure
-          
-          colcon test-result --verbose || true
-
-      - name: Generate coverage report
-        run: |
-          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-          
-          IGNORE_FLAGS=""
-          if [ "${LCOV_MAJOR}" -ge 2 ]; then
-            IGNORE_FLAGS="--ignore-errors mismatch,unused"
-          fi
-          
-          lcov --capture \
-            --directory build \
-            --output-file coverage_raw.info \
-            --rc lcov_branch_coverage=1 \
-            ${IGNORE_FLAGS}
-          
-          lcov --remove coverage_raw.info \
-            '/usr/*' \
-            '/opt/*' \
-            '*/_deps/*' \
-            '*/generated/*' \
-            '*/googletest/*' \
-            '*/gtest/*' \
-            '*/mcap-*/*' \
-            '*/mcap/include/*' \
-            '*/minio-cpp/*' \
-            '*/axon_recorder/test/*' \
-            '*/axon_logging/test/*' \
-            '*/axon_mcap/test/*' \
-            '*/axon_uploader/test/*' \
-            '*/rosidl_typesupport_cpp/*' \
-            '*/rosidl_typesupport_introspection_cpp/*' \
-            '*/rosidl_generator_cpp/*' \
-            --output-file coverage.info \
-            --rc lcov_branch_coverage=1 \
-            ${IGNORE_FLAGS}
-          
-          lcov --list coverage.info
+      - name: Run industrial_ci
+        uses: ros-industrial/industrial_ci@master
+        env:
+          ROS_DISTRO: ${{ env.ROS_DISTRO }}
+          ROS_REPO: ${{ env.ROS_REPO }}
+          UPSTREAM_WORKSPACE: ros/axon_recorder
+          CCACHE_DIR: ${{ env.CCACHE_DIR }}
+          ADDITIONAL_DEBS: ${{ env.ADDITIONAL_DEBS }}
+          TARGET_CMAKE_ARGS: ${{ env.TARGET_CMAKE_ARGS }}
+          DOCKER_RUN_OPTS: ${{ env.DOCKER_RUN_OPTS }}
+          AFTER_SCRIPT: ${{ env.AFTER_SCRIPT }}
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.info
+          files: ${{ github.workspace }}/coverage_output/coverage.info
           flags: ros2
           name: axon-ros2-humble-coverage
           fail_ci_if_error: false
@@ -153,130 +130,105 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-ros2-humble
-          path: coverage.info
+          path: ${{ github.workspace }}/coverage_output/coverage.info
           retention-days: 30
 
   # ===========================================================================
-  # ROS 1 Noetic Coverage
+  # ROS 1 Noetic Coverage (via industrial_ci)
   # ===========================================================================
   coverage-noetic:
     name: ROS 1 Noetic Coverage
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     env:
       ROS_DISTRO: noetic
-      ROS_VERSION: 1
-    
+      ROS_REPO: main
+      CCACHE_DIR: /github/home/.ccache
+      # Coverage configuration
+      ADDITIONAL_DEBS: lcov
+      TARGET_CMAKE_ARGS: >-
+        -DCMAKE_BUILD_TYPE=Debug
+        -DENABLE_COVERAGE=ON
+        -DAXON_ROS1=ON
+      # Mount volume for coverage output
+      DOCKER_RUN_OPTS: -v ${{ github.workspace }}/coverage_output:/coverage_output
+      # Script to collect coverage after tests
+      AFTER_SCRIPT: |
+        echo "=== Collecting coverage data ==="
+        cd $CATKIN_WORKSPACE
+        
+        # Detect lcov version
+        LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+        LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+        echo "lcov version: ${LCOV_VERSION}"
+        
+        IGNORE_FLAGS=""
+        if [ "${LCOV_MAJOR}" -ge 2 ]; then
+          IGNORE_FLAGS="--ignore-errors mismatch,unused"
+        fi
+        
+        # Capture coverage
+        lcov --capture \
+          --directory build \
+          --output-file /coverage_output/coverage_raw.info \
+          --rc lcov_branch_coverage=1 \
+          ${IGNORE_FLAGS} || true
+        
+        # Filter coverage
+        lcov --remove /coverage_output/coverage_raw.info \
+          '/usr/*' \
+          '/opt/*' \
+          '*/_deps/*' \
+          '*/generated/*' \
+          '*/googletest/*' \
+          '*/gtest/*' \
+          '*/mcap-*/*' \
+          '*/mcap/include/*' \
+          '*/minio-cpp/*' \
+          '*/axon_recorder/test/*' \
+          '*/axon_logging/test/*' \
+          '*/axon_mcap/test/*' \
+          '*/axon_uploader/test/*' \
+          --output-file /coverage_output/coverage.info \
+          --rc lcov_branch_coverage=1 \
+          ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
+        
+        lcov --list /coverage_output/coverage.info || true
+        echo "=== Coverage collection complete ==="
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up ROS 1 Noetic
-        uses: ros-tooling/setup-ros@v0.7
+      - name: Create coverage output directory
+        run: mkdir -p ${{ github.workspace }}/coverage_output
+
+      - name: Cache ccache
+        uses: actions/cache@v4
         with:
-          required-ros-distributions: noetic
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libgtest-dev \
-            libgmock-dev \
-            libyaml-cpp-dev \
-            liblz4-dev \
-            libzstd-dev \
-            libre2-dev \
-            libturbojpeg0-dev \
-            libboost-dev \
-            libboost-system-dev \
-            libboost-log-dev \
-            libboost-thread-dev \
-            libboost-filesystem-dev \
-            libssl-dev \
-            lcov \
-            python3-catkin-tools
-
-      - name: Build GTest from source
-        run: |
-          if [ -d /usr/src/googletest ]; then
-            cd /usr/src/googletest
-            sudo cmake -B build
-            sudo cmake --build build
-            sudo cmake --install build
-          fi
-
-      - name: Build with coverage (catkin)
-        run: |
-          source /opt/ros/noetic/setup.bash
-          
-          # Create catkin workspace
-          mkdir -p catkin_ws/src
-          ln -s ${{ github.workspace }}/ros/axon_recorder catkin_ws/src/axon_recorder
-          
-          cd catkin_ws
-          catkin config \
-            --cmake-args \
-              -DCMAKE_BUILD_TYPE=Debug \
-              -DENABLE_COVERAGE=ON \
-              -DAXON_ROS1=ON
-          
-          catkin build axon_recorder
-
-      - name: Run tests
-        run: |
-          source /opt/ros/noetic/setup.bash
-          source catkin_ws/devel/setup.bash
-          
-          cd catkin_ws
-          catkin test axon_recorder --no-deps
-          
-          catkin_test_results build/axon_recorder || true
-
-      - name: Generate coverage report
-        run: |
-          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-          
-          IGNORE_FLAGS=""
-          if [ "${LCOV_MAJOR}" -ge 2 ]; then
-            IGNORE_FLAGS="--ignore-errors mismatch,unused"
-          fi
-          
-          lcov --capture \
-            --directory catkin_ws/build \
-            --output-file coverage_raw.info \
-            --rc lcov_branch_coverage=1 \
-            ${IGNORE_FLAGS} || true
-          
-          lcov --remove coverage_raw.info \
-            '/usr/*' \
-            '/opt/*' \
-            '*/_deps/*' \
-            '*/generated/*' \
-            '*/googletest/*' \
-            '*/gtest/*' \
-            '*/mcap-*/*' \
-            '*/mcap/include/*' \
-            '*/minio-cpp/*' \
-            '*/axon_recorder/test/*' \
-            '*/axon_logging/test/*' \
-            '*/axon_mcap/test/*' \
-            '*/axon_uploader/test/*' \
-            --output-file coverage.info \
-            --rc lcov_branch_coverage=1 \
-            ${IGNORE_FLAGS} || cp coverage_raw.info coverage.info 2>/dev/null || true
-          
-          lcov --list coverage.info || true
+      - name: Run industrial_ci
+        uses: ros-industrial/industrial_ci@master
+        env:
+          ROS_DISTRO: ${{ env.ROS_DISTRO }}
+          ROS_REPO: ${{ env.ROS_REPO }}
+          UPSTREAM_WORKSPACE: ros/axon_recorder
+          CCACHE_DIR: ${{ env.CCACHE_DIR }}
+          ADDITIONAL_DEBS: ${{ env.ADDITIONAL_DEBS }}
+          TARGET_CMAKE_ARGS: ${{ env.TARGET_CMAKE_ARGS }}
+          DOCKER_RUN_OPTS: ${{ env.DOCKER_RUN_OPTS }}
+          AFTER_SCRIPT: ${{ env.AFTER_SCRIPT }}
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.info
+          files: ${{ github.workspace }}/coverage_output/coverage.info
           flags: ros1
           name: axon-ros1-noetic-coverage
           fail_ci_if_error: false
@@ -286,7 +238,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-ros1-noetic
-          path: coverage.info
+          path: ${{ github.workspace }}/coverage_output/coverage.info
           retention-days: 30
 
   # ===========================================================================
@@ -294,10 +246,10 @@ jobs:
   # ===========================================================================
   coverage-report:
     name: Generate HTML Report
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     needs: [coverage-humble, coverage-noetic]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -321,12 +273,12 @@ jobs:
         run: |
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
           LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-          
+
           IGNORE_FLAGS=""
           if [ "${LCOV_MAJOR}" -ge 2 ]; then
             IGNORE_FLAGS="--ignore-errors source,unmapped"
           fi
-          
+
           # Merge coverage from both ROS versions
           lcov \
             -a coverage-ros2/coverage.info \
@@ -334,7 +286,7 @@ jobs:
             -o coverage_merged.info \
             ${IGNORE_FLAGS} 2>/dev/null || \
             cp coverage-ros2/coverage.info coverage_merged.info
-          
+
           mkdir -p coverage-html
           genhtml coverage_merged.info \
             --output-directory coverage-html \
@@ -349,4 +301,3 @@ jobs:
           name: coverage-ros-html-report
           path: coverage-html/
           retention-days: 30
-
