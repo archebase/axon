@@ -1,175 +1,208 @@
-# Full Implementation Architecture
+# Axon Architecture
 
 ## Overview
 
-This document describes the complete, production-ready implementation of Axon by ArcheBase that replaces all simplified/placeholder code with full, high-performance implementations.
+Axon is a high-performance ROS recorder by ArcheBase that writes data to MCAP format. It supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling) with a task-centric design for fleet management via ros-bridge.
 
-## Key Architectural Improvements
-
-### 1. Message Introspection System
-
-**Before**: Placeholder converters, no dynamic message handling
-**After**: Complete introspection system using ROS message traits
-
-- **MessageIntrospector**: Abstract interface for ROS1/ROS2 message introspection
-- **Ros1MessageIntrospector**: Full ROS1 implementation using message_traits
-- **Ros2MessageIntrospector**: Full ROS2 implementation using rosidl_typesupport
-- **IntrospectionMessageConverter**: Dynamic converter using introspection
-
-**Benefits**:
-- Supports ALL ROS message types without hardcoding
-- Zero-copy where possible
-- Type-safe field access
-
-### 2. High-Performance Batch Manager
-
-**Before**: Simplified array concatenation, inefficient memory usage
-**After**: Efficient message batching with direct MCAP serialization
-
-**Key Features**:
-- **Message Queues**: Per-topic lock-free queues for efficient batching
-- **Direct Serialization**: Messages serialized directly to MCAP format
-- **Lock-free Optimizations**: Atomic counters for approximate size
-- **Efficient Batching**: Batch messages before writing to reduce I/O overhead
-- **Proper Resource Management**: RAII, move semantics
-
-**Performance Improvements**:
-- Reduced CPU overhead (no schema conversion)
-- Lower memory allocations
-- Better cache locality
-
-### 3. Schema Merging System
-
-**Before**: Single schema per dataset, no multi-topic support
-**After**: Full schema merging with conflict resolution
-
-**Features**:
-- **SchemaMerger**: Merges schemas from multiple topics
-- **Field Prefixing**: Automatic prefixing to avoid conflicts
-- **Type Compatibility**: Checks for compatible field types
-- **Recording Schema**: Optimized schema with timestamp/topic fields
-
-**Benefits**:
-- Single dataset for multiple topics
-- Efficient storage
-- Easy querying across topics
-
-### 4. Complete ROS Interface Implementation
-
-**Before**: Placeholder subscriptions/services
-**After**: Full typed subscriptions and services
-
-**ROS1**:
-- Proper `ros::Subscriber` creation
-- Service advertisement with callbacks
-- Message event handling
-
-**ROS2**:
-- Generic subscriptions using `rclcpp::create_generic_subscription`
-- Generic services using `rclcpp::create_generic_service`
-- Serialized message handling
-- Version compatibility (Foxy+)
-
-### 5. Memory Management
-
-**Improvements**:
-- **Message Buffers**: Efficient buffering for serialized messages
-- **Smart Pointers**: Proper RAII throughout
-- **Move Semantics**: Efficient resource transfer
-- **Direct Storage**: Messages stored directly in MCAP format without conversion
-
-### 6. Error Handling & Resilience
-
-**Features**:
-- Comprehensive error checking
-- Graceful degradation
-- Retry logic in writer thread
-- Proper error propagation
-
-## Performance Optimizations
-
-### Direct Serialization Architecture
+## System Architecture
 
 ```
-ROS Message → Serialization → MCAP Writer → Disk
-     ↓              ↓              ↓
-  (copy)      (direct)      (buffered)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Server / Fleet Manager                          │
+│                              (via ros-bridge)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    ▼                 ▼                 ▼
+              CachedRecording   RecordingControl   RecordingStatus
+                  Config            Service            Service
+                    │                 │                 │
+                    └─────────────────┼─────────────────┘
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           axon_recorder (ROS Node)                           │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
+│  │  State Machine  │  │ Recording       │  │ HTTP Callback Client        │  │
+│  │  (4-state FSM)  │  │ Service Impl    │  │ (start/finish notify)       │  │
+│  └────────┬────────┘  └────────┬────────┘  └─────────────────────────────┘  │
+│           │                    │                                             │
+│           ▼                    ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                     Recording Session                                │    │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐  │    │
+│  │  │ Worker Thread   │  │ MCAP Writer     │  │ Metadata Injector   │  │    │
+│  │  │ Pool (SPSC)     │  │ Wrapper         │  │ + Sidecar JSON      │  │    │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────────┘  │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           C++ Core Libraries                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
+│  │ axon_mcap       │  │ axon_logging    │  │ axon_uploader               │  │
+│  │ (MCAP writer)   │  │ (Boost.Log)     │  │ (S3 upload + retry)         │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Lock-Free Optimizations
+## State Machine
 
-- Atomic counters for batch size
-- Lock-free queue size approximation
-- Minimal mutex contention
-
-### Memory Efficiency
-
-- Efficient message buffering
-- Reusable serialization buffers
-- Direct MCAP format storage (no intermediate conversions)
-
-## Component Architecture
+The recorder uses a task-centric state machine where each task corresponds to one MCAP file.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  ROS Interface Layer                         │
-│  ┌──────────────┐              ┌──────────────┐            │
-│  │  ROS1 Impl   │              │  ROS2 Impl   │            │
-│  └──────────────┘              └──────────────┘            │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Message Serialization Layer                     │
-│  ┌──────────────────┐  ┌──────────────────────────┐        │
-│  │ Message Factory  │  │ Serialization           │        │
-│  │ (Dynamic)        │  │ (ROS format)             │        │
-│  └──────────────────┘  └──────────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│                  MCAP Writer Layer                           │
-│  ┌──────────────────┐  ┌──────────────────────────┐        │
-│  │ MCAP Writer      │  │ Compression             │        │
-│  │ (Thread-safe)    │  │ (Zstd/LZ4)              │        │
-│  └──────────────────┘  └──────────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+        ┌─────────────────────────────────────────────────────┐
+        │                                                     │
+        ▼                                                     │
+   ┌─────────┐                                                │
+   │  IDLE   │ ◄──────────────────────────────────────────────┤
+   └────┬────┘                                                │
+        │ CachedRecordingConfig                               │
+        ▼                                                     │
+   ┌─────────┐                                                │
+   │  READY  │────────(clear/timeout)─────────────────────────┤
+   └────┬────┘                                                │
+        │ start                                               │
+        ▼                                                     │
+   ┌─────────┐  pause   ┌─────────┐                           │
+   │RECORDING│─────────►│ PAUSED  │                           │
+   │         │◄─────────│         │                           │
+   └────┬────┘  resume  └────┬────┘                           │
+        │                    │                                │
+        └────────┬───────────┘                                │
+                 │                                            │
+         ┌───────┴───────┐                                    │
+      finish           cancel                                 │
+         │               │                                    │
+         ▼               ▼                                    │
+   (finalize MCAP)  (cleanup)                                 │
+         │               │                                    │
+         └───────────────┴────────────────────────────────────┘
 ```
+
+| State | Description |
+|-------|-------------|
+| `IDLE` | No active task, waiting for configuration |
+| `READY` | Task config cached, ready to start recording |
+| `RECORDING` | Actively recording ROS messages to MCAP |
+| `PAUSED` | Recording paused, can resume or finish |
+
+## Core Components
+
+### 1. ROS Recorder (`ros/axon_recorder/`)
+
+**Recording Session**
+- Encapsulates MCAP file lifecycle (open/write/close)
+- Thread-safe message writing with schema/channel registration
+- Tracks session statistics (messages, bytes, duration)
+
+**Worker Thread Pool**
+- Per-topic lock-free SPSC queues for zero-copy message transfer
+- Configurable queue capacity and idle backoff
+- Pause/resume support for recording state
+
+**State Manager**
+- Thread-safe state transitions with validation
+- StateTransactionGuard for RAII rollback on failure
+- Transition callbacks for observers
+
+**Metadata Injector**
+- Injects `axon.task`, `axon.device`, `axon.recording` metadata into MCAP
+- Generates sidecar JSON with SHA-256 checksum
+- Cascading config resolution (env → config → ROS params)
+
+**HTTP Callback Client**
+- POST notifications to server on start/finish
+- JWT Bearer token authentication
+- SSL/TLS support for HTTPS
+
+### 2. MCAP Writer (`cpp/axon_mcap/`)
+
+- Thread-safe MCAP file operations
+- Zstd/LZ4 compression support
+- MCAP validator for file integrity
+
+### 3. Logging Infrastructure (`cpp/axon_logging/`)
+
+- Boost.Log based with async sinks
+- Console sink (colors, severity filtering)
+- File sink (rotation, JSON/text format)
+- ROS sink adapter for RCLCPP/ROSCPP integration
+- Environment variable configuration
+
+### 4. Edge Uploader (`cpp/axon_uploader/`)
+
+- S3 multipart upload for large files
+- SQLite state persistence for crash recovery
+- Exponential backoff retry with jitter
+- MCAP-first, JSON-last upload order (JSON signals completion)
+- Backpressure alerts when queue grows
+
+## Service API
+
+| Service | Purpose |
+|---------|---------|
+| `CachedRecordingConfig` | Cache task configuration from server |
+| `IsRecordingReady` | Query if recorder has cached config |
+| `RecordingControl` | Unified control: start/pause/resume/cancel/finish/clear |
+| `RecordingStatus` | Query status, metrics, and task info |
 
 ## Data Flow
 
-1. **Message Reception**: ROS callback receives message
-2. **Serialization**: Message is serialized to ROS message format
-3. **Batching**: Messages are queued for batch writing
-4. **Flush**: When batch size/interval reached, write to MCAP
-5. **Async Write**: Background thread writes to MCAP file
-6. **MCAP Storage**: Messages written to MCAP file on disk
+```
+ROS Topics
+    │
+    ▼ (subscription callbacks)
+┌─────────────────────────────────────────┐
+│ Serialization (ROS1/ROS2 format)        │
+└─────────────────────────────────────────┘
+    │
+    ▼ (zero-copy via SPSC queue)
+┌─────────────────────────────────────────┐
+│ Worker Thread Pool                      │
+│ - Per-topic queues                      │
+│ - Sequence numbering                    │
+└─────────────────────────────────────────┘
+    │
+    ▼ (thread-safe write)
+┌─────────────────────────────────────────┐
+│ MCAP Writer                             │
+│ - Schema/channel registration           │
+│ - Compression (Zstd/LZ4)                │
+└─────────────────────────────────────────┘
+    │
+    ▼ (on finish)
+┌─────────────────────────────────────────┐
+│ Finalization                            │
+│ - Inject metadata records               │
+│ - Generate sidecar JSON + checksum      │
+│ - HTTP callback to server               │
+└─────────────────────────────────────────┘
+    │
+    ▼ (async)
+┌─────────────────────────────────────────┐
+│ Edge Uploader → S3                      │
+└─────────────────────────────────────────┘
+```
 
 ## Threading Model
 
-- **Main Thread**: ROS callbacks, message serialization
-- **Writer Thread**: Async MCAP file writing
-- **Lock Strategy**: Minimal locking, thread-safe MCAP writer
+| Thread | Responsibility |
+|--------|----------------|
+| ROS Executor | Service callbacks, subscription callbacks |
+| Worker Threads | Drain SPSC queues, write to MCAP (one per topic) |
+| HTTP Client | Async callbacks to server |
+| Uploader Workers | S3 upload with retry |
 
-## Memory Model
+## Lock-Free Design
 
-- **Message Queues**: Per-topic queues for batching
-- **MCAP Buffers**: Efficient buffering for file writes
-- **Compression**: Optional compression (Zstd/LZ4) reduces disk I/O
+- **SPSC Queues**: Cache-line aligned, acquire-release semantics
+- **MPSC Queue**: Multiple producers round-robin to dedicated SPSC queues
+- **Atomic Statistics**: Lock-free counters for monitoring
 
-## Future Enhancements
+## Performance Characteristics
 
-1. **Advanced Compression**: Per-topic compression settings
-2. **Indexing**: Fast topic/time-based queries
-3. **Streaming**: Real-time streaming to remote storage
-4. **Metrics**: Performance metrics and monitoring
-5. **Multi-file**: Automatic file rotation for long recordings
-
-## Migration Notes
-
-The system has been migrated from Lance/Arrow to MCAP:
-- ✅ MCAP Writer: Thread-safe MCAP file writing
-- ✅ Message Serialization: Direct ROS message serialization
-- ✅ ROS Interfaces: Complete subscription/service implementation
-- ✅ Configuration: YAML-based configuration parsing
-- ✅ Error Handling: Comprehensive throughout
-
+- **Zero-copy**: Messages moved through queue without copying
+- **Direct serialization**: No schema conversion overhead
+- **Bounded memory**: Fixed-capacity queues with backpressure
+- **Async I/O**: Non-blocking HTTP callbacks and uploads
