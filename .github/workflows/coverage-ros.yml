@@ -38,8 +38,19 @@ jobs:
         -DCMAKE_BUILD_TYPE=Debug
         -DENABLE_COVERAGE=ON
         -DAXON_ROS2=ON
-      # Mount volume for coverage output
-      DOCKER_RUN_OPTS: -v ${{ github.workspace }}/coverage_output:/coverage_output
+      # Mount entire repo + coverage output volume
+      DOCKER_RUN_OPTS: -v ${{ github.workspace }}:/github_repo -v ${{ github.workspace }}/coverage_output:/coverage_output
+      # Create symlinks before build so axon_recorder can find cpp/axon_mcap
+      BEFORE_SCRIPT: |
+        echo "=== Setting up cpp/ symlink for axon_recorder ==="
+        # axon_recorder expects cpp/axon_mcap at ../../cpp/axon_mcap relative to ros/axon_recorder
+        # industrial_ci puts packages at /root/upstream_ws/src/<pkg>/
+        # So we need cpp/ at /root/upstream_ws/cpp/
+        mkdir -p /root/upstream_ws
+        ln -sf /github_repo/cpp /root/upstream_ws/cpp
+        ls -la /root/upstream_ws/
+        ls -la /root/upstream_ws/cpp/
+        echo "=== Symlink setup complete ==="
       # Script to collect coverage after tests
       AFTER_SCRIPT: |
         echo "=== Collecting coverage data ==="
@@ -109,11 +120,15 @@ jobs:
         env:
           ROS_DISTRO: ${{ env.ROS_DISTRO }}
           ROS_REPO: ${{ env.ROS_REPO }}
-          UPSTREAM_WORKSPACE: ros/axon_recorder
+          # Use entire repo - axon_recorder depends on cpp/axon_mcap
+          BASEDIR: ${{ github.workspace }}
+          # Only build/test the ROS package (colcon will find it in ros/)
+          CATKIN_LINT: false
           CCACHE_DIR: ${{ env.CCACHE_DIR }}
           ADDITIONAL_DEBS: ${{ env.ADDITIONAL_DEBS }}
           TARGET_CMAKE_ARGS: ${{ env.TARGET_CMAKE_ARGS }}
           DOCKER_RUN_OPTS: ${{ env.DOCKER_RUN_OPTS }}
+          BEFORE_SCRIPT: ${{ env.BEFORE_SCRIPT }}
           AFTER_SCRIPT: ${{ env.AFTER_SCRIPT }}
 
       - name: Upload coverage to Codecov
@@ -149,8 +164,19 @@ jobs:
         -DCMAKE_BUILD_TYPE=Debug
         -DENABLE_COVERAGE=ON
         -DAXON_ROS1=ON
-      # Mount volume for coverage output
-      DOCKER_RUN_OPTS: -v ${{ github.workspace }}/coverage_output:/coverage_output
+      # Mount entire repo + coverage output volume
+      DOCKER_RUN_OPTS: -v ${{ github.workspace }}:/github_repo -v ${{ github.workspace }}/coverage_output:/coverage_output
+      # Create symlinks before build so axon_recorder can find cpp/axon_mcap
+      BEFORE_SCRIPT: |
+        echo "=== Setting up cpp/ symlink for axon_recorder ==="
+        # axon_recorder expects cpp/axon_mcap at ../../cpp/axon_mcap relative to ros/axon_recorder
+        # industrial_ci puts packages at /root/upstream_ws/src/<pkg>/
+        # So we need cpp/ at /root/upstream_ws/cpp/
+        mkdir -p /root/upstream_ws
+        ln -sf /github_repo/cpp /root/upstream_ws/cpp
+        ls -la /root/upstream_ws/
+        ls -la /root/upstream_ws/cpp/
+        echo "=== Symlink setup complete ==="
       # Script to collect coverage after tests
       AFTER_SCRIPT: |
         echo "=== Collecting coverage data ==="
@@ -217,11 +243,15 @@ jobs:
         env:
           ROS_DISTRO: ${{ env.ROS_DISTRO }}
           ROS_REPO: ${{ env.ROS_REPO }}
-          UPSTREAM_WORKSPACE: ros/axon_recorder
+          # Use entire repo - axon_recorder depends on cpp/axon_mcap
+          BASEDIR: ${{ github.workspace }}
+          # Only build/test the ROS package (catkin will find it in ros/)
+          CATKIN_LINT: false
           CCACHE_DIR: ${{ env.CCACHE_DIR }}
           ADDITIONAL_DEBS: ${{ env.ADDITIONAL_DEBS }}
           TARGET_CMAKE_ARGS: ${{ env.TARGET_CMAKE_ARGS }}
           DOCKER_RUN_OPTS: ${{ env.DOCKER_RUN_OPTS }}
+          BEFORE_SCRIPT: ${{ env.BEFORE_SCRIPT }}
           AFTER_SCRIPT: ${{ env.AFTER_SCRIPT }}
 
       - name: Upload coverage to Codecov
