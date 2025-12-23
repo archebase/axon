@@ -71,8 +71,8 @@ jobs:
           mkdir -p build && cd build
           cmake ../axon_mcap \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_COVERAGE=ON \
-            -DBUILD_TESTS=ON
+            -DAXON_MCAP_ENABLE_COVERAGE=ON \
+            -DAXON_MCAP_BUILD_TESTS=ON
           make -j$(nproc)
           
           # Run tests
@@ -92,8 +92,8 @@ jobs:
           mkdir -p build_uploader && cd build_uploader
           cmake ../axon_uploader \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_COVERAGE=ON \
-            -DBUILD_TESTS=ON
+            -DAXON_UPLOADER_ENABLE_COVERAGE=ON \
+            -DAXON_UPLOADER_BUILD_TESTS=ON
           make -j$(nproc)
           
           # Run tests
@@ -113,8 +113,8 @@ jobs:
           mkdir -p build_logging && cd build_logging
           cmake ../axon_logging \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_COVERAGE=ON \
-            -DBUILD_TESTS=ON
+            -DAXON_LOGGING_ENABLE_COVERAGE=ON \
+            -DAXON_LOGGING_BUILD_TESTS=ON
           make -j$(nproc)
           
           # Run tests
