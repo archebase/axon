@@ -1,0 +1,33 @@
+# =============================================================================
+# Codecov Configuration for Axon
+# =============================================================================
+# Configures coverage reporting behavior and file exclusions.
+# See: https://docs.codecov.com/docs/codecov-yaml
+# =============================================================================
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%  # Allow 1% coverage drop before failing
+    patch:
+      default:
+        target: auto
+
+# Ignore test files from coverage metrics
+# These should not count toward coverage since they ARE the tests
+ignore:
+  - "ros/axon_recorder/test/**/*"
+  - "cpp/axon_logging/test/**/*"
+  - "cpp/axon_mcap/test/**/*"
+  - "cpp/axon_uploader/test/**/*"
+  # Also ignore any other test patterns
+  - "**/test/**/*"
+  - "**/*_test.cpp"
+  - "**/test_*.cpp"
+  # Ignore ROS auto-generated code (from .srv/.msg files)
+  - "**/rosidl_typesupport_cpp/**/*"
+  - "**/rosidl_typesupport_introspection_cpp/**/*"
+  - "**/rosidl_generator_cpp/**/*"
+
