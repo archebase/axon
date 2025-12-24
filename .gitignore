@@ -10,6 +10,9 @@
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# IDE - Cursor
+.cursor/plans/
+
 # IDE - IntelliJ / CLion
 .idea/
 *.iml
@@ -85,6 +88,10 @@ ENV/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
+
+# C++ library build directories (not ROS packages)
+cpp/build*/
+cpp/*/build/
 
 # Coverage
 *.gcda

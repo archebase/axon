@@ -1,3 +1,12 @@
+# =============================================================================
+# CI Orchestrator Workflow for Axon
+# =============================================================================
+# Main entry point that orchestrates the full CI pipeline:
+#   1. Unit Tests (C++ and ROS)
+#   2. Integration Tests (after unit tests pass)
+#   3. Coverage Tests (after integration tests pass)
+# =============================================================================
+
 name: CI
 
 on:
@@ -7,156 +16,78 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+# Cancel in-progress runs when a new commit is pushed to the same branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # ==========================================================================
-  # C++ Tests Job - Build and test the C++ MCAP library
-  # ==========================================================================
-  cpp-tests:
-    name: C++ Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 5  # Prevent infinite hangs
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  # ===========================================================================
+  # Stage 1: Unit Tests
+  # ===========================================================================
+  unit-tests:
+    name: Unit Tests
+    uses: ./.github/workflows/unit-tests.yml
+    secrets: inherit
 
-      - name: Install dependencies
+  # ===========================================================================
+  # Stage 2: Integration Tests (after unit tests pass)
+  # ===========================================================================
+  integration-tests:
+    name: Integration Tests
+    needs: unit-tests
+    uses: ./.github/workflows/integration-tests.yml
+    secrets: inherit
+
+  # ===========================================================================
+  # Stage 3: Coverage Tests (after integration tests pass)
+  # ===========================================================================
+  coverage-cpp:
+    name: C++ Coverage
+    needs: integration-tests
+    uses: ./.github/workflows/coverage-cpp.yml
+    secrets: inherit
+
+  coverage-ros:
+    name: ROS Coverage
+    needs: integration-tests
+    uses: ./.github/workflows/coverage-ros.yml
+    secrets: inherit
+
+  # ===========================================================================
+  # Final Status Check
+  # ===========================================================================
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, coverage-cpp, coverage-ros]
+    if: always()
+    steps:
+      - name: Check pipeline status
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libgtest-dev \
-            libgmock-dev \
-            libzstd-dev \
-            liblz4-dev \
-            libboost-dev \
-            libboost-log-dev \
-            libboost-thread-dev \
-            libboost-filesystem-dev
+          echo "Unit Tests: ${{ needs.unit-tests.result }}"
+          echo "Integration Tests: ${{ needs.integration-tests.result }}"
+          echo "C++ Coverage: ${{ needs.coverage-cpp.result }}"
+          echo "ROS Coverage: ${{ needs.coverage-ros.result }}"
+          
+          if [ "${{ needs.unit-tests.result }}" != "success" ]; then
+            echo "❌ Unit tests failed"
+            exit 1
+          fi
+          
+          if [ "${{ needs.integration-tests.result }}" != "success" ]; then
+            echo "❌ Integration tests failed"
+            exit 1
+          fi
+          
+          # Coverage failures are warnings, not blockers
+          if [ "${{ needs.coverage-cpp.result }}" != "success" ]; then
+            echo "⚠️ C++ coverage failed (non-blocking)"
+          fi
+          
+          if [ "${{ needs.coverage-ros.result }}" != "success" ]; then
+            echo "⚠️ ROS coverage failed (non-blocking)"
+          fi
+          
+          echo "✅ CI pipeline completed successfully!"
 
-      - name: Build C++ MCAP library with tests
-        working-directory: cpp/axon_mcap
-        run: |
-          mkdir -p build
-          cd build
-          cmake .. -DAXON_MCAP_BUILD_TESTS=ON
-          cmake --build . --parallel $(nproc)
-
-      - name: Run C++ tests
-        working-directory: cpp/axon_mcap/build
-        run: ctest --output-on-failure --verbose
-
-  # ==========================================================================
-  # ROS Unit Tests - Uses industrial_ci for standardized testing
-  # Tests: TaskConfig, StateManager, HttpCallbackClient, RecordingWorkflow
-  # ==========================================================================
-  ros-unit-tests:
-    name: ROS Unit Tests (${{ matrix.ros_distro }})
-    runs-on: ubuntu-latest
-    needs: cpp-tests
-    timeout-minutes: 15  # Prevent infinite hangs
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - ros_distro: noetic
-            ros_repo: main
-          - ros_distro: humble
-            ros_repo: main
-          - ros_distro: jazzy
-            ros_repo: main
-          - ros_distro: rolling
-            ros_repo: main
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run industrial_ci
-        uses: ros-industrial/industrial_ci@master
-        env:
-          ROS_DISTRO: ${{ matrix.ros_distro }}
-          ROS_REPO: ${{ matrix.ros_repo }}
-          # Added git for FetchContent operations
-          ADDITIONAL_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
-          CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
-          # Limit parallel jobs to reduce memory pressure on Rolling
-          PARALLEL_BUILDS: 2
-
-  # ==========================================================================
-  # Integration Tests - End-to-end ROS service tests using industrial_ci
-  # Starts axon_recorder_node and runs actual ROS service calls
-  # ==========================================================================
-  ros-integration-tests:
-    name: ROS Integration Tests (${{ matrix.ros_distro }})
-    runs-on: ubuntu-latest
-    needs: ros-unit-tests
-    timeout-minutes: 45  # Prevent infinite hangs
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - ros_distro: noetic
-            ros_repo: main
-          - ros_distro: humble
-            ros_repo: main
-          - ros_distro: jazzy
-            ros_repo: main
-          - ros_distro: rolling
-            ros_repo: main
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run industrial_ci with integration tests
-        uses: ros-industrial/industrial_ci@master
-        env:
-          ROS_DISTRO: ${{ matrix.ros_distro }}
-          ROS_REPO: ${{ matrix.ros_repo }}
-          # Added git for FetchContent operations
-          ADDITIONAL_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
-          CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
-          # Limit parallel jobs to reduce memory pressure on Rolling
-          PARALLEL_BUILDS: 2
-          # Skip default tests, we'll run integration tests instead
-          NOT_TEST_BUILD: true
-          # Run integration tests after build using shared script
-          AFTER_SCRIPT: |
-            echo "=== Starting integration tests ==="
-            echo "ROS_DISTRO=$ROS_DISTRO"
-            
-            # Install ROS CLI tools (rosrun/ros2, rosservice/ros2 service)
-            echo "Installing ROS CLI tools..."
-            apt-get update -qq
-            if [ "$ROS_DISTRO" = "noetic" ]; then
-              apt-get install -y -qq ros-noetic-rosbash ros-noetic-rosservice
-            else
-              apt-get install -y -qq ros-${ROS_DISTRO}-ros2cli ros-${ROS_DISTRO}-ros2service ros-${ROS_DISTRO}-ros2run
-            fi
-            
-            # Source ROS (disable strict mode - setup.bash has unbound vars)
-            set +eu
-            . /opt/ros/$ROS_DISTRO/setup.bash
-            if [ -f /root/target_ws/install/setup.bash ]; then
-              . /root/target_ws/install/setup.bash
-            elif [ -f /root/target_ws/devel/setup.bash ]; then
-              . /root/target_ws/devel/setup.bash
-            fi
-            set -e
-            
-            # Verify ROS commands are available
-            echo "Verifying ROS commands..."
-            which ros2 2>/dev/null || which rosrun 2>/dev/null || echo "WARNING: ROS commands not found"
-            
-            # Find source path
-            SRC_PATH="${GITHUB_WORKSPACE:-/root/target_ws/src/Axon}"
-            if [ ! -d "$SRC_PATH/ros" ]; then
-              SRC_PATH="/root/target_ws/src"
-            fi
-            echo "SRC_PATH=$SRC_PATH"
-            
-            export ROS_DISTRO
-            chmod +x $SRC_PATH/ros/axon_recorder/test/integration/run_integration_tests.sh
-            $SRC_PATH/ros/axon_recorder/test/integration/run_integration_tests.sh
