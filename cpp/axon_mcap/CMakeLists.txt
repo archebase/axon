@@ -39,14 +39,6 @@ FetchContent_MakeAvailable(mcap)
 message(STATUS "MCAP library located at: ${mcap_SOURCE_DIR}")
 
 # =============================================================================
-# Create ignore files to prevent ROS build systems from scanning MCAP examples
-# The MCAP repo contains ROS2 example packages (McapBenchmarks, McapDocs, py_mcap_demo)
-# that we don't want colcon/catkin to try to build.
-# =============================================================================
-file(WRITE "${mcap_SOURCE_DIR}/COLCON_IGNORE" "")
-file(WRITE "${mcap_SOURCE_DIR}/CATKIN_IGNORE" "")
-
-# =============================================================================
 # Find compression libraries (optional but recommended)
 # =============================================================================
 
