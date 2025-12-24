@@ -51,16 +51,16 @@ public:
 
   void addRef() {
     std::lock_guard<std::mutex> lock(mutex_);
-    // Use call_once to ensure InitAPI is called exactly once, even if
-    // multiple threads race to call addRef simultaneously
-    std::call_once(init_flag_, [this]() {
+    // Initialize SDK if not already initialized (or if it was shut down)
+    // The mutex ensures thread safety - no need for std::call_once
+    if (!initialized_) {
       Aws::SDKOptions options;
       // Disable logging by default - can be enabled for debugging
       options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
       Aws::InitAPI(options);
       options_ = options;
       initialized_ = true;
-    });
+    }
     ++ref_count_;
   }
 
@@ -80,7 +80,6 @@ private:
   ~AwsSdkManager() = default;
 
   std::mutex mutex_;
-  std::once_flag init_flag_;
   bool initialized_ = false;
   int ref_count_ = 0;
   Aws::SDKOptions options_;
