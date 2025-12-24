@@ -39,9 +39,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-${{ github.sha }}
+          # v2: Force clean build to fix stale cache issue
+          key: ccache-v2-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-${{ github.sha }}
           restore-keys: |
-            ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-
+            ccache-v2-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-
 
       - name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
@@ -170,9 +171,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-${{ github.sha }}
+          # v2: Force clean build to fix stale cache issue
+          key: ccache-v2-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-${{ github.sha }}
           restore-keys: |
-            ccache-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-
+            ccache-v2-${{ env.ROS_DISTRO }}-${{ env.ROS_REPO }}-
 
       - name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master

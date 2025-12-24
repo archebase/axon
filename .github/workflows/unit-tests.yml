@@ -71,10 +71,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /github/home/.ccache
-          key: ccache-${{ matrix.ros_distro }}-unit-${{ github.sha }}
+          # v2: Force clean build to fix stale cache issue
+          key: ccache-v2-${{ matrix.ros_distro }}-unit-${{ github.sha }}
           restore-keys: |
-            ccache-${{ matrix.ros_distro }}-unit-
-            ccache-${{ matrix.ros_distro }}-
+            ccache-v2-${{ matrix.ros_distro }}-unit-
+            ccache-v2-${{ matrix.ros_distro }}-
 
       - name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
