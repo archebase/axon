@@ -11,30 +11,54 @@
 name: C++ Libraries Coverage
 
 on:
-  push:
-    branches: [main, master, develop]
-    paths:
-      - 'cpp/**'
-      - '.github/workflows/coverage-cpp.yml'
-  pull_request:
-    branches: [main, master, develop]
-    paths:
-      - 'cpp/**'
-      - '.github/workflows/coverage-cpp.yml'
+  # Triggered after Integration Tests workflow completes
+  workflow_run:
+    workflows: ["Integration Tests"]
+    types:
+      - completed
   workflow_dispatch:  # Allow manual trigger
 
 # Cancel in-progress runs when a new commit is pushed to the same branch
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ===========================================================================
+  # Check if we should run (only on successful integration tests or manual)
+  # ===========================================================================
+  should-run:
+    name: Check Prerequisites
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check trigger conditions
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger - running coverage"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" = "success" ]; then
+              echo "Integration tests passed - running coverage"
+              echo "should_run=true" >> $GITHUB_OUTPUT
+            else
+              echo "Integration tests did not succeed - skipping coverage"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
   # ===========================================================================
   # Run coverage for each library in PARALLEL
   # ===========================================================================
   coverage-library:
     name: Coverage - ${{ matrix.library }}
     runs-on: ubuntu-22.04
+    needs: should-run
+    if: needs.should-run.outputs.should_run == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -110,7 +134,8 @@ jobs:
   merge-coverage:
     name: Merge Coverage Reports
     runs-on: ubuntu-22.04
-    needs: coverage-library
+    needs: [should-run, coverage-library]
+    if: needs.should-run.outputs.should_run == 'true'
 
     steps:
       - name: Download all coverage artifacts
