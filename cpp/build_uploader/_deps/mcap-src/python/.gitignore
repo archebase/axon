@@ -1,0 +1,6 @@
+**/*.pyc
+build
+dist
+*.egg-info
+*-apidoc
+example_mcaps

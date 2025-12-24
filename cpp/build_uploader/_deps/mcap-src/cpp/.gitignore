@@ -1,0 +1,8 @@
+.DS_Store
+build/
+*.profdata
+*.profraw
+.vs
+CMakeCache.txt
+CMakeFiles/
+CMakeSettings.json

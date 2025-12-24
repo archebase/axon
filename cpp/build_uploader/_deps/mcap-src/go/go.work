@@ -1,0 +1,9 @@
+go 1.22.5
+
+use (
+	./cli/mcap
+	./conformance/test-read-conformance
+	./conformance/test-write-conformance
+	./mcap
+	./ros
+)

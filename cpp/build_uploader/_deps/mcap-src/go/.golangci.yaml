@@ -1,0 +1,37 @@
+run:
+  timeout: 3m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gocritic
+    - godot
+    - gofmt
+    - misspell
+    - prealloc
+    - sqlclosecheck
+    - unconvert
+    - wastedassign
+    - stylecheck
+    - whitespace
+    - importas
+    - revive
+    - goconst
+    - goimports
+    - unparam
+    - errorlint
+    - lll
+    - testifylint
+
+linters-settings:
+  gocritic:
+    enabled-tags:
+      - performance
+      - experimental

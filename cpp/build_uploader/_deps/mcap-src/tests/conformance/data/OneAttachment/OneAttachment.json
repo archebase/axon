@@ -1,0 +1,25 @@
+{
+  "records": [
+    {"type": "Header", "fields": [["library", ""], ["profile", ""]]},
+    {
+      "type": "Attachment",
+      "fields": [
+        ["create_time", "1"],
+        ["data", ["1", "2", "3"]],
+        ["log_time", "2"],
+        ["media_type", "application/octet-stream"],
+        ["name", "myFile"]
+      ]
+    },
+    {"type": "DataEnd", "fields": [["data_section_crc", "3051995293"]]},
+    {
+      "type": "Footer",
+      "fields": [
+        ["summary_crc", "1875167664"],
+        ["summary_offset_start", "0"],
+        ["summary_start", "0"]
+      ]
+    }
+  ],
+  "meta": {"variant": {"features": []}}
+}
