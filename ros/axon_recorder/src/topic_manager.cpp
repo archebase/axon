@@ -1,5 +1,6 @@
 #include "topic_manager.hpp"
 
+#include <iostream>
 #include <stdexcept>
 
 // Logging infrastructure
@@ -35,7 +36,13 @@ bool TopicManager::subscribe(const std::string& topic, const std::string& messag
   // Check if already subscribed
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (subscriptions_.find(topic) != subscriptions_.end()) {
+    auto it = subscriptions_.find(topic);
+    bool is_subscribed = (it != subscriptions_.end());
+    std::cerr << "[DEBUG] subscribe() check: topic=" << topic 
+              << " is_subscribed=" << is_subscribed 
+              << " count=" << subscriptions_.size() << std::endl;
+    if (is_subscribed) {
+      std::cerr << "[DEBUG] Returning FALSE for duplicate subscription: " << topic << std::endl;
       AXON_LOG_WARN("Already subscribed to topic" << axon::logging::kv("topic", topic));
       return false;
     }
@@ -61,6 +68,8 @@ bool TopicManager::subscribe(const std::string& topic, const std::string& messag
     info.message_type = message_type;
     info.subscription_handle = handle;
     subscriptions_[topic] = info;
+    std::cerr << "[DEBUG] Returning TRUE for new subscription: " << topic 
+              << " count=" << subscriptions_.size() << std::endl;
   }
 
   return true;
