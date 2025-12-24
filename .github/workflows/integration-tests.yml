@@ -19,7 +19,8 @@ on:
           - rolling
 
 env:
-  COMMON_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+  # Common dependencies shared across jobs (includes ccache for faster rebuilds)
+  COMMON_DEBS: git ccache libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
 
 jobs:
   # ==========================================================================
