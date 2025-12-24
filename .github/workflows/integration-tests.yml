@@ -97,6 +97,10 @@ jobs:
         if: steps.filter.outputs.skip != 'true'
         uses: actions/checkout@v4
 
+      - name: Prepare ccache directory
+        if: steps.filter.outputs.skip != 'true'
+        run: mkdir -p /github/home/.ccache
+
       - name: Cache ccache
         if: steps.filter.outputs.skip != 'true'
         uses: actions/cache@v4

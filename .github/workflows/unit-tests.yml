@@ -73,6 +73,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Prepare ccache directory
+        run: mkdir -p /github/home/.ccache
+
       - name: Cache ccache
         uses: actions/cache@v4
         with:

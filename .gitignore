@@ -86,6 +86,10 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 
+# C++ library build directories (not ROS packages)
+cpp/build*/
+cpp/*/build/
+
 # Coverage
 *.gcda
 *.gcno
