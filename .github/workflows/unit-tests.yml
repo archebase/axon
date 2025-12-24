@@ -87,12 +87,11 @@ jobs:
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
+          # industrial_ci automatically mounts CCACHE_DIR when set
           CCACHE_DIR: ${{ env.CCACHE_DIR }}
           ADDITIONAL_DEBS: ${{ env.COMMON_DEBS }}
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
           PARALLEL_BUILDS: 2
-          # Mount ccache directory into Docker container for cache reuse
-          DOCKER_RUN_OPTS: -v /github/home/.ccache:/github/home/.ccache
 
   # ==========================================================================
   # Final status check - ensures all required jobs passed
