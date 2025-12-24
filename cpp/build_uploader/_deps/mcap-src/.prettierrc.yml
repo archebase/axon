@@ -1,4 +1,0 @@
-overrides:
-  - files: "*.ksy"
-    options:
-      parser: yaml

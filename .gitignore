@@ -10,6 +10,9 @@
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# IDE - Cursor
+.cursor/plans/
+
 # IDE - IntelliJ / CLion
 .idea/
 *.iml
