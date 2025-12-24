@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  COMMON_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+  COMMON_DEBS: git ccache libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
 
 jobs:
   # ==========================================================================
@@ -118,6 +118,8 @@ jobs:
           ADDITIONAL_DEBS: ${{ env.COMMON_DEBS }}
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
           PARALLEL_BUILDS: 2
+          # Mount ccache directory into Docker container for cache reuse
+          DOCKER_RUN_OPTS: -v /github/home/.ccache:/github/home/.ccache
           # Skip default tests, we'll run integration tests instead
           NOT_TEST_BUILD: true
           # Run integration tests after build
