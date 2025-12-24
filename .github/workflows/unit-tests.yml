@@ -28,13 +28,33 @@ jobs:
           packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libzstd-dev liblz4-dev libboost-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev
           version: 1.0
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          # Key includes OS and a hash; restore-keys allows fallback to main branch cache
+          key: ccache-cpp-${{ runner.os }}-${{ hashFiles('cpp/**/*.cpp', 'cpp/**/*.hpp') }}
+          restore-keys: |
+            ccache-cpp-${{ runner.os }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z  # Zero stats
+
       - name: Build C++ MCAP library with tests
         working-directory: cpp/axon_mcap
         run: |
           mkdir -p build
           cd build
-          cmake .. -DAXON_MCAP_BUILD_TESTS=ON
+          cmake .. -DAXON_MCAP_BUILD_TESTS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build . --parallel $(nproc)
+
+      - name: Show ccache stats
+        run: ccache -s
 
       - name: Run C++ tests
         working-directory: cpp/axon_mcap/build

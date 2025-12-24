@@ -44,6 +44,21 @@ jobs:
           packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libyaml-cpp-dev liblz4-dev libzstd-dev libre2-dev libturbojpeg0-dev libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libssl-dev lcov
           version: 1.0
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-coverage-${{ matrix.library }}-${{ runner.os }}-${{ hashFiles('cpp/**/*.cpp', 'cpp/**/*.hpp') }}
+          restore-keys: |
+            ccache-coverage-${{ matrix.library }}-${{ runner.os }}-
+            ccache-cpp-${{ runner.os }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
+
       - name: Build GTest from source
         run: |
           if [ -d /usr/src/googletest ]; then
@@ -59,10 +74,13 @@ jobs:
           mkdir -p build_${{ matrix.library }} && cd build_${{ matrix.library }}
           cmake ../${{ matrix.library }} \
             -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -D${{ matrix.cmake_flag }}_ENABLE_COVERAGE=ON \
             -D${{ matrix.cmake_flag }}_BUILD_TESTS=ON
           make -j$(nproc)
           ctest --output-on-failure
+          ccache -s
 
       - name: Generate coverage report
         run: |
