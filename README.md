@@ -1,9 +1,6 @@
 # Axon
 
-[![Unit Tests](https://github.com/ArcheBase/Axon/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/unit-tests.yml)
-[![Integration Tests](https://github.com/ArcheBase/Axon/actions/workflows/integration-tests.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/integration-tests.yml)
-[![C++ Coverage](https://github.com/ArcheBase/Axon/actions/workflows/coverage-cpp.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/coverage-cpp.yml)
-[![ROS Coverage](https://github.com/ArcheBase/Axon/actions/workflows/coverage-ros.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/coverage-ros.yml)
+[![CI](https://github.com/ArcheBase/Axon/actions/workflows/ci.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ArcheBase/Axon/branch/main/graph/badge.svg)](https://codecov.io/gh/ArcheBase/Axon)
 
 A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling). Designed for fleet management with server-controlled recording via ros-bridge.
