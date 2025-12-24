@@ -107,7 +107,9 @@ jobs:
       - name: Download all coverage artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: coverage-*
+          # Use specific pattern to avoid matching ROS coverage artifacts
+          # (coverage-ros2-humble, coverage-ros1-noetic)
+          pattern: coverage-axon_*
           merge-multiple: false
 
       - name: Install lcov
@@ -117,7 +119,7 @@ jobs:
         run: |
           echo "=== Downloaded artifact structure ==="
           find . -name "*.info" -type f
-          ls -laR coverage-*/
+          ls -laR coverage-axon_*/ 2>/dev/null || echo "No coverage-axon_* directories found"
       
       - name: Merge coverage reports
         run: |
@@ -131,10 +133,10 @@ jobs:
             LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
           fi
           
-          # Build merge command dynamically
+          # Build merge command dynamically (only C++ library coverage)
           MERGE_CMD="lcov"
           FOUND_FILES=0
-          for dir in coverage-*/; do
+          for dir in coverage-axon_*/; do
             if [ -f "${dir}coverage.info" ]; then
               echo "Found coverage file: ${dir}coverage.info"
               MERGE_CMD="$MERGE_CMD -a ${dir}coverage.info"

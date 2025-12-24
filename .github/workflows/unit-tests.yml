@@ -21,6 +21,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # For PRs: checkout PR head (not merge commit) to avoid inheriting main branch issues
+          # For push/other: use default (current SHA)
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -63,6 +67,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # For PRs: checkout PR head (not merge commit) to avoid inheriting main branch issues
+          # For push/other: use default (current SHA)
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
