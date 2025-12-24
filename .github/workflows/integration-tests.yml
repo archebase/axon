@@ -19,7 +19,7 @@ on:
           - rolling
 
 env:
-  COMMON_DEBS: git ccache libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+  COMMON_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
 
 jobs:
   # ==========================================================================
@@ -43,9 +43,6 @@ jobs:
           - ros_distro: rolling
             ros_repo: main
 
-    env:
-      CCACHE_DIR: /github/home/.ccache
-
     steps:
       # Skip if specific distro requested and doesn't match
       - name: Check if distro matches filter
@@ -63,26 +60,12 @@ jobs:
         if: steps.filter.outputs.skip != 'true'
         uses: actions/checkout@v4
 
-      - name: Cache ccache
-        if: steps.filter.outputs.skip != 'true'
-        uses: actions/cache@v4
-        with:
-          path: /github/home/.ccache
-          # v2: Force clean build to fix stale cache issue
-          key: ccache-v2-${{ matrix.ros_distro }}-integ-${{ github.sha }}
-          restore-keys: |
-            ccache-v2-${{ matrix.ros_distro }}-unit-
-            ccache-v2-${{ matrix.ros_distro }}-integ-
-            ccache-v2-${{ matrix.ros_distro }}-
-
       - name: Run industrial_ci with integration tests
         if: steps.filter.outputs.skip != 'true'
         uses: ros-industrial/industrial_ci@master
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
           ROS_REPO: ${{ matrix.ros_repo }}
-          # industrial_ci automatically mounts CCACHE_DIR when set
-          CCACHE_DIR: ${{ env.CCACHE_DIR }}
           ADDITIONAL_DEBS: ${{ env.COMMON_DEBS }}
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
           PARALLEL_BUILDS: 2
