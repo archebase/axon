@@ -232,7 +232,7 @@ jobs:
             # Normalize paths: strip Docker workspace prefix for Codecov
             # This converts /root/catkin_ws/src/ros/... to ros/...
             echo "=== Normalizing paths for Codecov ==="
-            sed -i "s|${WS}/src/||g" /coverage_output/coverage.info
+            sed -i "s|${WS}/src/||g" /coverage_output/coverage.info || true
             
             # Debug: show sample of normalized paths
             echo "Sample paths in coverage.info:"
