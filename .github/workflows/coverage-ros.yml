@@ -228,6 +228,23 @@ jobs:
               ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
             
             lcov --list /coverage_output/coverage.info || true
+            
+            # Normalize paths: strip Docker workspace prefix for Codecov
+            # This converts /root/catkin_ws/src/ros/... to ros/...
+            echo "=== Normalizing paths for Codecov ==="
+            sed -i "s|${WS}/src/||g" /coverage_output/coverage.info
+            
+            # Debug: show sample of normalized paths
+            echo "Sample paths in coverage.info:"
+            grep "^SF:" /coverage_output/coverage.info | head -5 || true
+            
+            # Verify file is not empty
+            if [ -s /coverage_output/coverage.info ]; then
+              echo "Coverage file size: $(wc -c < /coverage_output/coverage.info) bytes"
+            else
+              echo "WARNING: coverage.info is empty!"
+            fi
+            
             echo "=== Coverage collection complete ==="
 
       - name: Upload coverage to Codecov
