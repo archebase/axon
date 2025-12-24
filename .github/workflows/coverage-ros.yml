@@ -47,9 +47,6 @@ jobs:
       - name: Create coverage output directory
         run: mkdir -p ${{ github.workspace }}/coverage_output
 
-      - name: Prepare ccache directory
-        run: mkdir -p /github/home/.ccache
-
       - name: Cache ccache
         uses: actions/cache@v4
         with:
@@ -180,9 +177,6 @@ jobs:
 
       - name: Create coverage output directory
         run: mkdir -p ${{ github.workspace }}/coverage_output
-
-      - name: Prepare ccache directory
-        run: mkdir -p /github/home/.ccache
 
       - name: Cache ccache
         uses: actions/cache@v4
