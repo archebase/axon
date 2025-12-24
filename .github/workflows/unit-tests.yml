@@ -17,7 +17,7 @@ jobs:
   cpp-tests:
     name: C++ Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Increased for retry attempts
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,17 +29,12 @@ jobs:
           version: 1.0
 
       - name: Build C++ MCAP library with tests
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_on: error
-          command: |
-            cd cpp/axon_mcap
-            mkdir -p build
-            cd build
-            cmake .. -DAXON_MCAP_BUILD_TESTS=ON
-            cmake --build . --parallel $(nproc)
+        working-directory: cpp/axon_mcap
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DAXON_MCAP_BUILD_TESTS=ON
+          cmake --build . --parallel $(nproc)
 
       - name: Run C++ tests
         working-directory: cpp/axon_mcap/build
