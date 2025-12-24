@@ -85,11 +85,14 @@ jobs:
             '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
             --output-file coverage.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
 
+      - name: Copy coverage to root for artifact upload
+        run: cp cpp/build_${{ matrix.library }}/coverage.info coverage.info
+
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.library }}
-          path: cpp/build_${{ matrix.library }}/coverage.info
+          path: coverage.info
           retention-days: 7
 
   # ===========================================================================
@@ -110,6 +113,12 @@ jobs:
       - name: Install lcov
         run: sudo apt-get update && sudo apt-get install -y lcov
 
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded artifact structure ==="
+          find . -name "*.info" -type f
+          ls -laR coverage-*/
+      
       - name: Merge coverage reports
         run: |
           # Detect lcov version for compatibility flags
@@ -124,12 +133,20 @@ jobs:
           
           # Build merge command dynamically
           MERGE_CMD="lcov"
+          FOUND_FILES=0
           for dir in coverage-*/; do
             if [ -f "${dir}coverage.info" ]; then
               echo "Found coverage file: ${dir}coverage.info"
               MERGE_CMD="$MERGE_CMD -a ${dir}coverage.info"
+              FOUND_FILES=$((FOUND_FILES + 1))
             fi
           done
+          
+          if [ "$FOUND_FILES" -eq 0 ]; then
+            echo "ERROR: No coverage files found!"
+            exit 1
+          fi
+          
           MERGE_CMD="$MERGE_CMD -o coverage_cpp_merged.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}"
           
           echo "Running: $MERGE_CMD"
