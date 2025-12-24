@@ -23,38 +23,38 @@ on:
       - '.github/workflows/coverage-cpp.yml'
   workflow_dispatch:  # Allow manual trigger
 
+# Cancel in-progress runs when a new commit is pushed to the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  coverage-cpp:
-    name: C++ Libraries Coverage
+  # ===========================================================================
+  # Run coverage for each library in PARALLEL
+  # ===========================================================================
+  coverage-library:
+    name: Coverage - ${{ matrix.library }}
     runs-on: ubuntu-22.04
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - library: axon_mcap
+            cmake_flag: AXON_MCAP
+          - library: axon_logging
+            cmake_flag: AXON_LOGGING
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libgtest-dev \
-            libgmock-dev \
-            libyaml-cpp-dev \
-            liblz4-dev \
-            libzstd-dev \
-            libre2-dev \
-            libturbojpeg0-dev \
-            libboost-dev \
-            libboost-system-dev \
-            libboost-log-dev \
-            libboost-thread-dev \
-            libboost-filesystem-dev \
-            libssl-dev \
-            lcov
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: build-essential cmake pkg-config libgtest-dev libgmock-dev libyaml-cpp-dev liblz4-dev libzstd-dev libre2-dev libturbojpeg0-dev libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libssl-dev lcov
+          version: 1.0
 
       - name: Build GTest from source
         run: |
@@ -65,20 +65,20 @@ jobs:
             sudo cmake --install build
           fi
 
-      - name: Run axon_mcap coverage
+      - name: Build and test with coverage
         run: |
           cd cpp
-          
-          # Build with coverage
-          mkdir -p build && cd build
-          cmake ../axon_mcap \
+          mkdir -p build_${{ matrix.library }} && cd build_${{ matrix.library }}
+          cmake ../${{ matrix.library }} \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DAXON_MCAP_ENABLE_COVERAGE=ON \
-            -DAXON_MCAP_BUILD_TESTS=ON
+            -D${{ matrix.cmake_flag }}_ENABLE_COVERAGE=ON \
+            -D${{ matrix.cmake_flag }}_BUILD_TESTS=ON
           make -j$(nproc)
-          
-          # Run tests
           ctest --output-on-failure
+
+      - name: Generate coverage report
+        run: |
+          cd cpp/build_${{ matrix.library }}
           
           # Detect lcov version for compatibility flags
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
@@ -91,89 +91,76 @@ jobs:
           fi
           
           # Generate coverage
-          lcov --capture --directory . --output-file coverage_mcap_raw.info \
+          lcov --capture --directory . --output-file coverage_raw.info \
             --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
-          lcov --remove coverage_mcap_raw.info \
+          lcov --remove coverage_raw.info \
             '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
-            --output-file coverage_mcap.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+            --output-file coverage.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
 
-      # =========================================================================
-      # axon_uploader coverage is DISABLED
-      # =========================================================================
-      # minio-cpp requires unofficial-curlpp from vcpkg which adds CI complexity.
-      # TODO: Re-enable after replacing minio-cpp with aws-sdk-cpp S3.
-      # =========================================================================
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.library }}
+          path: cpp/build_${{ matrix.library }}/coverage.info
+          retention-days: 7
 
-      - name: Run axon_logging coverage
-        run: |
-          cd cpp
-          
-          # Build with coverage
-          mkdir -p build_logging && cd build_logging
-          cmake ../axon_logging \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DAXON_LOGGING_ENABLE_COVERAGE=ON \
-            -DAXON_LOGGING_BUILD_TESTS=ON
-          make -j$(nproc)
-          
-          # Run tests
-          ctest --output-on-failure
-          
-          # Detect lcov version for compatibility flags
-          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-          echo "lcov version: ${LCOV_VERSION}"
-          
-          LCOV_IGNORE_FLAGS=""
-          if [ "${LCOV_MAJOR}" -ge 2 ]; then
-            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
-          fi
-          
-          # Generate coverage
-          lcov --capture --directory . --output-file coverage_logging_raw.info \
-            --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
-          lcov --remove coverage_logging_raw.info \
-            '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
-            --output-file coverage_logging.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+  # ===========================================================================
+  # Merge coverage from all libraries
+  # ===========================================================================
+  merge-coverage:
+    name: Merge Coverage Reports
+    runs-on: ubuntu-22.04
+    needs: coverage-library
+
+    steps:
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: false
+
+      - name: Install lcov
+        run: sudo apt-get update && sudo apt-get install -y lcov
 
       - name: Merge coverage reports
         run: |
-          cd cpp
-          
           # Detect lcov version for compatibility flags
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
           LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
           
           LCOV_IGNORE_FLAGS=""
           if [ "${LCOV_MAJOR}" -ge 2 ]; then
             LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
           fi
           
-          # Merge axon_mcap and axon_logging coverage
-          # NOTE: axon_uploader is excluded until aws-sdk-cpp migration
-          lcov \
-            -a build/coverage_mcap.info \
-            -a build_logging/coverage_logging.info \
-            -o coverage_cpp_merged.info \
-            --rc lcov_branch_coverage=1 \
-            ${LCOV_IGNORE_FLAGS}
+          # Build merge command dynamically
+          MERGE_CMD="lcov"
+          for dir in coverage-*/; do
+            if [ -f "${dir}coverage.info" ]; then
+              echo "Found coverage file: ${dir}coverage.info"
+              MERGE_CMD="$MERGE_CMD -a ${dir}coverage.info"
+            fi
+          done
+          MERGE_CMD="$MERGE_CMD -o coverage_cpp_merged.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}"
           
+          echo "Running: $MERGE_CMD"
+          eval $MERGE_CMD
           lcov --list coverage_cpp_merged.info ${LCOV_IGNORE_FLAGS}
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: cpp/coverage_cpp_merged.info
+          files: coverage_cpp_merged.info
           flags: cpp
           name: axon-cpp-coverage
-          fail_ci_if_error: false  # Don't fail if upload fails
+          fail_ci_if_error: false
           verbose: true
 
-      - name: Upload coverage artifact
+      - name: Upload merged coverage artifact
         uses: actions/upload-artifact@v4
         with:
           name: cpp-coverage-report
-          path: cpp/coverage_cpp_merged.info
+          path: coverage_cpp_merged.info
           retention-days: 30
-

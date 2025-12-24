@@ -21,6 +21,11 @@ on:
       - '.github/workflows/coverage-ros.yml'
   workflow_dispatch:  # Allow manual trigger
 
+# Cancel in-progress runs when a new commit is pushed to the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ===========================================================================
   # ROS 2 Humble Coverage (via industrial_ci)
@@ -56,13 +61,13 @@ jobs:
           ROS_DISTRO: ${{ env.ROS_DISTRO }}
           ROS_REPO: ${{ env.ROS_REPO }}
           CCACHE_DIR: ${{ env.CCACHE_DIR }}
-          # Same deps as ci.yml plus lcov for coverage
+          # Same deps as unit-tests.yml plus lcov for coverage
           ADDITIONAL_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev lcov
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DAXON_ROS2=ON
           PARALLEL_BUILDS: 2
           # Mount coverage output volume
           DOCKER_RUN_OPTS: -v ${{ github.workspace }}/coverage_output:/coverage_output
-          # Collect coverage after tests (same pattern as ci.yml integration tests)
+          # Collect coverage after tests (same pattern as integration tests)
           AFTER_SCRIPT: |
             echo "=== Collecting coverage data ==="
             
@@ -117,6 +122,23 @@ jobs:
               ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
             
             lcov --list /coverage_output/coverage.info || true
+            
+            # Normalize paths: strip Docker workspace prefix for Codecov
+            # This converts /root/target_ws/src/ros/... to ros/...
+            echo "=== Normalizing paths for Codecov ==="
+            sed -i "s|${WS}/src/||g" /coverage_output/coverage.info || true
+            
+            # Debug: show sample of normalized paths
+            echo "Sample paths in coverage.info:"
+            grep "^SF:" /coverage_output/coverage.info | head -5 || true
+            
+            # Verify file is not empty
+            if [ -s /coverage_output/coverage.info ]; then
+              echo "Coverage file size: $(wc -c < /coverage_output/coverage.info) bytes"
+            else
+              echo "WARNING: coverage.info is empty!"
+            fi
+            
             echo "=== Coverage collection complete ==="
 
       - name: Upload coverage to Codecov
@@ -170,13 +192,13 @@ jobs:
           ROS_DISTRO: ${{ env.ROS_DISTRO }}
           ROS_REPO: ${{ env.ROS_REPO }}
           CCACHE_DIR: ${{ env.CCACHE_DIR }}
-          # Same deps as ci.yml plus lcov for coverage
+          # Same deps as unit-tests.yml plus lcov for coverage
           ADDITIONAL_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev lcov
           CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON -DAXON_ROS1=ON
           PARALLEL_BUILDS: 2
           # Mount coverage output volume
           DOCKER_RUN_OPTS: -v ${{ github.workspace }}/coverage_output:/coverage_output
-          # Collect coverage after tests (same pattern as ci.yml integration tests)
+          # Collect coverage after tests (same pattern as integration tests)
           AFTER_SCRIPT: |
             echo "=== Collecting coverage data ==="
             

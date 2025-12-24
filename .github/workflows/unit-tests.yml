@@ -1,0 +1,112 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Cancel in-progress runs when a new commit is pushed to the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Common dependencies shared across jobs
+  COMMON_DEBS: git libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev
+
+jobs:
+  # ==========================================================================
+  # C++ Tests Job - Build and test the C++ MCAP library
+  # ==========================================================================
+  cpp-tests:
+    name: C++ Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: build-essential cmake pkg-config libgtest-dev libgmock-dev libzstd-dev liblz4-dev libboost-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev
+          version: 1.0
+
+      - name: Build C++ MCAP library with tests
+        working-directory: cpp/axon_mcap
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DAXON_MCAP_BUILD_TESTS=ON
+          cmake --build . --parallel $(nproc)
+
+      - name: Run C++ tests
+        working-directory: cpp/axon_mcap/build
+        run: ctest --output-on-failure --verbose
+
+  # ==========================================================================
+  # ROS Unit Tests - Runs in PARALLEL with cpp-tests
+  # ==========================================================================
+  ros-unit-tests:
+    name: ROS Unit Tests (${{ matrix.ros_distro }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ros_distro: noetic
+            ros_repo: main
+          - ros_distro: humble
+            ros_repo: main
+          - ros_distro: jazzy
+            ros_repo: main
+          - ros_distro: rolling
+            ros_repo: main
+
+    env:
+      CCACHE_DIR: /github/home/.ccache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: /github/home/.ccache
+          key: ccache-${{ matrix.ros_distro }}-unit-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.ros_distro }}-unit-
+            ccache-${{ matrix.ros_distro }}-
+
+      - name: Run industrial_ci
+        uses: ros-industrial/industrial_ci@master
+        env:
+          ROS_DISTRO: ${{ matrix.ros_distro }}
+          ROS_REPO: ${{ matrix.ros_repo }}
+          CCACHE_DIR: ${{ env.CCACHE_DIR }}
+          ADDITIONAL_DEBS: ${{ env.COMMON_DEBS }}
+          CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Release
+          PARALLEL_BUILDS: 2
+
+  # ==========================================================================
+  # Final status check - ensures all required jobs passed
+  # ==========================================================================
+  unit-tests-success:
+    name: Unit Tests Success
+    runs-on: ubuntu-latest
+    needs: [cpp-tests, ros-unit-tests]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.cpp-tests.result }}" != "success" ] || \
+             [ "${{ needs.ros-unit-tests.result }}" != "success" ]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All unit tests passed!"
+

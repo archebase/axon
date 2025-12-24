@@ -1,5 +1,7 @@
 # Axon
 
+[![Unit Tests](https://github.com/ArcheBase/Axon/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/unit-tests.yml)
+[![Integration Tests](https://github.com/ArcheBase/Axon/actions/workflows/integration-tests.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/integration-tests.yml)
 [![C++ Coverage](https://github.com/ArcheBase/Axon/actions/workflows/coverage-cpp.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/coverage-cpp.yml)
 [![ROS Coverage](https://github.com/ArcheBase/Axon/actions/workflows/coverage-ros.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/coverage-ros.yml)
 [![codecov](https://codecov.io/gh/ArcheBase/Axon/branch/main/graph/badge.svg)](https://codecov.io/gh/ArcheBase/Axon)
