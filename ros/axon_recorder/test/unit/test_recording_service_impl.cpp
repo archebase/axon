@@ -785,6 +785,340 @@ TEST_F(RecordingServiceImplTest, SequentialRecordingSessions) {
   EXPECT_TRUE(success);
 }
 
+// ============================================================================
+// Enhanced Coverage Tests (Phase 5)
+// ============================================================================
+
+TEST_F(RecordingServiceImplTest, FinishFromPausedState) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Pause recording
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(mock_context_->get_state_manager().is_state(RecorderState::PAUSED));
+  
+  mock_context_->reset_call_flags();
+  
+  // Finish from paused state
+  service_impl_->handle_recording_control("finish", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(mock_context_->was_stop_recording_called());
+  EXPECT_TRUE(mock_context_->get_state_manager().is_state(RecorderState::IDLE));
+}
+
+TEST_F(RecordingServiceImplTest, EmptyTaskIdOnPause) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to pause with empty task_id
+  service_impl_->handle_recording_control("pause", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("task_id") != std::string::npos);
+}
+
+TEST_F(RecordingServiceImplTest, EmptyTaskIdOnResume) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start and pause
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  
+  // Try to resume with empty task_id
+  service_impl_->handle_recording_control("resume", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, EmptyTaskIdOnFinish) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  
+  // Try to finish with empty task_id
+  service_impl_->handle_recording_control("finish", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, EmptyTaskIdOnCancel) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  
+  // Try to cancel with empty task_id
+  service_impl_->handle_recording_control("cancel", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, ClearFromIdleState) {
+  // Don't cache config - state is IDLE
+  
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Try to clear from IDLE state (should fail - nothing to clear)
+  service_impl_->handle_recording_control("clear", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("idle") != std::string::npos);
+}
+
+TEST_F(RecordingServiceImplTest, ClearFromRecordingState) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to clear from RECORDING state (should fail)
+  service_impl_->handle_recording_control("clear", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("recording") != std::string::npos);
+}
+
+TEST_F(RecordingServiceImplTest, ResumeFromRecordingState) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to resume from RECORDING state (should fail - already recording)
+  service_impl_->handle_recording_control("resume", "test_task_123", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("recording") != std::string::npos);
+}
+
+TEST_F(RecordingServiceImplTest, PauseFromPausedState) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start and pause
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to pause again from PAUSED state
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("paused") != std::string::npos);
+}
+
+TEST_F(RecordingServiceImplTest, StatusWithAllFields) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  
+  // Set comprehensive stats
+  RecordingStats stats;
+  stats.messages_written = 5000;
+  mock_context_->set_stats(stats);
+  mock_context_->set_duration_sec(120.5);
+  mock_context_->set_output_path("/data/recordings/test.mcap");
+  
+  std::string status, task_id, device_id, data_collector_id, order_id, operator_name;
+  std::string scene, subscene, factory, output_path, last_error;
+  std::vector<std::string> skills, active_topics;
+  double disk_usage_gb, duration_sec, throughput_mb_sec;
+  int64_t message_count;
+  
+  service_impl_->handle_recording_status(
+    "test_task_123", success, message, status, task_id, device_id, data_collector_id,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
+    disk_usage_gb, duration_sec, message_count, throughput_mb_sec, last_error
+  );
+  
+  EXPECT_TRUE(success);
+  EXPECT_EQ(status, "recording");
+  EXPECT_EQ(task_id, "test_task_123");
+  EXPECT_EQ(device_id, "device_001");
+  EXPECT_EQ(data_collector_id, "collector_001");
+  EXPECT_EQ(order_id, "order_001");
+  EXPECT_EQ(operator_name, "test.operator");
+  EXPECT_EQ(scene, "indoor");
+  EXPECT_EQ(subscene, "kitchen");
+  EXPECT_EQ(factory, "test_factory");
+  EXPECT_EQ(message_count, 5000);
+  EXPECT_DOUBLE_EQ(duration_sec, 120.5);
+  EXPECT_EQ(output_path, "/data/recordings/test.mcap");
+  
+  // Verify skills were captured
+  EXPECT_EQ(skills.size(), 2);
+  EXPECT_EQ(skills[0], "cooking");
+  EXPECT_EQ(skills[1], "interaction");
+  
+  // Verify topics
+  EXPECT_EQ(active_topics.size(), 2);
+}
+
+TEST_F(RecordingServiceImplTest, IsRecordingReadyWhenRecording) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  bool is_configured, is_recording;
+  std::string task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector_id;
+  std::vector<std::string> skills, topics;
+  
+  service_impl_->handle_is_recording_ready(
+    success, message, is_configured, is_recording,
+    task_id, device_id, order_id, operator_name, scene, subscene, skills, factory,
+    data_collector_id, topics
+  );
+  
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(is_configured);
+  EXPECT_TRUE(is_recording);
+}
+
+TEST_F(RecordingServiceImplTest, IsRecordingReadyWhenPaused) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  
+  bool is_configured, is_recording;
+  std::string task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector_id;
+  std::vector<std::string> skills, topics;
+  
+  service_impl_->handle_is_recording_ready(
+    success, message, is_configured, is_recording,
+    task_id, device_id, order_id, operator_name, scene, subscene, skills, factory,
+    data_collector_id, topics
+  );
+  
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(is_configured);
+  EXPECT_TRUE(is_recording);  // PAUSED counts as recording active
+}
+
+TEST_F(RecordingServiceImplTest, CacheConfigWithMinimalFields) {
+  bool success = false;
+  std::string message;
+  
+  // Only required fields
+  service_impl_->handle_cached_recording_config(
+    "minimal_task",  // task_id (required)
+    "",  // device_id
+    "",  // data_collector_id
+    "",  // order_id
+    "",  // operator_name
+    "",  // scene
+    "",  // subscene
+    {},  // skills
+    "",  // factory
+    {},  // topics
+    "",  // start_callback_url
+    "",  // finish_callback_url
+    "",  // user_token
+    success, message
+  );
+  
+  EXPECT_TRUE(success);
+  
+  auto config = mock_context_->get_task_config_cache().get();
+  ASSERT_TRUE(config.has_value());
+  EXPECT_EQ(config->task_id, "minimal_task");
+  EXPECT_TRUE(config->device_id.empty());
+}
+
+TEST_F(RecordingServiceImplTest, CancelFromIdleState) {
+  // Don't start recording - state is IDLE
+  
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Try to cancel from IDLE state - will fail due to task_id validation
+  // (no cached config exists, so task_id won't match)
+  service_impl_->handle_recording_control("cancel", "some_task", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  // Error will be about task_id mismatch or empty cache
+  EXPECT_FALSE(message.empty());
+}
+
+TEST_F(RecordingServiceImplTest, FinishFromIdleState) {
+  // Don't start recording - state is IDLE
+  
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Try to finish from IDLE state - will fail due to task_id validation
+  // (no cached config exists, so task_id won't match)
+  service_impl_->handle_recording_control("finish", "some_task", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  // Error will be about task_id mismatch or empty cache
+  EXPECT_FALSE(message.empty());
+}
+
+TEST_F(RecordingServiceImplTest, StartWithNoConfig) {
+  // Transition to READY manually (bypassing normal config caching)
+  std::string error_msg;
+  mock_context_->get_state_manager().transition_to(RecorderState::READY, error_msg);
+  
+  // But don't cache any config
+  bool success = true;
+  std::string message, task_id_response;
+  
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("No configuration") != std::string::npos);
+}
+
+TEST_F(RecordingServiceImplTest, WhitespaceCommand) {
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Whitespace-only command
+  service_impl_->handle_recording_control("   ", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("Unknown command") != std::string::npos);
+}
+
+TEST_F(RecordingServiceImplTest, SpecialCharacterCommand) {
+  bool success = true;
+  std::string message, task_id_response;
+  
+  service_impl_->handle_recording_control("st@rt!", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("Unknown command") != std::string::npos);
+}
+
 }  // namespace
 }  // namespace recorder
 }  // namespace axon

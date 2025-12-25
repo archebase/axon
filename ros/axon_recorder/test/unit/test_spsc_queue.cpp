@@ -18,7 +18,7 @@
 
 #include "spsc_queue.hpp"
 
-using namespace axon::core;
+using namespace axon::recorder;
 
 // ============================================================================
 // SPSCQueue Basic Tests

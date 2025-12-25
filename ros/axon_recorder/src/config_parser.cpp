@@ -9,7 +9,7 @@
 #include <axon_log_init.hpp>
 
 namespace axon {
-namespace core {
+namespace recorder {
 
 RecorderConfig RecorderConfig::from_yaml(const std::string& yaml_path) {
   ConfigParser parser;
@@ -456,6 +456,6 @@ void convert_logging_config(const LoggingConfigYaml& yaml_config,
   log_config.file_config.rotate_at_midnight = yaml_config.rotate_at_midnight;
 }
 
-}  // namespace core
+}  // namespace recorder
 }  // namespace axon
 

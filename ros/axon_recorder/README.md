@@ -20,7 +20,7 @@ cd ros/docker
 docker-compose -f docker-compose.yml up ros2-humble --build
 
 # Run tests
-docker-compose -f docker-compose.test.yml up test-ros2-humble --build --abort-on-container-exit
+docker-compose -f docker-compose.test.yml up test-ros2-humble --build --abort-on-container-exit --remove-orphans
 ```
 
 ## Building Locally

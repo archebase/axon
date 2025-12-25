@@ -1,10 +1,33 @@
 # =============================================================================
 # CI Orchestrator Workflow for Axon
 # =============================================================================
-# Main entry point that orchestrates the full CI pipeline:
-#   1. Unit Tests (C++ and ROS)
-#   2. Integration Tests (after unit tests pass)
-#   3. Coverage Tests (after integration tests pass)
+# Main entry point that orchestrates the full CI pipeline.
+#
+# Coverage Collection Strategy:
+#   - ROS unit tests (Humble/Noetic) collect coverage → Codecov (ros1/ros2)
+#   - C++ unit tests collect coverage → Codecov (cpp)
+#   - Integration tests (Humble/Noetic) collect coverage → Codecov (ros1/ros2)
+#   - E2E tests (Humble) collect coverage → Codecov (ros2)
+#
+# Pipeline Diagram:
+#
+#   ┌─────────────────────────────────────────────────┐
+#   │               Unit Tests (Stage 1)              │
+#   │  ┌───────────────────┐  ┌───────────────────┐   │
+#   │  │ ROS Unit Tests    │  │ C++ Unit Tests    │   │  (parallel)
+#   │  │ +cov (Humble/     │  │ +cov              │   │
+#   │  │      Noetic)      │  │                   │   │
+#   │  └───────────────────┘  └───────────────────┘   │
+#   └─────────────────────┬───────────────────────────┘
+#                         │
+#                ┌────────┴────────┐
+#                ▼                 ▼
+#          ┌───────────┐     ┌───────────┐
+#          │ Integr.   │     │   E2E     │  (parallel, both collect coverage)
+#          │  Tests    │     │   Tests   │
+#          │  +cov     │     │   +cov    │
+#          └───────────┘     └───────────┘
+#
 # =============================================================================
 
 name: CI
@@ -23,35 +46,32 @@ concurrency:
 
 jobs:
   # ===========================================================================
-  # Stage 1: Unit Tests
+  # Stage 1: Unit Tests (ROS and C++ run in parallel)
   # ===========================================================================
-  unit-tests:
-    name: Unit Tests
-    uses: ./.github/workflows/unit-tests.yml
+  unit-tests-ros:
+    name: ROS Unit Tests
+    uses: ./.github/workflows/unit-tests-ros.yml
+    secrets: inherit
+
+  unit-tests-cpp:
+    name: C++ Unit Tests
+    uses: ./.github/workflows/unit-tests-cpp.yml
     secrets: inherit
 
   # ===========================================================================
-  # Stage 2: Integration Tests (after unit tests pass)
+  # Stage 2: Integration Tests + E2E Tests (parallel after unit tests)
+  # Both collect coverage data and upload to Codecov
   # ===========================================================================
   integration-tests:
     name: Integration Tests
-    needs: unit-tests
+    needs: [unit-tests-ros, unit-tests-cpp]
     uses: ./.github/workflows/integration-tests.yml
     secrets: inherit
 
-  # ===========================================================================
-  # Stage 3: Coverage Tests (after integration tests pass)
-  # ===========================================================================
-  coverage-cpp:
-    name: C++ Coverage
-    needs: integration-tests
-    uses: ./.github/workflows/coverage-cpp.yml
-    secrets: inherit
-
-  coverage-ros:
-    name: ROS Coverage
-    needs: integration-tests
-    uses: ./.github/workflows/coverage-ros.yml
+  e2e-tests:
+    name: E2E Tests
+    needs: [unit-tests-ros, unit-tests-cpp]
+    uses: ./.github/workflows/e2e-tests.yml
     secrets: inherit
 
   # ===========================================================================
@@ -60,18 +80,23 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, coverage-cpp, coverage-ros]
+    needs: [unit-tests-ros, unit-tests-cpp, integration-tests, e2e-tests]
     if: always()
     steps:
       - name: Check pipeline status
         run: |
-          echo "Unit Tests: ${{ needs.unit-tests.result }}"
+          echo "ROS Unit Tests: ${{ needs.unit-tests-ros.result }}"
+          echo "C++ Unit Tests: ${{ needs.unit-tests-cpp.result }}"
           echo "Integration Tests: ${{ needs.integration-tests.result }}"
-          echo "C++ Coverage: ${{ needs.coverage-cpp.result }}"
-          echo "ROS Coverage: ${{ needs.coverage-ros.result }}"
+          echo "E2E Tests: ${{ needs.e2e-tests.result }}"
           
-          if [ "${{ needs.unit-tests.result }}" != "success" ]; then
-            echo "❌ Unit tests failed"
+          if [ "${{ needs.unit-tests-ros.result }}" != "success" ]; then
+            echo "❌ ROS unit tests failed"
+            exit 1
+          fi
+          
+          if [ "${{ needs.unit-tests-cpp.result }}" != "success" ]; then
+            echo "❌ C++ unit tests failed"
             exit 1
           fi
           
@@ -80,14 +105,9 @@ jobs:
             exit 1
           fi
           
-          # Coverage failures are warnings, not blockers
-          if [ "${{ needs.coverage-cpp.result }}" != "success" ]; then
-            echo "⚠️ C++ coverage failed (non-blocking)"
-          fi
-          
-          if [ "${{ needs.coverage-ros.result }}" != "success" ]; then
-            echo "⚠️ ROS coverage failed (non-blocking)"
+          if [ "${{ needs.e2e-tests.result }}" != "success" ]; then
+            echo "❌ E2E tests failed"
+            exit 1
           fi
           
           echo "✅ CI pipeline completed successfully!"
-

@@ -1,11 +1,14 @@
 # =============================================================================
-# Integration Tests Workflow for Axon
+# ROS Unit Tests Workflow for Axon
 # =============================================================================
-# Runs GTest integration tests that test component interactions requiring ROS.
-# Collects coverage from Humble (ROS2) and Noetic (ROS1) to maximize coverage.
+# Runs ROS unit tests for axon_recorder package.
+# Tests on all distros for compatibility, coverage collected for Humble + Noetic.
+#
+# Coverage is collected from Humble (ROS2) and Noetic (ROS1) and uploaded to
+# Codecov. Jazzy and Rolling run for compatibility testing only.
 # =============================================================================
 
-name: Integration Tests
+name: ROS Unit Tests
 
 on:
   # Called by ci.yml orchestrator
@@ -20,14 +23,13 @@ env:
 
 jobs:
   # ==========================================================================
-  # GTest Integration Tests - Component interaction tests requiring ROS
-  # Runs on ALL ROS distributions for compatibility testing
-  # Collects coverage from Humble and Noetic only (to avoid duplicate data)
+  # ROS Unit Tests
+  # Collects coverage from Humble and Noetic, uploads to Codecov
   # ==========================================================================
-  ros-integration-tests:
-    name: ROS Integration Tests (${{ matrix.ros_distro }})
+  ros-unit-tests:
+    name: ROS Unit Tests (${{ matrix.ros_distro }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -42,12 +44,12 @@ jobs:
             ros_repo: main
             collect_coverage: true
             coverage_flag: ros2
-          # ROS 2 Jazzy - no coverage (compatibility testing only)
+          # ROS 2 Jazzy - compatibility testing only
           - ros_distro: jazzy
             ros_repo: main
             collect_coverage: false
             coverage_flag: ""
-          # ROS 2 Rolling - no coverage (compatibility testing only)
+          # ROS 2 Rolling - compatibility testing only
           - ros_distro: rolling
             ros_repo: main
             collect_coverage: false
@@ -63,7 +65,7 @@ jobs:
         if: matrix.collect_coverage
         run: mkdir -p ${{ github.workspace }}/coverage_output
 
-      - name: Run industrial_ci with integration tests
+      - name: Run industrial_ci
         uses: ros-industrial/industrial_ci@master
         env:
           ROS_DISTRO: ${{ matrix.ros_distro }}
@@ -72,8 +74,8 @@ jobs:
           # Enable coverage for Humble and Noetic, Release for others
           CMAKE_ARGS: ${{ matrix.collect_coverage && '-DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON' || '-DCMAKE_BUILD_TYPE=Release' }}
           PARALLEL_BUILDS: 2
-          # Run only integration-labeled tests
-          CTEST_ARGS: -L integration --output-on-failure
+          # Run only unit tests (exclude integration tests - they have their own workflow)
+          CTEST_ARGS: -LE integration --output-on-failure
           # Mount coverage output directory for coverage collection
           DOCKER_RUN_OPTS: ${{ matrix.collect_coverage && format('-v {0}/coverage_output:/coverage_output', github.workspace) || '' }}
           # Collect coverage after tests (only for Humble and Noetic)
@@ -83,7 +85,7 @@ jobs:
               exit 0
             fi
             
-            echo "=== Collecting integration test coverage data ==="
+            echo "=== Collecting unit test coverage data ==="
             
             # Find the workspace
             if [ -d /root/target_ws ]; then
@@ -152,7 +154,7 @@ jobs:
               echo "WARNING: coverage.info is empty!"
             fi
             
-            echo "=== Integration test coverage collection complete ==="
+            echo "=== Unit test coverage collection complete ==="
 
       - name: Upload coverage to Codecov
         if: matrix.collect_coverage
@@ -161,7 +163,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ github.workspace }}/coverage_output/coverage.info
           flags: ${{ matrix.coverage_flag }}
-          name: axon-integration-${{ matrix.ros_distro }}-coverage
+          name: axon-unit-${{ matrix.ros_distro }}-coverage
           fail_ci_if_error: false
           verbose: true
 
@@ -169,23 +171,23 @@ jobs:
         if: matrix.collect_coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-integration-${{ matrix.ros_distro }}
+          name: coverage-unit-${{ matrix.ros_distro }}
           path: ${{ github.workspace }}/coverage_output/coverage.info
           retention-days: 30
 
   # ==========================================================================
-  # Final status check
+  # Final status check - ensures all required jobs passed
   # ==========================================================================
-  integration-tests-success:
-    name: Integration Tests Success
+  unit-tests-success:
+    name: ROS Unit Tests Success
     runs-on: ubuntu-latest
-    needs: [ros-integration-tests]
+    needs: [ros-unit-tests]
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
-          if [ "${{ needs.ros-integration-tests.result }}" != "success" ]; then
-            echo "Integration tests failed"
+          if [ "${{ needs.ros-unit-tests.result }}" != "success" ]; then
+            echo "ROS unit tests failed"
             exit 1
           fi
-          echo "All integration tests passed!"
+          echo "All ROS unit tests passed!"

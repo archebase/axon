@@ -331,6 +331,388 @@ TEST_F(McapWriterTest, LargeMessages) {
   EXPECT_GT(fs::file_size(test_file_), 100000); // At least 100KB (62MB raw → ~400KB compressed)
 }
 
+// =============================================================================
+// Metadata Tests
+// =============================================================================
+
+TEST_F(McapWriterTest, WriteMetadata) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  // Write metadata
+  std::unordered_map<std::string, std::string> metadata = {
+    {"task_id", "task_12345"},
+    {"device_id", "robot_001"},
+    {"recording_start", "2024-01-15T10:30:00Z"}
+  };
+  
+  EXPECT_TRUE(writer.write_metadata("axon.task", metadata));
+  
+  writer.close();
+  
+  // Verify file was created
+  EXPECT_TRUE(fs::exists(test_file_));
+}
+
+TEST_F(McapWriterTest, WriteMultipleMetadata) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  // Write multiple metadata records
+  std::unordered_map<std::string, std::string> task_metadata = {
+    {"task_id", "task_abc"},
+    {"task_type", "mapping"}
+  };
+  EXPECT_TRUE(writer.write_metadata("axon.task", task_metadata));
+  
+  std::unordered_map<std::string, std::string> device_metadata = {
+    {"device_id", "robot_xyz"},
+    {"firmware_version", "1.2.3"}
+  };
+  EXPECT_TRUE(writer.write_metadata("axon.device", device_metadata));
+  
+  std::unordered_map<std::string, std::string> recording_metadata = {
+    {"start_time", "1000000000"},
+    {"end_time", "2000000000"},
+    {"duration_seconds", "1000"}
+  };
+  EXPECT_TRUE(writer.write_metadata("axon.recording", recording_metadata));
+  
+  writer.close();
+}
+
+TEST_F(McapWriterTest, WriteMetadataToClosedWriter) {
+  McapWriterWrapper writer;
+  
+  // Writer is not open
+  std::unordered_map<std::string, std::string> metadata = {
+    {"key", "value"}
+  };
+  
+  EXPECT_FALSE(writer.write_metadata("test", metadata));
+  EXPECT_FALSE(writer.get_last_error().empty());
+}
+
+TEST_F(McapWriterTest, WriteMetadataEmptyMap) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  // Write empty metadata
+  std::unordered_map<std::string, std::string> empty_metadata;
+  EXPECT_TRUE(writer.write_metadata("empty_test", empty_metadata));
+  
+  writer.close();
+}
+
+// =============================================================================
+// Flush Tests
+// =============================================================================
+
+TEST_F(McapWriterTest, FlushOpenWriter) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint32 value");
+  uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id);
+  
+  std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0x04};
+  uint64_t timestamp = 1000000000ULL;
+  
+  // Write some messages
+  for (int i = 0; i < 10; ++i) {
+    uint64_t t = timestamp + i * 1000000ULL;
+    writer.write(channel_id, t, t, payload.data(), payload.size());
+  }
+  
+  // Flush should not throw
+  EXPECT_NO_THROW(writer.flush());
+  
+  // Write more after flush
+  for (int i = 10; i < 20; ++i) {
+    uint64_t t = timestamp + i * 1000000ULL;
+    EXPECT_TRUE(writer.write(channel_id, t, t, payload.data(), payload.size()));
+  }
+  
+  auto stats = writer.get_statistics();
+  EXPECT_EQ(stats.messages_written, 20);
+  
+  writer.close();
+}
+
+TEST_F(McapWriterTest, FlushClosedWriter) {
+  McapWriterWrapper writer;
+  
+  // Flush on closed writer should not crash
+  EXPECT_NO_THROW(writer.flush());
+}
+
+TEST_F(McapWriterTest, MultipleFlushes) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint32 value");
+  uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id);
+  
+  std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0x04};
+  uint64_t timestamp = 1000000000ULL;
+  
+  // Multiple flush cycles
+  for (int cycle = 0; cycle < 5; ++cycle) {
+    for (int i = 0; i < 10; ++i) {
+      uint64_t t = timestamp + (cycle * 10 + i) * 1000000ULL;
+      writer.write(channel_id, t, t, payload.data(), payload.size());
+    }
+    EXPECT_NO_THROW(writer.flush());
+  }
+  
+  auto stats = writer.get_statistics();
+  EXPECT_EQ(stats.messages_written, 50);
+  
+  writer.close();
+}
+
+// =============================================================================
+// Error Path Tests
+// =============================================================================
+
+TEST_F(McapWriterTest, RegisterSchemaClosedWriter) {
+  McapWriterWrapper writer;
+  
+  // Registering schema on closed writer should fail
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint32 value");
+  EXPECT_EQ(schema_id, 0);
+  EXPECT_FALSE(writer.get_last_error().empty());
+}
+
+TEST_F(McapWriterTest, RegisterChannelClosedWriter) {
+  McapWriterWrapper writer;
+  
+  // Registering channel on closed writer should fail
+  uint16_t channel_id = writer.register_channel("/test/topic", "cdr", 1);
+  EXPECT_EQ(channel_id, 0);
+  EXPECT_FALSE(writer.get_last_error().empty());
+}
+
+TEST_F(McapWriterTest, GetLastErrorInitiallyEmpty) {
+  McapWriterWrapper writer;
+  
+  // Before any error, should be empty or have no significant error
+  // The error may or may not be empty initially depending on implementation
+  // Just verify it doesn't crash
+  std::string error = writer.get_last_error();
+  // No assertion needed - just verify access doesn't crash
+}
+
+TEST_F(McapWriterTest, GetPathClosedWriter) {
+  McapWriterWrapper writer;
+  
+  // Path on closed writer should be empty
+  std::string path = writer.get_path();
+  EXPECT_TRUE(path.empty());
+}
+
+TEST_F(McapWriterTest, GetStatisticsClosedWriter) {
+  McapWriterWrapper writer;
+  
+  // Statistics on closed writer should return zeros
+  auto stats = writer.get_statistics();
+  EXPECT_EQ(stats.messages_written, 0);
+  EXPECT_EQ(stats.bytes_written, 0);
+  EXPECT_EQ(stats.schemas_registered, 0);
+  EXPECT_EQ(stats.channels_registered, 0);
+}
+
+TEST_F(McapWriterTest, CloseIdempotent) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  // Close multiple times should be safe
+  writer.close();
+  EXPECT_NO_THROW(writer.close());
+  EXPECT_NO_THROW(writer.close());
+  
+  EXPECT_FALSE(writer.is_open());
+}
+
+// =============================================================================
+// Compression Options Tests
+// =============================================================================
+
+TEST_F(McapWriterTest, CompressionLz4) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::Lz4;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint8[] data");
+  uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id);
+  
+  // Write compressible data
+  std::vector<uint8_t> payload(1024, 0xBB);
+  uint64_t timestamp = 1000000000ULL;
+  
+  for (int i = 0; i < 50; ++i) {
+    uint64_t t = timestamp + i * 1000000ULL;
+    EXPECT_TRUE(writer.write(channel_id, t, t, payload.data(), payload.size()));
+  }
+  
+  writer.close();
+  
+  EXPECT_TRUE(fs::exists(test_file_));
+  EXPECT_GT(fs::file_size(test_file_), 0);
+}
+
+TEST_F(McapWriterTest, CompressionNone) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint8[] data");
+  uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id);
+  
+  std::vector<uint8_t> payload(512, 0xCC);
+  uint64_t timestamp = 1000000000ULL;
+  
+  for (int i = 0; i < 50; ++i) {
+    uint64_t t = timestamp + i * 1000000ULL;
+    EXPECT_TRUE(writer.write(channel_id, t, t, payload.data(), payload.size()));
+  }
+  
+  writer.close();
+  
+  // Uncompressed file should be larger than compressed
+  EXPECT_TRUE(fs::exists(test_file_));
+  auto file_size = fs::file_size(test_file_);
+  EXPECT_GT(file_size, 50 * 512); // At least the raw data size (with overhead)
+}
+
+// =============================================================================
+// Options Configuration Tests
+// =============================================================================
+
+TEST_F(McapWriterTest, CustomChunkSize) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  options.chunk_size = 512 * 1024; // 512KB chunks
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint8[] data");
+  uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id);
+  
+  // Write enough data to span multiple chunks
+  std::vector<uint8_t> payload(64 * 1024, 0xDD); // 64KB per message
+  uint64_t timestamp = 1000000000ULL;
+  
+  for (int i = 0; i < 20; ++i) { // 20 * 64KB = 1.28MB
+    uint64_t t = timestamp + i * 1000000ULL;
+    EXPECT_TRUE(writer.write(channel_id, t, t, payload.data(), payload.size()));
+  }
+  
+  writer.close();
+  
+  EXPECT_TRUE(fs::exists(test_file_));
+}
+
+TEST_F(McapWriterTest, CustomProfile) {
+  McapWriterWrapper writer;
+  
+  McapWriterOptions options;
+  options.profile = "ros1";  // Different profile
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(test_file_, options));
+  
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros1msg", "uint32 value");
+  uint16_t channel_id = writer.register_channel("/test/data", "ros1", schema_id);
+  
+  std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0x04};
+  writer.write(channel_id, 1000000000ULL, 1000000000ULL, payload.data(), payload.size());
+  
+  writer.close();
+  
+  EXPECT_TRUE(fs::exists(test_file_));
+}
+
+// =============================================================================
+// Directory Creation Tests
+// =============================================================================
+
+TEST_F(McapWriterTest, CreateNestedDirectories) {
+  // Test that writer creates nested directories if they don't exist
+  std::string nested_path = "/tmp/mcap_test_nested_" + 
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + 
+      "/level1/level2/test.mcap";
+  
+  McapWriterWrapper writer;
+  McapWriterOptions options;
+  options.compression = Compression::None;
+  
+  ASSERT_TRUE(writer.open(nested_path, options));
+  writer.close();
+  
+  EXPECT_TRUE(fs::exists(nested_path));
+  
+  // Clean up
+  fs::path parent = fs::path(nested_path).parent_path().parent_path().parent_path();
+  fs::remove_all(parent);
+}
+
+// =============================================================================
+// Destructor Cleanup Test
+// =============================================================================
+
+TEST_F(McapWriterTest, DestructorClosesFile) {
+  {
+    McapWriterWrapper writer;
+    McapWriterOptions options;
+    options.compression = Compression::None;
+    
+    ASSERT_TRUE(writer.open(test_file_, options));
+    
+    uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint32 value");
+    uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id);
+    
+    std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0x04};
+    writer.write(channel_id, 1000000000ULL, 1000000000ULL, payload.data(), payload.size());
+    
+    // Don't call close() - let destructor handle it
+  }
+  
+  // File should still exist and be valid
+  EXPECT_TRUE(fs::exists(test_file_));
+  EXPECT_GT(fs::file_size(test_file_), 0);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

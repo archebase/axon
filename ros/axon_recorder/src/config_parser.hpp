@@ -11,7 +11,7 @@
 namespace axon { namespace logging { struct LoggingConfig; } }
 
 namespace axon {
-namespace core {
+namespace recorder {
 
 struct TopicConfig {
   std::string name;
@@ -145,7 +145,7 @@ private:
   bool parse_upload(const YAML::Node& node, UploadConfigYaml& upload);
 };
 
-}  // namespace core
+}  // namespace recorder
 }  // namespace axon
 
 #endif  // AXON_RECORDER_CONFIG_PARSER_HPP

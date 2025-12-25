@@ -16,7 +16,7 @@
 #include <vector>
 
 namespace axon {
-namespace core {
+namespace recorder {
 
 // ============================================================================
 // MessageIntrospectorFactory Implementation
@@ -42,10 +42,6 @@ void MessageIntrospectorFactory::set_factory(FactoryFunction factory) {
 bool MessageIntrospectorFactory::has_factory() {
   return g_factory != nullptr;
 }
-
-}  // namespace core
-
-namespace recorder {
 
 #if defined(AXON_ROS1)
 // ============================================================================
@@ -123,7 +119,7 @@ public:
 
     // For high-performance recording, we use a simplified schema:
     // Store the entire serialized message as binary data
-    core::FieldDescriptor data_field;
+    FieldDescriptor data_field;
     data_field.name = "message_data";
     data_field.type_name = "binary";
     data_field.is_array = false;

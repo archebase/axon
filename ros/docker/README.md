@@ -33,14 +33,14 @@ Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructu
 | CI Job (`ci.yml`) | Local Docker (`run_tests.sh`) | What it does |
 |-------------------|-------------------------------|--------------|
 | `ros-unit-tests` | Part 1: ROS Tests | `colcon test` / `catkin_make run_tests` |
-| `ros-integration-tests` | Part 2: Integration Tests | `run_integration_tests.sh` |
+| `ros-integration-tests` | Part 2: E2E Tests | `run_e2e_tests.sh` |
 
 ### Shared Scripts
 
 | Script | Used by |
 |--------|---------|
-| `test/integration/run_integration_tests.sh` | CI `AFTER_SCRIPT` + Docker `run_tests.sh` |
-| `test/integration/test_ros_services.sh` | Called by `run_integration_tests.sh` |
+| `test/e2e/run_e2e_tests.sh` | CI `AFTER_SCRIPT` + Docker `run_tests.sh` |
+| `test/e2e/test_ros_services.sh` | Called by `run_e2e_tests.sh` |
 
 ### Test Flow
 

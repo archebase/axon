@@ -361,6 +361,207 @@ TEST_F(McapValidatorTest, SymbolicLink) {
   }
 }
 
+// =============================================================================
+// Header Validation Edge Cases
+// =============================================================================
+
+TEST_F(McapValidatorTest, HeaderCannotOpenFile) {
+  // Create a file, then make it unreadable (if possible)
+  std::string path = test_dir_ + "/unreadable.mcap";
+  std::ofstream file(path, std::ios::binary);
+  file << "test";
+  file.close();
+  
+  // Remove read permission (Unix-specific)
+  std::error_code ec;
+  fs::permissions(path, fs::perms::none, ec);
+  
+  if (!ec) {
+    auto result = validateMcapHeader(path);
+    // Should fail to open file
+    EXPECT_FALSE(result.valid);
+    EXPECT_FALSE(result.error_message.empty());
+    
+    // Restore permissions for cleanup
+    fs::permissions(path, fs::perms::owner_all, ec);
+  }
+}
+
+// =============================================================================
+// Footer Validation Edge Cases
+// =============================================================================
+
+TEST_F(McapValidatorTest, FooterCannotOpenFile) {
+  std::string path = test_dir_ + "/unreadable_footer.mcap";
+  std::ofstream file(path, std::ios::binary);
+  // Write valid header magic + enough data
+  static const char MAGIC[] = {'\x89', 'M', 'C', 'A', 'P', '0', '\r', '\n'};
+  file.write(MAGIC, 8);
+  std::vector<char> padding(100, 0);
+  file.write(padding.data(), padding.size());
+  file.write(MAGIC, 8);
+  file.close();
+  
+  // Remove read permission
+  std::error_code ec;
+  fs::permissions(path, fs::perms::none, ec);
+  
+  if (!ec) {
+    auto result = validateMcapFooter(path);
+    EXPECT_FALSE(result.valid);
+    EXPECT_FALSE(result.error_message.empty());
+    
+    // Restore permissions for cleanup
+    fs::permissions(path, fs::perms::owner_all, ec);
+  }
+}
+
+TEST_F(McapValidatorTest, FooterInvalidMagicBytes) {
+  // Create file with valid header but invalid footer magic
+  std::string path = test_dir_ + "/bad_footer_magic.mcap";
+  std::ofstream file(path, std::ios::binary);
+  
+  // Write valid header magic
+  static const char MAGIC[] = {'\x89', 'M', 'C', 'A', 'P', '0', '\r', '\n'};
+  file.write(MAGIC, 8);
+  
+  // Write some padding
+  std::vector<char> padding(100, 0);
+  file.write(padding.data(), padding.size());
+  
+  // Write invalid footer magic
+  static const char BAD_MAGIC[] = {'\x00', 'X', 'X', 'X', 'X', '0', '\r', '\n'};
+  file.write(BAD_MAGIC, 8);
+  
+  file.close();
+  
+  auto result = validateMcapFooter(path);
+  EXPECT_FALSE(result.valid);
+  EXPECT_NE(result.error_message.find("truncated"), std::string::npos);
+}
+
+// =============================================================================
+// Structure Validation Edge Cases
+// =============================================================================
+
+TEST_F(McapValidatorTest, StructureWithMagicOnlyFile) {
+  // File has correct header/footer magic but invalid internal structure
+  std::string path = createMagicOnlyFile("structure_magic_only.mcap");
+  
+  // Full structure validation should fail (invalid summary)
+  auto result = validateMcapStructure(path);
+  EXPECT_FALSE(result.valid);
+  // Should fail at the MCAP reader open or summary read step
+  EXPECT_FALSE(result.error_message.empty());
+}
+
+TEST_F(McapValidatorTest, StructureValidationLogsErrors) {
+  // Test files that trigger error logging paths in validateMcapStructure
+  
+  // Invalid header - should log header validation failure
+  std::string bad_header_path = createInvalidHeaderFile("log_test_bad_header.mcap");
+  auto result1 = validateMcapStructure(bad_header_path);
+  EXPECT_FALSE(result1.valid);
+  
+  // Truncated file - should log footer validation failure
+  std::string truncated_path = createTruncatedFile("log_test_truncated.mcap");
+  auto result2 = validateMcapStructure(truncated_path);
+  EXPECT_FALSE(result2.valid);
+}
+
+// =============================================================================
+// Validation with Different File Sizes
+// =============================================================================
+
+TEST_F(McapValidatorTest, FileExactlyMinimumSize) {
+  // Create a file that's exactly the minimum size (16 bytes = 2 * magic)
+  std::string path = test_dir_ + "/exactly_min_size.mcap";
+  std::ofstream file(path, std::ios::binary);
+  
+  static const char MAGIC[] = {'\x89', 'M', 'C', 'A', 'P', '0', '\r', '\n'};
+  file.write(MAGIC, 8);  // Header magic
+  file.write(MAGIC, 8);  // Footer magic (immediately after header)
+  
+  file.close();
+  
+  // Header validation should pass
+  auto header_result = validateMcapHeader(path);
+  EXPECT_TRUE(header_result.valid);
+  
+  // Footer validation should pass
+  auto footer_result = validateMcapFooter(path);
+  EXPECT_TRUE(footer_result.valid);
+  
+  // But full structure validation may fail (no valid records)
+  auto structure_result = validateMcapStructure(path);
+  // The MCAP library may or may not accept this
+  // Just verify it doesn't crash
+}
+
+TEST_F(McapValidatorTest, FileJustBelowMinimumSize) {
+  std::string path = test_dir_ + "/below_min_size.mcap";
+  std::ofstream file(path, std::ios::binary);
+  
+  // Write only 15 bytes (just below minimum)
+  static const char data[] = {'\x89', 'M', 'C', 'A', 'P', '0', '\r', '\n', 
+                               '\x89', 'M', 'C', 'A', 'P', '0', '\r'};
+  file.write(data, 15);
+  
+  file.close();
+  
+  // Footer validation should fail (too small)
+  auto result = validateMcapFooter(path);
+  EXPECT_FALSE(result.valid);
+  EXPECT_NE(result.error_message.find("too small"), std::string::npos);
+}
+
+// =============================================================================
+// Multiple Validations on Same File
+// =============================================================================
+
+TEST_F(McapValidatorTest, MultipleValidationsOnSameFile) {
+  std::string path = createValidMcapFile("multi_validation.mcap");
+  
+  // Run validations multiple times to ensure no state leakage
+  for (int i = 0; i < 3; ++i) {
+    auto header_result = validateMcapHeader(path);
+    EXPECT_TRUE(header_result.valid) << "Header validation failed on iteration " << i;
+    
+    auto footer_result = validateMcapFooter(path);
+    EXPECT_TRUE(footer_result.valid) << "Footer validation failed on iteration " << i;
+    
+    auto structure_result = validateMcapStructure(path);
+    EXPECT_TRUE(structure_result.valid) << "Structure validation failed on iteration " << i;
+  }
+}
+
+// =============================================================================
+// Large Valid MCAP File
+// =============================================================================
+
+TEST_F(McapValidatorTest, LargeValidMcapFile) {
+  std::string path = test_dir_ + "/large_valid.mcap";
+  
+  axon::mcap_wrapper::McapWriterWrapper writer;
+  ASSERT_TRUE(writer.open(path));
+  
+  uint16_t schema_id = writer.register_schema("large_test", "ros2msg", "uint8[] data");
+  uint16_t channel_id = writer.register_channel("/large_topic", "cdr", schema_id);
+  
+  // Write many messages
+  std::vector<uint8_t> data(1024, 0xAB);  // 1KB per message
+  for (int i = 0; i < 1000; ++i) {
+    uint64_t timestamp = 1000000000ULL + i * 1000000ULL;
+    writer.write(channel_id, timestamp, timestamp, data.data(), data.size());
+  }
+  
+  writer.close();
+  
+  // Validate the large file
+  auto result = validateMcapStructure(path);
+  EXPECT_TRUE(result.valid) << "Error: " << result.error_message;
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

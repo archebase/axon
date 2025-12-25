@@ -4,6 +4,12 @@ project(axon_logging_tests)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Suppress CMP0167 warning (FindBoost module is removed in newer CMake)
+# Use the new Boost Config package instead when available
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 # Find dependencies
 find_package(GTest REQUIRED)
 find_package(Threads REQUIRED)

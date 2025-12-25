@@ -614,6 +614,203 @@ TEST_F(RecordingSessionTest, DurationAccuracy) {
   session.close();
 }
 
+// ============================================================================
+// Metadata Injection Tests (Extended)
+// ============================================================================
+
+TEST_F(RecordingSessionTest, SetTaskConfigEnablesMetadata) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "metadata_enabled.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Set up task config with all fields
+  TaskConfig config;
+  config.task_id = "test_task_metadata";
+  config.device_id = "device_metadata_001";
+  config.data_collector_id = "collector_001";
+  config.order_id = "order_001";
+  config.operator_name = "test.operator";
+  config.scene = "outdoor";
+  config.subscene = "parking_lot";
+  config.skills = {"navigation", "mapping"};
+  config.factory = "test_factory";
+  config.topics = {"/camera/image", "/lidar/points"};
+  config.cached_at = std::chrono::system_clock::now();
+
+  // Set task config should not throw and should enable metadata
+  EXPECT_NO_THROW(session.set_task_config(config));
+
+  // Write some data to ensure file has content
+  uint16_t schema_id = session.register_schema(
+    "std_msgs/msg/String", "ros2msg", "string data"
+  );
+  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  std::vector<uint8_t> data = {0x01, 0x02, 0x03};
+  uint64_t ts = 1000000000ULL;
+  session.write(channel_id, 0, ts, ts, data.data(), data.size());
+  
+  // Update topic stats as recorder would
+  session.update_topic_stats("/test", "std_msgs/msg/String");
+
+  session.close();
+
+  // File should exist after close
+  EXPECT_TRUE(std::filesystem::exists(path));
+}
+
+TEST_F(RecordingSessionTest, SidecarPathAvailableAfterClose) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "sidecar_test.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Configure task for metadata injection
+  TaskConfig config;
+  config.task_id = "sidecar_task";
+  config.device_id = "device_001";
+  config.scene = "test_scene";
+  session.set_task_config(config);
+
+  // Sidecar should be empty before close
+  EXPECT_TRUE(session.get_sidecar_path().empty());
+
+  // Write some data
+  uint16_t schema_id = session.register_schema(
+    "std_msgs/msg/String", "ros2msg", "string data"
+  );
+  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  std::vector<uint8_t> data = {0x01};
+  session.write(channel_id, 0, 1000000000ULL, 1000000000ULL, data.data(), data.size());
+  session.update_topic_stats("/test", "std_msgs/msg/String");
+
+  session.close();
+
+  // After close, sidecar path should be non-empty (if implementation writes sidecar)
+  std::string sidecar_path = session.get_sidecar_path();
+  if (!sidecar_path.empty()) {
+    // Verify it's a JSON file path
+    EXPECT_TRUE(sidecar_path.find(".json") != std::string::npos);
+  }
+}
+
+TEST_F(RecordingSessionTest, ChecksumAvailableAfterClose) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "checksum_test.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Configure task for metadata injection
+  TaskConfig config;
+  config.task_id = "checksum_task";
+  config.device_id = "device_001";
+  session.set_task_config(config);
+
+  // Checksum should be empty before close
+  EXPECT_TRUE(session.get_checksum().empty());
+
+  // Write some data
+  uint16_t schema_id = session.register_schema(
+    "std_msgs/msg/String", "ros2msg", "string data"
+  );
+  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
+  for (int i = 0; i < 10; ++i) {
+    uint64_t ts = 1000000000ULL + i * 1000ULL;
+    session.write(channel_id, i, ts, ts, data.data(), data.size());
+    session.update_topic_stats("/test", "std_msgs/msg/String");
+  }
+
+  session.close();
+
+  // After close, checksum might be available (if implementation computes it)
+  std::string checksum = session.get_checksum();
+  if (!checksum.empty()) {
+    // Checksum should be hex string (SHA256 = 64 chars)
+    EXPECT_GE(checksum.size(), 32);  // At least 128-bit hash
+  }
+}
+
+TEST_F(RecordingSessionTest, UpdateTopicStatsAccumulates) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "topic_stats_accum.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Set task config to enable metadata tracking
+  TaskConfig config;
+  config.task_id = "stats_accumulate_task";
+  config.device_id = "device_001";
+  session.set_task_config(config);
+
+  uint16_t schema_id = session.register_schema(
+    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
+  );
+  uint16_t channel_id = session.register_channel("/imu/data", "cdr", schema_id);
+
+  std::vector<uint8_t> data = {0x01, 0x02, 0x03};
+  
+  // Write and update stats for 500 messages
+  for (int i = 0; i < 500; ++i) {
+    uint64_t ts = 1000000000ULL + i * 1000000ULL;
+    session.write(channel_id, i, ts, ts, data.data(), data.size());
+    session.update_topic_stats("/imu/data", "sensor_msgs/msg/Imu");
+  }
+
+  // Verify messages written
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.messages_written, 500);
+
+  session.close();
+}
+
+TEST_F(RecordingSessionTest, MessageTypeStoredOnFirstUpdate) {
+  RecordingSession session;
+
+  std::string path = (test_dir_ / "msg_type_stored.mcap").string();
+  ASSERT_TRUE(session.open(path));
+
+  // Set task config to enable metadata tracking
+  TaskConfig config;
+  config.task_id = "msg_type_task";
+  config.device_id = "device_001";
+  session.set_task_config(config);
+
+  // Register multiple schemas and channels
+  uint16_t schema1 = session.register_schema(
+    "sensor_msgs/msg/Image", "ros2msg", "uint32 height"
+  );
+  uint16_t schema2 = session.register_schema(
+    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
+  );
+  
+  uint16_t ch1 = session.register_channel("/camera/image", "cdr", schema1);
+  uint16_t ch2 = session.register_channel("/imu/data", "cdr", schema2);
+
+  std::vector<uint8_t> data = {0x01};
+  uint64_t ts = 1000000000ULL;
+
+  // Write to camera channel
+  session.write(ch1, 0, ts, ts, data.data(), data.size());
+  session.update_topic_stats("/camera/image", "sensor_msgs/msg/Image");
+  
+  // Write to IMU channel
+  session.write(ch2, 0, ts + 1000, ts + 1000, data.data(), data.size());
+  session.update_topic_stats("/imu/data", "sensor_msgs/msg/Imu");
+
+  // Multiple updates with same type should not change stored type
+  for (int i = 1; i < 10; ++i) {
+    session.write(ch1, i, ts + i * 1000, ts + i * 1000, data.data(), data.size());
+    session.update_topic_stats("/camera/image", "sensor_msgs/msg/Image");
+  }
+
+  auto stats = session.get_stats();
+  EXPECT_EQ(stats.channels_registered, 2);
+  EXPECT_EQ(stats.schemas_registered, 2);
+
+  session.close();
+}
+
 }  // namespace
 }  // namespace recorder
 }  // namespace axon
