@@ -238,6 +238,7 @@ axon_add_test(NAME test_recording_workflow
 )
 set_tests_properties(test_recording_workflow PROPERTIES LABELS "integration")
 
+
 # ============================================================================
 # Regression Tests
 # ============================================================================
@@ -352,6 +353,13 @@ if(ROS_INTEGRATED_BUILD AND Boost_FOUND)
                 SOURCES integration/test_recorder_node_recording.cpp
                 LIBS ${ROS1_TEST_LIBS}
             )
+
+            # RecordingServiceImpl tests - exercises service layer directly
+            # Coverage targets: recording_service_impl.cpp (~80%)
+            axon_add_ros1_test(NAME test_recording_services_ros1
+                SOURCES integration/test_recording_services.cpp
+                LIBS ${ROS1_TEST_LIBS}
+            )
         endif()
 
     elseif(DEFINED AXON_ROS2)
@@ -383,6 +391,13 @@ if(ROS_INTEGRATED_BUILD AND Boost_FOUND)
 
             axon_add_ros2_test(NAME test_recorder_node_recording_ros2
                 SOURCES integration/test_recorder_node_recording.cpp
+                LIBS ${ROS2_TEST_LIBS}
+            )
+
+            # RecordingServiceImpl tests - exercises service layer directly
+            # Coverage targets: recording_service_impl.cpp (~80%)
+            axon_add_ros2_test(NAME test_recording_services_ros2
+                SOURCES integration/test_recording_services.cpp
                 LIBS ${ROS2_TEST_LIBS}
             )
         endif()
