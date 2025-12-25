@@ -165,6 +165,8 @@ jobs:
             sed -i "s|${WS}/src/||g" /coverage_output/coverage.info || true
             # Also remove Axon/ prefix if present (repo is cloned as Axon/)
             sed -i "s|^SF:Axon/|SF:|g" /coverage_output/coverage.info || true
+            # Remove absolute build directory paths (these are auto-generated files)
+            sed -i "s|${WS}/build/|build/|g" /coverage_output/coverage.info || true
             
             # Debug: show ALL source file paths for debugging coverage discrepancy
             echo "=== All source file paths in coverage.info ==="
