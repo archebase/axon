@@ -3,6 +3,10 @@
 # =============================================================================
 # Configures coverage reporting behavior and file exclusions.
 # See: https://docs.codecov.com/docs/codecov-yaml
+#
+# Coverage Strategy:
+#   - All coverage (ROS1, ROS2, C++ libs, E2E) is merged locally before upload
+#   - Single unified coverage report for the entire project
 # =============================================================================
 
 coverage:
@@ -11,59 +15,35 @@ coverage:
       default:
         target: auto
         threshold: 1%  # Allow 1% coverage drop before failing
-      # Separate status checks for each component
-      ros2:
-        target: auto
-        flags:
-          - ros2
-      ros1:
-        target: auto
-        flags:
-          - ros1
-      cpp:
-        target: auto
-        flags:
-          - cpp
     patch:
       default:
         target: auto
 
-# Coverage flags for different components
-# Each flag represents a separate test suite
-flags:
-  ros2:
-    paths:
-      - ros/axon_recorder/src/
-    carryforward: true
-  ros1:
-    paths:
-      - ros/axon_recorder/src/
-    carryforward: true
-  cpp:
-    paths:
-      - cpp/axon_mcap/
-      - cpp/axon_uploader/
-      - cpp/axon_logging/
-    carryforward: true
+# Disable carryforward globally
+flag_management:
+  default_rules:
+    carryforward: false
 
-# Ignore test files from coverage metrics
-# These should not count toward coverage since they ARE the tests
+# Ignore test files and auto-generated files from coverage metrics
 ignore:
+  # Test files
   - "ros/axon_recorder/test/**/*"
   - "cpp/axon_logging/test/**/*"
   - "cpp/axon_mcap/test/**/*"
   - "cpp/axon_uploader/test/**/*"
-  # Also ignore any other test patterns
   - "**/test/**/*"
   - "**/*_test.cpp"
   - "**/test_*.cpp"
-  # Ignore ROS auto-generated code (from .srv/.msg files)
+  # Build directory (auto-generated ROS files)
+  - "build/**/*"
+  # ROS auto-generated code (from .srv/.msg files)
   - "**/rosidl_typesupport_cpp/**/*"
   - "**/rosidl_typesupport_introspection_cpp/**/*"
+  - "**/rosidl_typesupport_fastrtps_cpp/**/*"
   - "**/rosidl_generator_cpp/**/*"
 
 # Comment configuration for PR feedback
 comment:
-  layout: "reach,diff,flags,files"
+  layout: "reach,diff,files"
   behavior: default
   require_changes: true

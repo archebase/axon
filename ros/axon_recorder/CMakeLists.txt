@@ -217,6 +217,14 @@ endif()
 # Build MCAP Library (includes config parser)
 # ============================================================================
 message(STATUS "Building with MCAP backend")
+
+# Propagate coverage flag to axon_mcap subdirectory
+# This ensures mcap_validator.cpp and mcap_writer_wrapper.cpp get coverage instrumentation
+# when axon_recorder is built with ENABLE_COVERAGE=ON (e.g., in CI ROS tests)
+if(ENABLE_COVERAGE)
+    set(AXON_MCAP_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_mcap" FORCE)
+endif()
+
 add_subdirectory(${CPP_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
 
 # ============================================================================

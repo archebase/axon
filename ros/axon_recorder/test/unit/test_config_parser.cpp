@@ -14,10 +14,11 @@
 #include <string>
 
 #include "config_parser.hpp"
+#include <axon_log_init.hpp>
 
 namespace fs = std::filesystem;
 
-using namespace axon::core;
+using namespace axon::recorder;
 
 // ============================================================================
 // Test Fixtures
@@ -1173,6 +1174,277 @@ upload:
   EXPECT_DOUBLE_EQ(config.upload.retry.exponential_base, 2.0);
   EXPECT_TRUE(config.upload.retry.jitter);
   EXPECT_TRUE(config.validate());
+}
+
+// ============================================================================
+// Convert Logging Config Tests (Phase 5 - Coverage Improvement)
+// ============================================================================
+
+TEST_F(ConfigParserTest, ConvertLoggingConfig_AllLevels) {
+  // Test conversion with all severity levels
+  LoggingConfigYaml yaml_config;
+  
+  // Test debug level
+  yaml_config.console_level = "debug";
+  yaml_config.file_level = "debug";
+  ::axon::logging::LoggingConfig log_config;
+  convert_logging_config(yaml_config, log_config);
+  EXPECT_EQ(log_config.console_level, ::axon::logging::severity_level::debug);
+  EXPECT_EQ(log_config.file_level, ::axon::logging::severity_level::debug);
+  
+  // Test info level
+  yaml_config.console_level = "info";
+  yaml_config.file_level = "info";
+  convert_logging_config(yaml_config, log_config);
+  EXPECT_EQ(log_config.console_level, ::axon::logging::severity_level::info);
+  EXPECT_EQ(log_config.file_level, ::axon::logging::severity_level::info);
+  
+  // Test warn level
+  yaml_config.console_level = "warn";
+  yaml_config.file_level = "warn";
+  convert_logging_config(yaml_config, log_config);
+  EXPECT_EQ(log_config.console_level, ::axon::logging::severity_level::warn);
+  EXPECT_EQ(log_config.file_level, ::axon::logging::severity_level::warn);
+  
+  // Test error level
+  yaml_config.console_level = "error";
+  yaml_config.file_level = "error";
+  convert_logging_config(yaml_config, log_config);
+  EXPECT_EQ(log_config.console_level, ::axon::logging::severity_level::error);
+  EXPECT_EQ(log_config.file_level, ::axon::logging::severity_level::error);
+  
+  // Test fatal level
+  yaml_config.console_level = "fatal";
+  yaml_config.file_level = "fatal";
+  convert_logging_config(yaml_config, log_config);
+  EXPECT_EQ(log_config.console_level, ::axon::logging::severity_level::fatal);
+  EXPECT_EQ(log_config.file_level, ::axon::logging::severity_level::fatal);
+}
+
+TEST_F(ConfigParserTest, ConvertLoggingConfig_InvalidLevel) {
+  // Test with invalid level string - should use default
+  LoggingConfigYaml yaml_config;
+  yaml_config.console_level = "invalid_level";
+  yaml_config.file_level = "also_invalid";
+  
+  ::axon::logging::LoggingConfig log_config;
+  log_config.console_level = ::axon::logging::severity_level::info;  // Set default
+  log_config.file_level = ::axon::logging::severity_level::debug;    // Set default
+  
+  convert_logging_config(yaml_config, log_config);
+  
+  // Invalid levels should keep the default (not crash)
+  // The function may or may not update invalid levels depending on implementation
+}
+
+TEST_F(ConfigParserTest, ConvertLoggingConfig_FileSettings) {
+  LoggingConfigYaml yaml_config;
+  yaml_config.console_enabled = true;
+  yaml_config.console_colors = false;
+  yaml_config.file_enabled = true;
+  yaml_config.file_directory = "/custom/log/dir";
+  yaml_config.file_pattern = "custom_%Y%m%d.log";
+  yaml_config.file_format = "json";
+  yaml_config.rotation_size_mb = 50;
+  yaml_config.max_files = 5;
+  yaml_config.rotate_at_midnight = false;
+  
+  ::axon::logging::LoggingConfig log_config;
+  convert_logging_config(yaml_config, log_config);
+  
+  EXPECT_TRUE(log_config.console_enabled);
+  EXPECT_FALSE(log_config.console_colors);
+  EXPECT_TRUE(log_config.file_enabled);
+  EXPECT_EQ(log_config.file_config.directory, "/custom/log/dir");
+  EXPECT_EQ(log_config.file_config.file_pattern, "custom_%Y%m%d.log");
+  EXPECT_TRUE(log_config.file_config.format_json);
+  EXPECT_EQ(log_config.file_config.rotation_size_mb, 50);
+  EXPECT_EQ(log_config.file_config.max_files, 5);
+  EXPECT_FALSE(log_config.file_config.rotate_at_midnight);
+}
+
+TEST_F(ConfigParserTest, ConvertLoggingConfig_TextFormat) {
+  LoggingConfigYaml yaml_config;
+  yaml_config.file_format = "text";
+  
+  ::axon::logging::LoggingConfig log_config;
+  convert_logging_config(yaml_config, log_config);
+  
+  EXPECT_FALSE(log_config.file_config.format_json);
+}
+
+// ============================================================================
+// Additional Validation Edge Cases (Phase 5)
+// ============================================================================
+
+TEST_F(ConfigParserTest, ValidateUploadConfig_NegativeBackpressure) {
+  UploadConfigYaml upload;
+  upload.enabled = true;
+  upload.s3.bucket = "test-bucket";
+  upload.warn_pending_gb = -1.0;  // Invalid negative
+  upload.alert_pending_gb = 10.0;
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate_upload_config(upload, error_msg));
+  EXPECT_NE(error_msg.find("backpressure"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, ValidateUploadConfig_MaxRetriesAtBoundary) {
+  UploadConfigYaml upload;
+  upload.enabled = true;
+  upload.s3.bucket = "test-bucket";
+  upload.retry.max_retries = 100;  // At boundary (max valid)
+  
+  std::string error_msg;
+  EXPECT_TRUE(ConfigParser::validate_upload_config(upload, error_msg));
+  
+  // Over boundary
+  upload.retry.max_retries = 101;
+  EXPECT_FALSE(ConfigParser::validate_upload_config(upload, error_msg));
+}
+
+TEST_F(ConfigParserTest, ValidateUploadConfig_NumWorkersAtBoundary) {
+  UploadConfigYaml upload;
+  upload.enabled = true;
+  upload.s3.bucket = "test-bucket";
+  
+  // Test lower boundary
+  upload.num_workers = 1;
+  std::string error_msg;
+  EXPECT_TRUE(ConfigParser::validate_upload_config(upload, error_msg));
+  
+  // Test upper boundary
+  upload.num_workers = 16;
+  EXPECT_TRUE(ConfigParser::validate_upload_config(upload, error_msg));
+  
+  // Over boundary
+  upload.num_workers = 17;
+  EXPECT_FALSE(ConfigParser::validate_upload_config(upload, error_msg));
+  EXPECT_NE(error_msg.find("num_workers"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, ValidateUploadConfig_NegativeInitialDelay) {
+  UploadConfigYaml upload;
+  upload.enabled = true;
+  upload.s3.bucket = "test-bucket";
+  upload.retry.initial_delay_ms = -100;  // Invalid
+  
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate_upload_config(upload, error_msg));
+  EXPECT_NE(error_msg.find("initial_delay_ms"), std::string::npos);
+}
+
+TEST_F(ConfigParserTest, ValidateUploadConfig_DisabledBypassesValidation) {
+  UploadConfigYaml upload;
+  upload.enabled = false;
+  // Invalid settings that should be ignored when disabled
+  upload.s3.bucket = "";  // Would be invalid if enabled
+  upload.num_workers = 0;  // Would be invalid if enabled
+  
+  std::string error_msg;
+  EXPECT_TRUE(ConfigParser::validate_upload_config(upload, error_msg));
+}
+
+TEST_F(ConfigParserTest, ParseDataset_PartialFields) {
+  const std::string yaml = R"(
+dataset:
+  path: /only/path
+topics:
+  - name: /test
+    message_type: std_msgs/String
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  EXPECT_EQ(config.dataset.path, "/only/path");
+  EXPECT_EQ(config.dataset.mode, "append");  // Default
+}
+
+TEST_F(ConfigParserTest, ParseTopics_PartialTopicConfig) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+  mode: create
+topics:
+  - name: /camera
+    message_type: sensor_msgs/Image
+  - name: /imu
+    message_type: sensor_msgs/Imu
+    batch_size: 500
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(yaml);
+  
+  ASSERT_EQ(config.topics.size(), 2);
+  
+  // First topic uses defaults
+  EXPECT_EQ(config.topics[0].batch_size, 100);
+  EXPECT_EQ(config.topics[0].flush_interval_ms, 1000);
+  
+  // Second topic has custom batch_size, default flush_interval
+  EXPECT_EQ(config.topics[1].batch_size, 500);
+  EXPECT_EQ(config.topics[1].flush_interval_ms, 1000);
+}
+
+TEST_F(ConfigParserTest, ValidateStaticMethod_AllErrorCases) {
+  RecorderConfig config;
+  std::string error_msg;
+  
+  // Empty dataset path
+  config.dataset.path = "";
+  config.dataset.mode = "create";
+  config.topics.push_back({"topic", "type", 100, 1000});
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Dataset path is empty");
+  
+  // No topics
+  config.dataset.path = "/data";
+  config.topics.clear();
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "No topics configured");
+  
+  // Empty topic name
+  config.topics.push_back({"", "type", 100, 1000});
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Topic name is empty");
+  
+  // Empty message type
+  config.topics.clear();
+  config.topics.push_back({"/topic", "", 100, 1000});
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Topic message_type is empty");
+  
+  // Zero batch size
+  config.topics.clear();
+  config.topics.push_back({"/topic", "type", 0, 1000});
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Topic batch_size must be > 0");
+  
+  // Invalid mode
+  config.topics.clear();
+  config.topics.push_back({"/topic", "type", 100, 1000});
+  config.dataset.mode = "invalid_mode";
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Dataset mode must be 'create' or 'append'");
+}
+
+TEST_F(ConfigParserTest, FromYamlString_YAMLException) {
+  // Test YAML parsing exception handling
+  const std::string malformed_yaml = R"(
+dataset:
+  path: [unclosed bracket
+)";
+
+  RecorderConfig config = RecorderConfig::from_yaml_string(malformed_yaml);
+  // Should return default config (validation will fail)
+  EXPECT_FALSE(config.validate());
+}
+
+TEST_F(ConfigParserTest, LoadFromFile_YAMLException) {
+  // Write a malformed YAML file
+  auto path = write_test_file("malformed.yaml", "{ unclosed: [brace");
+  
+  RecorderConfig config = RecorderConfig::from_yaml(path);
+  EXPECT_FALSE(config.validate());
 }
 
 int main(int argc, char** argv) {

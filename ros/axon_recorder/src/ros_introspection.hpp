@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace axon {
-namespace core {
+namespace recorder {
 
 /**
  * Field descriptor for ROS message introspection
@@ -85,15 +85,6 @@ public:
 private:
   static FactoryFunction& get_factory();
 };
-
-}  // namespace core
-
-namespace recorder {
-
-// Re-export core introspection types
-using MessageIntrospector = core::MessageIntrospector;
-using MessageTypeDescriptor = core::MessageTypeDescriptor;
-using FieldDescriptor = core::FieldDescriptor;
 
 /**
  * Factory for creating ROS message introspectors

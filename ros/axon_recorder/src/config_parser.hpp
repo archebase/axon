@@ -11,7 +11,7 @@
 namespace axon { namespace logging { struct LoggingConfig; } }
 
 namespace axon {
-namespace core {
+namespace recorder {
 
 struct TopicConfig {
   std::string name;
@@ -23,6 +23,7 @@ struct TopicConfig {
 struct DatasetConfig {
   std::string path;
   std::string mode = "append";  // "create" or "append"
+  std::string stats_file_path = "/data/recordings/recorder_stats.json";  // Stats output file
 };
 
 struct RecordingConfig {
@@ -145,7 +146,7 @@ private:
   bool parse_upload(const YAML::Node& node, UploadConfigYaml& upload);
 };
 
-}  // namespace core
+}  // namespace recorder
 }  // namespace axon
 
 #endif  // AXON_RECORDER_CONFIG_PARSER_HPP

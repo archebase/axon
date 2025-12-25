@@ -227,7 +227,7 @@ private:
    * Per-topic context with queue and worker thread.
    */
   struct TopicContext {
-    std::unique_ptr<core::SPSCQueue<MessageItem>> queue;
+    std::unique_ptr<SPSCQueue<MessageItem>> queue;
     std::thread worker_thread;
     std::atomic<bool> running{false};
     MessageHandler handler;

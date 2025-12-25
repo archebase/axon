@@ -51,7 +51,12 @@ public:
       return true;
     }
 
-    ros::init(argc, argv, node_name, ros::init_options::AnonymousName);
+    // Only initialize ROS if not already initialized (allows test frameworks to pre-init)
+    if (!ros::isInitialized()) {
+      ros::init(argc, argv, node_name, ros::init_options::AnonymousName);
+      owns_ros_context_ = true;
+    }
+    
     if (!ros::ok()) {
       return false;
     }
@@ -73,7 +78,10 @@ public:
         delete sub;
       }
 
-      ros::shutdown();
+      // Only shutdown ROS if this instance initialized it
+      if (owns_ros_context_) {
+        ros::shutdown();
+      }
       node_handle_.reset();
       initialized_ = false;
     }
@@ -270,6 +278,7 @@ public:
 private:
   std::unique_ptr<ros::NodeHandle> node_handle_;
   bool initialized_;
+  bool owns_ros_context_ = false;  // Track if this instance initialized ROS
   std::map<void*, std::pair<std::string, std::string>> subscriptions_;
 };
 
@@ -296,6 +305,7 @@ public:
   RosInterfaceImpl()
       : node_(nullptr)
       , initialized_(false)
+      , owns_ros_context_(false)
       , num_threads_(DEFAULT_EXECUTOR_THREADS) {}
 
   ~RosInterfaceImpl() override {
@@ -307,7 +317,12 @@ public:
       return true;
     }
 
-    rclcpp::init(argc, argv);
+    // Only initialize ROS if not already initialized (allows test frameworks to pre-init)
+    if (!rclcpp::ok()) {
+      rclcpp::init(argc, argv);
+      owns_ros_context_ = true;
+    }
+    
     if (!rclcpp::ok()) {
       return false;
     }
@@ -329,6 +344,9 @@ public:
     );
     executor_->add_node(node_);
 
+    // Register common message types for full typed subscription support
+    register_common_message_types();
+
     initialized_ = true;
     return true;
   }
@@ -346,7 +364,10 @@ public:
       per_topic_callback_groups_.clear();
       legacy_callback_group_.reset();
       node_.reset();
-      rclcpp::shutdown();
+      // Only shutdown ROS if this instance initialized it
+      if (owns_ros_context_) {
+        rclcpp::shutdown();
+      }
       initialized_ = false;
     }
   }
@@ -784,6 +805,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr legacy_callback_group_;
   std::map<std::string, rclcpp::CallbackGroup::SharedPtr> per_topic_callback_groups_;
   bool initialized_;
+  bool owns_ros_context_;  // Track if this instance initialized ROS
   size_t num_threads_;
   std::map<void*, std::pair<std::string, std::string>> subscriptions_;
   std::map<void*, std::pair<std::string, std::string>> zero_copy_subscriptions_;

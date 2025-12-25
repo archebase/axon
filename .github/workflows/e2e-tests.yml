@@ -1,0 +1,192 @@
+# =============================================================================
+# E2E Tests Workflow for Axon
+# =============================================================================
+# Runs end-to-end tests that start axon_recorder_node and make actual ROS
+# service calls. Collects coverage data to maximize overall test coverage.
+# Only runs on Humble LTS - unit tests verify API compatibility across distros.
+# =============================================================================
+
+name: E2E Tests
+
+on:
+  # Called by ci.yml orchestrator
+  workflow_call:
+  # Allow standalone runs
+  workflow_dispatch:
+
+env:
+  # Common dependencies shared across jobs (includes ccache for faster rebuilds)
+  # Added lcov for coverage collection
+  COMMON_DEBS: git ccache libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev lcov
+
+jobs:
+  # ==========================================================================
+  # E2E Tests - End-to-end ROS service tests
+  # Starts axon_recorder_node and runs actual ROS service calls
+  # Only runs on Humble LTS - unit tests verify API compatibility across distros
+  # Collects coverage to capture code paths exercised by E2E scenarios
+  # ==========================================================================
+  ros-e2e-tests:
+    name: ROS E2E Tests (humble)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create coverage output directory
+        run: mkdir -p ${{ github.workspace }}/coverage_output
+
+      - name: Run industrial_ci with E2E tests
+        uses: ros-industrial/industrial_ci@master
+        env:
+          ROS_DISTRO: humble
+          ROS_REPO: main
+          ADDITIONAL_DEBS: ${{ env.COMMON_DEBS }}
+          # Enable coverage instrumentation for E2E tests
+          CMAKE_ARGS: -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON
+          PARALLEL_BUILDS: 2
+          # Skip default tests, we'll run E2E tests instead
+          NOT_TEST_BUILD: true
+          # Mount coverage output directory
+          DOCKER_RUN_OPTS: -v ${{ github.workspace }}/coverage_output:/coverage_output
+          # Run E2E tests and collect coverage after
+          AFTER_SCRIPT: |
+            echo "=== Starting E2E tests (Humble) with coverage ==="
+            
+            # Find the workspace
+            if [ -d /root/target_ws ]; then
+              WS=/root/target_ws
+            elif [ -d /root/catkin_ws ]; then
+              WS=/root/catkin_ws
+            else
+              WS=/root/upstream_ws
+            fi
+            echo "Workspace: $WS"
+            
+            # Install ROS2 CLI tools
+            echo "Installing ROS2 CLI tools..."
+            apt-get update -qq
+            apt-get install -y -qq ros-humble-ros2cli ros-humble-ros2service ros-humble-ros2run
+            
+            # Source ROS2 (disable strict mode - setup.bash has unbound vars)
+            set +eu
+            . /opt/ros/humble/setup.bash
+            if [ -f $WS/install/setup.bash ]; then
+              . $WS/install/setup.bash
+            fi
+            set -e
+            
+            # Verify ros2 command is available
+            echo "Verifying ros2 command..."
+            which ros2 || echo "WARNING: ros2 command not found"
+            
+            # Find source path
+            SRC_PATH="${GITHUB_WORKSPACE:-$WS/src/Axon}"
+            if [ ! -d "$SRC_PATH/ros" ]; then
+              SRC_PATH="$WS/src"
+            fi
+            echo "SRC_PATH=$SRC_PATH"
+            
+            export ROS_DISTRO=humble
+            chmod +x $SRC_PATH/ros/axon_recorder/test/e2e/run_e2e_tests.sh
+            
+            # Run E2E tests (capture exit code but continue to collect coverage)
+            E2E_EXIT_CODE=0
+            $SRC_PATH/ros/axon_recorder/test/e2e/run_e2e_tests.sh || E2E_EXIT_CODE=$?
+            
+            echo "=== E2E tests completed with exit code: $E2E_EXIT_CODE ==="
+            echo "=== Collecting E2E test coverage data ==="
+            
+            cd $WS
+            
+            # Detect lcov version
+            LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+            LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+            echo "lcov version: ${LCOV_VERSION}"
+            
+            IGNORE_FLAGS=""
+            if [ "${LCOV_MAJOR}" -ge 2 ]; then
+              IGNORE_FLAGS="--ignore-errors mismatch,unused"
+            fi
+            
+            # Capture coverage from the build directory
+            lcov --capture \
+              --directory build \
+              --output-file /coverage_output/coverage_raw.info \
+              --rc lcov_branch_coverage=1 \
+              ${IGNORE_FLAGS} || true
+            
+            # Filter coverage - remove system, deps, test files
+            lcov --remove /coverage_output/coverage_raw.info \
+              '/usr/*' \
+              '/opt/*' \
+              '*/_deps/*' \
+              '*/generated/*' \
+              '*/googletest/*' \
+              '*/gtest/*' \
+              '*/mcap-*/*' \
+              '*/mcap/include/*' \
+              '*/minio-cpp/*' \
+              '*/axon_recorder/test/*' \
+              '*/axon_logging/test/*' \
+              '*/axon_mcap/test/*' \
+              '*/axon_uploader/test/*' \
+              '*/rosidl_typesupport_cpp/*' \
+              '*/rosidl_typesupport_introspection_cpp/*' \
+              '*/rosidl_generator_cpp/*' \
+              --output-file /coverage_output/coverage.info \
+              --rc lcov_branch_coverage=1 \
+              ${IGNORE_FLAGS} || cp /coverage_output/coverage_raw.info /coverage_output/coverage.info 2>/dev/null || true
+            
+            lcov --list /coverage_output/coverage.info || true
+            
+            # Normalize paths: strip Docker workspace prefix for Codecov
+            echo "=== Normalizing paths for Codecov ==="
+            # Remove workspace src prefix
+            sed -i "s|${WS}/src/||g" /coverage_output/coverage.info || true
+            # Also remove Axon/ prefix if present (repo is cloned as Axon/)
+            sed -i "s|^SF:Axon/|SF:|g" /coverage_output/coverage.info || true
+            
+            # Debug: show sample of normalized paths
+            echo "Sample paths in coverage.info:"
+            grep "^SF:" /coverage_output/coverage.info | head -5 || true
+            
+            # Verify file is not empty
+            if [ -s /coverage_output/coverage.info ]; then
+              echo "Coverage file size: $(wc -c < /coverage_output/coverage.info) bytes"
+            else
+              echo "WARNING: coverage.info is empty!"
+            fi
+            
+            echo "=== E2E test coverage collection complete ==="
+            
+            # Exit with the original E2E test exit code
+            exit $E2E_EXIT_CODE
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-e2e-humble
+          path: ${{ github.workspace }}/coverage_output/coverage.info
+          retention-days: 30
+
+  # ==========================================================================
+  # Final status check
+  # ==========================================================================
+  e2e-tests-success:
+    name: E2E Tests Success
+    runs-on: ubuntu-latest
+    needs: [ros-e2e-tests]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.ros-e2e-tests.result }}" != "success" ]; then
+            echo "E2E tests failed"
+            exit 1
+          fi
+          echo "All E2E tests passed!"

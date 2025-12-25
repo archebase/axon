@@ -1,10 +1,38 @@
 # =============================================================================
 # CI Orchestrator Workflow for Axon
 # =============================================================================
-# Main entry point that orchestrates the full CI pipeline:
-#   1. Unit Tests (C++ and ROS)
-#   2. Integration Tests (after unit tests pass)
-#   3. Coverage Tests (after integration tests pass)
+# Main entry point that orchestrates the full CI pipeline.
+#
+# Coverage Collection Strategy:
+#   - All tests collect coverage artifacts
+#   - Final merge-coverage job combines all artifacts
+#   - Single upload to Codecov with merged coverage
+#
+# Pipeline Diagram:
+#
+#   ┌─────────────────────────────────────────────────┐
+#   │            Tests (Stage 1 - parallel)           │
+#   │  ┌───────────────────┐  ┌───────────────────┐   │
+#   │  │ ROS Tests         │  │ C++ Unit Tests    │   │
+#   │  │ (unit+integration)│  │ +cov artifacts    │   │
+#   │  │ +cov artifacts    │  │                   │   │
+#   │  └───────────────────┘  └───────────────────┘   │
+#   └─────────────────────┬───────────────────────────┘
+#                         │
+#                         ▼
+#                   ┌───────────┐
+#                   │   E2E     │  (E2E tests after unit tests)
+#                   │   Tests   │
+#                   │   +cov    │
+#                   └─────┬─────┘
+#                         │
+#                         ▼
+#                 ┌───────────────┐
+#                 │    Merge      │  (Merge all coverage)
+#                 │   Coverage    │
+#                 │   → Codecov   │
+#                 └───────────────┘
+#
 # =============================================================================
 
 name: CI
@@ -23,36 +51,165 @@ concurrency:
 
 jobs:
   # ===========================================================================
-  # Stage 1: Unit Tests
+  # Stage 1: ROS Tests and C++ Tests (run in parallel)
+  # ROS tests include both unit and integration tests
   # ===========================================================================
-  unit-tests:
-    name: Unit Tests
-    uses: ./.github/workflows/unit-tests.yml
+  tests-ros:
+    name: ROS Tests
+    uses: ./.github/workflows/tests-ros.yml
+    secrets: inherit
+
+  unit-tests-cpp:
+    name: C++ Unit Tests
+    uses: ./.github/workflows/unit-tests-cpp.yml
     secrets: inherit
 
   # ===========================================================================
-  # Stage 2: Integration Tests (after unit tests pass)
+  # Stage 2: E2E Tests (after unit tests pass)
   # ===========================================================================
-  integration-tests:
-    name: Integration Tests
-    needs: unit-tests
-    uses: ./.github/workflows/integration-tests.yml
+  e2e-tests:
+    name: E2E Tests
+    needs: [tests-ros, unit-tests-cpp]
+    uses: ./.github/workflows/e2e-tests.yml
     secrets: inherit
 
   # ===========================================================================
-  # Stage 3: Coverage Tests (after integration tests pass)
+  # Stage 3: Merge All Coverage and Upload to Codecov
+  # Combines coverage from ROS tests, C++ tests, and E2E tests
   # ===========================================================================
-  coverage-cpp:
-    name: C++ Coverage
-    needs: integration-tests
-    uses: ./.github/workflows/coverage-cpp.yml
-    secrets: inherit
+  merge-coverage:
+    name: Merge Coverage
+    runs-on: ubuntu-22.04
+    needs: [tests-ros, unit-tests-cpp, e2e-tests]
+    if: always() && !cancelled()
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  coverage-ros:
-    name: ROS Coverage
-    needs: integration-tests
-    uses: ./.github/workflows/coverage-ros.yml
-    secrets: inherit
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: false
+
+      - name: Install lcov
+        run: sudo apt-get update && sudo apt-get install -y lcov
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded coverage artifacts ==="
+          find . -name "*.info" -type f
+          ls -laR coverage-*/ 2>/dev/null || echo "No coverage directories found"
+          
+          echo ""
+          echo "=== Coverage file sizes and line counts ==="
+          for f in $(find . -name "*.info" -type f); do
+            echo "$f: $(wc -l < $f) lines, $(wc -c < $f) bytes"
+            echo "  Source files:"
+            grep "^SF:" "$f" | wc -l
+            echo "  Key files present:"
+            grep -c "recorder_node.cpp\|recording_service_impl.cpp" "$f" || echo "    0"
+          done
+
+      - name: Merge all coverage reports
+        run: |
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+          fi
+          
+          # Find all coverage files and merge them
+          MERGE_CMD="lcov"
+          FOUND_FILES=0
+          
+          # Find all coverage.info files in artifact directories
+          for info_file in $(find . -name "coverage*.info" -type f); do
+            echo "Found coverage file: $info_file"
+            MERGE_CMD="$MERGE_CMD -a $info_file"
+            FOUND_FILES=$((FOUND_FILES + 1))
+          done
+          
+          if [ "$FOUND_FILES" -eq 0 ]; then
+            echo "WARNING: No coverage files found!"
+            echo "This may happen if all test jobs failed."
+            # Create empty coverage file to avoid upload failure
+            touch merged_coverage.info
+            exit 0
+          fi
+          
+          echo "Found $FOUND_FILES coverage files to merge"
+          MERGE_CMD="$MERGE_CMD -o merged_coverage.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}"
+          
+          echo "Running: $MERGE_CMD"
+          eval $MERGE_CMD
+          
+          echo "=== Merged coverage summary (before filtering) ==="
+          lcov --list merged_coverage.info ${LCOV_IGNORE_FLAGS} || true
+          
+          # Filter out paths that won't match in Codecov
+          # - Absolute paths (/root/*, /home/*)
+          # - Build directory (auto-generated ROS files)
+          echo ""
+          echo "=== Filtering out non-matching paths ==="
+          lcov --remove merged_coverage.info \
+            '/root/*' \
+            '/home/*' \
+            'build/*' \
+            '*/build/*' \
+            --output-file merged_coverage_filtered.info \
+            --rc lcov_branch_coverage=1 \
+            ${LCOV_IGNORE_FLAGS} || cp merged_coverage.info merged_coverage_filtered.info
+          
+          mv merged_coverage_filtered.info merged_coverage.info
+          
+          echo ""
+          echo "=== Final coverage after filtering ==="
+          lcov --list merged_coverage.info ${LCOV_IGNORE_FLAGS} || true
+          
+          echo ""
+          echo "=== Source file count in merged coverage ==="
+          grep "^SF:" merged_coverage.info | wc -l
+          
+          echo ""
+          echo "=== All paths in final coverage ==="
+          grep "^SF:" merged_coverage.info | sort
+
+      - name: Remove individual coverage files to avoid duplication
+        run: |
+          # Remove individual coverage artifacts so Codecov only sees merged file
+          rm -rf coverage-cpp-* coverage-humble coverage-noetic coverage-jazzy coverage-rolling 2>/dev/null || true
+          echo "Remaining coverage files:"
+          find . -name "*.info" -type f
+
+      - name: Upload merged coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: merged_coverage.info
+          name: axon-coverage
+          fail_ci_if_error: false
+          verbose: true
+          # Disable file search to only upload the specified merged file
+          disable_search: true
+          # Disable carryover to ensure fresh coverage data
+          disable_file_fixes: true
+          # Override to ensure this is the authoritative upload
+          override_commit: ${{ github.sha }}
+          override_branch: ${{ github.ref_name }}
+          override_build: ${{ github.run_id }}
+
+      - name: Upload merged coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-merged-all
+          path: merged_coverage.info
+          retention-days: 30
 
   # ===========================================================================
   # Final Status Check
@@ -60,34 +217,34 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, coverage-cpp, coverage-ros]
+    needs: [tests-ros, unit-tests-cpp, e2e-tests, merge-coverage]
     if: always()
     steps:
       - name: Check pipeline status
         run: |
-          echo "Unit Tests: ${{ needs.unit-tests.result }}"
-          echo "Integration Tests: ${{ needs.integration-tests.result }}"
-          echo "C++ Coverage: ${{ needs.coverage-cpp.result }}"
-          echo "ROS Coverage: ${{ needs.coverage-ros.result }}"
+          echo "ROS Tests: ${{ needs.tests-ros.result }}"
+          echo "C++ Unit Tests: ${{ needs.unit-tests-cpp.result }}"
+          echo "E2E Tests: ${{ needs.e2e-tests.result }}"
+          echo "Merge Coverage: ${{ needs.merge-coverage.result }}"
           
-          if [ "${{ needs.unit-tests.result }}" != "success" ]; then
-            echo "❌ Unit tests failed"
+          if [ "${{ needs.tests-ros.result }}" != "success" ]; then
+            echo "❌ ROS tests failed"
             exit 1
           fi
           
-          if [ "${{ needs.integration-tests.result }}" != "success" ]; then
-            echo "❌ Integration tests failed"
+          if [ "${{ needs.unit-tests-cpp.result }}" != "success" ]; then
+            echo "❌ C++ unit tests failed"
             exit 1
           fi
           
-          # Coverage failures are warnings, not blockers
-          if [ "${{ needs.coverage-cpp.result }}" != "success" ]; then
-            echo "⚠️ C++ coverage failed (non-blocking)"
+          if [ "${{ needs.e2e-tests.result }}" != "success" ]; then
+            echo "❌ E2E tests failed"
+            exit 1
           fi
           
-          if [ "${{ needs.coverage-ros.result }}" != "success" ]; then
-            echo "⚠️ ROS coverage failed (non-blocking)"
+          # Coverage merge is optional - don't fail CI if it fails
+          if [ "${{ needs.merge-coverage.result }}" != "success" ]; then
+            echo "⚠️ Coverage merge failed (non-blocking)"
           fi
           
           echo "✅ CI pipeline completed successfully!"
-
