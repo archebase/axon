@@ -156,17 +156,6 @@ jobs:
             
             echo "=== Test coverage collection complete ==="
 
-      - name: Upload coverage to Codecov
-        if: matrix.collect_coverage
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ${{ github.workspace }}/coverage_output/coverage.info
-          flags: ${{ matrix.coverage_flag }}
-          name: axon-${{ matrix.ros_distro }}-coverage
-          fail_ci_if_error: false
-          verbose: true
-
       - name: Upload coverage artifact
         if: matrix.collect_coverage
         uses: actions/upload-artifact@v4

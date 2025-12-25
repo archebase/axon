@@ -1255,7 +1255,7 @@ TEST_F(HttpCallbackClientTest, UrlParsingWithFragment) {
 TEST_F(HttpCallbackClientTest, UrlParsingIPv4Address) {
   TaskConfig config;
   config.task_id = "task_001";
-  config.start_callback_url = "http://192.168.1.100:8080/api";
+  config.start_callback_url = "http://203.0.113.50:8080/api";  // RFC 5737 TEST-NET-3
   
   StartCallbackPayload payload;
   payload.task_id = "task_001";

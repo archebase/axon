@@ -164,16 +164,6 @@ jobs:
             # Exit with the original E2E test exit code
             exit $E2E_EXIT_CODE
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ${{ github.workspace }}/coverage_output/coverage.info
-          flags: ros2
-          name: axon-e2e-humble-coverage
-          fail_ci_if_error: false
-          verbose: true
-
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
