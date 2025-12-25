@@ -4,11 +4,15 @@
 #include <aws/core/auth/AWSCredentials.h>
 #include <aws/core/utils/DateTime.h>
 #include <aws/core/utils/memory/stl/AWSStringStream.h>
+#include <aws/core/utils/threading/Executor.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/HeadObjectRequest.h>
-#include <aws/s3/model/PutObjectRequest.h>
+#include <aws/transfer/TransferHandle.h>
+#include <aws/transfer/TransferManager.h>
 
+#include <atomic>
+#include <condition_variable>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -93,10 +97,17 @@ class S3Client::Impl {
 public:
   S3Config config;
   std::shared_ptr<Aws::S3::S3Client> client;
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor;
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager;
 
   Impl() { AwsSdkManager::instance().addRef(); }
 
-  ~Impl() { AwsSdkManager::instance().release(); }
+  ~Impl() {
+    // TransferManager must be destroyed before the executor
+    transfer_manager.reset();
+    executor.reset();
+    AwsSdkManager::instance().release();
+  }
 
   void initClient() {
     Aws::Client::ClientConfiguration client_config;
@@ -130,19 +141,35 @@ public:
     // Create credentials
     Aws::Auth::AWSCredentials credentials(config.access_key, config.secret_key);
 
-    // Use path-style addressing for non-AWS endpoints (MinIO, etc.)
-    // Path style: http://endpoint/bucket/key (required for MinIO)
-    // Virtual hosted style: http://bucket.endpoint/key (default for AWS S3)
-    bool use_path_style = !config.endpoint_url.empty();
+    // Configure addressing style for S3 vs S3-compatible storage (MinIO, etc.)
+    // The S3Client constructor's 4th parameter is 'useVirtualAddressing':
+    // - true  = virtual-hosted style (bucket.s3.amazonaws.com/key) - default for AWS S3
+    // - false = path style (s3.amazonaws.com/bucket/key) - required for MinIO
+    //
+    // For custom endpoints (MinIO), we need path-style, so useVirtualAddressing = false
+    // For AWS S3 (no custom endpoint), we use virtual-hosted, so useVirtualAddressing = true
+    bool use_virtual_addressing = config.endpoint_url.empty();
 
     // Create S3 client
-    // The constructor signature varies between SDK versions, using the most compatible form
     client = std::make_shared<Aws::S3::S3Client>(
         credentials,
         client_config,
         Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
-        use_path_style  // forcePathStyle - enables path-style access for MinIO
+        use_virtual_addressing  // false for MinIO (path style), true for AWS S3 (virtual hosted)
     );
+
+    // Create thread pool executor for TransferManager
+    // Using 4 threads for concurrent part uploads
+    executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>("S3Executor", 4);
+
+    // Configure TransferManager for multipart uploads
+    Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get());
+    transfer_config.s3Client = client;
+    // Use configured part size (default 64MB, minimum 5MB for S3)
+    transfer_config.bufferSize = config.part_size;
+    // TransferManager will automatically use multipart upload for files > 5MB
+
+    transfer_manager = Aws::Transfer::TransferManager::Create(transfer_config);
   }
 };
 
@@ -178,72 +205,93 @@ UploadResult S3Client::uploadFile(
   uint64_t file_size = static_cast<uint64_t>(file.tellg());
   file.close();
 
-  // Open file for reading
-  auto input_stream =
-      Aws::MakeShared<Aws::FStream>("S3Upload", local_path.c_str(), std::ios_base::in | std::ios_base::binary);
-
-  if (!input_stream->good()) {
-    return UploadResult::Failure("Cannot open local file for reading: " + local_path, "FileNotFound", false);
+  // Determine content type based on file extension
+  std::string content_type = "application/octet-stream";
+  if (s3_key.size() >= 5 && s3_key.substr(s3_key.size() - 5) == ".json") {
+    content_type = "application/json";
   }
 
-  // Create PutObject request
-  Aws::S3::Model::PutObjectRequest request;
-  request.SetBucket(impl_->config.bucket);
-  request.SetKey(s3_key);
-  request.SetBody(input_stream);
-  request.SetContentLength(file_size);
-
-  // Set content type based on file extension
-  if (s3_key.size() >= 5 && s3_key.substr(s3_key.size() - 5) == ".mcap") {
-    request.SetContentType("application/octet-stream");
-  } else if (s3_key.size() >= 5 && s3_key.substr(s3_key.size() - 5) == ".json") {
-    request.SetContentType("application/json");
-  } else {
-    request.SetContentType("application/octet-stream");
-  }
-
-  // Add custom metadata (these become x-amz-meta-* headers)
+  // Convert metadata to AWS format
+  Aws::Map<Aws::String, Aws::String> aws_metadata;
   for (const auto& [key, value] : metadata) {
-    request.AddMetadata(key, value);
+    aws_metadata[key] = value;
   }
+
+  // Track progress state for callback
+  std::atomic<uint64_t> bytes_transferred{0};
+  std::mutex progress_mutex;
+
+  // Create upload handle using TransferManager
+  // TransferManager automatically uses multipart upload for files > 5MB
+  // and handles retries, chunking, and concurrent part uploads
+  auto upload_handle = impl_->transfer_manager->UploadFile(
+      local_path.c_str(),
+      impl_->config.bucket.c_str(),
+      s3_key.c_str(),
+      content_type.c_str(),
+      aws_metadata
+  );
 
   // Set up progress callback if provided
   if (progress_cb) {
-    request.SetDataSentEventHandler(
-        [progress_cb, file_size](const Aws::Http::HttpRequest*, long long bytes_sent) {
-          progress_cb(static_cast<uint64_t>(bytes_sent), file_size);
-        });
+    upload_handle->SetDataTransferredCallback(
+        [&progress_cb, &bytes_transferred, file_size](
+            const Aws::Transfer::TransferManager*,
+            const std::shared_ptr<const Aws::Transfer::TransferHandle>&,
+            long long delta
+        ) {
+          uint64_t current = bytes_transferred.fetch_add(static_cast<uint64_t>(delta)) + delta;
+          progress_cb(current, file_size);
+        }
+    );
   }
 
-  // Perform upload
-  auto outcome = impl_->client->PutObject(request);
+  // Wait for upload to complete
+  upload_handle->WaitUntilFinished();
 
-  if (outcome.IsSuccess()) {
-    const auto& result = outcome.GetResult();
-    std::string etag = result.GetETag();
-    // Remove quotes from ETag if present
-    if (etag.size() >= 2 && etag.front() == '"' && etag.back() == '"') {
-      etag = etag.substr(1, etag.size() - 2);
+  // Check result
+  auto status = upload_handle->GetStatus();
+
+  if (status == Aws::Transfer::TransferStatus::COMPLETED) {
+    // Get multipart upload ID as ETag equivalent for multipart uploads
+    // For single-part uploads, this will be the actual ETag
+    std::string etag;
+    
+    // For multipart uploads, the ETag is a composite; we need to fetch it from S3
+    // TransferHandle doesn't expose the final ETag, so we retrieve it via HeadObject
+    auto meta = getObjectMetadata(s3_key);
+    auto it = meta.find("etag");
+    if (it != meta.end()) {
+      etag = it->second;
     }
-    std::string version_id = result.GetVersionId();
 
-    AXON_LOG_DEBUG("S3 upload succeeded: " << s3_key);
-    return UploadResult::Success(etag, version_id);
+    AXON_LOG_DEBUG("S3 upload succeeded: " << s3_key << " (size: " << file_size << " bytes)");
+    return UploadResult::Success(etag, "");
   } else {
-    const auto& error = outcome.GetError();
-    // Get error code as string - try exception name first, then error type
+    // Handle failure
+    auto error = upload_handle->GetLastError();
     std::string error_code = error.GetExceptionName();
     if (error_code.empty()) {
-      // Use S3 error type for better categorization
-      auto error_type = error.GetErrorType();
-      if (error_type != Aws::S3::S3Errors::UNKNOWN) {
-        error_code = "S3_" + std::to_string(static_cast<int>(error_type));
-      } else {
-        // Fallback to HTTP response code
-        error_code = "HTTP_" + std::to_string(static_cast<int>(error.GetResponseCode()));
+      // Map transfer status to error code
+      switch (status) {
+        case Aws::Transfer::TransferStatus::CANCELED:
+          error_code = "TransferCanceled";
+          break;
+        case Aws::Transfer::TransferStatus::FAILED:
+          error_code = "TransferFailed";
+          break;
+        case Aws::Transfer::TransferStatus::ABORTED:
+          error_code = "TransferAborted";
+          break;
+        default:
+          error_code = "TransferError";
+          break;
       }
     }
     std::string error_msg = error.GetMessage();
+    if (error_msg.empty()) {
+      error_msg = "Transfer failed with status: " + std::to_string(static_cast<int>(status));
+    }
     bool retryable = isRetryableError(error_code) || error.ShouldRetry();
 
     AXON_LOG_ERROR("S3 upload failed: " << s3_key << " - " << error_msg << " (code: " << error_code
