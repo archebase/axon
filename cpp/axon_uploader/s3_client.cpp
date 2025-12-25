@@ -103,8 +103,17 @@ public:
   Impl() { AwsSdkManager::instance().addRef(); }
 
   ~Impl() {
-    // TransferManager must be destroyed before the executor
+    // IMPORTANT: All AWS SDK objects must be destroyed BEFORE calling release(),
+    // which may invoke Aws::ShutdownAPI() when the reference count reaches zero.
+    // Using SDK objects after ShutdownAPI() causes undefined behavior/crashes.
+    //
+    // Destruction order matters:
+    // 1. TransferManager (uses S3Client and Executor)
+    // 2. S3Client (uses SDK internals)
+    // 3. Executor (manages threads)
+    // 4. Release SDK reference (may shut down SDK)
     transfer_manager.reset();
+    client.reset();
     executor.reset();
     AwsSdkManager::instance().release();
   }
