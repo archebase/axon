@@ -162,6 +162,13 @@ jobs:
           echo "=== Source file count in merged coverage ==="
           grep "^SF:" merged_coverage.info | wc -l
 
+      - name: Remove individual coverage files to avoid duplication
+        run: |
+          # Remove individual coverage artifacts so Codecov only sees merged file
+          rm -rf coverage-cpp-* coverage-humble coverage-noetic coverage-jazzy coverage-rolling 2>/dev/null || true
+          echo "Remaining coverage files:"
+          find . -name "*.info" -type f
+
       - name: Upload merged coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -170,6 +177,8 @@ jobs:
           name: axon-coverage
           fail_ci_if_error: false
           verbose: true
+          # Disable file search to only upload the specified merged file
+          disable_search: true
 
       - name: Upload merged coverage artifact
         uses: actions/upload-artifact@v4
