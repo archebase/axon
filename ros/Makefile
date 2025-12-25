@@ -107,24 +107,32 @@ build: all
 
 # Rust build (C FFI)
 rust-build:
-	@printf "%s\n" "$(YELLOW)Building C FFI library (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && \
-		if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
-			cargo build --release; \
-		else \
-			cargo build; \
-		fi
-	@printf "%s\n" "$(GREEN)✓ C FFI library built$(NC)"
+	@if [ ! -f $(C_FFI_DIR)/Cargo.toml ]; then \
+		printf "%s\n" "$(YELLOW)⚠ C FFI library not found (Cargo.toml missing), skipping...$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)Building C FFI library (Rust)...$(NC)"; \
+		cd $(C_FFI_DIR) && \
+			if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
+				cargo build --release; \
+			else \
+				cargo build; \
+			fi; \
+		printf "%s\n" "$(GREEN)✓ C FFI library built$(NC)"; \
+	fi
 
 rust-test:
-	@printf "%s\n" "$(YELLOW)Running C FFI tests (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && \
-		if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
-			cargo test --release; \
-		else \
-			cargo test; \
-		fi
-	@printf "%s\n" "$(GREEN)✓ C FFI tests passed$(NC)"
+	@if [ ! -f $(C_FFI_DIR)/Cargo.toml ]; then \
+		printf "%s\n" "$(YELLOW)⚠ C FFI library not found (Cargo.toml missing), skipping tests...$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)Running C FFI tests (Rust)...$(NC)"; \
+		cd $(C_FFI_DIR) && \
+			if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
+				cargo test --release; \
+			else \
+				cargo test; \
+			fi; \
+		printf "%s\n" "$(GREEN)✓ C FFI tests passed$(NC)"; \
+	fi
 
 # C++ build for ROS1
 cpp-build-ros1:
@@ -151,13 +159,10 @@ cpp-build-ros2:
 		echo "Example: source /opt/ros/humble/setup.bash"; \
 		exit 1; \
 	fi
-	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && \
-		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi && \
-		cmake ../src/axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
-		cmake --build . -j$(NPROC)
+	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
+		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
+	fi
+	@colcon build --base-paths . --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
 	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS2$(NC)"
 
 # C++ build (auto-detect ROS version)
@@ -194,13 +199,21 @@ test: rust-test cpp-test integration-test
 
 # Clean targets
 clean-rust:
-	@printf "%s\n" "$(YELLOW)Cleaning C FFI build artifacts...$(NC)"
-	@cd $(C_FFI_DIR) && cargo clean
-	@printf "%s\n" "$(GREEN)✓ C FFI artifacts cleaned$(NC)"
+	@if [ ! -f $(C_FFI_DIR)/Cargo.toml ]; then \
+		printf "%s\n" "$(YELLOW)⚠ C FFI library not found (Cargo.toml missing), skipping clean...$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)Cleaning C FFI build artifacts...$(NC)"; \
+		cd $(C_FFI_DIR) && cargo clean; \
+		printf "%s\n" "$(GREEN)✓ C FFI artifacts cleaned$(NC)"; \
+	fi
 
 clean-cpp:
 	@printf "%s\n" "$(YELLOW)Cleaning C++ build artifacts...$(NC)"
-	@rm -rf $(BUILD_DIR) $(TEST_BUILD_DIR)
+	@if [ "$(ROS_VERSION)" = "2" ]; then \
+		rm -rf build install log; \
+	else \
+		rm -rf $(BUILD_DIR) $(TEST_BUILD_DIR); \
+	fi
 	@printf "%s\n" "$(GREEN)✓ C++ artifacts cleaned$(NC)"
 
 clean: clean-rust clean-cpp
@@ -213,12 +226,23 @@ install: build
 		echo "$(RED)Error: ROS_DISTRO not set$(NC)"; \
 		exit 1; \
 	fi
-	@cd $(BUILD_DIR) && \
+	@if [ "$(ROS_VERSION)" = "2" ]; then \
 		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi && \
-		cmake --install .
-	@printf "%s\n" "$(GREEN)✓ Package installed$(NC)"
+		fi; \
+		colcon build --base-paths . \
+			--cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			--install-base install \
+			--event-handlers console_direct+; \
+		printf "%s\n" "$(GREEN)✓ Package installed to install/ directory$(NC)"; \
+	else \
+		cd $(BUILD_DIR) && \
+			if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
+				. /opt/ros/$(ROS_DISTRO)/setup.bash; \
+			fi && \
+			cmake --install .; \
+		printf "%s\n" "$(GREEN)✓ Package installed$(NC)"; \
+	fi
 
 # Docker build targets
 docker-build-ros1:
@@ -345,16 +369,22 @@ docker-build-only:
 dev-setup:
 	@printf "%s\n" "$(YELLOW)Setting up development environment...$(NC)"
 	@echo "Checking dependencies..."
-	@command -v cargo >/dev/null 2>&1 || { echo "$(RED)Error: cargo not found. Install Rust toolchain.$(NC)"; exit 1; }
+	@if [ -f $(C_FFI_DIR)/Cargo.toml ]; then \
+		command -v cargo >/dev/null 2>&1 || { echo "$(RED)Error: cargo not found. Install Rust toolchain.$(NC)"; exit 1; }; \
+	fi
 	@command -v cmake >/dev/null 2>&1 || { echo "$(RED)Error: cmake not found.$(NC)"; exit 1; }
 	@command -v pkg-config >/dev/null 2>&1 || { echo "$(RED)Error: pkg-config not found.$(NC)"; exit 1; }
 	@printf "%s\n" "$(GREEN)✓ Development environment ready$(NC)"
 
 # Format code (if formatters are available)
 format-rust:
-	@printf "%s\n" "$(YELLOW)Formatting C FFI code (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && cargo fmt
-	@printf "%s\n" "$(GREEN)✓ C FFI code formatted$(NC)"
+	@if [ ! -f $(C_FFI_DIR)/Cargo.toml ]; then \
+		printf "%s\n" "$(YELLOW)⚠ C FFI library not found (Cargo.toml missing), skipping format...$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)Formatting C FFI code (Rust)...$(NC)"; \
+		cd $(C_FFI_DIR) && cargo fmt; \
+		printf "%s\n" "$(GREEN)✓ C FFI code formatted$(NC)"; \
+	fi
 
 format-cpp:
 	@printf "%s\n" "$(YELLOW)Formatting C++ code...$(NC)"
@@ -369,14 +399,18 @@ format: format-rust format-cpp
 
 # Lint code
 lint-rust:
-	@printf "%s\n" "$(YELLOW)Linting C FFI code (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && \
-		if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
-			cargo clippy --release -- -D warnings; \
-		else \
-			cargo clippy -- -D warnings; \
-		fi
-	@printf "%s\n" "$(GREEN)✓ C FFI linting passed$(NC)"
+	@if [ ! -f $(C_FFI_DIR)/Cargo.toml ]; then \
+		printf "%s\n" "$(YELLOW)⚠ C FFI library not found (Cargo.toml missing), skipping lint...$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)Linting C FFI code (Rust)...$(NC)"; \
+		cd $(C_FFI_DIR) && \
+			if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
+				cargo clippy --release -- -D warnings; \
+			else \
+				cargo clippy -- -D warnings; \
+			fi; \
+		printf "%s\n" "$(GREEN)✓ C FFI linting passed$(NC)"; \
+	fi
 
 lint-cpp:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
