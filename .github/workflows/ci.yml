@@ -196,6 +196,12 @@ jobs:
           verbose: true
           # Disable file search to only upload the specified merged file
           disable_search: true
+          # Disable carryover to ensure fresh coverage data
+          disable_file_fixes: true
+          # Override to ensure this is the authoritative upload
+          override_commit: ${{ github.sha }}
+          override_branch: ${{ github.ref_name }}
+          override_build: ${{ github.run_id }}
 
       - name: Upload merged coverage artifact
         uses: actions/upload-artifact@v4
