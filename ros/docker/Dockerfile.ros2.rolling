@@ -6,6 +6,11 @@ FROM ros:rolling-ros-base
 # to ensure CI builds have the same dependencies.
 # =============================================================================
 
+# Install Rust toolchain (required for C FFI library)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN cargo --version && rustc --version
+
 # Install system dependencies and ROS build tools
 RUN apt-get update && apt-get install -y \
     build-essential \
