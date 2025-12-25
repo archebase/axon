@@ -60,7 +60,7 @@ jobs:
         id: aws-sdk-cache
         with:
           path: ~/aws-sdk-cpp-install
-          key: aws-sdk-cpp-1.11-ubuntu22-s3-transfer
+          key: aws-sdk-cpp-1.11.458-ubuntu22-s3-transfer-v1
 
       - name: Build AWS SDK from source
         if: matrix.needs_aws_sdk && steps.aws-sdk-cache.outputs.cache-hit != 'true'

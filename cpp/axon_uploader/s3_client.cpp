@@ -11,12 +11,12 @@
 #include <aws/transfer/TransferHandle.h>
 #include <aws/transfer/TransferManager.h>
 
-#include <atomic>
-#include <condition_variable>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <thread>
 
 #include "retry_handler.hpp"
 
@@ -159,14 +159,25 @@ public:
     );
 
     // Create thread pool executor for TransferManager
-    // Using 4 threads for concurrent part uploads
-    executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>("S3Executor", 4);
+    executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
+        "S3Executor", config.executor_thread_count);
 
     // Configure TransferManager for multipart uploads
     Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get());
     transfer_config.s3Client = client;
-    // Use configured part size (default 64MB, minimum 5MB for S3)
-    transfer_config.bufferSize = config.part_size;
+
+    // Enforce S3 part size constraints (5MB minimum, 5GB maximum)
+    constexpr uint64_t MIN_PART_SIZE = 5 * 1024 * 1024;           // 5MB
+    constexpr uint64_t MAX_PART_SIZE = 5ULL * 1024 * 1024 * 1024; // 5GB
+    uint64_t validated_part_size = config.part_size;
+    if (validated_part_size < MIN_PART_SIZE) {
+      AXON_LOG_WARN("part_size " << config.part_size << " is below S3 minimum (5MB), using 5MB");
+      validated_part_size = MIN_PART_SIZE;
+    } else if (validated_part_size > MAX_PART_SIZE) {
+      AXON_LOG_WARN("part_size " << config.part_size << " exceeds S3 maximum (5GB), using 5GB");
+      validated_part_size = MAX_PART_SIZE;
+    }
+    transfer_config.bufferSize = validated_part_size;
     // TransferManager will automatically use multipart upload for files > 5MB
 
     transfer_manager = Aws::Transfer::TransferManager::Create(transfer_config);
@@ -217,10 +228,6 @@ UploadResult S3Client::uploadFile(
     aws_metadata[key] = value;
   }
 
-  // Track progress state for callback
-  std::atomic<uint64_t> bytes_transferred{0};
-  std::mutex progress_mutex;
-
   // Create upload handle using TransferManager
   // TransferManager automatically uses multipart upload for files > 5MB
   // and handles retries, chunking, and concurrent part uploads
@@ -232,22 +239,23 @@ UploadResult S3Client::uploadFile(
       aws_metadata
   );
 
-  // Set up progress callback if provided
+  // Wait for upload to complete with optional progress polling
+  // Note: TransferManager's progress callbacks are global (set on configuration),
+  // not per-upload. For per-upload progress, we poll the handle's state.
   if (progress_cb) {
-    upload_handle->SetDataTransferredCallback(
-        [&progress_cb, &bytes_transferred, file_size](
-            const Aws::Transfer::TransferManager*,
-            const std::shared_ptr<const Aws::Transfer::TransferHandle>&,
-            long long delta
-        ) {
-          uint64_t current = bytes_transferred.fetch_add(static_cast<uint64_t>(delta)) + delta;
-          progress_cb(current, file_size);
-        }
-    );
+    // Poll progress while upload is in progress
+    constexpr auto poll_interval = std::chrono::milliseconds(100);
+    while (upload_handle->GetStatus() == Aws::Transfer::TransferStatus::IN_PROGRESS ||
+           upload_handle->GetStatus() == Aws::Transfer::TransferStatus::NOT_STARTED) {
+      uint64_t transferred = upload_handle->GetBytesTransferred();
+      progress_cb(transferred, file_size);
+      std::this_thread::sleep_for(poll_interval);
+    }
+    // Final progress update
+    progress_cb(upload_handle->GetBytesTransferred(), file_size);
+  } else {
+    upload_handle->WaitUntilFinished();
   }
-
-  // Wait for upload to complete
-  upload_handle->WaitUntilFinished();
 
   // Check result
   auto status = upload_handle->GetStatus();

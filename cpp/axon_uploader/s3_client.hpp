@@ -27,7 +27,8 @@ struct S3Config {
   std::string secret_key;
 
   // Multipart upload settings (TransferManager automatically uses multipart for files > 5MB)
-  uint64_t part_size = 64 * 1024 * 1024;  // 64MB per part (minimum 5MB for S3)
+  uint64_t part_size = 64 * 1024 * 1024;  // 64MB per part (minimum 5MB, maximum 5GB for S3)
+  int executor_thread_count = 4;          // Thread pool size for concurrent part uploads
 
   // Timeouts (in milliseconds)
   int connect_timeout_ms = 10000;
@@ -106,7 +107,7 @@ public:
    * @param local_path Path to local file
    * @param s3_key S3 object key (path within bucket)
    * @param metadata Custom metadata to attach (keys without x-amz-meta- prefix)
-   * @param progress_cb Optional progress callback (receives bytes_transferred, total_bytes)
+   * @param progress_cb Optional progress callback (polled every ~100ms during upload)
    * @return UploadResult with success/failure status
    */
   UploadResult uploadFile(
