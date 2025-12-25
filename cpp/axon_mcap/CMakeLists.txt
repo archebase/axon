@@ -44,8 +44,9 @@ message(STATUS "MCAP library located at: ${mcap_SOURCE_DIR}")
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-    pkg_check_modules(ZSTD QUIET libzstd)
-    pkg_check_modules(LZ4 QUIET liblz4)
+    # Use IMPORTED_TARGET to create proper CMake targets with full library paths
+    pkg_check_modules(ZSTD QUIET IMPORTED_TARGET libzstd)
+    pkg_check_modules(LZ4 QUIET IMPORTED_TARGET liblz4)
 endif()
 
 # =============================================================================
@@ -64,8 +65,8 @@ target_include_directories(mcap_headers SYSTEM INTERFACE
 # to DISABLE compression. By default, compression is enabled, so we need to
 # define these macros when the libraries are NOT available.
 if(ZSTD_FOUND)
-    target_link_libraries(mcap_headers INTERFACE ${ZSTD_LIBRARIES})
-    target_include_directories(mcap_headers INTERFACE ${ZSTD_INCLUDE_DIRS})
+    # Use the imported target which includes full library paths
+    target_link_libraries(mcap_headers INTERFACE PkgConfig::ZSTD)
     message(STATUS "MCAP: Zstd compression enabled")
 else()
     target_compile_definitions(mcap_headers INTERFACE MCAP_COMPRESSION_NO_ZSTD)
@@ -73,8 +74,8 @@ else()
 endif()
 
 if(LZ4_FOUND)
-    target_link_libraries(mcap_headers INTERFACE ${LZ4_LIBRARIES})
-    target_include_directories(mcap_headers INTERFACE ${LZ4_INCLUDE_DIRS})
+    # Use the imported target which includes full library paths
+    target_link_libraries(mcap_headers INTERFACE PkgConfig::LZ4)
     message(STATUS "MCAP: LZ4 compression enabled")
 else()
     target_compile_definitions(mcap_headers INTERFACE MCAP_COMPRESSION_NO_LZ4)
@@ -127,13 +128,13 @@ if(AXON_LOGGING_DIR)
     target_compile_definitions(axon_mcap PRIVATE AXON_HAS_LOGGING)
 endif()
 
-# Link compression libraries if available
+# Link compression libraries if available (using imported targets for full paths)
 if(ZSTD_FOUND)
-    target_link_libraries(axon_mcap PUBLIC ${ZSTD_LIBRARIES})
+    target_link_libraries(axon_mcap PUBLIC PkgConfig::ZSTD)
 endif()
 
 if(LZ4_FOUND)
-    target_link_libraries(axon_mcap PUBLIC ${LZ4_LIBRARIES})
+    target_link_libraries(axon_mcap PUBLIC PkgConfig::LZ4)
 endif()
 
 # =============================================================================
@@ -180,12 +181,12 @@ if(AXON_MCAP_BUILD_TESTS)
             target_link_options(${TEST_NAME} PRIVATE --coverage)
         endif()
         
-        # Link compression libraries for tests
+        # Link compression libraries for tests (using imported targets)
         if(ZSTD_FOUND)
-            target_link_libraries(${TEST_NAME} ${ZSTD_LIBRARIES})
+            target_link_libraries(${TEST_NAME} PkgConfig::ZSTD)
         endif()
         if(LZ4_FOUND)
-            target_link_libraries(${TEST_NAME} ${LZ4_LIBRARIES})
+            target_link_libraries(${TEST_NAME} PkgConfig::LZ4)
         endif()
         
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})

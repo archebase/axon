@@ -120,3 +120,6 @@ log
 
 # ignore coverage files
 coverage
+
+.cursor/plans
+cpp/build_uploader/

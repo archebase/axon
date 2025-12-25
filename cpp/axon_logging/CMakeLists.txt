@@ -12,6 +12,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Boost 1.71+ required (Ubuntu 20.04/ROS Noetic minimum)
 # Ubuntu 22.04+ ships Boost 1.74+
 # =============================================================================
+
+# Suppress CMP0167 warning (FindBoost module removed in CMake 3.30+)
+# This tells CMake to use the new BoostConfig.cmake instead of FindBoost.cmake
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 find_package(Boost 1.71 REQUIRED COMPONENTS 
     log 
     log_setup 

@@ -26,8 +26,9 @@ struct S3Config {
   std::string access_key;
   std::string secret_key;
 
-  // Multipart upload settings (minio-cpp handles this automatically)
-  uint64_t part_size = 64 * 1024 * 1024;  // 64MB per part
+  // Multipart upload settings (TransferManager automatically uses multipart for files > 5MB)
+  uint64_t part_size = 64 * 1024 * 1024;  // 64MB per part (minimum 5MB, maximum 5GB for S3)
+  int executor_thread_count = 4;          // Thread pool size for concurrent part uploads
 
   // Timeouts (in milliseconds)
   int connect_timeout_ms = 10000;
@@ -65,14 +66,19 @@ struct UploadResult {
 using ProgressCallback = std::function<void(uint64_t bytes_transferred, uint64_t total_bytes)>;
 
 /**
- * S3 client wrapper around minio-cpp
+ * S3 client wrapper around AWS SDK for C++
  *
  * Provides a simplified interface for uploading files to S3-compatible storage.
+ * Supports both AWS S3 and S3-compatible storage like MinIO.
+ *
  * Features:
- * - Automatic multipart upload for large files
+ * - Automatic multipart upload for large files (> 5MB) via TransferManager
+ * - No file size limit (standard PutObject is limited to 5GB)
+ * - Concurrent part uploads for improved throughput
  * - Credential auto-detection from environment variables
  * - Custom metadata support (for checksum verification)
  * - Progress callbacks
+ * - S3-compatible endpoint support (MinIO, etc.)
  */
 class S3Client {
 public:
@@ -93,13 +99,15 @@ public:
   /**
    * Upload a file to S3
    *
-   * Automatically uses multipart upload for large files.
-   * Stores SHA-256 checksum in x-amz-meta-checksum-sha256 metadata.
+   * Uses TransferManager which automatically handles:
+   * - Multipart upload for files > 5MB (configurable via part_size)
+   * - Concurrent part uploads for improved throughput
+   * - No file size limit (removes the 5GB PutObject restriction)
    *
    * @param local_path Path to local file
    * @param s3_key S3 object key (path within bucket)
    * @param metadata Custom metadata to attach (keys without x-amz-meta- prefix)
-   * @param progress_cb Optional progress callback
+   * @param progress_cb Optional progress callback (polled every ~100ms during upload)
    * @return UploadResult with success/failure status
    */
   UploadResult uploadFile(

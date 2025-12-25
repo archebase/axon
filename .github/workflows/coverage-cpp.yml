@@ -1,11 +1,8 @@
 # =============================================================================
 # C++ Libraries Coverage Workflow for Axon
 # =============================================================================
-# Runs coverage for standalone C++ libraries (axon_mcap, axon_logging)
+# Runs coverage for standalone C++ libraries (axon_mcap, axon_uploader, axon_logging)
 # These don't require ROS and can run in a simpler environment.
-#
-# NOTE: axon_uploader coverage is disabled until minio-cpp is replaced with
-# aws-sdk-cpp S3. See: https://github.com/your-org/Axon/issues/XXX
 # =============================================================================
 
 name: C++ Libraries Coverage
@@ -29,8 +26,16 @@ jobs:
         include:
           - library: axon_mcap
             cmake_flag: AXON_MCAP
+            extra_packages: ""
+            needs_aws_sdk: false
+          - library: axon_uploader
+            cmake_flag: AXON_UPLOADER
+            extra_packages: "libsqlite3-dev libcurl4-openssl-dev"
+            needs_aws_sdk: true
           - library: axon_logging
             cmake_flag: AXON_LOGGING
+            extra_packages: ""
+            needs_aws_sdk: false
 
     steps:
       - name: Checkout repository
@@ -43,6 +48,42 @@ jobs:
         with:
           packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libyaml-cpp-dev liblz4-dev libzstd-dev libre2-dev libturbojpeg0-dev libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libssl-dev lcov
           version: 1.0
+
+      - name: Install extra packages for ${{ matrix.library }}
+        if: matrix.extra_packages != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.extra_packages }}
+
+      # =========================================================================
+      # AWS SDK for C++ (built from source - no apt packages available)
+      # =========================================================================
+      - name: Cache AWS SDK
+        if: matrix.needs_aws_sdk
+        uses: actions/cache@v4
+        id: aws-sdk-cache
+        with:
+          path: ~/aws-sdk-cpp-install
+          key: aws-sdk-cpp-1.11.458-ubuntu22-s3-transfer-v1
+
+      - name: Build AWS SDK from source
+        if: matrix.needs_aws_sdk && steps.aws-sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Building AWS SDK from source (this will be cached for future runs)..."
+          git clone --recurse-submodules --depth 1 --branch 1.11.458 \
+            https://github.com/aws/aws-sdk-cpp.git ~/aws-sdk-cpp-src
+          cd ~/aws-sdk-cpp-src
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=~/aws-sdk-cpp-install \
+            -DBUILD_ONLY="s3;transfer" \
+            -DENABLE_TESTING=OFF \
+            -DAUTORUN_UNIT_TESTS=OFF \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build -j$(nproc)
+          cmake --install build
+          # Cleanup source to save space
+          rm -rf ~/aws-sdk-cpp-src
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -72,13 +113,30 @@ jobs:
         run: |
           cd cpp
           mkdir -p build_${{ matrix.library }} && cd build_${{ matrix.library }}
-          cmake ../${{ matrix.library }} \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -D${{ matrix.cmake_flag }}_ENABLE_COVERAGE=ON \
+          
+          # Build CMake command with optional AWS SDK path
+          CMAKE_ARGS=(
+            -DCMAKE_BUILD_TYPE=Debug
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -D${{ matrix.cmake_flag }}_ENABLE_COVERAGE=ON
             -D${{ matrix.cmake_flag }}_BUILD_TESTS=ON
+          )
+          
+          # Add AWS SDK path if needed
+          if [ "${{ matrix.needs_aws_sdk }}" = "true" ]; then
+            CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH=~/aws-sdk-cpp-install)
+            # Also set LD_LIBRARY_PATH for runtime
+            export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          fi
+          
+          cmake ../${{ matrix.library }} "${CMAKE_ARGS[@]}"
           make -j$(nproc)
+          
+          # Set LD_LIBRARY_PATH for tests if using AWS SDK
+          if [ "${{ matrix.needs_aws_sdk }}" = "true" ]; then
+            export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          fi
           ctest --output-on-failure
           ccache -s
 
