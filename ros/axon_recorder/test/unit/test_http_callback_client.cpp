@@ -1255,7 +1255,8 @@ TEST_F(HttpCallbackClientTest, UrlParsingWithFragment) {
 TEST_F(HttpCallbackClientTest, UrlParsingIPv4Address) {
   TaskConfig config;
   config.task_id = "task_001";
-  config.start_callback_url = "http://203.0.113.50:8080/api";  // RFC 5737 TEST-NET-3
+  // Use localhost with high port - fails immediately with "connection refused"
+  config.start_callback_url = "http://127.0.0.1:59998/api";
   
   StartCallbackPayload payload;
   payload.task_id = "task_001";
