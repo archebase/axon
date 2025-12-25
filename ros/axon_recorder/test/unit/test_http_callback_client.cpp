@@ -1253,16 +1253,17 @@ TEST_F(HttpCallbackClientTest, UrlParsingWithFragment) {
 }
 
 TEST_F(HttpCallbackClientTest, UrlParsingIPv4Address) {
-  TaskConfig config;
-  config.task_id = "task_001";
-  config.start_callback_url = "http://192.168.1.100:8080/api";
+  std::string host, port, path;
+  bool use_ssl;
   
-  StartCallbackPayload payload;
-  payload.task_id = "task_001";
+  // Test IPv4 address URL parsing (no network I/O)
+  bool success = client_->parse_url("http://192.168.1.100:8080/api", host, port, path, use_ssl);
   
-  auto result = client_->post_start_callback(config, payload);
-  
-  EXPECT_FALSE(result.success);
+  EXPECT_TRUE(success);
+  EXPECT_EQ(host, "192.168.1.100");
+  EXPECT_EQ(port, "8080");
+  EXPECT_EQ(path, "/api");
+  EXPECT_FALSE(use_ssl);
 }
 
 TEST_F(HttpCallbackClientTest, UrlParsingLocalhostAlias) {
