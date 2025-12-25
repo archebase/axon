@@ -147,8 +147,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: merged_coverage.info
-          flags: merged
-          name: axon-all-coverage
+          name: axon-coverage
           fail_ci_if_error: false
           verbose: true
 
