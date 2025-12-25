@@ -154,13 +154,16 @@ jobs:
           echo "=== Merged coverage summary (before filtering) ==="
           lcov --list merged_coverage.info ${LCOV_IGNORE_FLAGS} || true
           
-          # Filter out absolute paths that won't match in Codecov
-          # These are auto-generated ROS files in the build directory
+          # Filter out paths that won't match in Codecov
+          # - Absolute paths (/root/*, /home/*)
+          # - Build directory (auto-generated ROS files)
           echo ""
-          echo "=== Filtering out absolute paths (build directory files) ==="
+          echo "=== Filtering out non-matching paths ==="
           lcov --remove merged_coverage.info \
             '/root/*' \
             '/home/*' \
+            'build/*' \
+            '*/build/*' \
             --output-file merged_coverage_filtered.info \
             --rc lcov_branch_coverage=1 \
             ${LCOV_IGNORE_FLAGS} || cp merged_coverage.info merged_coverage_filtered.info

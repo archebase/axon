@@ -15,26 +15,31 @@ coverage:
       default:
         target: auto
         threshold: 1%  # Allow 1% coverage drop before failing
-        # Disable carryover to always use fresh coverage data
-        carryforward: false
     patch:
       default:
         target: auto
 
-# Ignore test files from coverage metrics
-# These should not count toward coverage since they ARE the tests
+# Disable carryforward globally
+flag_management:
+  default_rules:
+    carryforward: false
+
+# Ignore test files and auto-generated files from coverage metrics
 ignore:
+  # Test files
   - "ros/axon_recorder/test/**/*"
   - "cpp/axon_logging/test/**/*"
   - "cpp/axon_mcap/test/**/*"
   - "cpp/axon_uploader/test/**/*"
-  # Also ignore any other test patterns
   - "**/test/**/*"
   - "**/*_test.cpp"
   - "**/test_*.cpp"
-  # Ignore ROS auto-generated code (from .srv/.msg files)
+  # Build directory (auto-generated ROS files)
+  - "build/**/*"
+  # ROS auto-generated code (from .srv/.msg files)
   - "**/rosidl_typesupport_cpp/**/*"
   - "**/rosidl_typesupport_introspection_cpp/**/*"
+  - "**/rosidl_typesupport_fastrtps_cpp/**/*"
   - "**/rosidl_generator_cpp/**/*"
 
 # Comment configuration for PR feedback
