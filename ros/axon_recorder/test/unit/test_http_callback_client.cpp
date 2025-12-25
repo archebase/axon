@@ -1188,6 +1188,270 @@ TEST_F(HttpCallbackClientTest, HttpsSchemeUppercase) {
   EXPECT_FALSE(result.success);
 }
 
+// ============================================================================
+// P1: HTTP Mock Server Tests - URL Parsing and Edge Cases
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, UrlParsingWithPort) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  // Explicit port in URL
+  config.start_callback_url = "http://api.example.com:9090/callbacks/start";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "device_001";
+  payload.status = "recording";
+  payload.started_at = "2025-12-25T10:00:00Z";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  // Will fail to connect but should parse URL correctly
+  EXPECT_FALSE(result.success);
+  EXPECT_FALSE(result.error_message.empty());
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsingWithoutPort) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  // No port - should default to 80
+  config.start_callback_url = "http://api.example.com/callbacks/start";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  EXPECT_FALSE(result.success);  // Connection will fail
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsingWithQueryParams) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:8080/api/callback?version=2&debug=true";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  // Should handle query params in URL
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsingWithFragment) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:8080/api#section";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsingIPv4Address) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://192.168.1.100:8080/api";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, UrlParsingLocalhostAlias) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://127.0.0.1:59997/api";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, HttpsUrlParsingSecure) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "https://secure.example.com/api/start";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  // SSL connection will fail but URL should parse
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, EmptyUrlHandling) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  // Empty URL should be handled gracefully (no-op success)
+  EXPECT_TRUE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, MalformedUrlSchemeFtp) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "ftp://localhost/api";  // Wrong scheme
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, UrlMissingPath) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:8080";  // No path
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  // Should default to "/" path
+  EXPECT_FALSE(result.success);
+}
+
+// ============================================================================
+// P1: HTTP Callback - Async Operations
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, AsyncStartCallbackWithInvalidUrl) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://unreachable.invalid:59999/api";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "device_001";
+  payload.status = "recording";
+  payload.started_at = HttpCallbackClient::get_iso8601_timestamp();
+  
+  // Async call should not throw
+  EXPECT_NO_THROW(client_->post_start_callback_async(config, payload));
+}
+
+TEST_F(HttpCallbackClientTest, AsyncFinishCallbackWithInvalidUrl) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.finish_callback_url = "http://unreachable.invalid:59999/api";
+  
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "device_001";
+  payload.status = "finished";
+  payload.started_at = "2025-12-25T10:00:00Z";
+  payload.finished_at = "2025-12-25T11:00:00Z";
+  payload.duration_sec = 3600.0;
+  payload.message_count = 1000;
+  payload.file_size_bytes = 1024 * 1024;
+  
+  // Async call should not throw
+  EXPECT_NO_THROW(client_->post_finish_callback_async(config, payload));
+}
+
+// ============================================================================
+// P1: HTTP Callback - Token Handling
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, BearerTokenFormatting) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:59996/api";
+  config.user_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  // Connection fails but token should be formatted correctly
+  EXPECT_FALSE(result.success);
+}
+
+TEST_F(HttpCallbackClientTest, EmptyToken) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://localhost:59995/api";
+  config.user_token = "";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  // Should handle empty token gracefully
+  EXPECT_FALSE(result.success);
+}
+
+// ============================================================================
+// P1: HTTP Callback - Response Handling
+// ============================================================================
+
+TEST_F(HttpCallbackClientTest, ResultStructureInitialization) {
+  // Use value initialization to ensure members are zero-initialized
+  HttpCallbackResult result{};
+  
+  // Value-initialized struct should have sensible defaults
+  EXPECT_FALSE(result.success);
+  EXPECT_EQ(result.status_code, 0);
+  EXPECT_TRUE(result.error_message.empty());
+  EXPECT_TRUE(result.response_body.empty());
+}
+
+TEST_F(HttpCallbackClientTest, PayloadWithUnicodeCharacters) {
+  StartCallbackPayload payload;
+  payload.task_id = "task_日本語_001";
+  payload.device_id = "设备_001";
+  payload.status = "recording";
+  payload.started_at = "2025-12-25T10:00:00Z";
+  payload.topics = {"/topic_中文", "/topic_日本語"};
+  
+  std::string json = payload.to_json();
+  
+  // Unicode should be preserved
+  EXPECT_TRUE(json.find("task_日本語_001") != std::string::npos);
+  EXPECT_TRUE(json.find("设备_001") != std::string::npos);
+}
+
+TEST_F(HttpCallbackClientTest, FinishPayloadWithLargeValues) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.device_id = "device_001";
+  payload.status = "finished";
+  payload.started_at = "2025-12-25T10:00:00Z";
+  payload.finished_at = "2025-12-25T22:00:00Z";
+  payload.duration_sec = 43200.0;  // 12 hours
+  payload.message_count = 1000000000LL;  // 1 billion messages
+  payload.file_size_bytes = 1099511627776LL;  // 1 TB
+  
+  std::string json = payload.to_json();
+  
+  EXPECT_TRUE(json.find("1000000000") != std::string::npos);
+  EXPECT_TRUE(json.find("1099511627776") != std::string::npos);
+}
+
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

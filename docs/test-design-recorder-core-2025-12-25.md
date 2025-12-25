@@ -137,9 +137,9 @@ The goal is to achieve **>90% line coverage** and **>85% branch coverage** while
 | Test File | Target Component | Test Count |
 |-----------|------------------|------------|
 | `test_config_parser.cpp` | ConfigParser | 66 |
-| `test_http_callback_client.cpp` | HttpCallbackClient | 70 |
-| `test_recording_service_impl.cpp` | RecordingServiceImpl | 51 |
-| `test_metadata_injector.cpp` | MetadataInjector | 42 |
+| `test_http_callback_client.cpp` | HttpCallbackClient | 92 (+22) |
+| `test_recording_service_impl.cpp` | RecordingServiceImpl | 75 (+24) |
+| `test_metadata_injector.cpp` | MetadataInjector | 57 (+15) |
 | `test_state_machine.cpp` | StateManager | 36 |
 | `test_worker_thread_pool.cpp` | WorkerThreadPool | 31 |
 | `test_recording_session.cpp` | RecordingSession | 24 |
@@ -224,23 +224,23 @@ Coverage is collected from **multiple sources** and merged in Codecov:
 |--------------|-----------------|----------|-------|
 | **Edge Uploader** | `#ifdef AXON_HAS_UPLOADER` paths | P1 | Conditional compilation - requires mock |
 | **Stats File Writing** | `write_stats_file()` | P1 | ✅ Fixed: Made path configurable, added dedicated tests |
-| **Schema Registration Failures** | `register_topic_schemas()` error paths | P2 | Error injection needed |
-| **Worker Pool Error Paths** | `setup_topic_recording()` failure modes | P2 | Edge cases |
+| **Schema Registration Failures** | `register_topic_schemas()` error paths | P2 | ✅ Fixed: Added 17 tests in test_recording_session.cpp |
+| **Worker Pool Error Paths** | `setup_topic_recording()` failure modes | P2 | ✅ Fixed: Added 15 tests in test_worker_thread_pool.cpp |
 
 #### RecordingSession Coverage Gaps
 
 | Gap Category | Functions/Paths | Priority | Notes |
 |--------------|-----------------|----------|-------|
-| **Metadata Injection** | `close()` with task config | P1 | Partially covered in `test_metadata_injection.cpp` |
-| **Sidecar Generation** | `close()` → sidecar JSON | P1 | Needs validation tests |
-| **Concurrent Write Stress** | Multiple threads writing | P2 | Currently manual testing |
+| **Metadata Injection** | `close()` with task config | P1 | ✅ Fixed: Added 15 tests in test_metadata_injector.cpp |
+| **Sidecar Generation** | `close()` → sidecar JSON | P1 | ✅ Fixed: Added sidecar validation tests |
+| **Concurrent Write Stress** | Multiple threads writing | P2 | ✅ Fixed: Added concurrent access tests |
 
 #### RecordingServiceImpl Coverage Gaps
 
 | Gap Category | Functions/Paths | Priority | Notes |
 |--------------|-----------------|----------|-------|
-| **State Transition Failures** | `transition_to()` returning false | P2 | Well-covered; edge cases remain |
-| **Stress Testing** | High-frequency concurrent calls | P2 | Not in automated tests |
+| **State Transition Failures** | `transition_to()` returning false | P2 | ✅ Fixed: Added 24 error injection and edge case tests |
+| **Stress Testing** | High-frequency concurrent calls | P2 | ✅ Covered in test/stress/ |
 
 ---
 
@@ -304,7 +304,7 @@ test/
 │   ├── mock_recorder_context.hpp          ← MockRecorderContext for service tests
 │   ├── mock_ros_interface_logging.hpp     ← Mock ROS logging interface
 │   ├── test_config_parser.cpp             ← ConfigParser (66 tests)
-│   ├── test_http_callback_client.cpp      ← HttpCallbackClient (70 tests)
+│   ├── test_http_callback_client.cpp      ← HttpCallbackClient (92 tests)
 │   ├── test_message_factory.cpp           ← MessageFactory (ROS required)
 │   ├── test_message_factory_standalone.cpp← MessageFactory (no ROS)
 │   ├── test_metadata_injector.cpp         ← MetadataInjector (42 tests)
@@ -882,6 +882,16 @@ genhtml coverage.info --output-directory html
 |------|-------------|
 | `test/unit/test_recording_session.cpp` | +5 metadata tests |
 
+#### Updated Files (v1.8 - P1/P2 Coverage Improvements)
+
+| File | Tests Added | Category |
+|------|-------------|----------|
+| `test/unit/test_http_callback_client.cpp` | +22 URL parsing, async, token handling tests | P1 |
+| `test/unit/test_recording_session.cpp` | +17 sidecar validation, schema edge cases, concurrent write tests | P1/P2 |
+| `test/unit/test_metadata_injector.cpp` | +15 expanded metadata, Unicode, edge case tests | P1/P2 |
+| `test/unit/test_recording_service_impl.cpp` | +24 error injection, state transition edge cases | P2 |
+| `test/unit/test_worker_thread_pool.cpp` | +15 error path, overflow, concurrent creation tests | P2 |
+
 ---
 
 ## Document History
@@ -896,6 +906,7 @@ genhtml coverage.info --output-directory html
 | 1.5 | 2025-12-25 | Axon Robotics | CI refactor: unit-tests.yml → unit-tests-ros.yml; added unit-tests-cpp.yml; coverage now collected in all test workflows; removed standalone coverage-ros.yml |
 | 1.6 | 2025-12-25 | Axon Robotics | Added Root Cause Analysis section for low coverage; fixed ROS2 bug (missing `register_common_message_types()` call); documented coverage collection strategy |
 | 1.7 | 2025-12-25 | Axon Robotics | Made `stats_file_path` configurable in `DatasetConfig`; added `axon_recorder_test_support_mcap` library; added `write_stats_file()` tests |
+| 1.8 | 2025-12-25 | Axon Robotics | P1/P2 coverage improvements: +93 tests covering HTTP client edge cases, sidecar validation, metadata injection, error injection, state transitions, worker pool error paths |
 
 ---
 

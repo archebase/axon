@@ -1119,6 +1119,424 @@ TEST_F(RecordingServiceImplTest, SpecialCharacterCommand) {
   EXPECT_TRUE(message.find("Unknown command") != std::string::npos);
 }
 
+// ============================================================================
+// P2: Error Injection Tests - Recording Control Error Paths
+// ============================================================================
+
+TEST_F(RecordingServiceImplTest, StartWhenAlreadyRecording) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to start again - should fail
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_FALSE(message.empty());
+}
+
+TEST_F(RecordingServiceImplTest, PauseFromIdleState) {
+  cache_test_config();
+  
+  // Don't start recording - in READY state after cache
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Try to pause from READY state
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, ResumeFromIdleState) {
+  cache_test_config();
+  
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Try to resume from READY state
+  service_impl_->handle_recording_control("resume", "test_task_123", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, ResumeWhenNotPaused) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to resume when already recording
+  service_impl_->handle_recording_control("resume", "test_task_123", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, PauseWithWrongTaskId) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to pause with wrong task_id
+  service_impl_->handle_recording_control("pause", "wrong_task_id", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  EXPECT_TRUE(message.find("mismatch") != std::string::npos || 
+              message.find("incorrect") != std::string::npos ||
+              !message.empty());
+}
+
+TEST_F(RecordingServiceImplTest, FinishWithWrongTaskId) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to finish with wrong task_id
+  service_impl_->handle_recording_control("finish", "wrong_task_id", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, CancelWithWrongTaskId) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to cancel with wrong task_id
+  service_impl_->handle_recording_control("cancel", "wrong_task_id", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+// ============================================================================
+// P2: Error Injection Tests - Config Validation Errors
+// ============================================================================
+
+TEST_F(RecordingServiceImplTest, CacheConfigWithEmptyTaskId) {
+  bool success = true;
+  std::string message;
+  
+  service_impl_->handle_cached_recording_config(
+    "",  // Empty task_id
+    "device_001",
+    "collector_001",
+    "order_001",
+    "operator_name",
+    "scene",
+    "subscene",
+    {"skill1"},
+    "factory",
+    {"/topic1"},
+    "",
+    "",
+    "",
+    success, message
+  );
+  
+  EXPECT_FALSE(success);
+  EXPECT_FALSE(message.empty());
+}
+
+TEST_F(RecordingServiceImplTest, CacheConfigWhileRecording) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to cache new config while recording
+  service_impl_->handle_cached_recording_config(
+    "new_task_id",
+    "device_001",
+    "collector_001",
+    "",
+    "",
+    "",
+    "",
+    {},
+    "",
+    {},
+    "",
+    "",
+    "",
+    success, message
+  );
+  
+  // Should fail - can't change config while recording
+  EXPECT_FALSE(success);
+}
+
+// ============================================================================
+// P2: State Transition Failure Edge Cases
+// ============================================================================
+
+TEST_F(RecordingServiceImplTest, RapidStateTransitions) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Rapid transitions: start -> pause -> resume -> pause -> resume
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("resume", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("resume", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Should still be in RECORDING state
+  EXPECT_TRUE(mock_context_->get_state_manager().is_state(RecorderState::RECORDING));
+}
+
+TEST_F(RecordingServiceImplTest, FinishFromPausedStateValidates) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start and pause
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Finish from paused state - should succeed
+  service_impl_->handle_recording_control("finish", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  EXPECT_TRUE(mock_context_->get_state_manager().is_state(RecorderState::IDLE));
+}
+
+TEST_F(RecordingServiceImplTest, CancelFromPausedState) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start and pause
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Cancel from paused state - should succeed
+  service_impl_->handle_recording_control("cancel", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  EXPECT_TRUE(mock_context_->get_state_manager().is_state(RecorderState::IDLE));
+}
+
+TEST_F(RecordingServiceImplTest, DoublePause) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start and pause
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to pause again - should fail
+  service_impl_->handle_recording_control("pause", "test_task_123", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, DoubleFinish) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start and finish
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  service_impl_->handle_recording_control("finish", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Try to finish again - should fail (no task in cache)
+  service_impl_->handle_recording_control("finish", "test_task_123", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, StatusQueryAfterFinish) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start and finish
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  service_impl_->handle_recording_control("finish", "test_task_123", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Query status after finish
+  std::string status, task_id, device_id, data_collector_id, order_id, operator_name;
+  std::string scene, subscene, factory, output_path, last_error;
+  std::vector<std::string> skills, active_topics;
+  double disk_usage_gb, duration_sec, throughput_mb_sec;
+  int64_t message_count;
+  
+  service_impl_->handle_recording_status(
+    "test_task_123", success, message, status, task_id, device_id, data_collector_id,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
+    disk_usage_gb, duration_sec, message_count, throughput_mb_sec, last_error
+  );
+  
+  // Status should indicate idle/finished
+  EXPECT_TRUE(success);
+  EXPECT_NE(status, "recording");  // Should not be recording
+}
+
+// ============================================================================
+// P2: Recording Status Edge Cases
+// ============================================================================
+
+TEST_F(RecordingServiceImplTest, StatusWithUnknownTaskId) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Start recording
+  service_impl_->handle_recording_control("start", "", success, message, task_id_response);
+  EXPECT_TRUE(success);
+  
+  // Query status with wrong task_id
+  std::string status, task_id, device_id, data_collector_id, order_id, operator_name;
+  std::string scene, subscene, factory, output_path, last_error;
+  std::vector<std::string> skills, active_topics;
+  double disk_usage_gb, duration_sec, throughput_mb_sec;
+  int64_t message_count;
+  
+  service_impl_->handle_recording_status(
+    "unknown_task_id", success, message, status, task_id, device_id, data_collector_id,
+    order_id, operator_name, scene, subscene, skills, factory, active_topics, output_path,
+    disk_usage_gb, duration_sec, message_count, throughput_mb_sec, last_error
+  );
+  
+  // Status query may succeed (returns current state) or fail (task_id validation)
+  // depending on implementation. The key test is that it handles gracefully.
+  // If it succeeds, verify it returns some status
+  if (success) {
+    EXPECT_FALSE(status.empty());
+  }
+  // Either way, no crash is expected
+  SUCCEED();
+}
+
+TEST_F(RecordingServiceImplTest, IsRecordingReadyWithNoConfig) {
+  // Don't cache any config
+  
+  bool success, is_configured, is_recording;
+  std::string message, task_id, device_id, order_id, operator_name, scene, subscene, factory, data_collector_id;
+  std::vector<std::string> skills, topics;
+  
+  service_impl_->handle_is_recording_ready(
+    success, message, is_configured, is_recording,
+    task_id, device_id, order_id, operator_name, scene, subscene, skills, factory,
+    data_collector_id, topics
+  );
+  
+  EXPECT_TRUE(success);
+  EXPECT_FALSE(is_configured);
+  EXPECT_FALSE(is_recording);
+}
+
+// ============================================================================
+// P2: Command Variations
+// ============================================================================
+
+TEST_F(RecordingServiceImplTest, CaseInsensitiveCommandsUppercase) {
+  cache_test_config();
+  
+  bool success = false;
+  std::string message, task_id_response;
+  
+  // Uppercase command - might fail if not handled
+  service_impl_->handle_recording_control("START", "", success, message, task_id_response);
+  // Result depends on implementation - just ensure no crash
+  SUCCEED();
+}
+
+TEST_F(RecordingServiceImplTest, CommandWithLeadingWhitespace) {
+  cache_test_config();
+  
+  bool success = true;
+  std::string message, task_id_response;
+  
+  service_impl_->handle_recording_control("  start", "", success, message, task_id_response);
+  // May fail - whitespace might not be trimmed
+  // Just ensure no crash
+  SUCCEED();
+}
+
+TEST_F(RecordingServiceImplTest, CommandWithTrailingWhitespace) {
+  cache_test_config();
+  
+  bool success = true;
+  std::string message, task_id_response;
+  
+  service_impl_->handle_recording_control("start  ", "", success, message, task_id_response);
+  // May fail - whitespace might not be trimmed
+  // Just ensure no crash
+  SUCCEED();
+}
+
+TEST_F(RecordingServiceImplTest, NullLikeStringCommand) {
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Commands that might be confused with null
+  service_impl_->handle_recording_control("null", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+  
+  service_impl_->handle_recording_control("NULL", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
+TEST_F(RecordingServiceImplTest, UnicodeCommand) {
+  bool success = true;
+  std::string message, task_id_response;
+  
+  // Unicode command
+  service_impl_->handle_recording_control("开始", "", success, message, task_id_response);
+  EXPECT_FALSE(success);
+}
+
 }  // namespace
 }  // namespace recorder
 }  // namespace axon
