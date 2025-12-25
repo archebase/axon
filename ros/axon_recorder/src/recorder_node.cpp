@@ -814,9 +814,24 @@ double RecorderNode::get_recording_duration_sec() const {
 }
 
 void RecorderNode::write_stats_file() {
-  std::ofstream stats_file(STATS_FILE_PATH);
+  const std::string& stats_path = config_.dataset.stats_file_path;
+  
+  // Create parent directory if it doesn't exist
+  std::filesystem::path parent_dir = std::filesystem::path(stats_path).parent_path();
+  if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
+    std::error_code ec;
+    std::filesystem::create_directories(parent_dir, ec);
+    if (ec) {
+      AXON_LOG_WARN("Could not create stats directory" 
+                   << axon::logging::kv("path", parent_dir.string())
+                   << axon::logging::kv("error", ec.message()));
+      return;
+    }
+  }
+  
+  std::ofstream stats_file(stats_path);
   if (!stats_file.is_open()) {
-    AXON_LOG_WARN("Could not write stats file" << axon::logging::kv("path", STATS_FILE_PATH));
+    AXON_LOG_WARN("Could not write stats file" << axon::logging::kv("path", stats_path));
     return;
   }
 

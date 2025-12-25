@@ -264,29 +264,53 @@ axon_add_test(NAME test_error_recovery
 )
 
 # ============================================================================
+# MCAP Test Support Library (ROS-integrated build only)
+# ============================================================================
+# Consolidates MCAP-dependent source files to reduce duplication and improve
+# coverage. These files require axon_mcap library.
+# ============================================================================
+if(ROS_INTEGRATED_BUILD)
+    add_library(axon_recorder_test_support_mcap STATIC
+        # Recording session (MCAP file lifecycle)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
+        # Metadata injection (JSON sidecar generation)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
+    )
+    target_compile_definitions(axon_recorder_test_support_mcap PRIVATE BOOST_LOG_DYN_LINK)
+    target_include_directories(axon_recorder_test_support_mcap PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_CURRENT_BINARY_DIR}/../generated
+    )
+    target_link_libraries(axon_recorder_test_support_mcap
+        axon_mcap
+        axon_logging
+        nlohmann_json::nlohmann_json
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        ${Boost_LIBRARIES}
+    )
+    message(STATUS "MCAP test support library enabled")
+endif()
+
+# ============================================================================
 # Tests Requiring axon_mcap (ROS-integrated build only)
 # ============================================================================
 if(ROS_INTEGRATED_BUILD)
     axon_add_test(NAME test_recording_session
         SOURCES unit/test_recording_session.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
-        LIBS axon_mcap axon_logging nlohmann_json::nlohmann_json OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES}
+        LIBS axon_recorder_test_support_mcap axon_logging
     )
     target_include_directories(test_recording_session PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../generated)
 
     axon_add_test(NAME test_metadata_injector
         SOURCES unit/test_metadata_injector.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
-        LIBS axon_mcap axon_logging nlohmann_json::nlohmann_json OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES}
+        LIBS axon_recorder_test_support_mcap axon_logging
     )
     target_include_directories(test_metadata_injector PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../generated)
 
     axon_add_test(NAME test_metadata_injection
         SOURCES integration/test_metadata_injection.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
-        LIBS axon_mcap axon_logging nlohmann_json::nlohmann_json OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES}
+        LIBS axon_recorder_test_support_mcap axon_logging
     )
     target_include_directories(test_metadata_injection PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../generated)
     set_tests_properties(test_metadata_injection PROPERTIES LABELS "integration")

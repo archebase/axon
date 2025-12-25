@@ -1,6 +1,6 @@
 # Test Design Document: Axon Recorder Core Components
 
-**Document Version:** 1.6  
+**Document Version:** 1.7  
 **Date:** 2025-12-25  
 **Author:** Axon Robotics Team  
 **Reviewers:** Staff/Principal Engineers  
@@ -66,7 +66,7 @@ The goal is to achieve **>90% line coverage** and **>85% branch coverage** while
 | `cancel_recording()` | 608-653 | Medium | Partial |
 | `shutdown()` | 225-290 | High | Partial |
 | `configure_from_task_config()` | 756-787 | Low | Good |
-| `write_stats_file()` | 816-861 | Low | None |
+| `write_stats_file()` | 816-861 | Low | Good (configurable path) |
 
 **Critical Branches:**
 - Conditional compilation: `#ifdef AXON_HAS_UPLOADER`
@@ -223,7 +223,7 @@ Coverage is collected from **multiple sources** and merged in Codecov:
 | Gap Category | Functions/Paths | Priority | Notes |
 |--------------|-----------------|----------|-------|
 | **Edge Uploader** | `#ifdef AXON_HAS_UPLOADER` paths | P1 | Conditional compilation - requires mock |
-| **Stats File Writing** | `write_stats_file()` | P1 | Only tested in integration tests |
+| **Stats File Writing** | `write_stats_file()` | P1 | ✅ Fixed: Made path configurable, added dedicated tests |
 | **Schema Registration Failures** | `register_topic_schemas()` error paths | P2 | Error injection needed |
 | **Worker Pool Error Paths** | `setup_topic_recording()` failure modes | P2 | Edge cases |
 
@@ -610,12 +610,13 @@ public:
 
 Mock ROS logging interface for testing logging components.
 
-### 5.2 Test Support Library
+### 5.2 Test Support Libraries
 
-The `axon_recorder_test_support` static library compiles common sources once for all tests:
+#### `axon_recorder_test_support` (No MCAP dependency)
+
+Compiles common sources that don't require `axon_mcap`:
 
 ```cmake
-# From test/CMakeLists.txt
 add_library(axon_recorder_test_support STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/config_parser.cpp
@@ -623,6 +624,22 @@ add_library(axon_recorder_test_support STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/topic_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/worker_thread_pool.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_service_impl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/logging/axon_ros_sink.cpp
+)
+```
+
+#### `axon_recorder_test_support_mcap` (ROS-integrated builds only)
+
+Compiles MCAP-dependent sources for recording tests:
+
+```cmake
+add_library(axon_recorder_test_support_mcap STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
+)
+target_link_libraries(axon_recorder_test_support_mcap
+    axon_mcap axon_logging nlohmann_json::nlohmann_json
+    OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES}
 )
 ```
 
@@ -878,6 +895,7 @@ genhtml coverage.info --output-directory html
 | 1.4 | 2025-12-25 | Axon Robotics | Implemented all proposed tests: metadata tests (5), stress tests (10), uploader tests (8), test_helpers.hpp; removed MockMcapWriterWrapper proposal (use real code); updated test counts |
 | 1.5 | 2025-12-25 | Axon Robotics | CI refactor: unit-tests.yml → unit-tests-ros.yml; added unit-tests-cpp.yml; coverage now collected in all test workflows; removed standalone coverage-ros.yml |
 | 1.6 | 2025-12-25 | Axon Robotics | Added Root Cause Analysis section for low coverage; fixed ROS2 bug (missing `register_common_message_types()` call); documented coverage collection strategy |
+| 1.7 | 2025-12-25 | Axon Robotics | Made `stats_file_path` configurable in `DatasetConfig`; added `axon_recorder_test_support_mcap` library; added `write_stats_file()` tests |
 
 ---
 

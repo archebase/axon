@@ -23,6 +23,7 @@ struct TopicConfig {
 struct DatasetConfig {
   std::string path;
   std::string mode = "append";  // "create" or "append"
+  std::string stats_file_path = "/data/recordings/recorder_stats.json";  // Stats output file
 };
 
 struct RecordingConfig {

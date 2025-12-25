@@ -108,6 +108,8 @@ upload:
     // Dataset configuration
     config.dataset.path = data_dir_.string();
     config.dataset.mode = "create";
+    // Use temp directory for stats file so tests can verify it
+    config.dataset.stats_file_path = (test_dir_ / "recorder_stats.json").string();
     
     // Logging configuration
     config.logging.console_enabled = true;
@@ -131,6 +133,11 @@ upload:
     config.upload.enabled = false;
     
     return config;
+  }
+  
+  // Helper to get the stats file path from test directory
+  std::filesystem::path get_stats_file_path() const {
+    return test_dir_ / "recorder_stats.json";
   }
 
   // Helper to create a RecorderNode and attempt initialization with injected config
@@ -728,6 +735,124 @@ TEST_F(RecorderNodeFullRecordingTest, CancelRecordingWorkflow) {
   EXPECT_FALSE(node->is_recording());
 }
 
+// ============================================================================
+// write_stats_file() Tests
+// ============================================================================
+
+TEST_F(RecorderNodeFullRecordingTest, WriteStatsFileCreatesValidJson) {
+  // This test verifies that write_stats_file() creates a valid JSON file
+  // with expected fields after a recording workflow completes.
+  
+  auto node = create_and_initialize_with_config();
+  if (!node) {
+    GTEST_SKIP() << "RecorderNode initialization failed - skipping stats file test";
+  }
+  
+  StateManager& sm = node->get_state_manager();
+  std::string error;
+  
+  // Setup: cache config and transition to READY
+  TaskConfig task_config;
+  task_config.task_id = "stats_test";
+  task_config.device_id = "test_device";
+  node->get_task_config_cache().cache(task_config);
+  
+  ASSERT_TRUE(sm.transition_to(RecorderState::READY, error)) << "Failed to transition to READY: " << error;
+  
+  // Start recording
+  ASSERT_TRUE(sm.transition_to(RecorderState::RECORDING, error)) << "Failed to start recording: " << error;
+  node->start_recording();
+  
+  // Let it record briefly
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  
+  // Stop recording - this calls write_stats_file()
+  node->stop_recording();
+  ASSERT_TRUE(sm.transition_to(RecorderState::IDLE, error)) << "Failed to stop recording: " << error;
+  
+  // Verify stats file was created
+  auto stats_path = get_stats_file_path();
+  ASSERT_TRUE(std::filesystem::exists(stats_path)) 
+      << "Stats file was not created at: " << stats_path;
+  
+  // Read and verify JSON content
+  std::ifstream stats_file(stats_path);
+  ASSERT_TRUE(stats_file.is_open()) << "Could not open stats file";
+  
+  std::stringstream buffer;
+  buffer << stats_file.rdbuf();
+  std::string json_content = buffer.str();
+  
+  // Verify required fields are present
+  EXPECT_TRUE(json_content.find("\"output_file\"") != std::string::npos)
+      << "Stats file missing 'output_file' field";
+  EXPECT_TRUE(json_content.find("\"format\": \"mcap\"") != std::string::npos)
+      << "Stats file missing or incorrect 'format' field";
+  EXPECT_TRUE(json_content.find("\"messages_received\"") != std::string::npos)
+      << "Stats file missing 'messages_received' field";
+  EXPECT_TRUE(json_content.find("\"messages_dropped\"") != std::string::npos)
+      << "Stats file missing 'messages_dropped' field";
+  EXPECT_TRUE(json_content.find("\"messages_written\"") != std::string::npos)
+      << "Stats file missing 'messages_written' field";
+  EXPECT_TRUE(json_content.find("\"bytes_written\"") != std::string::npos)
+      << "Stats file missing 'bytes_written' field";
+  EXPECT_TRUE(json_content.find("\"drop_rate_percent\"") != std::string::npos)
+      << "Stats file missing 'drop_rate_percent' field";
+  EXPECT_TRUE(json_content.find("\"per_topic_stats\"") != std::string::npos)
+      << "Stats file missing 'per_topic_stats' field";
+  
+  // Cleanup
+  node->shutdown();
+}
+
+TEST_F(RecorderNodeFullRecordingTest, WriteStatsFileCreatesParentDirectory) {
+  // This test verifies that write_stats_file() creates parent directories
+  // if they don't exist.
+  
+  auto config = create_injectable_config();
+  
+  // Set stats path in a non-existent subdirectory
+  auto nested_stats_dir = test_dir_ / "nested" / "stats" / "dir";
+  config.dataset.stats_file_path = (nested_stats_dir / "recorder_stats.json").string();
+  
+  auto node = RecorderNode::create();
+  ASSERT_NE(node, nullptr);
+  
+  int argc = 1;
+  const char* argv[] = {"test_recorder"};
+  char** argv_nc = const_cast<char**>(argv);
+  
+  if (!node->initialize(argc, argv_nc, config)) {
+    GTEST_SKIP() << "RecorderNode initialization failed - skipping nested stats directory test";
+  }
+  
+  StateManager& sm = node->get_state_manager();
+  std::string error;
+  
+  // Setup and start recording
+  TaskConfig task_config;
+  task_config.task_id = "nested_stats_test";
+  node->get_task_config_cache().cache(task_config);
+  
+  sm.transition_to(RecorderState::READY, error);
+  sm.transition_to(RecorderState::RECORDING, error);
+  node->start_recording();
+  
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  // Stop recording
+  node->stop_recording();
+  sm.transition_to(RecorderState::IDLE, error);
+  
+  // Verify nested directory was created and stats file exists
+  EXPECT_TRUE(std::filesystem::exists(nested_stats_dir))
+      << "Nested stats directory was not created";
+  EXPECT_TRUE(std::filesystem::exists(nested_stats_dir / "recorder_stats.json"))
+      << "Stats file was not created in nested directory";
+  
+  node->shutdown();
+}
+
 #endif  // AXON_ROS2
 
 // ============================================================================
@@ -797,6 +922,68 @@ TEST_F(RecorderNodeFullRecordingTest, SimulatedRecordingWorkflow) {
   sm.transition_to(RecorderState::RECORDING, error);
   sm.transition_to(RecorderState::IDLE, error);
   EXPECT_FALSE(node->is_recording());
+}
+
+// ============================================================================
+// write_stats_file() Tests (ROS1)
+// ============================================================================
+
+TEST_F(RecorderNodeFullRecordingTest, WriteStatsFileCreatesValidJson) {
+  // This test verifies that write_stats_file() creates a valid JSON file
+  // with expected fields after a recording workflow completes.
+  
+  auto node = create_and_initialize_with_config();
+  if (!node) {
+    GTEST_SKIP() << "RecorderNode initialization failed - skipping stats file test";
+  }
+  
+  StateManager& sm = node->get_state_manager();
+  std::string error;
+  
+  // Setup: cache config and transition to READY
+  TaskConfig task_config;
+  task_config.task_id = "stats_test_ros1";
+  task_config.device_id = "test_device_ros1";
+  node->get_task_config_cache().cache(task_config);
+  
+  ASSERT_TRUE(sm.transition_to(RecorderState::READY, error)) << "Failed to transition to READY: " << error;
+  
+  // Start recording
+  ASSERT_TRUE(sm.transition_to(RecorderState::RECORDING, error)) << "Failed to start recording: " << error;
+  node->start_recording();
+  
+  // Let it record briefly
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  
+  // Stop recording - this calls write_stats_file()
+  node->stop_recording();
+  ASSERT_TRUE(sm.transition_to(RecorderState::IDLE, error)) << "Failed to stop recording: " << error;
+  
+  // Verify stats file was created
+  auto stats_path = get_stats_file_path();
+  ASSERT_TRUE(std::filesystem::exists(stats_path)) 
+      << "Stats file was not created at: " << stats_path;
+  
+  // Read and verify JSON content
+  std::ifstream stats_file(stats_path);
+  ASSERT_TRUE(stats_file.is_open()) << "Could not open stats file";
+  
+  std::stringstream buffer;
+  buffer << stats_file.rdbuf();
+  std::string json_content = buffer.str();
+  
+  // Verify required fields are present
+  EXPECT_TRUE(json_content.find("\"output_file\"") != std::string::npos)
+      << "Stats file missing 'output_file' field";
+  EXPECT_TRUE(json_content.find("\"format\": \"mcap\"") != std::string::npos)
+      << "Stats file missing or incorrect 'format' field";
+  EXPECT_TRUE(json_content.find("\"messages_received\"") != std::string::npos)
+      << "Stats file missing 'messages_received' field";
+  EXPECT_TRUE(json_content.find("\"per_topic_stats\"") != std::string::npos)
+      << "Stats file missing 'per_topic_stats' field";
+  
+  // Cleanup
+  node->shutdown();
 }
 
 #endif  // AXON_ROS1

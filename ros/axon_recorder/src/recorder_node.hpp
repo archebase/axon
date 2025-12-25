@@ -350,11 +350,6 @@ private:
   // Use is_recording(), is_paused(), is_actively_recording() methods instead
   std::atomic<bool> shutdown_requested_{false};
 
-  // =========================================================================
-  // Configuration Constants
-  // =========================================================================
-  // Statistics file path
-  static constexpr const char* STATS_FILE_PATH = "/data/recordings/recorder_stats.json";
 };
 
 }  // namespace recorder
