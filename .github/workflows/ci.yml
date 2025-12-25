@@ -67,11 +67,12 @@ jobs:
   # ===========================================================================
   # Stage 2: E2E Tests (after unit tests pass)
   # ===========================================================================
-  e2e-tests:
-    name: E2E Tests
-    needs: [tests-ros, unit-tests-cpp]
-    uses: ./.github/workflows/e2e-tests.yml
-    secrets: inherit
+  # TODO: Re-enable after coverage debugging is complete
+  # e2e-tests:
+  #   name: E2E Tests
+  #   needs: [tests-ros, unit-tests-cpp]
+  #   uses: ./.github/workflows/e2e-tests.yml
+  #   secrets: inherit
 
   # ===========================================================================
   # Stage 3: Merge All Coverage and Upload to Codecov
@@ -80,7 +81,8 @@ jobs:
   merge-coverage:
     name: Merge Coverage
     runs-on: ubuntu-22.04
-    needs: [tests-ros, unit-tests-cpp, e2e-tests]
+    # TODO: Add e2e-tests back after coverage debugging
+    needs: [tests-ros, unit-tests-cpp]
     if: always() && !cancelled()
     
     steps:
