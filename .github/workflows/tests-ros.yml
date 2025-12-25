@@ -85,6 +85,26 @@ jobs:
               exit 0
             fi
             
+            echo "=== Test Results Summary ==="
+            # Show test results including skipped tests
+            if [ -d /root/target_ws ]; then
+              WS=/root/target_ws
+            elif [ -d /root/catkin_ws ]; then
+              WS=/root/catkin_ws
+            else
+              WS=/root/upstream_ws
+            fi
+            
+            # Parse test XML files for skip counts
+            echo "Checking for skipped tests..."
+            find $WS -name "*.xml" -path "*test_results*" -exec grep -l "skipped" {} \; 2>/dev/null | head -5 || true
+            
+            # Show ctest results if available
+            if [ -f $WS/build/axon_recorder/Testing/Temporary/LastTest.log ]; then
+              echo "Last test log tail:"
+              tail -50 $WS/build/axon_recorder/Testing/Temporary/LastTest.log | grep -E "SKIP|PASS|FAIL|tests from" || true
+            fi
+            
             echo "=== Collecting test coverage data ==="
             
             # Find the workspace
@@ -146,9 +166,14 @@ jobs:
             # Also remove Axon/ prefix if present (repo is cloned as Axon/)
             sed -i "s|^SF:Axon/|SF:|g" /coverage_output/coverage.info || true
             
-            # Debug: show sample of normalized paths
-            echo "Sample paths in coverage.info:"
-            grep "^SF:" /coverage_output/coverage.info | head -5 || true
+            # Debug: show ALL source file paths for debugging coverage discrepancy
+            echo "=== All source file paths in coverage.info ==="
+            grep "^SF:" /coverage_output/coverage.info | sort || true
+            
+            # Show coverage for key files
+            echo ""
+            echo "=== Coverage for key recorder files ==="
+            grep -A2 "recorder_node.cpp\|recording_service_impl.cpp\|ros_interface.cpp" /coverage_output/coverage.info | head -20 || true
             
             # Verify file is not empty
             if [ -s /coverage_output/coverage.info ]; then

@@ -101,6 +101,16 @@ jobs:
           echo "=== Downloaded coverage artifacts ==="
           find . -name "*.info" -type f
           ls -laR coverage-*/ 2>/dev/null || echo "No coverage directories found"
+          
+          echo ""
+          echo "=== Coverage file sizes and line counts ==="
+          for f in $(find . -name "*.info" -type f); do
+            echo "$f: $(wc -l < $f) lines, $(wc -c < $f) bytes"
+            echo "  Source files:"
+            grep "^SF:" "$f" | wc -l
+            echo "  Key files present:"
+            grep -c "recorder_node.cpp\|recording_service_impl.cpp" "$f" || echo "    0"
+          done
 
       - name: Merge all coverage reports
         run: |
@@ -141,6 +151,14 @@ jobs:
           
           echo "=== Merged coverage summary ==="
           lcov --list merged_coverage.info ${LCOV_IGNORE_FLAGS} || true
+          
+          echo ""
+          echo "=== Key file coverage in merged report ==="
+          grep -B1 -A3 "recorder_node.cpp\|recording_service_impl.cpp\|ros_interface.cpp" merged_coverage.info | head -30 || echo "Key files not found in merged coverage!"
+          
+          echo ""
+          echo "=== Source file count in merged coverage ==="
+          grep "^SF:" merged_coverage.info | wc -l
 
       - name: Upload merged coverage to Codecov
         uses: codecov/codecov-action@v5
