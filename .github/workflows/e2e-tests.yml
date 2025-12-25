@@ -146,7 +146,10 @@ jobs:
             
             # Normalize paths: strip Docker workspace prefix for Codecov
             echo "=== Normalizing paths for Codecov ==="
+            # Remove workspace src prefix
             sed -i "s|${WS}/src/||g" /coverage_output/coverage.info || true
+            # Also remove Axon/ prefix if present (repo is cloned as Axon/)
+            sed -i "s|^SF:Axon/|SF:|g" /coverage_output/coverage.info || true
             
             # Debug: show sample of normalized paths
             echo "Sample paths in coverage.info:"
