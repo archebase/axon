@@ -196,7 +196,6 @@ add_library(axon_recorder_test_support STATIC
 target_compile_definitions(axon_recorder_test_support PRIVATE BOOST_LOG_DYN_LINK)
 target_include_directories(axon_recorder_test_support PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit
 )
 target_link_libraries(axon_recorder_test_support
     axon_logging
@@ -223,25 +222,10 @@ axon_discover_unit_tests(
     DIR unit
     LIBS axon_recorder_test_support axon_logging
     LABEL unit
-    EXCLUDE "test_ros_sink"           # Needs extra source file
-            "test_ros_introspection"  # Needs ROS compile definitions (handled in ROS section)
+    EXCLUDE "test_ros_introspection"  # Needs ROS compile definitions (handled in ROS section)
             "test_recording_session"  # Needs extra sources (handled in ROS section)
             "test_metadata_injector"  # Needs extra sources (handled in ROS section)
             "test_message_factory"    # Requires ROS (test_message_factory_standalone is the non-ROS version)
-)
-
-# ============================================================================
-# Special Case Unit Tests (need extra sources or different libs)
-# ============================================================================
-
-# test_ros_sink - needs extra source file for the sink implementation
-axon_add_test(NAME test_ros_sink
-    SOURCES unit/test_ros_sink.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../src/logging/axon_ros_sink.cpp
-    LIBS ${Boost_LIBRARIES}
-)
-target_include_directories(test_ros_sink PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit
 )
 
 # ============================================================================
@@ -424,19 +408,6 @@ if(ROS_INTEGRATED_BUILD)
     )
     target_include_directories(test_recording_session_stress PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../generated)
     set_tests_properties(test_recording_session_stress PROPERTIES
-        LABELS "stress"
-        TIMEOUT ${AXON_STRESS_TEST_TIMEOUT}
-    )
-
-    # test_recording_service_impl_stress - uses mock context
-    axon_add_test(NAME test_recording_service_impl_stress
-        SOURCES stress/test_recording_service_impl_stress.cpp
-        LIBS axon_recorder_test_support axon_logging
-    )
-    target_include_directories(test_recording_service_impl_stress PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit
-    )
-    set_tests_properties(test_recording_service_impl_stress PROPERTIES
         LABELS "stress"
         TIMEOUT ${AXON_STRESS_TEST_TIMEOUT}
     )

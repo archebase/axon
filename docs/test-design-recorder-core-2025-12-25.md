@@ -1,6 +1,6 @@
 # Test Design Document: Axon Recorder Core Components
 
-**Document Version:** 1.7  
+**Document Version:** 2.0  
 **Date:** 2025-12-25  
 **Author:** Axon Robotics Team  
 **Reviewers:** Staff/Principal Engineers  
@@ -15,10 +15,13 @@ This document provides a comprehensive test design for the `axon_recorder` packa
 
 ### Current Test Status
 
-The test suite currently has **590 tests** across **23 test files**:
-- **17 unit test files** (467 tests) - Fast, no ROS runtime required
-- **6 integration test files** (100 tests) - Require ROS environment
+The test suite currently has **~520 tests** across **20+ test files**:
+- **13 unit test files** (~390 tests) - Fast, no ROS runtime required
+- **6 integration test files** (~100 tests) - Require ROS environment  
+- **1 stress test file** (~5 tests) - High-throughput scenarios
 - **1 regression test file** (23 tests) - Error recovery scenarios
+
+**Note:** Mock infrastructure was removed in v2.0. All tests now use real implementations.
 
 The goal is to achieve **>90% line coverage** and **>85% branch coverage** while ensuring robust testing of:
 - State machine transitions
@@ -137,25 +140,20 @@ The goal is to achieve **>90% line coverage** and **>85% branch coverage** while
 | Test File | Target Component | Test Count |
 |-----------|------------------|------------|
 | `test_config_parser.cpp` | ConfigParser | 66 |
-| `test_http_callback_client.cpp` | HttpCallbackClient | 92 (+22) |
-| `test_recording_service_impl.cpp` | RecordingServiceImpl | 75 (+24) |
-| `test_metadata_injector.cpp` | MetadataInjector | 57 (+15) |
+| `test_http_callback_client.cpp` | HttpCallbackClient | 92 |
+| `test_metadata_injector.cpp` | MetadataInjector | 57 |
 | `test_state_machine.cpp` | StateManager | 36 |
 | `test_worker_thread_pool.cpp` | WorkerThreadPool | 31 |
-| `test_recording_session.cpp` | RecordingSession | 24 |
+| `test_recording_session.cpp` | RecordingSession | 41 |
 | `test_topic_manager.cpp` | TopicManager | 24 |
 | `test_spsc_queue.cpp` | SPSCQueue | 23 |
-| `test_recorder_context_interface.cpp` | IRecorderContext | 19 |
 | `test_ros_introspection.cpp` | ROS Introspection | 17 |
-| `test_ros_sink.cpp` | AxonRosSink | 16 |
 | `test_message_factory_standalone.cpp` | MessageFactory | 15 |
 | `test_task_config.cpp` | TaskConfig | 14 |
 | `test_message_factory.cpp` | MessageFactory (ROS) | 11 |
 | `test_state_transaction_guard.cpp` | StateTransactionGuard | 8 |
 
-**Mock Infrastructure:**
-- `mock_recorder_context.hpp` - MockRecorderContext for testing RecordingServiceImpl
-- `mock_ros_interface_logging.hpp` - Mock ROS logging interface
+**Note:** Mock infrastructure was removed in v2.0. Tests use real implementations.
 
 #### Integration Tests (`test/integration/`)
 
@@ -211,10 +209,11 @@ Coverage is collected from **multiple sources** and merged in Codecov:
 
 | Workflow | Flag | Coverage Source |
 |----------|------|-----------------|
-| `unit-tests-ros.yml` | `ros1`, `ros2` | ROS unit tests (Humble/Noetic) |
+| `tests-ros.yml` | `ros1`, `ros2` | All ROS tests - unit + integration (Humble/Noetic) |
 | `unit-tests-cpp.yml` | `cpp` | C++ library tests |
-| `integration-tests.yml` | `ros1`, `ros2` | Integration tests (Humble/Noetic) |
 | `e2e-tests.yml` | `ros2` | E2E tests (Humble only) |
+
+**Note:** `tests-ros.yml` replaced separate `unit-tests-ros.yml` and `integration-tests.yml` (v1.9) because `industrial_ci` doesn't reliably pass `CTEST_ARGS` label filters.
 
 **Important:** ROS1-only code paths (e.g., `#if defined(AXON_ROS1)`) are only covered by `ros1` flag from Noetic builds. Similarly, ROS2-only paths require `ros2` flag.
 
@@ -254,13 +253,13 @@ Coverage is collected from **multiple sources** and merged in Codecov:
                     │   (10 tests)    │
                 ╭───┴─────────────────┴───╮
                 │  Integration Tests      │  ← RecorderNode + ROS
-                │  (30 tests)             │
+                │  (~100 tests)           │
             ╭───┴─────────────────────────┴───╮
-            │        Unit Tests               │  ← Isolated component tests
-            │        (100+ tests)             │
+            │        Unit Tests               │  ← Component tests (no mocks)
+            │        (~390 tests)             │
         ╭───┴─────────────────────────────────┴───╮
-        │        Mock Infrastructure              │
-        │   MockRecorderContext, MockRosInterface │
+        │     Real Implementations Only           │
+        │   (No mock infrastructure)              │
         ╰─────────────────────────────────────────╯
 ```
 
@@ -274,6 +273,11 @@ Coverage is collected from **multiple sources** and merged in Codecov:
 | **E2E** | Full system via service calls | Shell/Python | Yes |
 | **Performance** | Throughput, latency, memory | Custom | Yes |
 | **Stress** | Concurrency, resource limits | GTest | No |
+
+> **Note on CI vs Local Execution:**
+> - **Locally:** Unit and integration tests can be run separately using `ctest -L unit` or `ctest -L integration`
+> - **CI:** Both run together in `tests-ros.yml` because `industrial_ci` doesn't reliably pass `CTEST_ARGS` label filters
+> - The test labels and folder organization remain useful for local development and documentation
 
 ### 3.3 ROS1/ROS2 Dual Testing Strategy
 
@@ -300,19 +304,15 @@ The test suite is organized as follows:
 test/
 ├── CMakeLists.txt                     # Auto-discovery macros + test registration
 │
-├── unit/                              # Fast, isolated, no ROS runtime (17 files)
-│   ├── mock_recorder_context.hpp          ← MockRecorderContext for service tests
-│   ├── mock_ros_interface_logging.hpp     ← Mock ROS logging interface
+├── unit/                              # Fast, isolated, no ROS runtime (13 files)
+│   ├── test_helpers.hpp                   ← Shared test utilities
 │   ├── test_config_parser.cpp             ← ConfigParser (66 tests)
 │   ├── test_http_callback_client.cpp      ← HttpCallbackClient (92 tests)
 │   ├── test_message_factory.cpp           ← MessageFactory (ROS required)
 │   ├── test_message_factory_standalone.cpp← MessageFactory (no ROS)
-│   ├── test_metadata_injector.cpp         ← MetadataInjector (42 tests)
-│   ├── test_recorder_context_interface.cpp← IRecorderContext (19 tests)
-│   ├── test_recording_service_impl.cpp    ← RecordingServiceImpl (51 tests)
-│   ├── test_recording_session.cpp         ← RecordingSession (24 tests)
+│   ├── test_metadata_injector.cpp         ← MetadataInjector (57 tests)
+│   ├── test_recording_session.cpp         ← RecordingSession (41 tests)
 │   ├── test_ros_introspection.cpp         ← ROS introspection (17 tests)
-│   ├── test_ros_sink.cpp                  ← AxonRosSink logging (16 tests)
 │   ├── test_spsc_queue.cpp                ← Lock-free queue (23 tests)
 │   ├── test_state_machine.cpp             ← StateManager (36 tests)
 │   ├── test_state_transaction_guard.cpp   ← StateTransactionGuard (8 tests)
@@ -333,8 +333,7 @@ test/
 │   └── test_ros_services.sh               ← ROS service E2E tests
 │
 ├── stress/                            # Stress and load tests
-│   ├── test_recording_session_stress.cpp  ← High-throughput write tests
-│   └── test_recording_service_impl_stress.cpp ← Concurrent service tests
+│   └── test_recording_session_stress.cpp  ← High-throughput write tests
 │
 ├── perf/                              # Performance benchmarks
 │   ├── CMakeLists.txt                     ← Perf test build config
@@ -349,25 +348,8 @@ test/
 **Structure Notes:**
 - E2E shell scripts are in dedicated `e2e/` folder (run on Humble only)
 - GTest integration tests remain in `integration/` folder (run on all distros)
-- Mocks are co-located with unit tests (not in a separate `mocks/` subfolder)
+- **No mock infrastructure** - all tests use real implementations (v2.0)
 - Auto-discovery is already implemented via `axon_discover_unit_tests` macro
-
-#### Future Structure Improvements (Optional)
-
-Consider these improvements if the test suite grows significantly:
-
-```
-test/
-├── unit/
-│   ├── mocks/                         # Consolidate mock headers
-│   │   ├── mock_recorder_context.hpp
-│   │   └── mock_ros_interface_logging.hpp
-│   └── ... (test files)
-│
-└── stress/                            # Add stress tests when needed
-    ├── test_recording_session_stress.cpp
-    └── test_high_throughput.cpp
-```
 
 > **Note:** The E2E scripts were renamed from `run_integration_tests.sh` to `run_e2e_tests.sh` and moved to `test/e2e/` to better reflect their purpose (end-to-end tests via ROS service calls, not GTest integration tests).
 
@@ -496,13 +478,10 @@ ctest -R test_state_machine --output-on-failure
 - Metadata injection flow
 - Task config integration
 
-#### RecordingServiceImpl Tests (Existing)
+#### RecordingServiceImpl Tests
 
-**`test/unit/test_recording_service_impl.cpp`** (51 tests) - ✅ EXISTS
-- All service handlers (CachedRecordingConfig, IsRecordingReady, RecordingControl, RecordingStatus)
-- State machine integration
-- Error handling
-- Concurrency tests
+> **Note:** `test_recording_service_impl.cpp` was removed in v2.0 (mock infrastructure removal). 
+> Service behavior is now tested via integration tests in `test_recorder_node_recording.cpp` and `test_service_adapter.cpp` which use real `RecorderNode`.
 
 ### 4.2 Additional Tests (Gap Coverage) - ✅ IMPLEMENTED
 
@@ -554,15 +533,7 @@ TEST_F(RecordingSessionStressTest, MixedMessageSizesConcurrent)      // ✅
 TEST_F(RecordingSessionStressTest, SustainedLoadFor5Seconds)         // ✅
 ```
 
-**File: `test/stress/test_recording_service_impl_stress.cpp`**
-
-```cpp
-TEST_F(RecordingServiceImplStressTest, RapidStateChanges100PerSecond)         // ✅
-TEST_F(RecordingServiceImplStressTest, ConcurrentStatusQueriesWhileRecording) // ✅
-TEST_F(RecordingServiceImplStressTest, RapidConfigCaching)                    // ✅
-TEST_F(RecordingServiceImplStressTest, ConcurrentIsRecordingReadyQueries)     // ✅
-TEST_F(RecordingServiceImplStressTest, MixedCommandsFromMultipleThreads)      // ✅
-```
+> **Note:** `test_recording_service_impl_stress.cpp` was removed in v2.0 as it depended on mock infrastructure.
 
 **Running Stress Tests:**
 ```bash
@@ -577,38 +548,22 @@ ctest -R test_recording_session_stress --output-on-failure
 
 ## 5. Test Infrastructure
 
-### 5.1 Existing Mock Infrastructure
+### 5.1 Test Philosophy: No Mocks
 
-**`test/unit/mock_recorder_context.hpp`** - ✅ EXISTS
+**Design Decision (v2.0):** The test suite does not use mock objects. All tests use real implementations directly.
 
-```cpp
-/**
- * MockRecorderContext for testing RecordingServiceImpl without RecorderNode.
- * Implements IRecorderContext interface for dependency injection.
- */
-class MockRecorderContext : public IRecorderContext {
-public:
-  // State management
-  StateManager& get_state_manager() override;
-  TaskConfigCache& get_task_config_cache() override;
-  
-  // Recording operations
-  bool start_recording() override;
-  void stop_recording() override;
-  void pause_recording() override;
-  void resume_recording() override;
-  void cancel_recording() override;
-  
-  // Verification helpers
-  bool was_start_recording_called() const;
-  bool was_stop_recording_called() const;
-  // ... etc
-};
-```
+**Benefits:**
+- Tests validate actual behavior, not mock approximations
+- No maintenance overhead keeping mocks in sync with implementation
+- Higher confidence in test results
+- Simpler test code
 
-**`test/unit/mock_ros_interface_logging.hpp`** - ✅ EXISTS
+**Trade-offs:**
+- Some tests require ROS environment to run
+- Tests may be slightly slower
+- Integration tests handle scenarios that might have been unit-tested with mocks
 
-Mock ROS logging interface for testing logging components.
+**Rationale:** The `RecordingServiceImpl` tests (which previously used `MockRecorderContext`) are now covered by integration tests that use the real `RecorderNode`. This ensures we test the actual system behavior rather than mock assumptions.
 
 ### 5.2 Test Support Libraries
 
@@ -754,28 +709,27 @@ Legend: ✓ = Required, ○ = Optional, - = Not run
 
 ```
 ┌─────────────────────────────────────────────────┐
-│               Unit Tests (Stage 1)              │
+│            Tests (Stage 1 - parallel)           │
 │  ┌───────────────────┐  ┌───────────────────┐   │
-│  │ ROS Unit Tests    │  │ C++ Unit Tests    │   │  (parallel)
-│  │ +cov (Humble/     │  │ +cov              │   │
+│  │ ROS Tests         │  │ C++ Unit Tests    │   │
+│  │ (unit+integration)│  │ +cov              │   │
+│  │ +cov (Humble/     │  │                   │   │
 │  │      Noetic)      │  │                   │   │
 │  └───────────────────┘  └───────────────────┘   │
 └─────────────────────┬───────────────────────────┘
                       │
-             ┌────────┴────────┐
-             ▼                 ▼
-       ┌───────────┐     ┌───────────┐
-       │ Integr.   │     │   E2E     │  (parallel, both collect coverage)
-       │  Tests    │     │   Tests   │
-       │  +cov     │     │   +cov    │
-       └───────────┘     └───────────┘
+                      ▼
+                ┌───────────┐
+                │   E2E     │  (E2E tests after unit tests)
+                │   Tests   │
+                │   +cov    │
+                └───────────┘
 ```
 
 | Workflow | File | Runs On | Tests | Coverage |
 |----------|------|---------|-------|----------|
-| ROS Unit Tests | `unit-tests-ros.yml` | All distros | `ctest -LE integration` | Humble/Noetic → `ros1`/`ros2` |
+| ROS Tests | `tests-ros.yml` | All distros | All unit + integration tests | Humble/Noetic → `ros1`/`ros2` |
 | C++ Unit Tests | `unit-tests-cpp.yml` | Ubuntu 22.04 | C++ library tests | → `cpp` |
-| Integration Tests | `integration-tests.yml` | All distros | `ctest -L integration` | Humble/Noetic → `ros1`/`ros2` |
 | E2E Tests | `e2e-tests.yml` | Humble only | `run_e2e_tests.sh` | → `ros2` |
 
 ### CI Test Commands
@@ -849,22 +803,23 @@ lcov --remove coverage_raw.info '/usr/*' '*/test/*' --output-file coverage.info
 genhtml coverage.info --output-directory html
 ```
 
-### D. Mock Interface Quick Reference
+### D. Test Philosophy Reference
 
-| Mock Class | File | Purpose |
-|------------|------|---------|
-| `MockRecorderContext` | `test/unit/mock_recorder_context.hpp` | Test RecordingServiceImpl without RecorderNode |
-| `MockRosInterfaceLogging` | `test/unit/mock_ros_interface_logging.hpp` | Test logging components |
+| Decision | Rationale |
+|----------|-----------|
+| No mock objects | Tests use real implementations for higher confidence |
+| Integration-first | Service tests use real RecorderNode, not mocks |
+| Real ROS required | Some tests require ROS environment (trade-off accepted) |
 
 ### E. Test File Inventory
 
-**Total: ~620+ tests across 26 files**
+**Total: ~520+ tests across 21 files**
 
 | Category | Files | Tests |
 |----------|-------|-------|
-| Unit | 17 | ~480 |
-| Integration | 7 | ~110 |
-| Stress | 2 | 10 |
+| Unit | 13 | ~390 |
+| Integration | 6 | ~100 |
+| Stress | 1 | 5 |
 | Regression | 1 | 23 |
 
 #### New Files Added (v1.4)
@@ -889,8 +844,18 @@ genhtml coverage.info --output-directory html
 | `test/unit/test_http_callback_client.cpp` | +22 URL parsing, async, token handling tests | P1 |
 | `test/unit/test_recording_session.cpp` | +17 sidecar validation, schema edge cases, concurrent write tests | P1/P2 |
 | `test/unit/test_metadata_injector.cpp` | +15 expanded metadata, Unicode, edge case tests | P1/P2 |
-| `test/unit/test_recording_service_impl.cpp` | +24 error injection, state transition edge cases | P2 |
 | `test/unit/test_worker_thread_pool.cpp` | +15 error path, overflow, concurrent creation tests | P2 |
+
+#### Deleted Files (v2.0 - Mock Removal)
+
+| File | Reason |
+|------|--------|
+| `test/unit/mock_recorder_context.hpp` | Mock infrastructure removed |
+| `test/unit/mock_ros_interface_logging.hpp` | Mock infrastructure removed |
+| `test/unit/test_recording_service_impl.cpp` | Depended on mocks; covered by integration tests |
+| `test/unit/test_recorder_context_interface.cpp` | Tested mock infrastructure only |
+| `test/unit/test_ros_sink.cpp` | Depended on mock ROS interface |
+| `test/stress/test_recording_service_impl_stress.cpp` | Depended on mocks |
 
 ---
 
@@ -907,6 +872,8 @@ genhtml coverage.info --output-directory html
 | 1.6 | 2025-12-25 | Axon Robotics | Added Root Cause Analysis section for low coverage; fixed ROS2 bug (missing `register_common_message_types()` call); documented coverage collection strategy |
 | 1.7 | 2025-12-25 | Axon Robotics | Made `stats_file_path` configurable in `DatasetConfig`; added `axon_recorder_test_support_mcap` library; added `write_stats_file()` tests |
 | 1.8 | 2025-12-25 | Axon Robotics | P1/P2 coverage improvements: +93 tests covering HTTP client edge cases, sidecar validation, metadata injection, error injection, state transitions, worker pool error paths |
+| 1.9 | 2025-12-25 | Axon Robotics | Merged `unit-tests-ros.yml` and `integration-tests.yml` into `tests-ros.yml` - industrial_ci doesn't reliably pass CTEST_ARGS label filters |
+| 2.0 | 2025-12-25 | Axon Robotics | **Major refactor:** Removed all mock infrastructure. Deleted mock files (`mock_recorder_context.hpp`, `mock_ros_interface_logging.hpp`) and mock-dependent tests (`test_recording_service_impl.cpp`, `test_ros_sink.cpp`, `test_recorder_context_interface.cpp`, `test_recording_service_impl_stress.cpp`). All tests now use real implementations. |
 
 ---
 

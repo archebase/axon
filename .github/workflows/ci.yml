@@ -4,29 +4,28 @@
 # Main entry point that orchestrates the full CI pipeline.
 #
 # Coverage Collection Strategy:
-#   - ROS unit tests (Humble/Noetic) collect coverage → Codecov (ros1/ros2)
+#   - ROS tests (Humble/Noetic) collect coverage → Codecov (ros1/ros2)
 #   - C++ unit tests collect coverage → Codecov (cpp)
-#   - Integration tests (Humble/Noetic) collect coverage → Codecov (ros1/ros2)
 #   - E2E tests (Humble) collect coverage → Codecov (ros2)
 #
 # Pipeline Diagram:
 #
 #   ┌─────────────────────────────────────────────────┐
-#   │               Unit Tests (Stage 1)              │
+#   │            Tests (Stage 1 - parallel)           │
 #   │  ┌───────────────────┐  ┌───────────────────┐   │
-#   │  │ ROS Unit Tests    │  │ C++ Unit Tests    │   │  (parallel)
-#   │  │ +cov (Humble/     │  │ +cov              │   │
+#   │  │ ROS Tests         │  │ C++ Unit Tests    │   │
+#   │  │ (unit+integration)│  │ +cov              │   │
+#   │  │ +cov (Humble/     │  │                   │   │
 #   │  │      Noetic)      │  │                   │   │
 #   │  └───────────────────┘  └───────────────────┘   │
 #   └─────────────────────┬───────────────────────────┘
 #                         │
-#                ┌────────┴────────┐
-#                ▼                 ▼
-#          ┌───────────┐     ┌───────────┐
-#          │ Integr.   │     │   E2E     │  (parallel, both collect coverage)
-#          │  Tests    │     │   Tests   │
-#          │  +cov     │     │   +cov    │
-#          └───────────┘     └───────────┘
+#                         ▼
+#                   ┌───────────┐
+#                   │   E2E     │  (E2E tests after unit tests pass)
+#                   │   Tests   │
+#                   │   +cov    │
+#                   └───────────┘
 #
 # =============================================================================
 
@@ -46,11 +45,12 @@ concurrency:
 
 jobs:
   # ===========================================================================
-  # Stage 1: Unit Tests (ROS and C++ run in parallel)
+  # Stage 1: ROS Tests and C++ Tests (run in parallel)
+  # ROS tests include both unit and integration tests
   # ===========================================================================
-  unit-tests-ros:
-    name: ROS Unit Tests
-    uses: ./.github/workflows/unit-tests-ros.yml
+  tests-ros:
+    name: ROS Tests
+    uses: ./.github/workflows/tests-ros.yml
     secrets: inherit
 
   unit-tests-cpp:
@@ -59,18 +59,12 @@ jobs:
     secrets: inherit
 
   # ===========================================================================
-  # Stage 2: Integration Tests + E2E Tests (parallel after unit tests)
-  # Both collect coverage data and upload to Codecov
+  # Stage 2: E2E Tests (after unit tests pass)
+  # E2E tests collect coverage and upload to Codecov
   # ===========================================================================
-  integration-tests:
-    name: Integration Tests
-    needs: [unit-tests-ros, unit-tests-cpp]
-    uses: ./.github/workflows/integration-tests.yml
-    secrets: inherit
-
   e2e-tests:
     name: E2E Tests
-    needs: [unit-tests-ros, unit-tests-cpp]
+    needs: [tests-ros, unit-tests-cpp]
     uses: ./.github/workflows/e2e-tests.yml
     secrets: inherit
 
@@ -80,28 +74,22 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [unit-tests-ros, unit-tests-cpp, integration-tests, e2e-tests]
+    needs: [tests-ros, unit-tests-cpp, e2e-tests]
     if: always()
     steps:
       - name: Check pipeline status
         run: |
-          echo "ROS Unit Tests: ${{ needs.unit-tests-ros.result }}"
+          echo "ROS Tests: ${{ needs.tests-ros.result }}"
           echo "C++ Unit Tests: ${{ needs.unit-tests-cpp.result }}"
-          echo "Integration Tests: ${{ needs.integration-tests.result }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
           
-          if [ "${{ needs.unit-tests-ros.result }}" != "success" ]; then
-            echo "❌ ROS unit tests failed"
+          if [ "${{ needs.tests-ros.result }}" != "success" ]; then
+            echo "❌ ROS tests failed"
             exit 1
           fi
           
           if [ "${{ needs.unit-tests-cpp.result }}" != "success" ]; then
             echo "❌ C++ unit tests failed"
-            exit 1
-          fi
-          
-          if [ "${{ needs.integration-tests.result }}" != "success" ]; then
-            echo "❌ Integration tests failed"
             exit 1
           fi
           

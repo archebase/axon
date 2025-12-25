@@ -1,14 +1,14 @@
 # =============================================================================
-# ROS Unit Tests Workflow for Axon
+# ROS Tests Workflow for Axon
 # =============================================================================
-# Runs ROS unit tests for axon_recorder package.
+# Runs all ROS tests (unit + integration) for axon_recorder package.
 # Tests on all distros for compatibility, coverage collected for Humble + Noetic.
 #
 # Coverage is collected from Humble (ROS2) and Noetic (ROS1) and uploaded to
-# Codecov. Jazzy and Rolling run for compatibility testing only.
+# Codecov with ros1/ros2 flags for merging.
 # =============================================================================
 
-name: ROS Unit Tests
+name: ROS Tests
 
 on:
   # Called by ci.yml orchestrator
@@ -18,18 +18,18 @@ on:
 
 env:
   # Common dependencies shared across jobs (includes ccache for faster rebuilds)
-  # Added lcov for coverage collection
+  # Includes lcov for coverage collection
   COMMON_DEBS: git ccache libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev pkg-config libgtest-dev libgmock-dev lcov
 
 jobs:
   # ==========================================================================
-  # ROS Unit Tests
+  # ROS Tests - All unit and integration tests
   # Collects coverage from Humble and Noetic, uploads to Codecov
   # ==========================================================================
-  ros-unit-tests:
-    name: ROS Unit Tests (${{ matrix.ros_distro }})
+  ros-tests:
+    name: ROS Tests (${{ matrix.ros_distro }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -74,8 +74,8 @@ jobs:
           # Enable coverage for Humble and Noetic, Release for others
           CMAKE_ARGS: ${{ matrix.collect_coverage && '-DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON' || '-DCMAKE_BUILD_TYPE=Release' }}
           PARALLEL_BUILDS: 2
-          # Run only unit tests (exclude integration tests - they have their own workflow)
-          CTEST_ARGS: -LE integration --output-on-failure
+          # Run all tests (unit + integration)
+          CTEST_ARGS: --output-on-failure
           # Mount coverage output directory for coverage collection
           DOCKER_RUN_OPTS: ${{ matrix.collect_coverage && format('-v {0}/coverage_output:/coverage_output', github.workspace) || '' }}
           # Collect coverage after tests (only for Humble and Noetic)
@@ -85,7 +85,7 @@ jobs:
               exit 0
             fi
             
-            echo "=== Collecting unit test coverage data ==="
+            echo "=== Collecting test coverage data ==="
             
             # Find the workspace
             if [ -d /root/target_ws ]; then
@@ -154,7 +154,7 @@ jobs:
               echo "WARNING: coverage.info is empty!"
             fi
             
-            echo "=== Unit test coverage collection complete ==="
+            echo "=== Test coverage collection complete ==="
 
       - name: Upload coverage to Codecov
         if: matrix.collect_coverage
@@ -163,7 +163,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ github.workspace }}/coverage_output/coverage.info
           flags: ${{ matrix.coverage_flag }}
-          name: axon-unit-${{ matrix.ros_distro }}-coverage
+          name: axon-${{ matrix.ros_distro }}-coverage
           fail_ci_if_error: false
           verbose: true
 
@@ -171,23 +171,24 @@ jobs:
         if: matrix.collect_coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-unit-${{ matrix.ros_distro }}
+          name: coverage-${{ matrix.ros_distro }}
           path: ${{ github.workspace }}/coverage_output/coverage.info
           retention-days: 30
 
   # ==========================================================================
   # Final status check - ensures all required jobs passed
   # ==========================================================================
-  unit-tests-success:
-    name: ROS Unit Tests Success
+  ros-tests-success:
+    name: ROS Tests Success
     runs-on: ubuntu-latest
-    needs: [ros-unit-tests]
+    needs: [ros-tests]
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
-          if [ "${{ needs.ros-unit-tests.result }}" != "success" ]; then
-            echo "ROS unit tests failed"
+          if [ "${{ needs.ros-tests.result }}" != "success" ]; then
+            echo "ROS tests failed"
             exit 1
           fi
-          echo "All ROS unit tests passed!"
+          echo "All ROS tests passed!"
+

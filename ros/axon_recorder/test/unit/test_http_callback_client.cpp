@@ -1252,6 +1252,19 @@ TEST_F(HttpCallbackClientTest, UrlParsingWithFragment) {
   EXPECT_FALSE(result.success);
 }
 
+TEST_F(HttpCallbackClientTest, UrlParsingIPv4Address) {
+  TaskConfig config;
+  config.task_id = "task_001";
+  config.start_callback_url = "http://192.168.1.100:8080/api";
+  
+  StartCallbackPayload payload;
+  payload.task_id = "task_001";
+  
+  auto result = client_->post_start_callback(config, payload);
+  
+  EXPECT_FALSE(result.success);
+}
+
 TEST_F(HttpCallbackClientTest, UrlParsingLocalhostAlias) {
   TaskConfig config;
   config.task_id = "task_001";
