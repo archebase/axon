@@ -188,6 +188,15 @@ lcov --remove "${OUTPUT_DIR}/coverage_raw.info" \
     cp "${OUTPUT_DIR}/coverage_raw.info" "${OUTPUT_DIR}/coverage.info"
 }
 
+# Normalize paths for Codecov compatibility (same as CI)
+echo "Normalizing paths for Codecov compatibility..."
+# Remove /workspace/axon/ prefix to get repo-relative paths
+sed -i "s|/workspace/axon/||g" "${OUTPUT_DIR}/coverage.info" || true
+
+# Debug: show sample of normalized paths
+echo "Sample paths in coverage.info:"
+grep "^SF:" "${OUTPUT_DIR}/coverage.info" | head -10 || true
+
 # Generate coverage summary
 echo ""
 echo "============================================"
