@@ -12,10 +12,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # =============================================================================
 
 # The uploader requires AWS SDK (S3), OpenSSL, and SQLite3. If these are not
-# available, the module will be skipped. Install them with:
-#   Ubuntu/Debian: sudo apt-get install libaws-cpp-sdk-s3-dev libaws-cpp-sdk-transfer-dev \
-#                  libssl-dev libsqlite3-dev
-#   macOS: brew install aws-sdk-cpp openssl sqlite3
+# available, the module will be skipped.
+#
+# AWS SDK must be built from source (no apt packages available):
+#   git clone --recurse-submodules https://github.com/aws/aws-sdk-cpp
+#   cd aws-sdk-cpp && cmake -B build -DBUILD_ONLY="s3;transfer" && cmake --build build
+#   sudo cmake --install build
+#
+# Other dependencies:
+#   Ubuntu/Debian: sudo apt-get install libssl-dev libsqlite3-dev libcurl4-openssl-dev
+#   macOS: brew install openssl sqlite3 curl
 
 find_package(OpenSSL QUIET)
 find_package(SQLite3 QUIET)
@@ -32,7 +38,7 @@ if(NOT SQLite3_FOUND)
 endif()
 
 if(NOT AWSSDK_FOUND)
-    message(WARNING "axon_uploader: AWS SDK not found - skipping build. Install with: sudo apt-get install libaws-cpp-sdk-s3-dev libaws-cpp-sdk-transfer-dev")
+    message(WARNING "axon_uploader: AWS SDK not found - skipping build. AWS SDK must be built from source (see CMakeLists.txt comments)")
     return()
 endif()
 

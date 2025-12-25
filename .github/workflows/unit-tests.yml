@@ -12,12 +12,29 @@ env:
 
 jobs:
   # ==========================================================================
-  # C++ Tests Job - Build and test the C++ MCAP library
+  # C++ Tests Job - Build and test all C++ libraries in parallel
   # ==========================================================================
   cpp-tests:
-    name: C++ Tests
+    name: C++ Tests - ${{ matrix.library }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - library: axon_mcap
+            cmake_flag: AXON_MCAP
+            extra_packages: ""
+            needs_aws_sdk: false
+          - library: axon_uploader
+            cmake_flag: AXON_UPLOADER
+            extra_packages: "libsqlite3-dev libcurl4-openssl-dev"
+            needs_aws_sdk: true
+          - library: axon_logging
+            cmake_flag: AXON_LOGGING
+            extra_packages: ""
+            needs_aws_sdk: false
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,40 +42,85 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libzstd-dev liblz4-dev libboost-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev
+          packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libzstd-dev liblz4-dev libboost-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libssl-dev
           version: 1.0
+
+      - name: Install extra packages for ${{ matrix.library }}
+        if: matrix.extra_packages != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.extra_packages }}
+
+      # =========================================================================
+      # AWS SDK for C++ (built from source - no apt packages available)
+      # =========================================================================
+      - name: Cache AWS SDK
+        if: matrix.needs_aws_sdk
+        uses: actions/cache@v4
+        id: aws-sdk-cache
+        with:
+          path: ~/aws-sdk-cpp-install
+          key: aws-sdk-cpp-1.11-${{ runner.os }}-s3-transfer
+
+      - name: Build AWS SDK from source
+        if: matrix.needs_aws_sdk && steps.aws-sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Building AWS SDK from source (this will be cached for future runs)..."
+          git clone --recurse-submodules --depth 1 --branch 1.11.458 \
+            https://github.com/aws/aws-sdk-cpp.git ~/aws-sdk-cpp-src
+          cd ~/aws-sdk-cpp-src
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=~/aws-sdk-cpp-install \
+            -DBUILD_ONLY="s3;transfer" \
+            -DENABLE_TESTING=OFF \
+            -DAUTORUN_UNIT_TESTS=OFF \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build -j$(nproc)
+          cmake --install build
+          rm -rf ~/aws-sdk-cpp-src
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          # Key includes OS and a hash; restore-keys allows fallback to main branch cache
-          key: ccache-cpp-${{ runner.os }}-${{ hashFiles('cpp/**/*.cpp', 'cpp/**/*.hpp') }}
+          key: ccache-cpp-${{ matrix.library }}-${{ runner.os }}-${{ hashFiles('cpp/**/*.cpp', 'cpp/**/*.hpp') }}
           restore-keys: |
+            ccache-cpp-${{ matrix.library }}-${{ runner.os }}-
             ccache-cpp-${{ runner.os }}-
 
       - name: Configure ccache
         run: |
           ccache --set-config=max_size=500M
           ccache --set-config=compression=true
-          ccache -z  # Zero stats
+          ccache -z
 
-      - name: Build C++ MCAP library with tests
-        working-directory: cpp/axon_mcap
+      - name: Build and test ${{ matrix.library }}
         run: |
-          mkdir -p build
-          cd build
-          cmake .. -DAXON_MCAP_BUILD_TESTS=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          cd cpp/${{ matrix.library }}
+          mkdir -p build && cd build
+          
+          CMAKE_ARGS=(
+            -D${{ matrix.cmake_flag }}_BUILD_TESTS=ON
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          )
+          
+          if [ "${{ matrix.needs_aws_sdk }}" = "true" ]; then
+            CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH=~/aws-sdk-cpp-install)
+            export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          fi
+          
+          cmake .. "${CMAKE_ARGS[@]}"
           cmake --build . --parallel $(nproc)
+          
+          if [ "${{ matrix.needs_aws_sdk }}" = "true" ]; then
+            export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          fi
+          ctest --output-on-failure --verbose
 
       - name: Show ccache stats
         run: ccache -s
-
-      - name: Run C++ tests
-        working-directory: cpp/axon_mcap/build
-        run: ctest --output-on-failure --verbose
 
   # ==========================================================================
   # ROS Unit Tests - Runs in PARALLEL with cpp-tests

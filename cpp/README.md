@@ -66,12 +66,18 @@ sudo apt-get install -y \
     liblz4-dev \
     libgtest-dev
 
-# For axon_uploader
+# For axon_uploader (AWS SDK must be built from source)
 sudo apt-get install -y \
-    libaws-cpp-sdk-s3-dev \
-    libaws-cpp-sdk-transfer-dev \
     libssl-dev \
-    libsqlite3-dev
+    libsqlite3-dev \
+    libcurl4-openssl-dev
+
+# Build AWS SDK from source (no apt packages available)
+git clone --recurse-submodules --depth 1 https://github.com/aws/aws-sdk-cpp
+cd aws-sdk-cpp
+cmake -B build -DBUILD_ONLY="s3;transfer" -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+sudo cmake --install build
 
 # For axon_logging
 sudo apt-get install -y \
