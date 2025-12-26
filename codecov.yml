@@ -30,7 +30,7 @@ flag_management:
   default_rules:
     carryforward: false
 
-# Ignore test files and auto-generated files from coverage metrics
+# Ignore test files, non-source files, and auto-generated files from coverage metrics
 ignore:
   # Test files
   - "ros/axon_recorder/test/**/*"
@@ -47,6 +47,27 @@ ignore:
   - "**/rosidl_typesupport_introspection_cpp/**/*"
   - "**/rosidl_typesupport_fastrtps_cpp/**/*"
   - "**/rosidl_generator_cpp/**/*"
+  # Non-source files (documentation, config, CI, build scripts)
+  - "**/*.md"
+  - "**/*.yml"
+  - "**/*.yaml"
+  - "**/*.xml"
+  - "**/*.txt"
+  - "**/*.cmake"
+  - "**/CMakeLists.txt"
+  - "**/*.sh"
+  - "**/*.in"
+  - ".github/**/*"
+  - ".cursor/**/*"
+  - ".vscode/**/*"
+  - "docs/**/*"
+  - "ros/docker/**/*"
+  - "**/Makefile"
+  - "**/Makefile.*"
+  - "**/*.srv"
+  - "**/package.xml"
+  - "**/launch/**/*"
+  - "**/config/**/*"
 
 # Comment configuration for PR feedback
 comment:
