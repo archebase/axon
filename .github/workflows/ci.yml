@@ -149,6 +149,7 @@ jobs:
             # Build directory absolute paths (keep relative build/ prefix for filtering)
             sed -i 's|/root/target_ws/build/|build/|g' "$f"
             sed -i 's|/root/catkin_ws/build/|build/|g' "$f"
+            sed -i 's|/root/upstream_ws/build/|build/|g' "$f"
           done
           
           echo ""
@@ -257,6 +258,8 @@ jobs:
           override_commit: ${{ github.sha }}
           override_branch: ${{ github.ref_name }}
           override_build: ${{ github.run_id }}
+          # Include PR number for PR status checks (empty string on push events is fine)
+          override_pr: ${{ github.event.pull_request.number }}
 
       - name: Upload merged coverage artifact
         uses: actions/upload-artifact@v4
