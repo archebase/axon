@@ -124,12 +124,19 @@ jobs:
             
             # Docker/industrial_ci workspace prefixes (ROS2)
             sed -i 's|/root/target_ws/src/Axon/||g' "$f"
+            # Map package to repo structure in case package is copied directly (without Axon/ parent)
+            sed -i 's|/root/target_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
+            # Fallback: strip any remaining target_ws paths
             sed -i 's|/root/target_ws/src/||g' "$f"
             sed -i 's|/root/upstream_ws/src/Axon/||g' "$f"
+            sed -i 's|/root/upstream_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
             sed -i 's|/root/upstream_ws/src/||g' "$f"
             
             # Docker/industrial_ci workspace prefixes (ROS1 catkin)
             sed -i 's|/root/catkin_ws/src/axon_recorder/../../||g' "$f"
+            # Map catkin package to repo structure (catkin_ws/src/axon_recorder/ → ros/axon_recorder/)
+            sed -i 's|/root/catkin_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
+            # Fallback: strip any remaining catkin paths
             sed -i 's|/root/catkin_ws/src/||g' "$f"
             
             # Local workspace prefix (docker local runs)
