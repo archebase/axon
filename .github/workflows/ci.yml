@@ -157,11 +157,14 @@ jobs:
           # - Build directory (auto-generated ROS files)
           echo ""
           echo "=== Filtering out non-matching paths ==="
+          # Note: lcov 1.14 uses shell-style globs. Use explicit patterns for generated files.
           lcov --remove merged_coverage.info \
             '/root/*' \
             '/home/*' \
-            'build/*' \
             '*/build/*' \
+            '*rosidl_typesupport*' \
+            '*rosidl_generator*' \
+            '*rosidl_adapter*' \
             --output-file merged_coverage_filtered.info \
             --rc lcov_branch_coverage=1 \
             ${LCOV_IGNORE_FLAGS} || cp merged_coverage.info merged_coverage_filtered.info
@@ -197,8 +200,8 @@ jobs:
           verbose: true
           # Disable file search to only upload the specified merged file
           disable_search: true
-          # Disable carryover to ensure fresh coverage data
-          disable_file_fixes: true
+          # Enable Codecov's automatic path fixing for CI environments
+          disable_file_fixes: false
           # Override to ensure this is the authoritative upload
           override_commit: ${{ github.sha }}
           override_branch: ${{ github.ref_name }}

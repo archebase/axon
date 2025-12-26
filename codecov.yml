@@ -9,6 +9,16 @@
 #   - Single unified coverage report for the entire project
 # =============================================================================
 
+# Path fixes to map CI paths to git repository structure
+# See: https://docs.codecov.com/docs/fixing-paths
+fixes:
+  # GitHub Actions workspace path prefix
+  - "/home/runner/work/Axon/Axon/::"
+  # Docker workspace paths (for ROS tests)
+  - "/workspace/::"
+  - "/root/workspace/::"
+  - "/catkin_ws/src/axon_recorder/::ros/axon_recorder/"
+
 coverage:
   status:
     project:
