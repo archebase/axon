@@ -20,29 +20,15 @@ on:
 
 jobs:
   # ===========================================================================
-  # Run integration tests with MinIO service container
+  # Run integration tests with MinIO (started manually via docker run)
   # ===========================================================================
   cpp-integration-tests:
     name: C++ Integration Tests - axon_uploader
     runs-on: ubuntu-22.04
     
-    # MinIO service container for S3-compatible storage
-    services:
-      minio:
-        image: quay.io/minio/minio:latest
-        ports:
-          - 9000:9000
-          - 9001:9001
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        # MinIO requires a command to start in server mode
-        # GitHub Actions services use the image's entrypoint, so we override
+    # Note: MinIO is started manually in a step below because GitHub Actions
+    # services don't support command override, and MinIO requires
+    # "server /data" to actually start the storage server.
     
     steps:
       - name: Checkout repository
