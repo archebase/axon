@@ -2,6 +2,7 @@
 
 #include <aws/core/Aws.h>
 #include <aws/core/auth/AWSCredentials.h>
+#include <aws/core/client/DefaultRetryStrategy.h>
 #include <aws/core/utils/DateTime.h>
 #include <aws/core/utils/memory/stl/AWSStringStream.h>
 #include <aws/core/utils/threading/Executor.h>
@@ -146,6 +147,11 @@ public:
     // Set timeouts
     client_config.connectTimeoutMs = config.connect_timeout_ms;
     client_config.requestTimeoutMs = config.request_timeout_ms;
+
+    // Configure retry strategy
+    // This controls AWS SDK's internal retries (separate from EdgeUploader's retry logic)
+    client_config.retryStrategy = std::make_shared<Aws::Client::DefaultRetryStrategy>(
+        config.max_sdk_retries);
 
     // Create credentials
     Aws::Auth::AWSCredentials credentials(config.access_key, config.secret_key);
