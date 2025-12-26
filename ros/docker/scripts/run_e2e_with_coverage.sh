@@ -2,23 +2,26 @@
 set -e
 
 # =============================================================================
-# Coverage Test Runner
+# E2E Test Runner with Coverage
 # =============================================================================
-# This script builds and runs tests with coverage instrumentation,
-# then generates an lcov coverage report.
+# This script builds with coverage instrumentation and runs ONLY E2E tests
+# (not unit tests). Used by CI for E2E-specific coverage collection.
 #
-# Usage: ./run_coverage.sh [output_dir]
-#   output_dir: Directory to store coverage reports (default: /workspace/coverage)
+# Usage: ./run_e2e_with_coverage.sh [output_dir]
+#   output_dir: Directory to store coverage reports (default: /coverage_output)
 #
 # Environment variables:
 #   ROS_DISTRO: ROS distribution (default: humble)
 #   ROS_VERSION: ROS version 1 or 2 (default: 2)
+#   COVERAGE_OUTPUT: Alternative way to specify output directory
 # =============================================================================
 
-OUTPUT_DIR="${1:-/workspace/coverage}"
+# Support both argument and environment variable for output path
+OUTPUT_DIR="${1:-${COVERAGE_OUTPUT:-/coverage_output}}"
 
 echo "============================================"
-echo "Running Coverage Tests for ROS ${ROS_VERSION:-2} (${ROS_DISTRO:-humble})"
+echo "Running E2E Tests with Coverage"
+echo "ROS ${ROS_VERSION:-2} (${ROS_DISTRO:-humble})"
 echo "Output directory: ${OUTPUT_DIR}"
 echo "============================================"
 
@@ -56,7 +59,11 @@ if [ "${ROS_VERSION:-2}" = "1" ]; then
     rm -rf /workspace/catkin_ws
     mkdir -p /workspace/catkin_ws/src
     cd /workspace/catkin_ws
+    # Symlink the package
     ln -sf /workspace/axon/ros/axon_recorder src/axon_recorder
+    # Symlink cpp/ directory for dependencies (axon_mcap, axon_logging)
+    # CMakeLists.txt uses ../../cpp/ relative paths
+    ln -sf /workspace/axon/cpp cpp
     
     catkin_make \
         -DCMAKE_BUILD_TYPE=Debug \
@@ -64,11 +71,8 @@ if [ "${ROS_VERSION:-2}" = "1" ]; then
     
     source devel/setup.bash
     
-    echo "Running catkin tests..."
-    catkin_make run_tests || true
-    
-    # Capture coverage
     COVERAGE_DIR="${PWD}/build"
+    E2E_RUNNER="/workspace/axon/ros/axon_recorder/test/e2e/run_e2e_tests.sh"
 else
     # ROS 2 - Use colcon with coverage
     echo "Building with colcon (ROS 2) + coverage..."
@@ -84,23 +88,34 @@ else
     
     source install/setup.bash
     
-    echo "Running colcon tests..."
-    colcon test \
-        --packages-select axon_recorder \
-        --event-handlers console_direct+ \
-        --base-paths ros || true
-    
-    colcon test-result --verbose || true
-    
     COVERAGE_DIR="${PWD}/build/axon_recorder"
+    E2E_RUNNER="/workspace/axon/ros/axon_recorder/test/e2e/run_e2e_tests.sh"
 fi
 
 # =============================================================================
-# Part 2: Generate Coverage Report
+# Part 2: Run E2E Tests ONLY (exits immediately on failure - no coverage for failed tests)
 # =============================================================================
 echo ""
 echo "============================================"
-echo "Part 2: Generating coverage report..."
+echo "Part 2: Running E2E tests only..."
+echo "============================================"
+
+if [ -f "${E2E_RUNNER}" ]; then
+    chmod +x "${E2E_RUNNER}"
+    "${E2E_RUNNER}"
+else
+    echo "ERROR: E2E test runner not found at ${E2E_RUNNER}"
+    exit 1
+fi
+
+echo "E2E tests passed!"
+
+# =============================================================================
+# Part 3: Generate Coverage Report
+# =============================================================================
+echo ""
+echo "============================================"
+echo "Part 3: Generating coverage report..."
 echo "============================================"
 
 # Check if lcov is available
@@ -110,15 +125,19 @@ if ! command -v lcov &> /dev/null; then
 fi
 
 # Get lcov version to determine supported flags
-LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'lcov: LCOV version \K[0-9.]+' || echo "1.0")
+LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
 LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
 echo "Detected lcov version: ${LCOV_VERSION} (major: ${LCOV_MAJOR})"
 
 # Build lcov flags based on version
-# --ignore-errors mismatch is only available in lcov 2.0+
+# Error types to ignore:
+#   mismatch - mismatched exception tags (C++ std lib differences)
+#   unused   - unused coverage data
+#   negative - negative branch counts (compiler/gcov compatibility issue)
+#   gcov     - unexecuted blocks on non-branch lines
 LCOV_IGNORE_FLAGS=""
 if [ "${LCOV_MAJOR}" -ge 2 ]; then
-    LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+    LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused,negative,gcov"
 fi
 
 # Find all directories containing .gcda files
@@ -127,9 +146,7 @@ GCDA_DIRS=$(find "${COVERAGE_DIR}" -name "*.gcda" -type f -exec dirname {} \; 2>
 
 if [ -z "${GCDA_DIRS}" ]; then
     echo "ERROR: No .gcda files found in ${COVERAGE_DIR}!"
-    echo "This may happen if:"
-    echo "  - Tests didn't run successfully"
-    echo "  - Coverage flags weren't applied correctly"
+    echo "This may happen if E2E tests didn't execute any instrumented code."
     exit 1
 fi
 
@@ -144,25 +161,31 @@ lcov --capture \
     --output-file "${OUTPUT_DIR}/coverage_raw.info" \
     --rc lcov_branch_coverage=1 \
     ${LCOV_IGNORE_FLAGS} || {
-    echo "Warning: lcov capture had issues, trying without ignore flags..."
-    lcov --capture \
-        --directory "${COVERAGE_DIR}" \
-        --output-file "${OUTPUT_DIR}/coverage_raw.info" \
-        --rc lcov_branch_coverage=1 || true
+    echo "Warning: lcov capture had issues, trying with more permissive ignore flags..."
+    # Fallback: try with all common error types ignored (lcov 2.0+ only)
+    if [ "${LCOV_MAJOR}" -ge 2 ]; then
+        lcov --capture \
+            --directory "${COVERAGE_DIR}" \
+            --output-file "${OUTPUT_DIR}/coverage_raw.info" \
+            --rc lcov_branch_coverage=1 \
+            --ignore-errors mismatch,unused,negative,gcov,source || true
+    else
+        lcov --capture \
+            --directory "${COVERAGE_DIR}" \
+            --output-file "${OUTPUT_DIR}/coverage_raw.info" \
+            --rc lcov_branch_coverage=1 || true
+    fi
 }
 
 # Check if we got any coverage data
 if [ ! -s "${OUTPUT_DIR}/coverage_raw.info" ]; then
     echo "ERROR: No coverage data captured!"
-    echo ""
-    echo "Searching for .gcda files in ${COVERAGE_DIR}..."
-    find "${COVERAGE_DIR}" -name "*.gcda" -type f 2>/dev/null | head -20
     exit 1
 fi
 
 echo "Coverage data captured: $(wc -l < "${OUTPUT_DIR}/coverage_raw.info") lines"
 
-# Remove external dependencies from coverage (keep test files for now to see what's tested)
+# Remove external dependencies from coverage
 echo "Filtering coverage data..."
 lcov --remove "${OUTPUT_DIR}/coverage_raw.info" \
     '/usr/*' \
@@ -188,66 +211,31 @@ lcov --remove "${OUTPUT_DIR}/coverage_raw.info" \
     cp "${OUTPUT_DIR}/coverage_raw.info" "${OUTPUT_DIR}/coverage.info"
 }
 
-# Normalize paths for Codecov compatibility (same as CI)
-echo "Normalizing paths for Codecov compatibility..."
-# Remove /workspace/axon/ prefix to get repo-relative paths
-sed -i "s|/workspace/axon/||g" "${OUTPUT_DIR}/coverage.info" || true
-
-# Debug: show sample of normalized paths
-echo "Sample paths in coverage.info:"
-grep "^SF:" "${OUTPUT_DIR}/coverage.info" | head -10 || true
-
 # Generate coverage summary
 echo ""
 echo "============================================"
-echo "Coverage Summary"
+echo "E2E Test Coverage Summary"
 echo "============================================"
 lcov --list "${OUTPUT_DIR}/coverage.info" || true
 
-# =============================================================================
-# Part 3: Generate HTML Report (optional)
-# =============================================================================
-if command -v genhtml &> /dev/null; then
+# Debug: show sample of paths
+echo ""
+echo "=== Source file paths in coverage.info ==="
+grep "^SF:" "${OUTPUT_DIR}/coverage.info" | head -10 || true
+
+# Verify file is not empty
+if [ -s "${OUTPUT_DIR}/coverage.info" ]; then
     echo ""
-    echo "============================================"
-    echo "Part 3: Generating HTML report..."
-    echo "============================================"
-    
-    # Build genhtml flags based on lcov version
-    GENHTML_IGNORE_FLAGS=""
-    if [ "${LCOV_MAJOR}" -ge 2 ]; then
-        GENHTML_IGNORE_FLAGS="--ignore-errors source,unmapped"
-    fi
-    
-    mkdir -p "${OUTPUT_DIR}/html"
-    genhtml "${OUTPUT_DIR}/coverage.info" \
-        --output-directory "${OUTPUT_DIR}/html" \
-        --title "Axon Test Coverage" \
-        --legend \
-        --branch-coverage \
-        ${GENHTML_IGNORE_FLAGS} || {
-        echo "Warning: HTML generation had issues, trying with --ignore-errors source..."
-        genhtml "${OUTPUT_DIR}/coverage.info" \
-            --output-directory "${OUTPUT_DIR}/html" \
-            --title "Axon Test Coverage" \
-            --legend \
-            --ignore-errors source 2>/dev/null || true
-    }
-    
-    echo ""
-    echo "HTML report generated at: ${OUTPUT_DIR}/html/index.html"
+    echo "Coverage file size: $(wc -c < "${OUTPUT_DIR}/coverage.info") bytes"
+else
+    echo "WARNING: coverage.info is empty!"
 fi
 
 echo ""
 echo "============================================"
-echo "Coverage report complete!"
+echo "E2E test coverage collection complete!"
 echo "============================================"
 echo "Coverage data: ${OUTPUT_DIR}/coverage.info"
-echo ""
 
-# Print final statistics
-if [ -f "${OUTPUT_DIR}/coverage.info" ]; then
-    TOTAL_LINES=$(lcov --summary "${OUTPUT_DIR}/coverage.info" 2>&1 | grep "lines" | awk '{print $2}' || echo "N/A")
-    echo "Total line coverage: ${TOTAL_LINES}"
-fi
+# Script exits with 0 if we reach here (tests passed, coverage generated)
 

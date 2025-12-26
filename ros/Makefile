@@ -479,7 +479,7 @@ docker-coverage: docker-build-ros2-humble
 		-e ROS_DISTRO=humble \
 		-e ROS_VERSION=2 \
 		axon:ros2-humble \
-		/usr/local/bin/run_coverage.sh /workspace/coverage
+		/usr/local/bin/run_integration_with_coverage.sh /workspace/coverage
 	@printf "%s\n" "$(GREEN)✓ Coverage report: $(PROJECT_ROOT)/coverage/coverage.info$(NC)"
 
 # Clean coverage data

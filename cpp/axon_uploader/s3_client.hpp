@@ -33,6 +33,14 @@ struct S3Config {
   // Timeouts (in milliseconds)
   int connect_timeout_ms = 10000;
   int request_timeout_ms = 300000;  // 5 minutes for large files
+
+  // AWS SDK internal retry configuration
+  // Disabled by default (0) because EdgeUploader has its own retry logic with:
+  //   - Crash recovery (persists state to SQLite)
+  //   - Custom backoff strategies
+  //   - Observability (stats, callbacks)
+  // Set > 0 only if you want the SDK to handle immediate transient errors internally.
+  int max_sdk_retries = 0;
 };
 
 /**

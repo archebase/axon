@@ -7,17 +7,13 @@
 # Coverage Strategy:
 #   - All coverage (ROS1, ROS2, C++ libs, E2E) is merged locally before upload
 #   - Single unified coverage report for the entire project
+#   - Path normalization is done in ci.yml merge step (centralized)
 # =============================================================================
 
-# Path fixes to map CI paths to git repository structure
-# See: https://docs.codecov.com/docs/fixing-paths
-fixes:
-  # GitHub Actions workspace path prefix
-  - "/home/runner/work/Axon/Axon/::"
-  # Docker workspace paths (for ROS tests)
-  - "/workspace/::"
-  - "/root/workspace/::"
-  - "/catkin_ws/src/axon_recorder/::ros/axon_recorder/"
+# Path fixes - NOT needed since paths are normalized before upload in ci.yml
+# The merge step normalizes all paths to match repo structure:
+#   cpp/axon_logging/*, cpp/axon_mcap/*, ros/axon_recorder/src/*
+# See: .github/workflows/ci.yml "Normalize coverage paths" step
 
 coverage:
   status:
@@ -34,7 +30,7 @@ flag_management:
   default_rules:
     carryforward: false
 
-# Ignore test files and auto-generated files from coverage metrics
+# Ignore test files, non-source files, and auto-generated files from coverage metrics
 ignore:
   # Test files
   - "ros/axon_recorder/test/**/*"
@@ -51,6 +47,27 @@ ignore:
   - "**/rosidl_typesupport_introspection_cpp/**/*"
   - "**/rosidl_typesupport_fastrtps_cpp/**/*"
   - "**/rosidl_generator_cpp/**/*"
+  # Non-source files (documentation, config, CI, build scripts)
+  - "**/*.md"
+  - "**/*.yml"
+  - "**/*.yaml"
+  - "**/*.xml"
+  - "**/*.txt"
+  - "**/*.cmake"
+  - "**/CMakeLists.txt"
+  - "**/*.sh"
+  - "**/*.in"
+  - ".github/**/*"
+  - ".cursor/**/*"
+  - ".vscode/**/*"
+  - "docs/**/*"
+  - "ros/docker/**/*"
+  - "**/Makefile"
+  - "**/Makefile.*"
+  - "**/*.srv"
+  - "**/package.xml"
+  - "**/launch/**/*"
+  - "**/config/**/*"
 
 # Comment configuration for PR feedback
 comment:

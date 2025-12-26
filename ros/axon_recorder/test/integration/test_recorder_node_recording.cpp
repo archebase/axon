@@ -1004,9 +1004,11 @@ int main(int argc, char** argv) {
   int result = RUN_ALL_TESTS();
   
 #if defined(AXON_ROS2)
-  if (rclcpp::ok()) {
-    rclcpp::shutdown();
-  }
+  // NOTE: Do NOT call rclcpp::shutdown() explicitly in tests.
+  // In ROS2 Rolling, explicit shutdown after tests with multiple nodes
+  // of the same name ("axon_recorder") causes rosout publisher cleanup
+  // issues leading to SIGSEGV. The process cleans up naturally on exit.
+  // See: https://github.com/ros2/rclcpp/issues/2139
 #elif defined(AXON_ROS1)
   if (ros::ok()) {
     ros::shutdown();

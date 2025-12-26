@@ -43,7 +43,11 @@ if [ "${ROS_VERSION}" = "1" ]; then
     rm -rf /workspace/catkin_ws
     mkdir -p /workspace/catkin_ws/src
     cd /workspace/catkin_ws
+    # Symlink the package
     ln -sf /workspace/axon/ros/axon_recorder src/axon_recorder
+    # Symlink cpp/ directory for dependencies (axon_mcap, axon_logging)
+    # CMakeLists.txt uses ../../cpp/ relative paths
+    ln -sf /workspace/axon/cpp cpp
     
     source /opt/ros/${ROS_DISTRO}/setup.bash
     catkin_make -DCMAKE_BUILD_TYPE=Release
@@ -78,27 +82,10 @@ else
     echo "✓ ROS 2 tests passed"
 fi
 
-# =============================================================================
-# Part 2: Integration Tests (End-to-end ROS service calls)
-# =============================================================================
-# This is equivalent to what industrial_ci does in ros-integration-tests job
-# Uses the shared run_e2e_tests.sh script
-# =============================================================================
 echo ""
 echo "============================================"
-echo "Part 2: Running E2E Tests..."
+echo "All unit/integration tests passed!"
 echo "============================================"
-
-E2E_RUNNER="/workspace/axon/ros/axon_recorder/test/e2e/run_e2e_tests.sh"
-
-if [ -f "${E2E_RUNNER}" ]; then
-    chmod +x "${E2E_RUNNER}"
-    "${E2E_RUNNER}"
-else
-    echo "Note: E2E test runner not found, skipping..."
-fi
-
 echo ""
-echo "============================================"
-echo "All tests passed!"
-echo "============================================"
+echo "NOTE: E2E tests (ROS service calls) run separately via run_e2e_with_coverage.sh"
+echo "      and are only executed on Humble via e2e-tests.yml workflow."
