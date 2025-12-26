@@ -43,7 +43,11 @@ if [ "${ROS_VERSION}" = "1" ]; then
     rm -rf /workspace/catkin_ws
     mkdir -p /workspace/catkin_ws/src
     cd /workspace/catkin_ws
+    # Symlink the package
     ln -sf /workspace/axon/ros/axon_recorder src/axon_recorder
+    # Symlink cpp/ directory for dependencies (axon_mcap, axon_logging)
+    # CMakeLists.txt uses ../../cpp/ relative paths
+    ln -sf /workspace/axon/cpp cpp
     
     source /opt/ros/${ROS_DISTRO}/setup.bash
     catkin_make -DCMAKE_BUILD_TYPE=Release
