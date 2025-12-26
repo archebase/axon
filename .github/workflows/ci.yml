@@ -112,6 +112,49 @@ jobs:
             grep -c "recorder_node.cpp\|recording_service_impl.cpp" "$f" || echo "    0"
           done
 
+      - name: Normalize coverage paths
+        run: |
+          echo "=== Normalizing all coverage file paths (centralized) ==="
+          
+          for f in $(find . -name "*.info" -type f); do
+            echo "Processing: $f"
+            
+            # GitHub Actions workspace prefix
+            sed -i 's|/home/runner/work/Axon/Axon/||g' "$f"
+            
+            # Docker/industrial_ci workspace prefixes (ROS2)
+            sed -i 's|/root/target_ws/src/Axon/||g' "$f"
+            sed -i 's|/root/target_ws/src/||g' "$f"
+            sed -i 's|/root/upstream_ws/src/Axon/||g' "$f"
+            sed -i 's|/root/upstream_ws/src/||g' "$f"
+            
+            # Docker/industrial_ci workspace prefixes (ROS1 catkin)
+            sed -i 's|/root/catkin_ws/src/axon_recorder/../../||g' "$f"
+            sed -i 's|/root/catkin_ws/src/||g' "$f"
+            
+            # Local workspace prefix (docker local runs)
+            sed -i 's|/workspace/axon/||g' "$f"
+            sed -i 's|/workspace/||g' "$f"
+            
+            # Repo folder name from clone (Axon/)
+            sed -i 's|^SF:Axon/|SF:|g' "$f"
+            
+            # Build directory absolute paths (keep relative build/ prefix for filtering)
+            sed -i 's|/root/target_ws/build/|build/|g' "$f"
+            sed -i 's|/root/catkin_ws/build/|build/|g' "$f"
+          done
+          
+          echo ""
+          echo "=== Normalized paths summary ==="
+          echo "--- cpp/axon_logging ---"
+          grep "^SF:.*axon_logging" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
+          echo "--- cpp/axon_mcap ---"
+          grep "^SF:.*axon_mcap" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
+          echo "--- cpp/axon_uploader ---"
+          grep "^SF:.*axon_uploader" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
+          echo "--- ros/axon_recorder ---"
+          grep "^SF:ros/axon_recorder" */coverage*.info 2>/dev/null | sort -u | head -10 || echo "  (none)"
+
       - name: Merge all coverage reports
         run: |
           # Detect lcov version for compatibility flags
@@ -200,8 +243,9 @@ jobs:
           verbose: true
           # Disable file search to only upload the specified merged file
           disable_search: true
-          # Enable Codecov's automatic path fixing for CI environments
-          disable_file_fixes: false
+          # IMPORTANT: Disable automatic path fixes - our paths are already normalized
+          # This prevents Codecov from mangling correct paths like cpp/axon_logging/...
+          disable_file_fixes: true
           # Override to ensure this is the authoritative upload
           override_commit: ${{ github.sha }}
           override_branch: ${{ github.ref_name }}

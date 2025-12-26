@@ -144,16 +144,9 @@ jobs:
             
             lcov --list /coverage_output/coverage.info || true
             
-            # Normalize paths: strip Docker workspace prefix for Codecov
-            echo "=== Normalizing paths for Codecov ==="
-            # Remove workspace src prefix
-            sed -i "s|${WS}/src/||g" /coverage_output/coverage.info || true
-            # Also remove Axon/ prefix if present (repo is cloned as Axon/)
-            sed -i "s|^SF:Axon/|SF:|g" /coverage_output/coverage.info || true
-            
-            # Debug: show sample of normalized paths
-            echo "Sample paths in coverage.info:"
-            grep "^SF:" /coverage_output/coverage.info | head -5 || true
+            # Debug: show source file paths (path normalization done in ci.yml merge step)
+            echo "=== All source file paths in coverage.info ==="
+            grep "^SF:" /coverage_output/coverage.info | head -10 || true
             
             # Verify file is not empty
             if [ -s /coverage_output/coverage.info ]; then

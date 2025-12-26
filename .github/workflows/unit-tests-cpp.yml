@@ -159,24 +159,16 @@ jobs:
             LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
           fi
           
-          # Generate coverage
+          # Generate coverage (filtering only - path normalization done in merge step)
           lcov --capture --directory . --output-file coverage_raw.info \
             --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
           lcov --remove coverage_raw.info \
             '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
-            --output-file coverage_filtered.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+            --output-file coverage.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
           
-          # Normalize paths to be relative to repo root
-          # Remove GitHub Actions workspace prefix: /home/runner/work/Axon/Axon/
-          WORKSPACE_PREFIX="${GITHUB_WORKSPACE}/"
-          echo "Normalizing paths: removing prefix '${WORKSPACE_PREFIX}'"
-          sed -i "s|${WORKSPACE_PREFIX}||g" coverage_filtered.info
-          
-          # Debug: show sample paths
+          # Debug: show sample paths (will be normalized in ci.yml merge step)
           echo "Sample paths in coverage file:"
-          grep "^SF:" coverage_filtered.info | head -5 || true
-          
-          cp coverage_filtered.info coverage.info
+          grep "^SF:" coverage.info | head -5 || true
 
       - name: Copy coverage to root for artifact upload
         run: cp cpp/build_${{ matrix.library }}/coverage.info coverage.info

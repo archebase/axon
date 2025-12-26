@@ -7,17 +7,13 @@
 # Coverage Strategy:
 #   - All coverage (ROS1, ROS2, C++ libs, E2E) is merged locally before upload
 #   - Single unified coverage report for the entire project
+#   - Path normalization is done in ci.yml merge step (centralized)
 # =============================================================================
 
-# Path fixes to map CI paths to git repository structure
-# See: https://docs.codecov.com/docs/fixing-paths
-fixes:
-  # GitHub Actions workspace path prefix
-  - "/home/runner/work/Axon/Axon/::"
-  # Docker workspace paths (for ROS tests)
-  - "/workspace/::"
-  - "/root/workspace/::"
-  - "/catkin_ws/src/axon_recorder/::ros/axon_recorder/"
+# Path fixes - NOT needed since paths are normalized before upload in ci.yml
+# The merge step normalizes all paths to match repo structure:
+#   cpp/axon_logging/*, cpp/axon_mcap/*, ros/axon_recorder/src/*
+# See: .github/workflows/ci.yml "Normalize coverage paths" step
 
 coverage:
   status:
