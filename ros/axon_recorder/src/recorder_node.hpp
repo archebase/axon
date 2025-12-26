@@ -82,10 +82,20 @@ public:
   RecorderNode& operator=(RecorderNode&&) = delete;
 
   /**
-   * Initialize the recorder node
+   * Initialize the recorder node (loads config from file)
    * Sets up ROS interface, loads config, creates subscriptions
    */
   bool initialize(int argc, char** argv);
+
+  /**
+   * Initialize the recorder node with injected configuration
+   * Allows bypassing file-based config lookup for testing and programmatic setup.
+   * @param argc Command line argument count
+   * @param argv Command line arguments
+   * @param config Pre-configured RecorderConfig to use
+   * @return true if initialization succeeded
+   */
+  bool initialize(int argc, char** argv, const RecorderConfig& config);
 
   /**
    * Run the recorder (blocking)
@@ -259,10 +269,17 @@ private:
   // =========================================================================
   // Initialization
   // =========================================================================
+  
+  /**
+   * Common initialization logic after ROS and config are ready.
+   * Called by both initialize() overloads.
+   */
+  bool complete_initialization();
+  
   bool load_configuration();
   bool initialize_mcap_writer();
   bool register_topic_schemas();
-  void setup_topic_recording(const core::TopicConfig& topic_config);
+  void setup_topic_recording(const TopicConfig& topic_config);
   void setup_services();
   std::string get_config_path();
   std::string generate_output_path() const;
@@ -289,7 +306,7 @@ private:
   // =========================================================================
   std::unique_ptr<RosInterface> ros_interface_;
   std::unique_ptr<ServiceAdapter> service_adapter_;
-  core::RecorderConfig config_;
+  RecorderConfig config_;
 
   // Recording session (encapsulates MCAP lifecycle)
   std::unique_ptr<RecordingSession> recording_session_;
@@ -333,11 +350,6 @@ private:
   // Use is_recording(), is_paused(), is_actively_recording() methods instead
   std::atomic<bool> shutdown_requested_{false};
 
-  // =========================================================================
-  // Configuration Constants
-  // =========================================================================
-  // Statistics file path
-  static constexpr const char* STATS_FILE_PATH = "/data/recordings/recorder_stats.json";
 };
 
 }  // namespace recorder

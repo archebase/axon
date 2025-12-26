@@ -32,21 +32,21 @@ bool TopicManager::subscribe(const std::string& topic, const std::string& messag
     return false;
   }
 
-  // Check if already subscribed
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (subscriptions_.find(topic) != subscriptions_.end()) {
-      AXON_LOG_WARN("Already subscribed to topic" << axon::logging::kv("topic", topic));
-      return false;
-    }
-  }
-
-  // Create subscription with zero-copy callback
-  // Wrap the user callback to route messages
+  // Create wrapped callback outside of lock (no shared state access)
   auto wrapped_callback = [topic, callback](SerializedMessageData&& msg) {
     callback(topic, msg.receive_time_ns, std::move(msg.data));
   };
 
+  // Hold lock for entire check-subscribe-store operation to prevent TOCTOU races
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  // Check if already subscribed
+  if (subscriptions_.find(topic) != subscriptions_.end()) {
+    AXON_LOG_WARN("Already subscribed to topic" << axon::logging::kv("topic", topic));
+    return false;
+  }
+
+  // Create subscription with zero-copy callback
   void* handle = ros_interface_->subscribe_zero_copy(topic, message_type, wrapped_callback, config);
   if (!handle) {
     AXON_LOG_ERROR("Failed to subscribe to topic" << axon::logging::kv("topic", topic));
@@ -54,14 +54,11 @@ bool TopicManager::subscribe(const std::string& topic, const std::string& messag
   }
 
   // Store subscription info
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    TopicInfo info;
-    info.topic = topic;
-    info.message_type = message_type;
-    info.subscription_handle = handle;
-    subscriptions_[topic] = info;
-  }
+  TopicInfo info;
+  info.topic = topic;
+  info.message_type = message_type;
+  info.subscription_handle = handle;
+  subscriptions_[topic] = info;
 
   return true;
 }

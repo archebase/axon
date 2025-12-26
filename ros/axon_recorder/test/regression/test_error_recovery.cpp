@@ -15,7 +15,6 @@
 #include "config_parser.hpp"
 #include "state_machine.hpp"
 
-using namespace axon::core;
 using namespace axon::recorder;
 
 namespace fs = std::filesystem;

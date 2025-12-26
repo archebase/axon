@@ -13,7 +13,6 @@
 
 #include "ros_introspection.hpp"
 
-using namespace axon::core;
 using namespace axon::recorder;
 
 // ============================================================================

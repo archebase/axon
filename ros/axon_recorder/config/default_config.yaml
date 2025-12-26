@@ -5,6 +5,7 @@
 dataset:
   path: /data/recordings
   mode: append
+  stats_file_path: /data/recordings/recorder_stats.json
 
 topics:
   # IMU data - high frequency (5 seconds of data per batch)

@@ -1,7 +1,7 @@
 # Makefile for Axon C++ SDK (axon_mcap, axon_uploader, axon_logging)
 # Core libraries providing MCAP writer, uploader, and logging
 
-.PHONY: all build test clean install help debug release format lint check-deps dev-setup verify coverage coverage-html build-uploader test-uploader coverage-all
+.PHONY: all build test test-all clean install help debug release format lint check-deps dev-setup verify coverage coverage-html build-uploader test-uploader coverage-all build-all
 
 .DEFAULT_GOAL := help
 
@@ -60,6 +60,8 @@ help:
 	@printf "%s\n" "  $(BLUE)make coverage-logging$(NC) - Run logging tests with coverage"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Combined targets:$(NC)"
+	@printf "%s\n" "  $(BLUE)make build-all$(NC)      - Build all C++ libraries"
+	@printf "%s\n" "  $(BLUE)make test-all$(NC)       - Build and run ALL C++ tests"
 	@printf "%s\n" "  $(BLUE)make coverage-all$(NC)   - Run all tests with coverage"
 	@printf "%s\n" "  $(BLUE)make clean$(NC)          - Clean all build artifacts"
 	@printf "%s\n" "  $(BLUE)make install$(NC)        - Install the library (requires sudo)"
@@ -348,9 +350,21 @@ coverage-logging:
 	fi
 
 # =============================================================================
-# Combined Coverage (all cpp libraries)
+# Combined Targets (all cpp libraries)
 # =============================================================================
 
+# Build all C++ libraries
+build-all: build build-uploader build-logging
+	@printf "%s\n" "$(GREEN)✓ All C++ libraries built$(NC)"
+
+# Run ALL C++ tests
+test-all: test test-uploader test-logging
+	@printf "%s\n" "$(GREEN)✓ All C++ tests passed$(NC)"
+	@printf "%s\n" "$(YELLOW)  - axon_mcap tests$(NC)"
+	@printf "%s\n" "$(YELLOW)  - axon_uploader tests$(NC)"
+	@printf "%s\n" "$(YELLOW)  - axon_logging tests$(NC)"
+
+# Combined coverage (all cpp libraries)
 coverage-all: coverage coverage-uploader coverage-logging
 	@printf "%s\n" "$(GREEN)✓ All coverage reports generated$(NC)"
 	@printf "%s\n" "$(YELLOW)  - axon_mcap: $(BUILD_DIR)/coverage.info$(NC)"

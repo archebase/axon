@@ -30,7 +30,7 @@ Both CI and local Docker use the same approach:
 | Step | CI (industrial_ci) | Local Docker (run_tests.sh) |
 |------|--------------------|-----------------------------|
 | **Part 1** | `colcon test` / `catkin_make run_tests` | Same |
-| **Part 2** | `run_integration_tests.sh` | Same |
+| **Part 2** | `run_e2e_tests.sh` | Same |
 
 ## Test Types
 
@@ -41,7 +41,7 @@ Both CI and local Docker use the same approach:
 | `test_http_callback_client` | GTest | colcon/catkin |
 | `test_recording_workflow` | GTest | colcon/catkin |
 | `test_service_adapter` | GTest | colcon/catkin |
-| `test_ros_services.sh` | Shell | run_integration_tests.sh |
+| `test_ros_services.sh` | Shell | run_e2e_tests.sh |
 
 ## Manual Testing
 
@@ -49,8 +49,8 @@ Both CI and local Docker use the same approach:
 # Terminal 1: Start recorder
 ros2 run axon_recorder axon_recorder_node
 
-# Terminal 2: Run integration tests
-./test/integration/test_ros_services.sh
+# Terminal 2: Run E2E tests
+./test/e2e/test_ros_services.sh
 ```
 
 ## Performance Tests

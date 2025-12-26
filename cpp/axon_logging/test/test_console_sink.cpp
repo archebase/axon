@@ -6,9 +6,17 @@
 #include <gtest/gtest.h>
 
 #include <boost/log/core.hpp>
+#include <boost/log/utility/setup/common_attributes.hpp>
+#include <boost/log/attributes/constant.hpp>
+#include <boost/log/attributes/scoped_attribute.hpp>
+
+#include <sstream>
+#include <thread>
+#include <chrono>
 
 #include "axon_console_sink.hpp"
 #include "axon_log_init.hpp"
+#include "axon_log_macros.hpp"
 
 using namespace axon::logging;
 
@@ -102,6 +110,242 @@ TEST_F(ConsoleSinkTest, SinkFlush) {
   
   // Flush should not throw
   EXPECT_NO_THROW(sink->flush());
+  
+  remove_sink(sink);
+}
+
+// ============================================================================
+// Color Function Tests (exercise get_color and get_reset_color)
+// ============================================================================
+
+class ConsoleSinkColoredFormatterTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    if (is_logging_initialized()) {
+      shutdown_logging();
+    }
+  }
+
+  void TearDown() override {
+    if (is_logging_initialized()) {
+      shutdown_logging();
+    }
+  }
+};
+
+TEST_F(ConsoleSinkColoredFormatterTest, ColoredSinkAllSeverityLevels) {
+  // Create a colored console sink with debug level to capture all severities
+  auto sink = create_console_sink(severity_level::debug, true);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  // Log at all severity levels to exercise all color code paths
+  AXON_LOG_DEBUG("Test debug message");
+  AXON_LOG_INFO("Test info message");
+  AXON_LOG_WARN("Test warn message");
+  AXON_LOG_ERROR("Test error message");
+  AXON_LOG_FATAL("Test fatal message");
+  
+  // Flush to ensure messages are processed
+  sink->flush();
+  
+  // Give async sink time to process
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+TEST_F(ConsoleSinkColoredFormatterTest, NonColoredSinkAllSeverityLevels) {
+  // Create a non-colored console sink with debug level
+  auto sink = create_console_sink(severity_level::debug, false);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  // Log at all severity levels to exercise non-colored formatter
+  AXON_LOG_DEBUG("Test debug message no color");
+  AXON_LOG_INFO("Test info message no color");
+  AXON_LOG_WARN("Test warn message no color");
+  AXON_LOG_ERROR("Test error message no color");
+  AXON_LOG_FATAL("Test fatal message no color");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+// ============================================================================
+// Context Attribute Tests (exercise TaskID and DeviceID extraction)
+// ============================================================================
+
+class ConsoleSinkContextTest : public ::testing::Test {
+protected:
+  void SetUp() override {
+    if (is_logging_initialized()) {
+      shutdown_logging();
+    }
+  }
+
+  void TearDown() override {
+    if (is_logging_initialized()) {
+      shutdown_logging();
+    }
+  }
+};
+
+TEST_F(ConsoleSinkContextTest, ColoredSinkWithTaskIDOnly) {
+  auto sink = create_console_sink(severity_level::debug, true);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  // Add only TaskID attribute
+  BOOST_LOG_SCOPED_THREAD_ATTR("TaskID", 
+      boost::log::attributes::constant<std::string>("task_123"));
+  
+  AXON_LOG_INFO("Message with TaskID only");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+TEST_F(ConsoleSinkContextTest, ColoredSinkWithDeviceIDOnly) {
+  auto sink = create_console_sink(severity_level::debug, true);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  // Add only DeviceID attribute
+  BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID", 
+      boost::log::attributes::constant<std::string>("robot_001"));
+  
+  AXON_LOG_INFO("Message with DeviceID only");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+TEST_F(ConsoleSinkContextTest, ColoredSinkWithBothContextAttributes) {
+  auto sink = create_console_sink(severity_level::debug, true);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  // Use separate attribute declarations to avoid macro collision
+  BOOST_LOG_SCOPED_THREAD_ATTR("TaskID",
+      boost::log::attributes::constant<std::string>("task_456"));
+  BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID",
+      boost::log::attributes::constant<std::string>("device_789"));
+  
+  AXON_LOG_INFO("Message with both TaskID and DeviceID");
+  AXON_LOG_WARN("Warning with context");
+  AXON_LOG_ERROR("Error with context");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+TEST_F(ConsoleSinkContextTest, NonColoredSinkWithTaskIDOnly) {
+  auto sink = create_console_sink(severity_level::debug, false);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  BOOST_LOG_SCOPED_THREAD_ATTR("TaskID", 
+      boost::log::attributes::constant<std::string>("task_abc"));
+  
+  AXON_LOG_INFO("Non-colored message with TaskID only");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+TEST_F(ConsoleSinkContextTest, NonColoredSinkWithDeviceIDOnly) {
+  auto sink = create_console_sink(severity_level::debug, false);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID", 
+      boost::log::attributes::constant<std::string>("device_xyz"));
+  
+  AXON_LOG_INFO("Non-colored message with DeviceID only");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+TEST_F(ConsoleSinkContextTest, NonColoredSinkWithBothContextAttributes) {
+  auto sink = create_console_sink(severity_level::debug, false);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  BOOST_LOG_SCOPED_THREAD_ATTR("TaskID",
+      boost::log::attributes::constant<std::string>("task_full"));
+  BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID",
+      boost::log::attributes::constant<std::string>("device_full"));
+  
+  AXON_LOG_INFO("Non-colored message with both attributes");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+TEST_F(ConsoleSinkContextTest, NoContextAttributes) {
+  auto sink = create_console_sink(severity_level::debug, true);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  // No context attributes - exercises the "neither tid nor did" path
+  AXON_LOG_INFO("Message without any context attributes");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  remove_sink(sink);
+}
+
+// ============================================================================
+// Timestamp Path Tests
+// ============================================================================
+
+TEST_F(ConsoleSinkContextTest, TimestampExtraction) {
+  auto sink = create_console_sink(severity_level::debug, true);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  // Add common attributes which includes TimeStamp
+  boost::log::add_common_attributes();
+  
+  AXON_LOG_INFO("Message to test timestamp extraction");
+  
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
   
   remove_sink(sink);
 }

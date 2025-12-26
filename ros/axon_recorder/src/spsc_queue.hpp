@@ -9,7 +9,7 @@
 #include <utility>
 
 namespace axon {
-namespace core {
+namespace recorder {
 
 /**
  * Lock-free Single-Producer Single-Consumer (SPSC) Queue
@@ -294,7 +294,7 @@ private:
   std::atomic<size_t> current_pop_queue_;
 };
 
-}  // namespace core
+}  // namespace recorder
 }  // namespace axon
 
 #endif  // AXON_SPSC_QUEUE_HPP

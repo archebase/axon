@@ -27,7 +27,7 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHand
 
   // Create context
   auto context = std::make_unique<TopicContext>();
-  context->queue = std::make_unique<core::SPSCQueue<MessageItem>>(config_.queue_capacity_per_topic);
+  context->queue = std::make_unique<SPSCQueue<MessageItem>>(config_.queue_capacity_per_topic);
   context->handler = std::move(handler);
 
   // If pool is already running, start the worker immediately

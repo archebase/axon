@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================================
-# Integration Test Runner
+# E2E Test Runner
 # ============================================================================
-# This script starts the axon_recorder_node, runs integration tests, and
-# cleans up. It's used by both CI and local Docker testing.
+# This script starts the axon_recorder_node, runs E2E tests via ROS service
+# calls, and cleans up. It's used by both CI and local Docker testing.
 #
 # Usage:
-#   ./run_integration_tests.sh [source_path]
+#   ./run_e2e_tests.sh [source_path]
 #
 # Arguments:
 #   source_path - Optional path to the source directory (default: script's location)

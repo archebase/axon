@@ -33,14 +33,14 @@ Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructu
 | CI Job (`ci.yml`) | Local Docker (`run_tests.sh`) | What it does |
 |-------------------|-------------------------------|--------------|
 | `ros-unit-tests` | Part 1: ROS Tests | `colcon test` / `catkin_make run_tests` |
-| `ros-integration-tests` | Part 2: Integration Tests | `run_integration_tests.sh` |
+| `ros-integration-tests` | Part 2: E2E Tests | `run_e2e_tests.sh` |
 
 ### Shared Scripts
 
 | Script | Used by |
 |--------|---------|
-| `test/integration/run_integration_tests.sh` | CI `AFTER_SCRIPT` + Docker `run_tests.sh` |
-| `test/integration/test_ros_services.sh` | Called by `run_integration_tests.sh` |
+| `test/e2e/run_e2e_tests.sh` | CI `AFTER_SCRIPT` + Docker `run_tests.sh` |
+| `test/e2e/test_ros_services.sh` | Called by `run_e2e_tests.sh` |
 
 ### Test Flow
 
@@ -56,6 +56,64 @@ Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructu
 │    - Run test_ros_services.sh (actual ROS service calls)    │
 │    - Cleanup                                                │
 └─────────────────────────────────────────────────────────────┘
+```
+
+## Coverage Tests
+
+Generate coverage reports to identify untested code:
+
+```bash
+cd ros/docker
+
+# Run coverage tests (builds with instrumentation + generates lcov report)
+docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
+  /workspace/axon/ros/docker/scripts/run_coverage.sh
+
+# Coverage output is saved to /workspace/coverage inside container
+# Mount a local directory to extract it:
+docker compose -f docker-compose.test.yml run --rm \
+  -v $(pwd)/coverage-output:/workspace/coverage \
+  test-ros2-humble /workspace/axon/ros/docker/scripts/run_coverage.sh
+
+# View HTML report
+open coverage-output/html/index.html
+```
+
+### Coverage for Different ROS Versions
+
+```bash
+# ROS 2 Humble
+docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
+  /workspace/axon/ros/docker/scripts/run_coverage.sh
+
+# ROS 2 Jazzy
+docker compose -f docker-compose.test.yml run --rm test-ros2-jazzy \
+  /workspace/axon/ros/docker/scripts/run_coverage.sh
+
+# ROS 1 Noetic
+docker compose -f docker-compose.test.yml run --rm test-ros1 \
+  /workspace/axon/ros/docker/scripts/run_coverage.sh
+```
+
+### Interactive Coverage Debugging
+
+```bash
+# Start interactive shell with coverage build
+docker compose -f docker-compose.test.yml run --rm test-ros2-humble bash
+
+# Inside container:
+source /opt/ros/humble/setup.bash
+cd /workspace/axon
+colcon build --packages-select axon_recorder \
+  --cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON \
+  --base-paths ros
+source install/setup.bash
+colcon test --packages-select axon_recorder --base-paths ros
+
+# Generate coverage
+cd build/axon_recorder
+lcov --capture --directory . --output-file coverage.info --rc lcov_branch_coverage=1
+lcov --list coverage.info
 ```
 
 ## Performance Tests
@@ -84,3 +142,6 @@ docker-compose -f docker-compose.perf.yml run --rm --privileged perf-ros2-humble
 | Build fails | Ensure Docker has 4GB+ memory |
 | Permission issues | Run `chmod +x docker/scripts/*.sh` |
 | Tests fail | Check ROS environment with `printenv \| grep ROS` |
+| No .gcda files | Ensure `-DENABLE_COVERAGE=ON` was passed to cmake |
+| lcov errors | lcov 1.x doesn't support `--ignore-errors mismatch` (lcov 2.0+ only) |
+| Empty coverage | Check tests actually ran: `colcon test-result --verbose` |

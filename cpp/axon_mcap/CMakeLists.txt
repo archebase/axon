@@ -98,6 +98,10 @@ endif()
 
 if(AXON_LOGGING_DIR)
     message(STATUS "Found axon_logging at: ${AXON_LOGGING_DIR}")
+    # Propagate coverage flag to axon_logging subdirectory
+    if(AXON_MCAP_ENABLE_COVERAGE)
+        set(AXON_LOGGING_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_logging" FORCE)
+    endif()
     add_subdirectory(${AXON_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
 endif()
 

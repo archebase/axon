@@ -1,11 +1,16 @@
 # =============================================================================
-# C++ Libraries Coverage Workflow for Axon
+# C++ Unit Tests with Coverage Workflow for Axon
 # =============================================================================
-# Runs coverage for standalone C++ libraries (axon_mcap, axon_uploader, axon_logging)
-# These don't require ROS and can run in a simpler environment.
+# Runs unit tests with coverage for standalone C++ libraries:
+#   - axon_mcap
+#   - axon_uploader
+#   - axon_logging
+#
+# These libraries don't require ROS and can run in a simpler environment.
+# Coverage is uploaded to Codecov with the "cpp" flag.
 # =============================================================================
 
-name: C++ Libraries Coverage
+name: C++ Unit Tests
 
 on:
   # Called by ci.yml orchestrator
@@ -15,10 +20,10 @@ on:
 
 jobs:
   # ===========================================================================
-  # Run coverage for each library in PARALLEL
+  # Run unit tests with coverage for each library in PARALLEL
   # ===========================================================================
-  coverage-library:
-    name: Coverage - ${{ matrix.library }}
+  cpp-unit-tests:
+    name: C++ Unit Tests - ${{ matrix.library }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -159,7 +164,19 @@ jobs:
             --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
           lcov --remove coverage_raw.info \
             '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
-            --output-file coverage.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+            --output-file coverage_filtered.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}
+          
+          # Normalize paths to be relative to repo root
+          # Remove GitHub Actions workspace prefix: /home/runner/work/Axon/Axon/
+          WORKSPACE_PREFIX="${GITHUB_WORKSPACE}/"
+          echo "Normalizing paths: removing prefix '${WORKSPACE_PREFIX}'"
+          sed -i "s|${WORKSPACE_PREFIX}||g" coverage_filtered.info
+          
+          # Debug: show sample paths
+          echo "Sample paths in coverage file:"
+          grep "^SF:" coverage_filtered.info | head -5 || true
+          
+          cp coverage_filtered.info coverage.info
 
       - name: Copy coverage to root for artifact upload
         run: cp cpp/build_${{ matrix.library }}/coverage.info coverage.info
@@ -167,83 +184,6 @@ jobs:
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.library }}
+          name: coverage-cpp-${{ matrix.library }}
           path: coverage.info
           retention-days: 7
-
-  # ===========================================================================
-  # Merge coverage from all libraries
-  # ===========================================================================
-  merge-coverage:
-    name: Merge Coverage Reports
-    runs-on: ubuntu-22.04
-    needs: [coverage-library]
-
-    steps:
-      - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
-        with:
-          # Use specific pattern to avoid matching ROS coverage artifacts
-          # (coverage-ros2-humble, coverage-ros1-noetic)
-          pattern: coverage-axon_*
-          merge-multiple: false
-
-      - name: Install lcov
-        run: sudo apt-get update && sudo apt-get install -y lcov
-
-      - name: List downloaded artifacts
-        run: |
-          echo "=== Downloaded artifact structure ==="
-          find . -name "*.info" -type f
-          ls -laR coverage-axon_*/ 2>/dev/null || echo "No coverage-axon_* directories found"
-      
-      - name: Merge coverage reports
-        run: |
-          # Detect lcov version for compatibility flags
-          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-          echo "lcov version: ${LCOV_VERSION}"
-          
-          LCOV_IGNORE_FLAGS=""
-          if [ "${LCOV_MAJOR}" -ge 2 ]; then
-            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
-          fi
-          
-          # Build merge command dynamically (only C++ library coverage)
-          MERGE_CMD="lcov"
-          FOUND_FILES=0
-          for dir in coverage-axon_*/; do
-            if [ -f "${dir}coverage.info" ]; then
-              echo "Found coverage file: ${dir}coverage.info"
-              MERGE_CMD="$MERGE_CMD -a ${dir}coverage.info"
-              FOUND_FILES=$((FOUND_FILES + 1))
-            fi
-          done
-          
-          if [ "$FOUND_FILES" -eq 0 ]; then
-            echo "ERROR: No coverage files found!"
-            exit 1
-          fi
-          
-          MERGE_CMD="$MERGE_CMD -o coverage_cpp_merged.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}"
-          
-          echo "Running: $MERGE_CMD"
-          eval $MERGE_CMD
-          lcov --list coverage_cpp_merged.info ${LCOV_IGNORE_FLAGS}
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage_cpp_merged.info
-          flags: cpp
-          name: axon-cpp-coverage
-          fail_ci_if_error: false
-          verbose: true
-
-      - name: Upload merged coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cpp-coverage-report
-          path: coverage_cpp_merged.info
-          retention-days: 30

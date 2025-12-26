@@ -82,20 +82,20 @@ fi
 # Part 2: Integration Tests (End-to-end ROS service calls)
 # =============================================================================
 # This is equivalent to what industrial_ci does in ros-integration-tests job
-# Uses the shared run_integration_tests.sh script
+# Uses the shared run_e2e_tests.sh script
 # =============================================================================
 echo ""
 echo "============================================"
-echo "Part 2: Running Integration Tests..."
+echo "Part 2: Running E2E Tests..."
 echo "============================================"
 
-INTEGRATION_RUNNER="/workspace/axon/ros/axon_recorder/test/integration/run_integration_tests.sh"
+E2E_RUNNER="/workspace/axon/ros/axon_recorder/test/e2e/run_e2e_tests.sh"
 
-if [ -f "${INTEGRATION_RUNNER}" ]; then
-    chmod +x "${INTEGRATION_RUNNER}"
-    "${INTEGRATION_RUNNER}"
+if [ -f "${E2E_RUNNER}" ]; then
+    chmod +x "${E2E_RUNNER}"
+    "${E2E_RUNNER}"
 else
-    echo "Note: Integration test runner not found, skipping..."
+    echo "Note: E2E test runner not found, skipping..."
 fi
 
 echo ""

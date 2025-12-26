@@ -96,15 +96,50 @@ bool RecorderNode::initialize(int argc, char** argv) {
   // Create topic manager (requires ros_interface_)
   topic_manager_ = std::make_unique<TopicManager>(ros_interface_.get());
 
-  // Load configuration
+  // Load configuration from file
   if (!load_configuration()) {
     ros_interface_->log_error("Failed to load configuration");
     return false;
   }
+
+  // Complete common initialization
+  return complete_initialization();
+}
+
+bool RecorderNode::initialize(int argc, char** argv, const RecorderConfig& config) {
+  // Create ROS interface (implementation selected at compile time)
+  ros_interface_ = RosInterfaceFactory::create();
+  if (!ros_interface_) {
+    AXON_LOG_ERROR("Failed to create ROS interface");
+    return false;
+  }
+
+  if (!ros_interface_->init(argc, argv, "axon_recorder")) {
+    AXON_LOG_ERROR("Failed to initialize ROS");
+    return false;
+  }
+
+  // Create topic manager (requires ros_interface_)
+  topic_manager_ = std::make_unique<TopicManager>(ros_interface_.get());
+
+  // Use injected configuration (skip file loading)
+  config_ = config;
   
+  if (!config_.validate()) {
+    ros_interface_->log_error("Injected configuration is invalid");
+    return false;
+  }
+  
+  ros_interface_->log_info("Using injected configuration: " + config_.to_string());
+
+  // Complete common initialization
+  return complete_initialization();
+}
+
+bool RecorderNode::complete_initialization() {
   // Reconfigure logging based on loaded config (applies YAML settings + env overrides)
   axon::logging::LoggingConfig log_config;
-  axon::core::convert_logging_config(config_.logging, log_config);
+  convert_logging_config(config_.logging, log_config);
   axon::logging::reconfigure_logging(log_config);
   AXON_LOG_INFO("Logging reconfigured from config file");
 
@@ -256,7 +291,7 @@ void RecorderNode::shutdown() {
 
 bool RecorderNode::load_configuration() {
   std::string config_path = get_config_path();
-  config_ = core::RecorderConfig::from_yaml(config_path);
+  config_ = RecorderConfig::from_yaml(config_path);
 
   if (!config_.validate()) {
     ros_interface_->log_error("Invalid configuration");
@@ -296,11 +331,15 @@ std::string RecorderNode::get_config_path() {
   }
 
   // Try install share directory (for installed package)
-  std::string install_config =
-    ament_index_cpp::get_package_share_directory("axon_recorder") + "/config/default_config.yaml";
-  std::ifstream test_install(install_config);
-  if (test_install.good()) {
-    return install_config;
+  try {
+    std::string install_config =
+      ament_index_cpp::get_package_share_directory("axon_recorder") + "/config/default_config.yaml";
+    std::ifstream test_install(install_config);
+    if (test_install.good()) {
+      return install_config;
+    }
+  } catch (const std::exception& /* e */) {
+    // Package not found in ament index, fall through to fallback
   }
 
   // Fallback to relative path
@@ -432,7 +471,7 @@ bool RecorderNode::register_topic_schemas() {
   return true;
 }
 
-void RecorderNode::setup_topic_recording(const core::TopicConfig& topic_config) {
+void RecorderNode::setup_topic_recording(const TopicConfig& topic_config) {
   const std::string& topic_name = topic_config.name;
 
   // =========================================================================
@@ -553,13 +592,17 @@ bool RecorderNode::start_recording() {
 void RecorderNode::pause_recording() {
   // Note: State validation is done by RecordingServiceImpl before calling this method
   // StateManager is the single source of truth for recording state
-  ros_interface_->log_info("Recording paused");
+  if (ros_interface_) {
+    ros_interface_->log_info("Recording paused");
+  }
 }
 
 void RecorderNode::resume_recording() {
   // Note: State validation is done by RecordingServiceImpl before calling this method
   // StateManager is the single source of truth for recording state
-  ros_interface_->log_info("Recording resumed");
+  if (ros_interface_) {
+    ros_interface_->log_info("Recording resumed");
+  }
 }
 
 void RecorderNode::cancel_recording() {
@@ -771,9 +814,24 @@ double RecorderNode::get_recording_duration_sec() const {
 }
 
 void RecorderNode::write_stats_file() {
-  std::ofstream stats_file(STATS_FILE_PATH);
+  const std::string& stats_path = config_.dataset.stats_file_path;
+  
+  // Create parent directory if it doesn't exist
+  std::filesystem::path parent_dir = std::filesystem::path(stats_path).parent_path();
+  if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
+    std::error_code ec;
+    std::filesystem::create_directories(parent_dir, ec);
+    if (ec) {
+      AXON_LOG_WARN("Could not create stats directory" 
+                   << axon::logging::kv("path", parent_dir.string())
+                   << axon::logging::kv("error", ec.message()));
+      return;
+    }
+  }
+  
+  std::ofstream stats_file(stats_path);
   if (!stats_file.is_open()) {
-    AXON_LOG_WARN("Could not write stats file" << axon::logging::kv("path", STATS_FILE_PATH));
+    AXON_LOG_WARN("Could not write stats file" << axon::logging::kv("path", stats_path));
     return;
   }
 
