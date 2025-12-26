@@ -16,22 +16,27 @@
 #   │  │ ROS Tests         │  │ C++ Unit Tests    │   │
 #   │  │ (unit+integration)│  │ +cov artifacts    │   │
 #   │  │ +cov artifacts    │  │                   │   │
-#   │  └───────────────────┘  └───────────────────┘   │
-#   └─────────────────────┬───────────────────────────┘
-#                         │
-#                         ▼
-#                   ┌───────────┐
-#                   │   E2E     │  (E2E tests after unit tests)
-#                   │   Tests   │
-#                   │   +cov    │
-#                   └─────┬─────┘
-#                         │
-#                         ▼
-#                 ┌───────────────┐
-#                 │    Merge      │  (Merge all coverage)
-#                 │   Coverage    │
-#                 │   → Codecov   │
-#                 └───────────────┘
+#   │  └───────────────────┘  └─────────┬─────────┘   │
+#   └─────────────────────┬─────────────┼─────────────┘
+#                         │             │
+#                         │             ▼
+#                         │     ┌───────────────┐
+#                         │     │ C++ Integr.   │  (MinIO tests)
+#                         │     │ Tests +cov    │
+#                         │     └───────┬───────┘
+#                         │             │
+#                         ▼             ▼
+#                   ┌───────────────────────┐
+#                   │       E2E Tests       │  (ROS service tests)
+#                   │         +cov          │
+#                   └───────────┬───────────┘
+#                               │
+#                               ▼
+#                       ┌───────────────┐
+#                       │    Merge      │  (Merge all coverage)
+#                       │   Coverage    │
+#                       │   → Codecov   │
+#                       └───────────────┘
 #
 # =============================================================================
 
@@ -70,22 +75,32 @@ jobs:
     secrets: inherit
 
   # ===========================================================================
-  # Stage 2: E2E Tests (after unit tests pass)
+  # Stage 1.5: C++ Integration Tests (after C++ unit tests pass)
+  # Runs EdgeUploader integration tests with MinIO
+  # ===========================================================================
+  integration-tests-cpp:
+    name: C++ Integration Tests
+    needs: [unit-tests-cpp]
+    uses: ./.github/workflows/integration-tests-cpp.yml
+    secrets: inherit
+
+  # ===========================================================================
+  # Stage 2: E2E Tests (after all unit/integration tests pass)
   # ===========================================================================
   e2e-tests:
     name: E2E Tests
-    needs: [tests-ros, unit-tests-cpp]
+    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp]
     uses: ./.github/workflows/e2e-tests.yml
     secrets: inherit
 
   # ===========================================================================
   # Stage 3: Merge All Coverage and Upload to Codecov
-  # Combines coverage from ROS tests, C++ tests, and E2E tests
+  # Combines coverage from ROS tests, C++ tests (unit + integration), and E2E tests
   # ===========================================================================
   merge-coverage:
     name: Merge Coverage
     runs-on: ubuntu-22.04
-    needs: [tests-ros, unit-tests-cpp, e2e-tests]
+    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests]
     if: always() && !cancelled()
     
     steps:
@@ -150,6 +165,10 @@ jobs:
             sed -i 's|/workspace/catkin_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
             sed -i 's|/workspace/catkin_ws/build/|build/|g' "$f"
             sed -i 's|/workspace/||g' "$f"
+            
+            # Docker catkin workspace symlinked cpp/ directory (ROS1 coverage)
+            # catkin_ws/cpp/axon_logging/... → cpp/axon_logging/...
+            sed -i 's|^SF:catkin_ws/cpp/|SF:cpp/|g' "$f"
             
             # Repo folder name from clone (Axon/)
             sed -i 's|^SF:Axon/|SF:|g' "$f"
@@ -289,13 +308,14 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [tests-ros, unit-tests-cpp, e2e-tests, merge-coverage]
+    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests, merge-coverage]
     if: always()
     steps:
       - name: Check pipeline status
         run: |
           echo "ROS Tests: ${{ needs.tests-ros.result }}"
           echo "C++ Unit Tests: ${{ needs.unit-tests-cpp.result }}"
+          echo "C++ Integration Tests: ${{ needs.integration-tests-cpp.result }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
           echo "Merge Coverage: ${{ needs.merge-coverage.result }}"
           
@@ -306,6 +326,11 @@ jobs:
           
           if [ "${{ needs.unit-tests-cpp.result }}" != "success" ]; then
             echo "❌ C++ unit tests failed"
+            exit 1
+          fi
+          
+          if [ "${{ needs.integration-tests-cpp.result }}" != "success" ]; then
+            echo "❌ C++ integration tests failed"
             exit 1
           fi
           

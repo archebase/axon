@@ -1,0 +1,241 @@
+# =============================================================================
+# C++ Integration Tests Workflow for Axon
+# =============================================================================
+# Runs integration tests that require external services (MinIO for S3).
+# This workflow depends on unit-tests-cpp.yml passing first.
+#
+# Tests covered:
+#   - axon_uploader: EdgeUploader integration test with MinIO
+#
+# Coverage is uploaded to Codecov and merged with other coverage artifacts.
+# =============================================================================
+
+name: C++ Integration Tests
+
+on:
+  # Called by ci.yml orchestrator
+  workflow_call:
+  # Allow standalone runs
+  workflow_dispatch:
+
+jobs:
+  # ===========================================================================
+  # Run integration tests with MinIO service container
+  # ===========================================================================
+  cpp-integration-tests:
+    name: C++ Integration Tests - axon_uploader
+    runs-on: ubuntu-22.04
+    
+    # MinIO service container for S3-compatible storage
+    services:
+      minio:
+        image: quay.io/minio/minio:latest
+        ports:
+          - 9000:9000
+          - 9001:9001
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        # MinIO requires a command to start in server mode
+        # GitHub Actions services use the image's entrypoint, so we override
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Start MinIO server
+        run: |
+          # The service container doesn't start the server properly, start it manually
+          docker run -d --name minio-server \
+            --network host \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            quay.io/minio/minio server /data --console-address ":9001"
+          
+          # Wait for MinIO to be ready
+          echo "Waiting for MinIO to start..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:9000/minio/health/live; then
+              echo "MinIO is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 1
+          done
+
+      - name: Create test bucket
+        run: |
+          # Use MinIO client to create the test bucket
+          docker run --rm --network host \
+            -e MC_HOST_local=http://minioadmin:minioadmin@localhost:9000 \
+            quay.io/minio/mc mb local/axon-raw-data --ignore-existing
+          
+          echo "Test bucket 'axon-raw-data' created"
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libyaml-cpp-dev liblz4-dev libzstd-dev libre2-dev libturbojpeg0-dev libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libssl-dev libsqlite3-dev libcurl4-openssl-dev lcov
+          version: 1.0
+
+      # =========================================================================
+      # AWS SDK for C++ (built from source - no apt packages available)
+      # =========================================================================
+      - name: Cache AWS SDK
+        uses: actions/cache@v4
+        id: aws-sdk-cache
+        with:
+          path: ~/aws-sdk-cpp-install
+          key: aws-sdk-cpp-1.11.458-ubuntu22-s3-transfer-v1
+
+      - name: Build AWS SDK from source
+        if: steps.aws-sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Building AWS SDK from source (this will be cached for future runs)..."
+          git clone --recurse-submodules --depth 1 --branch 1.11.458 \
+            https://github.com/aws/aws-sdk-cpp.git ~/aws-sdk-cpp-src
+          cd ~/aws-sdk-cpp-src
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=~/aws-sdk-cpp-install \
+            -DBUILD_ONLY="s3;transfer" \
+            -DENABLE_TESTING=OFF \
+            -DAUTORUN_UNIT_TESTS=OFF \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build -j$(nproc)
+          cmake --install build
+          # Cleanup source to save space
+          rm -rf ~/aws-sdk-cpp-src
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-integration-axon_uploader-${{ runner.os }}-${{ hashFiles('cpp/**/*.cpp', 'cpp/**/*.hpp') }}
+          restore-keys: |
+            ccache-integration-axon_uploader-${{ runner.os }}-
+            ccache-coverage-axon_uploader-${{ runner.os }}-
+            ccache-cpp-${{ runner.os }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
+
+      - name: Build GTest from source
+        run: |
+          if [ -d /usr/src/googletest ]; then
+            cd /usr/src/googletest
+            sudo cmake -B build
+            sudo cmake --build build
+            sudo cmake --install build
+          fi
+
+      - name: Build axon_uploader with coverage
+        run: |
+          cd cpp
+          mkdir -p build_uploader_integration && cd build_uploader_integration
+          
+          export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          
+          cmake ../axon_uploader \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DAXON_UPLOADER_ENABLE_COVERAGE=ON \
+            -DAXON_UPLOADER_BUILD_TESTS=ON \
+            -DCMAKE_PREFIX_PATH=~/aws-sdk-cpp-install
+          
+          make -j$(nproc)
+          ccache -s
+
+      - name: Run EdgeUploader integration test
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          LD_LIBRARY_PATH: ~/aws-sdk-cpp-install/lib
+        run: |
+          cd cpp/build_uploader_integration
+          
+          # Run the integration test that's not registered with CTest
+          ./test_edge_uploader --gtest_output=xml:test_results.xml
+          
+          echo "Integration test completed successfully!"
+
+      - name: Generate coverage report
+        run: |
+          cd cpp/build_uploader_integration
+          
+          # Detect lcov version for compatibility flags
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          echo "lcov version: ${LCOV_VERSION}"
+          
+          # Error types to ignore (lcov 2.0+)
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused,negative,gcov"
+          fi
+          
+          # Generate coverage
+          lcov --capture --directory . --output-file coverage_raw.info \
+            --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS} || {
+            echo "Warning: lcov capture had issues, trying with more permissive flags..."
+            if [ "${LCOV_MAJOR}" -ge 2 ]; then
+              lcov --capture --directory . --output-file coverage_raw.info \
+                --rc lcov_branch_coverage=1 --ignore-errors mismatch,unused,negative,gcov,source || true
+            else
+              lcov --capture --directory . --output-file coverage_raw.info \
+                --rc lcov_branch_coverage=1 || true
+            fi
+          }
+          
+          # Filter out external dependencies and test files
+          lcov --remove coverage_raw.info \
+            '/usr/*' '/opt/*' '*/_deps/*' '*/test/*' '*/c++/*' \
+            --output-file coverage.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS} || {
+            echo "Warning: lcov filtering had issues, using raw coverage..."
+            cp coverage_raw.info coverage.info
+          }
+          
+          # Debug: show sample paths
+          echo "Sample paths in coverage file:"
+          grep "^SF:" coverage.info | head -10 || true
+          
+          # Show coverage summary
+          echo ""
+          echo "=== Integration Test Coverage Summary ==="
+          lcov --list coverage.info ${LCOV_IGNORE_FLAGS} || true
+
+      - name: Copy coverage to root for artifact upload
+        run: cp cpp/build_uploader_integration/coverage.info coverage.info
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cpp-integration
+          path: coverage.info
+          retention-days: 7
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: cpp/build_uploader_integration/test_results.xml
+          retention-days: 7
+
+      - name: Cleanup MinIO
+        if: always()
+        run: |
+          docker stop minio-server || true
+          docker rm minio-server || true
+
