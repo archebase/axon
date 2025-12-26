@@ -49,6 +49,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Workflow-level permissions for nested workflows (docker-build.yml needs packages:write)
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # ===========================================================================
   # Stage 1: ROS Tests and C++ Tests (run in parallel)

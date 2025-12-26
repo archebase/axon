@@ -16,6 +16,11 @@ on:
   # Allow standalone runs
   workflow_dispatch:
 
+# Workflow-level permissions needed for nested docker-build.yml to push images
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
 
