@@ -178,9 +178,14 @@ jobs:
           LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
           echo "lcov version: ${LCOV_VERSION}"
           
+          # Error types to ignore (lcov 2.0+):
+          #   mismatch - mismatched exception tags (C++ std lib differences)
+          #   unused   - unused coverage data
+          #   negative - negative branch counts (compiler/gcov compatibility issue)
+          #   gcov     - unexecuted blocks on non-branch lines
           LCOV_IGNORE_FLAGS=""
           if [ "${LCOV_MAJOR}" -ge 2 ]; then
-            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused,negative,gcov"
           fi
           
           # Find all coverage files and merge them
@@ -262,9 +267,11 @@ jobs:
           # IMPORTANT: Disable automatic path fixes - our paths are already normalized
           # This prevents Codecov from mangling correct paths like cpp/axon_logging/...
           disable_file_fixes: true
-          # Override to ensure this is the authoritative upload
-          override_commit: ${{ github.sha }}
-          override_branch: ${{ github.ref_name }}
+          # Override to ensure correct commit/branch association
+          # For PRs: use head commit SHA and PR branch name (not merge commit/ref)
+          # For push: fallback to github.sha and github.ref_name
+          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
           override_build: ${{ github.run_id }}
           # Include PR number for PR status checks (empty string on push events is fine)
           override_pr: ${{ github.event.pull_request.number }}

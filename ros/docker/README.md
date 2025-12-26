@@ -67,13 +67,13 @@ cd ros/docker
 
 # Run coverage tests (builds with instrumentation + generates lcov report)
 docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
-  /workspace/axon/ros/docker/scripts/run_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
 
 # Coverage output is saved to /workspace/coverage inside container
 # Mount a local directory to extract it:
 docker compose -f docker-compose.test.yml run --rm \
   -v $(pwd)/coverage-output:/workspace/coverage \
-  test-ros2-humble /workspace/axon/ros/docker/scripts/run_coverage.sh
+  test-ros2-humble /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
 
 # View HTML report
 open coverage-output/html/index.html
@@ -84,15 +84,15 @@ open coverage-output/html/index.html
 ```bash
 # ROS 2 Humble
 docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
-  /workspace/axon/ros/docker/scripts/run_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
 
 # ROS 2 Jazzy
 docker compose -f docker-compose.test.yml run --rm test-ros2-jazzy \
-  /workspace/axon/ros/docker/scripts/run_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
 
 # ROS 1 Noetic
 docker compose -f docker-compose.test.yml run --rm test-ros1 \
-  /workspace/axon/ros/docker/scripts/run_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
 ```
 
 ### Interactive Coverage Debugging

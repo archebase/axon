@@ -15,10 +15,26 @@ on:
   # Allow standalone runs
   workflow_dispatch:
 
+# Workflow-level permissions needed for nested docker-build.yml to push images
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
 
 jobs:
+  # ==========================================================================
+  # Build Docker Images (reusable workflow)
+  # Only builds Humble since E2E tests only run on Humble LTS
+  # ==========================================================================
+  build-images:
+    name: Build Images
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      distros: '["humble"]'
+    secrets: inherit
+
   # ==========================================================================
   # E2E Tests - End-to-end ROS service tests
   # Starts axon_recorder_node and runs actual ROS service calls
@@ -28,6 +44,7 @@ jobs:
   ros-e2e-tests:
     name: ROS E2E Tests (humble)
     runs-on: ubuntu-latest
+    needs: [build-images]
     timeout-minutes: 45
 
     permissions:
@@ -85,7 +102,7 @@ jobs:
             -e COVERAGE_OUTPUT=/coverage_output \
             --network host \
             axon-test-humble:latest \
-            /workspace/axon/ros/docker/scripts/run_e2e.sh
+            /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
 
       - name: Debug coverage output
         run: |

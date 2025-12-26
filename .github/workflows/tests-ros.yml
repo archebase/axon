@@ -53,22 +53,22 @@ jobs:
           - ros_distro: noetic
             ros_version: "1"
             collect_coverage: true
-            script: run_coverage.sh
+            script: run_integration_with_coverage.sh
           # ROS 2 Humble LTS - collect coverage
           - ros_distro: humble
             ros_version: "2"
             collect_coverage: true
-            script: run_coverage.sh
+            script: run_integration_with_coverage.sh
           # ROS 2 Jazzy - collect coverage (same as Humble)
           - ros_distro: jazzy
             ros_version: "2"
             collect_coverage: true
-            script: run_coverage.sh
+            script: run_integration_with_coverage.sh
           # ROS 2 Rolling - collect coverage (same as Humble)
           - ros_distro: rolling
             ros_version: "2"
             collect_coverage: true
-            script: run_coverage.sh
+            script: run_integration_with_coverage.sh
 
     permissions:
       contents: read

@@ -2,12 +2,12 @@
 set -e
 
 # =============================================================================
-# Coverage Test Runner
+# Integration Test Runner with Coverage
 # =============================================================================
-# This script builds and runs tests with coverage instrumentation,
+# This script builds and runs integration tests with coverage instrumentation,
 # then generates an lcov coverage report.
 #
-# Usage: ./run_coverage.sh [output_dir]
+# Usage: ./run_integration_with_coverage.sh [output_dir]
 #   output_dir: Directory to store coverage reports (default: /workspace/coverage)
 #
 # Environment variables:
@@ -115,15 +115,20 @@ if ! command -v lcov &> /dev/null; then
 fi
 
 # Get lcov version to determine supported flags
-LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'lcov: LCOV version \K[0-9.]+' || echo "1.0")
+LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
 LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
 echo "Detected lcov version: ${LCOV_VERSION} (major: ${LCOV_MAJOR})"
 
 # Build lcov flags based on version
 # --ignore-errors mismatch is only available in lcov 2.0+
+# Error types to ignore:
+#   mismatch - mismatched exception tags (C++ std lib differences)
+#   unused   - unused coverage data
+#   negative - negative branch counts (compiler/gcov compatibility issue)
+#   gcov     - unexecuted blocks on non-branch lines
 LCOV_IGNORE_FLAGS=""
 if [ "${LCOV_MAJOR}" -ge 2 ]; then
-    LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused"
+    LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused,negative,gcov"
 fi
 
 # Find all directories containing .gcda files
@@ -149,11 +154,20 @@ lcov --capture \
     --output-file "${OUTPUT_DIR}/coverage_raw.info" \
     --rc lcov_branch_coverage=1 \
     ${LCOV_IGNORE_FLAGS} || {
-    echo "Warning: lcov capture had issues, trying without ignore flags..."
-    lcov --capture \
-        --directory "${COVERAGE_DIR}" \
-        --output-file "${OUTPUT_DIR}/coverage_raw.info" \
-        --rc lcov_branch_coverage=1 || true
+    echo "Warning: lcov capture had issues, trying with more permissive ignore flags..."
+    # Fallback: try with all common error types ignored (lcov 2.0+ only)
+    if [ "${LCOV_MAJOR}" -ge 2 ]; then
+        lcov --capture \
+            --directory "${COVERAGE_DIR}" \
+            --output-file "${OUTPUT_DIR}/coverage_raw.info" \
+            --rc lcov_branch_coverage=1 \
+            --ignore-errors mismatch,unused,negative,gcov,source || true
+    else
+        lcov --capture \
+            --directory "${COVERAGE_DIR}" \
+            --output-file "${OUTPUT_DIR}/coverage_raw.info" \
+            --rc lcov_branch_coverage=1 || true
+    fi
 }
 
 # Check if we got any coverage data
