@@ -69,10 +69,6 @@ if [ "${ROS_VERSION:-2}" = "1" ]; then
     
     source devel/setup.bash
     
-    echo "Running catkin tests..."
-    catkin_make run_tests || true
-    
-    # Capture coverage
     COVERAGE_DIR="${PWD}/build"
 else
     # ROS 2 - Use colcon with coverage
@@ -89,16 +85,36 @@ else
     
     source install/setup.bash
     
+    COVERAGE_DIR="${PWD}/build/axon_recorder"
+fi
+
+# =============================================================================
+# Part 1.5: Run Tests (capture exit code but continue to generate coverage)
+# =============================================================================
+echo ""
+echo "============================================"
+echo "Running tests..."
+echo "============================================"
+
+TEST_EXIT_CODE=0
+
+if [ "${ROS_VERSION:-2}" = "1" ]; then
+    echo "Running catkin tests..."
+    catkin_make run_tests
+    # catkin_test_results returns non-zero if any tests failed
+    catkin_test_results --verbose || TEST_EXIT_CODE=$?
+else
     echo "Running colcon tests..."
     colcon test \
         --packages-select axon_recorder \
         --event-handlers console_direct+ \
-        --base-paths ros || true
-    
-    colcon test-result --verbose || true
-    
-    COVERAGE_DIR="${PWD}/build/axon_recorder"
+        --base-paths ros
+    # colcon test-result returns non-zero if any tests failed
+    colcon test-result --verbose || TEST_EXIT_CODE=$?
 fi
+
+echo ""
+echo "Tests completed with exit code: ${TEST_EXIT_CODE}"
 
 # =============================================================================
 # Part 2: Generate Coverage Report
@@ -269,4 +285,7 @@ if [ -f "${OUTPUT_DIR}/coverage.info" ]; then
     TOTAL_LINES=$(lcov --summary "${OUTPUT_DIR}/coverage.info" 2>&1 | grep "lines" | awk '{print $2}' || echo "N/A")
     echo "Total line coverage: ${TOTAL_LINES}"
 fi
+
+# Exit with test result - ensures CI fails if tests fail
+exit ${TEST_EXIT_CODE}
 

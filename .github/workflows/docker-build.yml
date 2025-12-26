@@ -36,16 +36,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # NOTE: Do NOT use matrix.include here to map distros to dockerfiles.
+        # GitHub Actions include entries that don't match the base matrix create
+        # NEW combinations, causing all 4 distros to build even when only 1 is requested.
+        # Instead, dockerfile is determined dynamically in the "Determine Dockerfile" step.
         distro: ${{ fromJson(inputs.distros) }}
-        include:
-          - distro: noetic
-            dockerfile: ros/docker/Dockerfile.ros1
-          - distro: humble
-            dockerfile: ros/docker/Dockerfile.ros2.humble
-          - distro: jazzy
-            dockerfile: ros/docker/Dockerfile.ros2.jazzy
-          - distro: rolling
-            dockerfile: ros/docker/Dockerfile.ros2.rolling
 
     permissions:
       contents: read
@@ -72,6 +67,17 @@ jobs:
         id: owner
         run: echo "lowercase=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+      - name: Determine Dockerfile
+        id: dockerfile
+        run: |
+          case "${{ matrix.distro }}" in
+            noetic)  echo "path=ros/docker/Dockerfile.ros1" >> $GITHUB_OUTPUT ;;
+            humble)  echo "path=ros/docker/Dockerfile.ros2.humble" >> $GITHUB_OUTPUT ;;
+            jazzy)   echo "path=ros/docker/Dockerfile.ros2.jazzy" >> $GITHUB_OUTPUT ;;
+            rolling) echo "path=ros/docker/Dockerfile.ros2.rolling" >> $GITHUB_OUTPUT ;;
+            *) echo "ERROR: Unknown distro: ${{ matrix.distro }}"; exit 1 ;;
+          esac
+
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -89,7 +95,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: ${{ steps.dockerfile.outputs.path }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

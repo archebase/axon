@@ -23,7 +23,7 @@ jobs:
   # Run integration tests with MinIO (started manually via docker run)
   # ===========================================================================
   cpp-integration-tests:
-    name: C++ Integration Tests - axon_uploader
+    name: axon_uploader
     runs-on: ubuntu-22.04
     
     # Note: MinIO is started manually in a step below because GitHub Actions
