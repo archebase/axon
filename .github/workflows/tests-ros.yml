@@ -1,11 +1,14 @@
 # =============================================================================
 # ROS Tests Workflow for Axon
 # =============================================================================
-# Runs all ROS tests (unit + integration) for axon_recorder package.
+# Runs all ROS unit + integration tests for axon_recorder package.
 # Uses Docker images from GHCR for consistent builds across environments.
 #
-# Coverage is collected from Humble (ROS2) and Noetic (ROS1) and uploaded
-# as artifacts for merging in ci.yml.
+# Coverage is collected from ALL distros (Noetic, Humble, Jazzy, Rolling)
+# and uploaded as artifacts for merging in ci.yml.
+#
+# NOTE: E2E tests (service call tests) run separately via e2e-tests.yml
+#       on Humble only.
 # =============================================================================
 
 name: ROS Tests
@@ -56,16 +59,16 @@ jobs:
             ros_version: "2"
             collect_coverage: true
             script: run_coverage.sh
-          # ROS 2 Jazzy - compatibility testing only
+          # ROS 2 Jazzy - collect coverage (same as Humble)
           - ros_distro: jazzy
             ros_version: "2"
-            collect_coverage: false
-            script: run_tests.sh
-          # ROS 2 Rolling - compatibility testing only
+            collect_coverage: true
+            script: run_coverage.sh
+          # ROS 2 Rolling - collect coverage (same as Humble)
           - ros_distro: rolling
             ros_version: "2"
-            collect_coverage: false
-            script: run_tests.sh
+            collect_coverage: true
+            script: run_coverage.sh
 
     permissions:
       contents: read
