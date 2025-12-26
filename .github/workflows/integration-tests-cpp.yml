@@ -147,8 +147,11 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
-          LD_LIBRARY_PATH: ~/aws-sdk-cpp-install/lib
         run: |
+          # Set LD_LIBRARY_PATH in run block where bash expands ~ properly
+          # (GitHub Actions env: block doesn't perform tilde expansion)
+          export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          
           cd cpp/build_uploader_integration
           
           # Run the integration test that's not registered with CTest
