@@ -141,6 +141,9 @@ jobs:
             
             # Local workspace prefix (docker local runs)
             sed -i 's|/workspace/axon/||g' "$f"
+            # Docker catkin workspace (ROS1 in new Docker setup)
+            sed -i 's|/workspace/catkin_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
+            sed -i 's|/workspace/catkin_ws/build/|build/|g' "$f"
             sed -i 's|/workspace/||g' "$f"
             
             # Repo folder name from clone (Axon/)
