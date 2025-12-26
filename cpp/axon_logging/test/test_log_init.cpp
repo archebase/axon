@@ -387,6 +387,19 @@ TEST_F(LoggingConfigTest, ApplyEnvOverrides_EmptyEnvVar) {
   EXPECT_EQ(config.console_level, severity_level::info);
 }
 
+TEST_F(LoggingConfigTest, GetEnv_EmptyString_ReturnsNullopt) {
+  // Test get_env() with empty string value (value[0] == '\0')
+  // This exercises the check in get_env() that returns nullopt for empty strings
+  setenv("AXON_LOG_LEVEL", "", 1);
+  
+  LoggingConfig config;
+  config.console_level = severity_level::info;
+  apply_env_overrides(config);
+  
+  // Should NOT change because empty string is treated as unset
+  EXPECT_EQ(config.console_level, severity_level::info);
+}
+
 // ============================================================================
 // Logging Initialization Tests
 // ============================================================================

@@ -140,9 +140,36 @@ jobs:
             wc -l < ${{ github.workspace }}/coverage_output/coverage.info
             
             echo ""
-            echo "=== Source file paths ==="
+            echo "=== Source file paths (before normalization) ==="
             grep "^SF:" ${{ github.workspace }}/coverage_output/coverage.info | sort | head -20 || echo "No SF entries"
           fi
+
+      - name: Normalize coverage paths
+        if: matrix.collect_coverage
+        run: |
+          if [ -f "${{ github.workspace }}/coverage_output/coverage.info" ]; then
+            chmod +x ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh
+            ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh ${{ github.workspace }}/coverage_output/coverage.info
+            echo "Sample paths after normalization:"
+            grep "^SF:" ${{ github.workspace }}/coverage_output/coverage.info | sort | head -10 || echo "No SF entries"
+          fi
+
+      - name: Upload coverage to Codecov with flag
+        if: matrix.collect_coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ github.workspace }}/coverage_output/coverage.info
+          flags: ros-${{ matrix.ros_distro }}
+          name: ros-${{ matrix.ros_distro }}
+          fail_ci_if_error: false
+          verbose: true
+          disable_search: true
+          disable_file_fixes: true
+          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          override_build: ${{ github.run_id }}
+          override_pr: ${{ github.event.pull_request.number }}
 
       - name: Upload coverage artifact
         if: matrix.collect_coverage
