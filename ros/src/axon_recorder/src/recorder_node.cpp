@@ -324,7 +324,7 @@ std::string RecorderNode::get_config_path() {
   // ROS 2: Try several locations for config file
 
   // Try workspace source path first (for development)
-  std::string source_config = "/workspace/axon/ros/axon_recorder/config/default_config.yaml";
+  std::string source_config = "/workspace/axon/ros/src/axon_recorder/config/default_config.yaml";
   std::ifstream test_file(source_config);
   if (test_file.good()) {
     return source_config;

@@ -153,58 +153,58 @@ if [ "$SKIP_BUILD" = false ]; then
     echo "Building axon_recorder package..."
     echo "============================================"
     
-    # Build in the axon/ros directory to preserve relative paths in CMakeLists.txt
-    cd /workspace/axon/ros
-    
-    if [ "${ROS_VERSION}" = "2" ]; then
-        # Build with colcon, keeping build artifacts in a separate directory
-        # Use --build-base and --install-base to avoid polluting the source tree
-        
-        # Determine build type and extra flags based on ASAN mode
+    # Determine build type and extra flags based on ASAN mode
+    if [ "$ASAN_ENABLED" = true ]; then
+        echo ""
+        echo "Building with Address Sanitizer enabled..."
+        # Clean previous build to ensure ASAN flags are applied
+        rm -rf /workspace/ros_ws/build /workspace/ros_ws/install
+        mkdir -p /workspace/ros_ws/build /workspace/ros_ws/install
+
+        CMAKE_BUILD_TYPE="RelWithDebInfo"
+        CMAKE_EXTRA_ARGS="-DENABLE_ASAN=ON"
+    else
+        CMAKE_BUILD_TYPE="Release"
+        CMAKE_EXTRA_ARGS=""
+    fi
+
+    if [ "${ROS_VERSION}" = "1" ]; then
+        # ROS 1 - Use catkin build
+        echo "Building with catkin build (ROS 1)..."
+
+        cd /workspace/axon/ros
+        # Clean previous build (union of ROS1 and ROS2 build artifacts)
+        rm -rf build devel install log
+
+        source /opt/ros/${ROS_DISTRO}/setup.bash
+        catkin build --no-notify -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${CMAKE_EXTRA_ARGS}
+        source devel/setup.bash
+
         if [ "$ASAN_ENABLED" = true ]; then
-            echo ""
-            echo "Building with Address Sanitizer enabled..."
-            # Clean previous build to ensure ASAN flags are applied
-            rm -rf /workspace/ros_ws/build /workspace/ros_ws/install
-            mkdir -p /workspace/ros_ws/build /workspace/ros_ws/install
-            
-            CMAKE_BUILD_TYPE="RelWithDebInfo"
-            CMAKE_EXTRA_ARGS="-DENABLE_ASAN=ON"
+            echo "✓ Built axon_recorder with catkin build (ASAN enabled)"
         else
-            CMAKE_BUILD_TYPE="Release"
-            CMAKE_EXTRA_ARGS=""
+            echo "✓ Built axon_recorder with catkin build"
         fi
-        
+    else
+        # ROS 2 - Use colcon
+        echo "Building with colcon (ROS 2)..."
+
+        cd /workspace/axon
+        rm -rf build devel install log
+
+        source /opt/ros/${ROS_DISTRO}/setup.bash
         colcon build \
             --packages-select axon_recorder \
-            --build-base /workspace/ros_ws/build \
-            --install-base /workspace/ros_ws/install \
-            --cmake-args -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${CMAKE_EXTRA_ARGS}
-        source /workspace/ros_ws/install/setup.bash
-        
+            --cmake-args -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${CMAKE_EXTRA_ARGS} \
+            --base-paths ros
+
+        source install/setup.bash
+
         if [ "$ASAN_ENABLED" = true ]; then
             echo "✓ Built axon_recorder with colcon (ASAN enabled)"
         else
             echo "✓ Built axon_recorder with colcon"
         fi
-    else
-        # ROS 1 build with catkin
-        # Create catkin workspace structure
-        mkdir -p /workspace/ros_ws/src
-        if [ ! -L /workspace/ros_ws/src/axon_recorder ]; then
-            ln -sf /workspace/axon/ros/axon_recorder /workspace/ros_ws/src/axon_recorder
-        fi
-        # Also symlink cpp and c directories to preserve relative paths
-        if [ ! -L /workspace/ros_ws/src/cpp ]; then
-            ln -sf /workspace/axon/cpp /workspace/ros_ws/src/cpp
-        fi
-        if [ ! -L /workspace/ros_ws/src/c ]; then
-            ln -sf /workspace/axon/c /workspace/ros_ws/src/c
-        fi
-        cd /workspace/ros_ws
-        catkin_make -DCMAKE_BUILD_TYPE=Release
-        source devel/setup.bash
-        echo "✓ Built axon_recorder with catkin"
     fi
     
     cd /workspace/axon

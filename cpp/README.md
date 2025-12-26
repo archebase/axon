@@ -244,7 +244,7 @@ cd cpp/axon_mcap/build
 ## Usage
 
 The C++ SDK is used by:
-- **ROS packages** (`ros/axon_recorder/`) for ROS 1 and ROS 2 integration
+- **ROS packages** (`ros/src/axon_recorder/`) for ROS 1 and ROS 2 integration
 - Can be used **standalone** for non-ROS applications
 
 ### Using in ROS Packages
@@ -258,7 +258,7 @@ target_link_libraries(your_target axon_mcap)
 
 ## See Also
 
-- [ROS Recorder Package](../ros/axon_recorder/README.md)
+- [ROS Recorder Package](../ros/src/axon_recorder/README.md)
 - [Main README](../README.md)
 - [MCAP Specification](https://mcap.dev/)
 - [Foxglove Studio](https://foxglove.dev/)

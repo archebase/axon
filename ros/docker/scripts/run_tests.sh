@@ -6,7 +6,7 @@ set -e
 # =============================================================================
 # This script runs tests using ROS's native test infrastructure:
 #   - colcon test (ROS 2)
-#   - catkin_make run_tests (ROS 1)
+#   - catkin build --catkin-make-args run_tests (ROS 1)
 #
 # This matches how CI runs tests via industrial_ci.
 # =============================================================================
@@ -37,33 +37,28 @@ echo "Part 1: Building and running ROS tests..."
 echo "============================================"
 
 if [ "${ROS_VERSION}" = "1" ]; then
-    # ROS 1 - Use catkin
-    echo "Building with catkin (ROS 1)..."
-    
-    rm -rf /workspace/catkin_ws
-    mkdir -p /workspace/catkin_ws/src
-    cd /workspace/catkin_ws
-    # Symlink the package
-    ln -sf /workspace/axon/ros/axon_recorder src/axon_recorder
-    # Symlink cpp/ directory for dependencies (axon_mcap, axon_logging)
-    # CMakeLists.txt uses ../../cpp/ relative paths
-    ln -sf /workspace/axon/cpp cpp
-    
+    # ROS 1 - Use catkin build
+    echo "Building with catkin build (ROS 1)..."
+
+    cd /workspace/axon/ros
+    # Clean previous build (union of ROS1 and ROS2 build artifacts)
+    rm -rf build devel install log
+
     source /opt/ros/${ROS_DISTRO}/setup.bash
-    catkin_make -DCMAKE_BUILD_TYPE=Release
+    catkin build --no-notify -DCMAKE_BUILD_TYPE=Release
     source devel/setup.bash
-    
+
     echo "Running catkin tests..."
-    catkin_make run_tests
+    catkin build --no-notify --catkin-make-args run_tests
     catkin_test_results --verbose
     echo "✓ ROS 1 tests passed"
-    
+
 else
     # ROS 2 - Use colcon
     echo "Building with colcon (ROS 2)..."
     
     cd /workspace/axon
-    rm -rf build install log
+    rm -rf build devel install log
     
     source /opt/ros/${ROS_DISTRO}/setup.bash
     colcon build \

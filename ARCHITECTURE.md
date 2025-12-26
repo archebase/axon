@@ -89,7 +89,7 @@ The recorder uses a task-centric state machine where each task corresponds to on
 
 ## Core Components
 
-### 1. ROS Recorder (`ros/axon_recorder/`)
+### 1. ROS Recorder (`ros/src/axon_recorder/`)
 
 **Recording Session**
 - Encapsulates MCAP file lifecycle (open/write/close)

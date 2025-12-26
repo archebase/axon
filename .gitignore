@@ -66,6 +66,7 @@ build/
 install/
 .catkin_workspace
 .rosinstall
+.catkin_tools/
 
 # Temporary files
 *.tmp
