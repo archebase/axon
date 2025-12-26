@@ -157,6 +157,26 @@ TEST_F(EdgeUploaderIntegrationTest, StartStop) {
   EXPECT_FALSE(uploader.isRunning());
 }
 
+TEST_F(EdgeUploaderIntegrationTest, ConfigWithSdkRetries) {
+  // Test that SDK retry configuration is properly passed through
+  // This covers the retry strategy creation in S3Client::Impl::initClient()
+  config_.s3.max_sdk_retries = 3;  // Non-zero value to cover retry strategy creation
+
+  EdgeUploader uploader(config_);
+
+  EXPECT_FALSE(uploader.isRunning());
+
+  uploader.start();
+  EXPECT_TRUE(uploader.isRunning());
+
+  // Verify health status is available (confirms S3Client initialized correctly)
+  auto health = uploader.getHealthStatus();
+  EXPECT_TRUE(health.healthy);
+
+  uploader.stop();
+  EXPECT_FALSE(uploader.isRunning());
+}
+
 TEST_F(EdgeUploaderIntegrationTest, HealthStatus) {
   EdgeUploader uploader(config_);
   uploader.start();
