@@ -114,6 +114,7 @@ jobs:
 
       - name: Run tests
         run: |
+          # Run scripts from mounted volume to ensure latest version is used
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
             ${{ matrix.collect_coverage && format('-v {0}/coverage_output:/coverage_output', github.workspace) || '' }} \
@@ -122,7 +123,7 @@ jobs:
             ${{ matrix.collect_coverage && '-e COVERAGE_OUTPUT=/coverage_output' || '' }} \
             --network host \
             axon-test-${{ matrix.ros_distro }}:latest \
-            /usr/local/bin/${{ matrix.script }}
+            /workspace/axon/ros/docker/scripts/${{ matrix.script }}
 
       - name: Debug coverage output
         if: matrix.collect_coverage

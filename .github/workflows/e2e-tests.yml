@@ -76,6 +76,7 @@ jobs:
 
       - name: Run E2E tests with coverage
         run: |
+          # Run scripts from mounted volume to ensure latest version is used
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
             -v ${{ github.workspace }}/coverage_output:/coverage_output \
@@ -84,7 +85,7 @@ jobs:
             -e COVERAGE_OUTPUT=/coverage_output \
             --network host \
             axon-test-humble:latest \
-            /usr/local/bin/run_e2e.sh
+            /workspace/axon/ros/docker/scripts/run_e2e.sh
 
       - name: Debug coverage output
         run: |
