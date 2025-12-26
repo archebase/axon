@@ -7,7 +7,7 @@
 # Only runs on Humble LTS - unit tests verify API compatibility across distros.
 # =============================================================================
 
-name: E2E Tests
+name: ROS E2E Tests
 
 on:
   # Called by ci.yml orchestrator
@@ -42,7 +42,7 @@ jobs:
   # Collects coverage to capture code paths exercised by E2E scenarios
   # ==========================================================================
   ros-e2e-tests:
-    name: ROS E2E Tests (humble)
+    name: Humble
     runs-on: ubuntu-latest
     needs: [build-images]
     timeout-minutes: 45

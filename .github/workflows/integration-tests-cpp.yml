@@ -47,14 +47,24 @@ jobs:
           
           # Wait for MinIO to be ready
           echo "Waiting for MinIO to start..."
+          MINIO_READY=false
           for i in {1..30}; do
             if curl -sf http://localhost:9000/minio/health/live; then
               echo "MinIO is ready!"
+              MINIO_READY=true
               break
             fi
             echo "Waiting... ($i/30)"
             sleep 1
           done
+          
+          # Fail fast with clear error if MinIO didn't start
+          if [ "$MINIO_READY" != "true" ]; then
+            echo "ERROR: MinIO failed to start within 30 seconds"
+            echo "Docker container logs:"
+            docker logs minio-server || true
+            exit 1
+          fi
 
       - name: Create test bucket
         run: |

@@ -134,63 +134,132 @@ jobs:
 
       - name: Normalize coverage paths
         run: |
-          echo "=== Normalizing all coverage file paths (centralized) ==="
+          # =============================================================================
+          # SYSTEMATIC PATH NORMALIZATION
+          # =============================================================================
+          # Goal: Normalize all paths to repo-relative format:
+          #   - cpp/axon_logging/...
+          #   - cpp/axon_mcap/...
+          #   - cpp/axon_uploader/...
+          #   - ros/axon_recorder/...
+          #
+          # Strategy:
+          #   1. Handle environment-specific prefixes (most specific first)
+          #   2. Handle package-to-repo mapping (symlinks, relative paths)
+          #   3. Clean up remaining container/clone paths
+          #   4. Filter out build directory paths
+          #
+          # Key: Only match at line start (^SF:) to avoid partial matches
+          # =============================================================================
+          
+          echo "=== Normalizing all coverage file paths (systematic) ==="
           
           for f in $(find . -name "*.info" -type f); do
             echo "Processing: $f"
             
-            # GitHub Actions workspace prefix
-            sed -i 's|/home/runner/work/Axon/Axon/||g' "$f"
+            # -----------------------------------------------------------------
+            # Step 1: GitHub Actions workspace prefix
+            # -----------------------------------------------------------------
+            # Path: /home/runner/work/Axon/Axon/cpp/... → cpp/...
+            # Path: /home/runner/work/Axon/Axon/ros/... → ros/...
+            sed -i 's|^SF:/home/runner/work/Axon/Axon/|SF:|' "$f"
             
-            # Docker/industrial_ci workspace prefixes (ROS2)
-            sed -i 's|/root/target_ws/src/Axon/||g' "$f"
-            # Map package to repo structure in case package is copied directly (without Axon/ parent)
-            sed -i 's|/root/target_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
-            # Fallback: strip any remaining target_ws paths
-            sed -i 's|/root/target_ws/src/||g' "$f"
-            sed -i 's|/root/upstream_ws/src/Axon/||g' "$f"
-            sed -i 's|/root/upstream_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
-            sed -i 's|/root/upstream_ws/src/||g' "$f"
+            # -----------------------------------------------------------------
+            # Step 2: Docker ROS2 workspace (/workspace/axon/...)
+            # -----------------------------------------------------------------
+            # Path: /workspace/axon/ros/axon_recorder/... → ros/axon_recorder/...
+            # Path: /workspace/axon/cpp/axon_*/... → cpp/axon_*/...
+            sed -i 's|^SF:/workspace/axon/|SF:|' "$f"
             
-            # Docker/industrial_ci workspace prefixes (ROS1 catkin)
-            sed -i 's|/root/catkin_ws/src/axon_recorder/../../||g' "$f"
-            # Map catkin package to repo structure (catkin_ws/src/axon_recorder/ → ros/axon_recorder/)
-            sed -i 's|/root/catkin_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
-            # Fallback: strip any remaining catkin paths
-            sed -i 's|/root/catkin_ws/src/||g' "$f"
+            # -----------------------------------------------------------------
+            # Step 3: Docker ROS1 catkin workspace (symlink resolution)
+            # -----------------------------------------------------------------
+            # The catkin workspace has:
+            #   - src/axon_recorder → /workspace/axon/ros/axon_recorder (symlink)
+            #   - cpp → /workspace/axon/cpp (symlink)
+            #
+            # Relative path traversal: ../../cpp/ for axon_mcap, axon_logging deps
+            # Path: /workspace/catkin_ws/src/axon_recorder/../../cpp/... → cpp/...
+            sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$f"
+            sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$f"
             
-            # Local workspace prefix (docker local runs)
-            sed -i 's|/workspace/axon/||g' "$f"
-            # Docker catkin workspace (ROS1 in new Docker setup)
-            # Handle relative path traversal first (../../cpp/ for axon_mcap, axon_logging deps)
-            sed -i 's|/workspace/catkin_ws/src/axon_recorder/../../||g' "$f"
-            sed -i 's|/workspace/catkin_ws/src/axon_recorder/|ros/axon_recorder/|g' "$f"
-            sed -i 's|/workspace/catkin_ws/build/|build/|g' "$f"
-            sed -i 's|/workspace/||g' "$f"
+            # Symlinked cpp directory
+            # Path: /workspace/catkin_ws/cpp/axon_*/... → cpp/axon_*/...
+            sed -i 's|^SF:/workspace/catkin_ws/cpp/|SF:cpp/|' "$f"
             
-            # Docker catkin workspace symlinked cpp/ directory (ROS1 coverage)
-            # catkin_ws/cpp/axon_logging/... → cpp/axon_logging/...
-            sed -i 's|^SF:catkin_ws/cpp/|SF:cpp/|g' "$f"
+            # Package directory
+            # Path: /workspace/catkin_ws/src/axon_recorder/... → ros/axon_recorder/...
+            sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
             
-            # Repo folder name from clone (Axon/)
-            sed -i 's|^SF:Axon/|SF:|g' "$f"
+            # Build directory (for filtering later)
+            sed -i 's|^SF:/workspace/catkin_ws/build/|SF:build/|' "$f"
             
-            # Build directory absolute paths (keep relative build/ prefix for filtering)
-            sed -i 's|/root/target_ws/build/|build/|g' "$f"
-            sed -i 's|/root/catkin_ws/build/|build/|g' "$f"
-            sed -i 's|/root/upstream_ws/build/|build/|g' "$f"
+            # -----------------------------------------------------------------
+            # Step 4: Industrial CI prefixes (ROS2 target_ws)
+            # -----------------------------------------------------------------
+            # Path: /root/target_ws/src/Axon/ros/... → ros/...
+            # Path: /root/target_ws/src/Axon/cpp/... → cpp/...
+            sed -i 's|^SF:/root/target_ws/src/Axon/|SF:|' "$f"
+            
+            # Package copied directly (without Axon/ parent)
+            # Path: /root/target_ws/src/axon_recorder/... → ros/axon_recorder/...
+            sed -i 's|^SF:/root/target_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
+            
+            # Build directory
+            sed -i 's|^SF:/root/target_ws/build/|SF:build/|' "$f"
+            
+            # -----------------------------------------------------------------
+            # Step 5: Industrial CI prefixes (ROS2 upstream_ws)
+            # -----------------------------------------------------------------
+            sed -i 's|^SF:/root/upstream_ws/src/Axon/|SF:|' "$f"
+            sed -i 's|^SF:/root/upstream_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
+            sed -i 's|^SF:/root/upstream_ws/build/|SF:build/|' "$f"
+            
+            # -----------------------------------------------------------------
+            # Step 6: Industrial CI prefixes (ROS1 catkin_ws)
+            # -----------------------------------------------------------------
+            # Relative path traversal
+            sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$f"
+            sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$f"
+            
+            # Symlinked cpp directory
+            sed -i 's|^SF:/root/catkin_ws/cpp/|SF:cpp/|' "$f"
+            
+            # Package directory
+            sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
+            
+            # Build directory
+            sed -i 's|^SF:/root/catkin_ws/build/|SF:build/|' "$f"
+            
+            # -----------------------------------------------------------------
+            # Step 7: Cleanup remaining relative paths
+            # -----------------------------------------------------------------
+            # Relative catkin_ws paths (after stripping /workspace/)
+            sed -i 's|^SF:catkin_ws/cpp/|SF:cpp/|' "$f"
+            sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
+            
+            # Clone directory name
+            sed -i 's|^SF:Axon/|SF:|' "$f"
           done
           
+          # =================================================================
+          # Validation: Show normalized paths summary
+          # =================================================================
           echo ""
           echo "=== Normalized paths summary ==="
           echo "--- cpp/axon_logging ---"
-          grep "^SF:.*axon_logging" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
+          grep "^SF:cpp/axon_logging" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
           echo "--- cpp/axon_mcap ---"
-          grep "^SF:.*axon_mcap" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
+          grep "^SF:cpp/axon_mcap" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
           echo "--- cpp/axon_uploader ---"
-          grep "^SF:.*axon_uploader" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
+          grep "^SF:cpp/axon_uploader" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
           echo "--- ros/axon_recorder ---"
           grep "^SF:ros/axon_recorder" */coverage*.info 2>/dev/null | sort -u | head -10 || echo "  (none)"
+          
+          # Check for any remaining absolute paths (should be none)
+          echo ""
+          echo "--- Checking for remaining absolute paths (should be empty) ---"
+          grep "^SF:/" */coverage*.info 2>/dev/null | head -5 || echo "  (none - good!)"
 
       - name: Merge all coverage reports
         run: |

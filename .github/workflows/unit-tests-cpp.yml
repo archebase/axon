@@ -23,7 +23,7 @@ jobs:
   # Run unit tests with coverage for each library in PARALLEL
   # ===========================================================================
   cpp-unit-tests:
-    name: C++ Unit Tests - ${{ matrix.library }}
+    name: ${{ matrix.library }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false

@@ -41,7 +41,7 @@ jobs:
   # Collects coverage from Humble and Noetic, uploads to Codecov
   # ==========================================================================
   ros-tests:
-    name: ROS Tests (${{ matrix.ros_distro }})
+    name: (${{ matrix.ros_distro }})
     runs-on: ubuntu-latest
     needs: [build-images]
     timeout-minutes: 30
