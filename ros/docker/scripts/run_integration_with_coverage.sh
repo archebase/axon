@@ -89,32 +89,28 @@ else
 fi
 
 # =============================================================================
-# Part 1.5: Run Tests (capture exit code but continue to generate coverage)
+# Part 1.5: Run Tests (exits immediately on failure - no coverage for failed tests)
 # =============================================================================
 echo ""
 echo "============================================"
 echo "Running tests..."
 echo "============================================"
 
-TEST_EXIT_CODE=0
-
 if [ "${ROS_VERSION:-2}" = "1" ]; then
     echo "Running catkin tests..."
     catkin_make run_tests
-    # catkin_test_results returns non-zero if any tests failed
-    catkin_test_results --verbose || TEST_EXIT_CODE=$?
+    catkin_test_results --verbose
 else
     echo "Running colcon tests..."
     colcon test \
         --packages-select axon_recorder \
         --event-handlers console_direct+ \
         --base-paths ros
-    # colcon test-result returns non-zero if any tests failed
-    colcon test-result --verbose || TEST_EXIT_CODE=$?
+    colcon test-result --verbose
 fi
 
 echo ""
-echo "Tests completed with exit code: ${TEST_EXIT_CODE}"
+echo "All tests passed!"
 
 # =============================================================================
 # Part 2: Generate Coverage Report
@@ -286,6 +282,5 @@ if [ -f "${OUTPUT_DIR}/coverage.info" ]; then
     echo "Total line coverage: ${TOTAL_LINES}"
 fi
 
-# Exit with test result - ensures CI fails if tests fail
-exit ${TEST_EXIT_CODE}
+# Script exits with 0 if we reach here (tests passed, coverage generated)
 

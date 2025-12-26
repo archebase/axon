@@ -93,24 +93,22 @@ else
 fi
 
 # =============================================================================
-# Part 2: Run E2E Tests ONLY (no unit tests)
+# Part 2: Run E2E Tests ONLY (exits immediately on failure - no coverage for failed tests)
 # =============================================================================
 echo ""
 echo "============================================"
 echo "Part 2: Running E2E tests only..."
 echo "============================================"
 
-E2E_EXIT_CODE=0
-
 if [ -f "${E2E_RUNNER}" ]; then
     chmod +x "${E2E_RUNNER}"
-    "${E2E_RUNNER}" || E2E_EXIT_CODE=$?
+    "${E2E_RUNNER}"
 else
     echo "ERROR: E2E test runner not found at ${E2E_RUNNER}"
     exit 1
 fi
 
-echo "E2E tests completed with exit code: ${E2E_EXIT_CODE}"
+echo "E2E tests passed!"
 
 # =============================================================================
 # Part 3: Generate Coverage Report
@@ -147,11 +145,9 @@ echo "Searching for coverage data in ${COVERAGE_DIR}..."
 GCDA_DIRS=$(find "${COVERAGE_DIR}" -name "*.gcda" -type f -exec dirname {} \; 2>/dev/null | sort -u)
 
 if [ -z "${GCDA_DIRS}" ]; then
-    echo "WARNING: No .gcda files found in ${COVERAGE_DIR}!"
+    echo "ERROR: No .gcda files found in ${COVERAGE_DIR}!"
     echo "This may happen if E2E tests didn't execute any instrumented code."
-    # Create empty coverage file and exit with test result
-    touch "${OUTPUT_DIR}/coverage.info"
-    exit ${E2E_EXIT_CODE}
+    exit 1
 fi
 
 echo "Found .gcda files in directories:"
@@ -183,9 +179,8 @@ lcov --capture \
 
 # Check if we got any coverage data
 if [ ! -s "${OUTPUT_DIR}/coverage_raw.info" ]; then
-    echo "WARNING: No coverage data captured!"
-    touch "${OUTPUT_DIR}/coverage.info"
-    exit ${E2E_EXIT_CODE}
+    echo "ERROR: No coverage data captured!"
+    exit 1
 fi
 
 echo "Coverage data captured: $(wc -l < "${OUTPUT_DIR}/coverage_raw.info") lines"
@@ -242,6 +237,5 @@ echo "E2E test coverage collection complete!"
 echo "============================================"
 echo "Coverage data: ${OUTPUT_DIR}/coverage.info"
 
-# Exit with E2E test result
-exit ${E2E_EXIT_CODE}
+# Script exits with 0 if we reach here (tests passed, coverage generated)
 
