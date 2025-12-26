@@ -68,11 +68,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Convert owner to lowercase
+        id: owner
+        run: echo "lowercase=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/axon-test-${{ matrix.distro }}
+          images: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lowercase }}/axon-test-${{ matrix.distro }}
           tags: |
             # Tag with 'latest' for main/develop branches
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}

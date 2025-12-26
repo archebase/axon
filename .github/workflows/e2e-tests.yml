@@ -47,9 +47,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine image tag
-        id: image-tag
+      - name: Determine image tag and owner
+        id: image-info
         run: |
+          # Convert owner to lowercase (Docker requires lowercase)
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "owner=${OWNER}" >> $GITHUB_OUTPUT
+          
           # Use PR tag for pull requests, sha tag otherwise
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             TAG="pr-${{ github.event.pull_request.number }}"
@@ -57,11 +61,11 @@ jobs:
             TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
           fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Using image tag: ${TAG}"
+          echo "Using image: ${OWNER}/axon-test-humble:${TAG}"
 
       - name: Pull Docker image
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/axon-test-humble:${{ steps.image-tag.outputs.tag }}"
+          IMAGE="${{ env.REGISTRY }}/${{ steps.image-info.outputs.owner }}/axon-test-humble:${{ steps.image-info.outputs.tag }}"
           echo "Pulling image: ${IMAGE}"
           docker pull "${IMAGE}"
           # Tag as latest for easier reference
