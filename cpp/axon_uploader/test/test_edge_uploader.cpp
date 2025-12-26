@@ -267,6 +267,7 @@ TEST_F(EdgeUploaderIntegrationTest, CrashRecovery) {
 TEST_F(EdgeUploaderIntegrationTest, RetryOnFailure) {
   // Configure uploader with an invalid endpoint to force failures
   config_.s3.endpoint_url = "http://localhost:19999";  // Wrong port
+  config_.s3.connect_timeout_ms = 1000;  // 1 second timeout for faster test failures
   config_.retry.max_retries = 2;
   config_.retry.initial_delay = std::chrono::milliseconds(50);
 
