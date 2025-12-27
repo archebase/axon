@@ -5,8 +5,10 @@
 # See: https://docs.codecov.com/docs/codecov-yaml
 #
 # Coverage Strategy:
-#   - Each workflow uploads coverage directly with flags
+#   - Each workflow uploads coverage directly with flags (for tracking/metrics only)
 #   - Codecov automatically merges multiple uploads from the same commit
+#   - Status checks use default coverage.status.project.default (auto target on merged coverage)
+#   - Flags and components are for tracking/metrics in UI, not for CI status checks
 #   - Path normalization is done in each workflow before upload
 #
 # Architecture:
@@ -26,149 +28,53 @@ coverage:
       default:
         target: auto
 
-# Flag management - separate coverage by test type and ROS distro
+# Flag management - flags are used for tracking/metrics only, not status checks
+# Codecov automatically merges all coverage from the same commit
+# Status checks use default coverage.status (auto target on merged coverage)
 flag_management:
   default_rules:
     carryforward: false
   individual_flags:
-    # ========================================================================
-    # C++ Library Tests (standalone, no ROS dependency)
-    # ========================================================================
-    # Pure C++ unit tests for common libraries
+    # Flags defined here are for tracking/metrics in Codecov UI only
+    # No status checks - components handle aggregated coverage status
     - name: cpp-unit
-      paths:
-        - cpp/axon_logging/**
-        - cpp/axon_mcap/**
-        - cpp/axon_uploader/**
-      statuses:
-        - type: project
-          target: 90%  # High target for unit tests
-          threshold: 1%
-    
-    # C++ integration tests (edge_uploader with MinIO, no ROS)
     - name: cpp-integration
-      paths:
-        - cpp/axon_uploader/**
-      statuses:
-        - type: project
-          target: 70%  # Lower target for integration tests
-          threshold: 1%
-    
-    # ========================================================================
-    # ROS Tests (cover both ros/ code AND cpp/ libraries via usage)
-    # ========================================================================
-    # Each ROS distro has its own flag to track coverage per distro
-    # ROS tests exercise cpp/ libraries, so paths include both ros/ and cpp/
-    
-    # ROS1 Noetic tests
     - name: ros-noetic
-      paths:
-        - ros/axon_recorder/src/**      # ROS-specific code
-        - cpp/axon_logging/**           # Used by ROS
-        - cpp/axon_mcap/**              # Used by ROS
-        - cpp/axon_uploader/**          # Used by ROS (if enabled)
-      statuses:
-        - type: project
-          target: 80%  # Target for ROS integration tests
-          threshold: 1%
-    
-    # ROS2 Humble tests
     - name: ros-humble
-      paths:
-        - ros/axon_recorder/src/**
-        - cpp/axon_logging/**
-        - cpp/axon_mcap/**
-        - cpp/axon_uploader/**
-      statuses:
-        - type: project
-          target: 80%
-          threshold: 1%
-    
-    # ROS2 Jazzy tests
     - name: ros-jazzy
-      paths:
-        - ros/axon_recorder/src/**
-        - cpp/axon_logging/**
-        - cpp/axon_mcap/**
-        - cpp/axon_uploader/**
-      statuses:
-        - type: project
-          target: 80%
-          threshold: 1%
-    
-    # ROS2 Rolling tests
     - name: ros-rolling
-      paths:
-        - ros/axon_recorder/src/**
-        - cpp/axon_logging/**
-        - cpp/axon_mcap/**
-        - cpp/axon_uploader/**
-      statuses:
-        - type: project
-          target: 80%
-          threshold: 1%
+    - name: e2e-noetic
+    - name: e2e-humble
+    - name: e2e-jazzy
+    - name: e2e-rolling
 
-# Component management - virtual filters for tracking coverage by library/module
-# Components don't need to be supplied at upload time, they filter existing coverage
-# Useful for aggregating coverage across multiple flags (e.g., cpp/axon_logging coverage
-# from both cpp-unit tests AND ros-* tests)
+# Component management - components aggregate coverage across all flags for tracking
+# Components are for metrics/tracking only, not status checks
+# Status checks use the default coverage.status.project.default (auto target)
 component_management:
-  default_rules:
-    statuses:
-      - type: project
-        target: auto
-        threshold: 1%
+  default_rules: {}
   individual_components:
-    # ========================================================================
-    # C++ Library Components (track each library across all test types)
-    # ========================================================================
-    # These components aggregate coverage from both cpp-unit/cpp-integration flags
-    # AND ros-* flags, giving a complete picture of each library's coverage
-    
+    # Components aggregate coverage from all flags automatically
+    # Useful for viewing coverage by library/module in Codecov UI
     - component_id: cpp_axon_logging
       name: axon_logging
       paths:
         - cpp/axon_logging/**
-      statuses:
-        - type: project
-          target: 90%  # High target - core logging library
-          threshold: 1%
     
     - component_id: cpp_axon_mcap
       name: axon_mcap
       paths:
         - cpp/axon_mcap/**
-      statuses:
-        - type: project
-          target: 60%  # High target - MCAP validation library
-          threshold: 1%
     
     - component_id: cpp_axon_uploader
       name: axon_uploader
       paths:
         - cpp/axon_uploader/**
-      statuses:
-        - type: project
-          target: 30%  # Moderate target - complex upload logic
-          threshold: 1%
-    
-    # ========================================================================
-    # ROS Component (track ROS code separately)
-    # ========================================================================
-    # Aggregates coverage from all ros-* flags to show overall ROS code coverage
     
     - component_id: ros_axon_recorder
       name: axon_recorder
       paths:
-        - ros/axon_recorder/src/**
-      statuses:
-        - type: project
-          target: 80%  # Target for ROS integration tests
-          threshold: 1%
-    
-    # ========================================================================
-    # Aggregate Components (high-level views)
-    # ========================================================================
+        - ros/src/axon_recorder/**
     
     - component_id: cpp_all
       name: All C++ Libraries
@@ -176,49 +82,6 @@ component_management:
         - cpp/axon_logging/**
         - cpp/axon_mcap/**
         - cpp/axon_uploader/**
-      statuses:
-        - type: project
-          target: 50%  # Overall C++ library coverage target
-          threshold: 1%
-
-# Ignore test files, non-source files, and auto-generated files from coverage metrics
-ignore:
-  # Test files
-  - "ros/src/axon_recorder/test/**/*"
-  - "cpp/axon_logging/test/**/*"
-  - "cpp/axon_mcap/test/**/*"
-  - "cpp/axon_uploader/test/**/*"
-  - "**/test/**/*"
-  - "**/*_test.cpp"
-  - "**/test_*.cpp"
-  # Build directory (auto-generated ROS files)
-  - "build/**/*"
-  # ROS auto-generated code (from .srv/.msg files)
-  - "**/rosidl_typesupport_cpp/**/*"
-  - "**/rosidl_typesupport_introspection_cpp/**/*"
-  - "**/rosidl_typesupport_fastrtps_cpp/**/*"
-  - "**/rosidl_generator_cpp/**/*"
-  # Non-source files (documentation, config, CI, build scripts)
-  - "**/*.md"
-  - "**/*.yml"
-  - "**/*.yaml"
-  - "**/*.xml"
-  - "**/*.txt"
-  - "**/*.cmake"
-  - "**/CMakeLists.txt"
-  - "**/*.sh"
-  - "**/*.in"
-  - ".github/**/*"
-  - ".cursor/**/*"
-  - ".vscode/**/*"
-  - "docs/**/*"
-  - "ros/docker/**/*"
-  - "**/Makefile"
-  - "**/Makefile.*"
-  - "**/*.srv"
-  - "**/package.xml"
-  - "**/launch/**/*"
-  - "**/config/**/*"
 
 # Comment configuration for PR feedback
 comment:

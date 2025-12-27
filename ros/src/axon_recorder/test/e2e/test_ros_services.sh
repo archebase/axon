@@ -1,19 +1,13 @@
 #!/bin/bash
 # ============================================================================
-# INTEGRATION TEST: ROS Recording Services
+# E2E TEST: ROS Recording Services
 # ============================================================================
-# This is an INTEGRATION TEST that verifies the complete recording workflow
+# This is an E2E TEST that verifies the complete recording workflow
 # using actual ROS service calls against a running axon_recorder node.
 #
 # This test is run automatically by:
-#   - CI: .github/workflows/ci.yml (integration-tests job)
-#   - Docker: ros/docker/scripts/run_tests.sh (Part 3)
-#   - Manually: with axon_recorder node running
-#
-# Usage (manual):
-#   ROS 1: rosrun axon_recorder axon_recorder_node
-#   ROS 2: ros2 run axon_recorder axon_recorder_node
-#   Then:  ./test_ros_services.sh
+#   - CI: .github/workflows/ci.yml (e2e-tests job)
+#   - Docker: ros/docker/scripts/run_e2e_tests.sh (Part 3)
 #
 # Supports: ROS 1 (Noetic) and ROS 2 (Humble/Jazzy/Rolling)
 # ============================================================================
@@ -21,20 +15,27 @@
 set -eo pipefail
 
 # ============================================================================
+# Source Library Functions
+# ============================================================================
+# Libraries are in ros/docker/scripts/lib/ relative to repo root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/../../../../docker/scripts/lib"
+
+# Source workspace library for ROS version detection
+source "${LIB_DIR}/ros_workspace_lib.sh"
+
+# ============================================================================
 # ROS Version Detection
 # ============================================================================
 if [ -n "$ROS_VERSION" ]; then
     echo "Detected ROS_VERSION=$ROS_VERSION"
 else
-    if command -v ros2 &> /dev/null; then
-        ROS_VERSION=2
-    elif command -v rosversion &> /dev/null; then
-        ROS_VERSION=1
-    else
-        echo "ERROR: Cannot detect ROS version. Please source ROS environment."
+    ROS_VERSION=$(ros_workspace_detect_ros_version)
+    if [ -z "$ROS_VERSION" ]; then
+        echo "ERROR: Cannot detect ROS version. Please set ROS_DISTRO environment variable." >&2
         exit 1
     fi
-    echo "Auto-detected ROS_VERSION=$ROS_VERSION"
+    echo "Auto-detected ROS_VERSION=$ROS_VERSION from ROS_DISTRO=${ROS_DISTRO}"
 fi
 
 # ============================================================================

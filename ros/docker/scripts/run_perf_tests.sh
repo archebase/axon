@@ -29,7 +29,7 @@
 #   - Use of uninitialized memory
 # =============================================================================
 
-set -e
+set -eo pipefail
 
 # Default configuration
 DURATION=10
@@ -132,17 +132,32 @@ if [ "$ASAN_LITE" = true ]; then
     echo "  Num Cameras:   ${NUM_CAMERAS}"
 fi
 
-# Source ROS environment
-if [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then
-    source /opt/ros/${ROS_DISTRO}/setup.bash
-    echo "✓ Sourced ROS ${ROS_DISTRO} environment"
-else
-    echo "ERROR: ROS setup.bash not found at /opt/ros/${ROS_DISTRO}/setup.bash"
+# Source shared libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/lib"
+
+# Source libraries (with error handling)
+# Note: We can't use library error functions here since libraries aren't loaded yet
+if [ ! -f "${LIB_DIR}/ros_build_lib.sh" ]; then
+    echo "ERROR: ros_build_lib.sh not found at ${LIB_DIR}/ros_build_lib.sh" >&2
     exit 1
 fi
+source "${LIB_DIR}/ros_build_lib.sh"
+
+if [ ! -f "${LIB_DIR}/ros_workspace_lib.sh" ]; then
+    echo "ERROR: ros_workspace_lib.sh not found at ${LIB_DIR}/ros_workspace_lib.sh" >&2
+    exit 1
+fi
+source "${LIB_DIR}/ros_workspace_lib.sh"
+
+# Source ROS base environment
+ros_workspace_source_base || {
+    ros_workspace_error "Failed to source ROS base environment"
+}
 
 # Navigate to workspace
-cd /workspace/axon
+WORKSPACE_ROOT="/workspace/axon"
+cd "${WORKSPACE_ROOT}"
 
 # =============================================================================
 # Build Phase
@@ -157,56 +172,28 @@ if [ "$SKIP_BUILD" = false ]; then
     if [ "$ASAN_ENABLED" = true ]; then
         echo ""
         echo "Building with Address Sanitizer enabled..."
-        # Clean previous build to ensure ASAN flags are applied
-        rm -rf /workspace/ros_ws/build /workspace/ros_ws/install
-        mkdir -p /workspace/ros_ws/build /workspace/ros_ws/install
-
-        CMAKE_BUILD_TYPE="RelWithDebInfo"
-        CMAKE_EXTRA_ARGS="-DENABLE_ASAN=ON"
+        BUILD_TYPE="RelWithDebInfo"
+        EXTRA_CMAKE_ARGS="-DENABLE_ASAN=ON"
     else
-        CMAKE_BUILD_TYPE="Release"
-        CMAKE_EXTRA_ARGS=""
+        BUILD_TYPE="Release"
+        EXTRA_CMAKE_ARGS=""
     fi
 
-    if [ "${ROS_VERSION}" = "1" ]; then
-        # ROS 1 - Use catkin build
-        echo "Building with catkin build (ROS 1)..."
+    # Build package using library function
+    ros_build_package "${WORKSPACE_ROOT}" "true" "false" "${BUILD_TYPE}" "${EXTRA_CMAKE_ARGS}" || {
+        ros_build_error "Failed to build package"
+    }
 
-        cd /workspace/axon/ros
-        # Clean previous build (union of ROS1 and ROS2 build artifacts)
-        rm -rf build devel install log logs
+    # Re-source workspace after build
+    ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
+        ros_workspace_error "Failed to source workspace after build"
+    }
 
-        source /opt/ros/${ROS_DISTRO}/setup.bash
-        catkin build --no-notify -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${CMAKE_EXTRA_ARGS}
-        source devel/setup.bash
-
-        if [ "$ASAN_ENABLED" = true ]; then
-            echo "✓ Built axon_recorder with catkin build (ASAN enabled)"
-        else
-            echo "✓ Built axon_recorder with catkin build"
-        fi
+    if [ "$ASAN_ENABLED" = true ]; then
+        echo "✓ Built axon_recorder (ASAN enabled)"
     else
-        # ROS 2 - Use colcon
-        echo "Building with colcon (ROS 2)..."
-
-        cd /workspace/axon/ros
-        rm -rf build devel install log logs
-
-        source /opt/ros/${ROS_DISTRO}/setup.bash
-        colcon build \
-            --packages-select axon_recorder \
-            --cmake-args -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${CMAKE_EXTRA_ARGS}
-
-        source install/setup.bash
-
-        if [ "$ASAN_ENABLED" = true ]; then
-            echo "✓ Built axon_recorder with colcon (ASAN enabled)"
-        else
-            echo "✓ Built axon_recorder with colcon"
-        fi
+        echo "✓ Built axon_recorder"
     fi
-    
-    cd /workspace/axon
 else
     # Source existing build if available
     if [ -f /workspace/ros_ws/install/setup.bash ]; then

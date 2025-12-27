@@ -8,7 +8,7 @@
 # and uploaded as artifacts for merging in ci.yml.
 #
 # NOTE: E2E tests (service call tests) run separately via e2e-tests.yml
-#       on Humble only.
+#       on all ROS distributions (Noetic, Humble, Jazzy, Rolling).
 # =============================================================================
 
 name: ROS Tests
@@ -49,26 +49,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ROS 1 Noetic - collect coverage
+          # ROS 1 Noetic
           - ros_distro: noetic
             ros_version: "1"
-            collect_coverage: true
-            script: run_integration_with_coverage.sh
-          # ROS 2 Humble LTS - collect coverage
+            script: run_integration.sh
+          # ROS 2 Humble LTS
           - ros_distro: humble
             ros_version: "2"
-            collect_coverage: true
-            script: run_integration_with_coverage.sh
-          # ROS 2 Jazzy - collect coverage (same as Humble)
+            script: run_integration.sh
+          # ROS 2 Jazzy
           - ros_distro: jazzy
             ros_version: "2"
-            collect_coverage: true
-            script: run_integration_with_coverage.sh
-          # ROS 2 Rolling - collect coverage (same as Humble)
+            script: run_integration.sh
+          # ROS 2 Rolling
           - ros_distro: rolling
             ros_version: "2"
-            collect_coverage: true
-            script: run_integration_with_coverage.sh
+            script: run_integration.sh
 
     permissions:
       contents: read
@@ -112,7 +108,6 @@ jobs:
           docker tag "${IMAGE}" "axon-test-${{ matrix.ros_distro }}:latest"
 
       - name: Create coverage output directory
-        if: matrix.collect_coverage
         run: mkdir -p ${{ github.workspace }}/coverage_output
 
       - name: Run tests
@@ -120,16 +115,14 @@ jobs:
           # Run scripts from mounted volume to ensure latest version is used
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
-            ${{ matrix.collect_coverage && format('-v {0}/coverage_output:/coverage_output', github.workspace) || '' }} \
+            -v ${{ github.workspace }}/coverage_output:/coverage_output \
             -e ROS_DISTRO=${{ matrix.ros_distro }} \
             -e ROS_VERSION=${{ matrix.ros_version }} \
-            ${{ matrix.collect_coverage && '-e COVERAGE_OUTPUT=/coverage_output' || '' }} \
             --network host \
             axon-test-${{ matrix.ros_distro }}:latest \
-            /workspace/axon/ros/docker/scripts/${{ matrix.script }}
+            /workspace/axon/ros/docker/scripts/${{ matrix.script }} --coverage --coverage-output /coverage_output
 
       - name: Debug coverage output
-        if: matrix.collect_coverage
         run: |
           echo "=== Coverage output files ==="
           ls -la ${{ github.workspace }}/coverage_output/ || echo "No coverage output directory"
@@ -145,7 +138,6 @@ jobs:
           fi
 
       - name: Normalize coverage paths
-        if: matrix.collect_coverage
         run: |
           if [ -f "${{ github.workspace }}/coverage_output/coverage.info" ]; then
             chmod +x ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh
@@ -155,7 +147,6 @@ jobs:
           fi
 
       - name: Upload coverage to Codecov with flag
-        if: matrix.collect_coverage
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -172,7 +163,6 @@ jobs:
           override_pr: ${{ github.event.pull_request.number }}
 
       - name: Upload coverage artifact
-        if: matrix.collect_coverage
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.ros_distro }}
