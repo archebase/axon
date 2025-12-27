@@ -4,14 +4,70 @@
 
 ### Local Docker
 
+#### E2E Tests (End-to-End Service Tests)
+
+E2E tests start the `axon_recorder_node` and make actual ROS service calls.
+
+**Important:** If you have pre-built binaries on your host machine, they may have been built with different library versions (e.g., Boost) than what's in Docker. To avoid library version mismatches, either:
+
+1. **Clean build artifacts before running** (recommended):
+   ```bash
+   cd ros/docker
+   # Clean build artifacts to force rebuild inside Docker
+   rm -rf ../../ros/build ../../ros/devel ../../ros/install ../../ros/log
+   rm -rf ../../install ../../build ../../log
+   ```
+
+2. **Use the coverage script** which builds inside Docker:
+   ```bash
+   cd ros/docker
+   docker compose -f docker-compose.test.yml run --rm test-ros1 \
+     /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
+   ```
+
 ```bash
 cd ros/docker
+
+# ROS 1 Noetic
+docker compose -f docker-compose.test.yml build test-ros1
+docker compose -f docker-compose.test.yml run --rm test-ros1 \
+  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+
+# ROS 2 Humble
+docker compose -f docker-compose.test.yml build test-ros2-humble
+docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
+  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+
+# ROS 2 Jazzy
+docker compose -f docker-compose.test.yml build test-ros2-jazzy
+docker compose -f docker-compose.test.yml run --rm test-ros2-jazzy \
+  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+
+# ROS 2 Rolling
+docker compose -f docker-compose.test.yml build test-ros2-rolling
+docker compose -f docker-compose.test.yml run --rm test-ros2-rolling \
+  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+```
+
+**Note:** The same build artifact cleanup applies to all ROS distributions if you encounter library version mismatch errors.
+```
+
+#### Full Test Suite (Unit + Integration + E2E)
+
+```bash
+cd ros/docker
+
+# ROS 1 Noetic
+docker-compose -f docker-compose.test.yml up test-ros1 --build --abort-on-container-exit
 
 # ROS 2 Humble
 docker-compose -f docker-compose.test.yml up test-ros2-humble --build --abort-on-container-exit
 
-# ROS 1 Noetic
-docker-compose -f docker-compose.test.yml up test-ros1 --build --abort-on-container-exit
+# ROS 2 Jazzy
+docker-compose -f docker-compose.test.yml up test-ros2-jazzy --build --abort-on-container-exit
+
+# ROS 2 Rolling
+docker-compose -f docker-compose.test.yml up test-ros2-rolling --build --abort-on-container-exit
 ```
 
 ### CI Pipeline
