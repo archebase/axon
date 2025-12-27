@@ -52,13 +52,6 @@ RUN apt-get update && apt-get install -y \
 
 # Install FastDDS/FastRTPS libraries and RMW implementation (required for ROS2 service discovery)
 # FastDDS is the default DDS implementation for ROS2 Rolling
-# Note: In ROS2 Rolling, FastDDS must come from ROS packages (not system packages) to ensure
-# version compatibility with rmw-fastrtps-cpp. System packages (libfastrtps-dev) may have
-# incompatible versions.
-# Note: ros-rolling-fastrtps has been replaced by ros-rolling-fastdds in Rolling
-# CRITICAL: Remove any system FastRTPS packages that might conflict. The base image or other
-# dependencies may have pulled in libfastrtps-dev/libfastcdr-dev from Ubuntu repos, which
-# are incompatible with ROS2 Rolling's rmw-fastrtps-cpp (compiled against ROS FastDDS packages).
 RUN apt-get update && \
     apt-get install -y --upgrade \
     ros-rolling-fastdds \
