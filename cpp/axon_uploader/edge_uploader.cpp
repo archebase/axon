@@ -1,9 +1,12 @@
 #include "edge_uploader.hpp"
 
+#include "uploader_impl.hpp"
+
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <sstream>
 
 // Logging infrastructure (optional - only if axon_logging is linked)
@@ -22,6 +25,86 @@ namespace fs = std::filesystem;
 
 namespace axon {
 namespace uploader {
+
+// Internal implementation with dependency injection
+// Exposed for testing via edge_uploader_test_helpers.hpp
+bool validateFilesExistImpl(
+    const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
+) {
+  if (!filesystem.exists(mcap_path)) {
+    return false;
+  }
+  if (!filesystem.exists(json_path)) {
+    return false;
+  }
+  return true;
+}
+
+uint64_t getFileSizeImpl(const std::string& path, const IFileSystem& filesystem) {
+  return filesystem.file_size(path);
+}
+
+void cleanupLocalFilesImpl(
+    const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
+) {
+  if (!mcap_path.empty() && filesystem.exists(mcap_path)) {
+    filesystem.remove(mcap_path);
+  }
+  if (!json_path.empty() && filesystem.exists(json_path)) {
+    filesystem.remove(json_path);
+  }
+}
+
+void moveToFailedDirImpl(
+    const std::string& mcap_path, const std::string& json_path,
+    const std::string& failed_dir, const IFileSystem& filesystem
+) {
+  // Create failed directory if needed
+  filesystem.create_directories(failed_dir);
+
+  // Move files
+  if (!mcap_path.empty() && filesystem.exists(mcap_path)) {
+    fs::path dest = fs::path(failed_dir) / fs::path(mcap_path).filename();
+    filesystem.rename(mcap_path, dest.string());
+  }
+  if (!json_path.empty() && filesystem.exists(json_path)) {
+    fs::path dest = fs::path(failed_dir) / fs::path(json_path).filename();
+    filesystem.rename(json_path, dest.string());
+  }
+}
+
+FileUploadResult uploadSingleFileImpl(
+    const std::string& local_path, const std::string& s3_key, const std::string& checksum,
+    const IFileSystem& filesystem, S3Client* s3_client
+) {
+  // Check file exists
+  if (!filesystem.exists(local_path)) {
+    std::string error_msg = "File not found: " + local_path;
+    AXON_LOG_ERROR(error_msg);
+    return FileUploadResult::fail(error_msg, false);  // Not retryable
+  }
+
+  // Prepare metadata
+  std::map<std::string, std::string> metadata;
+  if (!checksum.empty()) {
+    metadata["checksum-sha256"] = checksum;
+  }
+
+  // Upload
+  auto result = s3_client->uploadFile(local_path, s3_key, metadata);
+
+  if (result.success) {
+    // Verify checksum if provided
+    if (!checksum.empty()) {
+      if (!s3_client->verifyUpload(s3_key, checksum)) {
+        return FileUploadResult::fail("Checksum verification failed", true);  // Retryable
+      }
+    }
+    return FileUploadResult::ok();
+  } else {
+    return FileUploadResult::fail(result.error_message, result.is_retryable);
+  }
+}
 
 EdgeUploader::EdgeUploader(const UploaderConfig& config)
     : config_(config),
@@ -130,17 +213,18 @@ void EdgeUploader::enqueue(
   // Validate both files exist before enqueueing to prevent orphaned uploads:
   // If MCAP uploads successfully but JSON fails (file not found), the entire
   // upload is marked as permanently failed, leaving MCAP orphaned in S3.
-  if (!fs::exists(mcap_path)) {
-    AXON_LOG_ERROR("Cannot enqueue upload - mcap_path does not exist: " << mcap_path);
-    return;
-  }
-  if (!fs::exists(json_path)) {
-    AXON_LOG_ERROR("Cannot enqueue upload - json_path does not exist: " << json_path);
+  static FileSystemImpl default_filesystem;
+  if (!validateFilesExistImpl(mcap_path, json_path, default_filesystem)) {
+    if (!default_filesystem.exists(mcap_path)) {
+      AXON_LOG_ERROR("Cannot enqueue upload - mcap_path does not exist: " << mcap_path);
+    } else {
+      AXON_LOG_ERROR("Cannot enqueue upload - json_path does not exist: " << json_path);
+    }
     return;
   }
 
   // Get file size (file existence already verified above)
-  uint64_t file_size = fs::file_size(mcap_path);
+  uint64_t file_size = getFileSizeImpl(mcap_path, default_filesystem);
 
   // Create upload item
   UploadItem item(mcap_path, json_path, task_id, factory_id, device_id, checksum_sha256, file_size);
@@ -290,33 +374,8 @@ FileUploadResult EdgeUploader::uploadSingleFile(
     const std::string& local_path, const std::string& s3_key,
     const std::string& checksum
 ) {
-  // Check file exists
-  if (!fs::exists(local_path)) {
-    std::string error_msg = "File not found: " + local_path;
-    AXON_LOG_ERROR(error_msg);
-    return FileUploadResult::fail(error_msg, false);  // Not retryable
-  }
-
-  // Prepare metadata
-  std::map<std::string, std::string> metadata;
-  if (!checksum.empty()) {
-    metadata["checksum-sha256"] = checksum;
-  }
-
-  // Upload
-  auto result = s3_client_->uploadFile(local_path, s3_key, metadata);
-
-  if (result.success) {
-    // Verify checksum if provided
-    if (!checksum.empty()) {
-      if (!s3_client_->verifyUpload(s3_key, checksum)) {
-        return FileUploadResult::fail("Checksum verification failed", true);  // Retryable
-      }
-    }
-    return FileUploadResult::ok();
-  } else {
-    return FileUploadResult::fail(result.error_message, result.is_retryable);
-  }
+  static FileSystemImpl default_filesystem;
+  return uploadSingleFileImpl(local_path, s3_key, checksum, default_filesystem, s3_client_.get());
 }
 
 std::string EdgeUploader::constructS3Key(
@@ -426,33 +485,16 @@ void EdgeUploader::onUploadFailure(const UploadItem& item, const std::string& er
 }
 
 void EdgeUploader::cleanupLocalFiles(const std::string& mcap_path, const std::string& json_path) {
-  std::error_code ec;
-  if (!mcap_path.empty() && fs::exists(mcap_path)) {
-    fs::remove(mcap_path, ec);
-  }
-  if (!json_path.empty() && fs::exists(json_path)) {
-    fs::remove(json_path, ec);
-  }
+  static FileSystemImpl default_filesystem;
+  cleanupLocalFilesImpl(mcap_path, json_path, default_filesystem);
 
   // Remove from state DB
   state_manager_->remove(mcap_path);
 }
 
 void EdgeUploader::moveToFailedDir(const std::string& mcap_path, const std::string& json_path) {
-  std::error_code ec;
-
-  // Create failed directory if needed
-  fs::create_directories(config_.failed_uploads_dir, ec);
-
-  // Move files
-  if (!mcap_path.empty() && fs::exists(mcap_path)) {
-    fs::path dest = fs::path(config_.failed_uploads_dir) / fs::path(mcap_path).filename();
-    fs::rename(mcap_path, dest, ec);
-  }
-  if (!json_path.empty() && fs::exists(json_path)) {
-    fs::path dest = fs::path(config_.failed_uploads_dir) / fs::path(json_path).filename();
-    fs::rename(json_path, dest, ec);
-  }
+  static FileSystemImpl default_filesystem;
+  moveToFailedDirImpl(mcap_path, json_path, config_.failed_uploads_dir, default_filesystem);
 }
 
 void EdgeUploader::checkBackpressure() {

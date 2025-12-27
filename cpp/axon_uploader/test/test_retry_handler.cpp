@@ -138,3 +138,117 @@ TEST_F(RetryHandlerTest, LargeInitialDelay) {
   EXPECT_EQ(delay1.count(), 60000);  // 60000 > 30000 * 2, but capped at max
 }
 
+TEST_F(RetryHandlerTest, IsRetryableErrorAllCases) {
+  // Test all retryable error codes from the implementation
+  EXPECT_TRUE(RetryHandler::isRetryableError("RequestTimeout"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("ServiceUnavailable"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("InternalError"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("SlowDown"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("RequestTimeTooSkewed"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("OperationAborted"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("ConnectionReset"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("ConnectionTimeout"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("ConnectionRefused"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("NetworkingError"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("UnknownEndpoint"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("XMinioServerNotInitialized"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("XAmzContentSHA256Mismatch"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("Throttling"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("ThrottlingException"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("ProvisionedThroughputExceededException"));
+  EXPECT_TRUE(RetryHandler::isRetryableError("TransientError"));
+  
+  // Test non-retryable errors
+  EXPECT_FALSE(RetryHandler::isRetryableError("AccessDenied"));
+  EXPECT_FALSE(RetryHandler::isRetryableError("NoSuchBucket"));
+  EXPECT_FALSE(RetryHandler::isRetryableError("InvalidArgument"));
+  EXPECT_FALSE(RetryHandler::isRetryableError("NoSuchKey"));
+  EXPECT_FALSE(RetryHandler::isRetryableError(""));
+  EXPECT_FALSE(RetryHandler::isRetryableError("SomeRandomError"));
+}
+
+TEST_F(RetryHandlerTest, GetDelayWithJitterDisabled) {
+  // Test getDelay() with jitter disabled (already tested, but ensure coverage)
+  RetryConfig config;
+  config.initial_delay = std::chrono::milliseconds(1000);
+  config.max_delay = std::chrono::milliseconds(10000);
+  config.jitter = false;
+  RetryHandler handler(config);
+  
+  auto delay = handler.getDelay(0);
+  EXPECT_EQ(delay.count(), 1000);
+  
+  delay = handler.getDelay(1);
+  EXPECT_EQ(delay.count(), 2000);
+}
+
+TEST_F(RetryHandlerTest, GetDelayMinimumOneMs) {
+  // Test that delay is always at least 1ms
+  RetryConfig config;
+  config.initial_delay = std::chrono::milliseconds(0);
+  config.max_delay = std::chrono::milliseconds(1000);
+  config.jitter = false;
+  RetryHandler handler(config);
+  
+  auto delay = handler.getDelay(0);
+  EXPECT_GE(delay.count(), 1);  // Should be at least 1ms
+}
+
+TEST_F(RetryHandlerTest, NextRetryTimeMultipleCalls) {
+  // Test nextRetryTime() with multiple retry counts
+  auto time0 = handler_->nextRetryTime(0);
+  auto time1 = handler_->nextRetryTime(1);
+  auto time2 = handler_->nextRetryTime(2);
+  
+  // Each should be further in the future
+  EXPECT_GT(time1, time0);
+  EXPECT_GT(time2, time1);
+}
+
+TEST_F(RetryHandlerTest, ShouldRetryBoundary) {
+  // Test shouldRetry() at boundary conditions
+  RetryConfig config;
+  config.max_retries = 3;
+  RetryHandler handler(config);
+  
+  EXPECT_TRUE(handler.shouldRetry(0));
+  EXPECT_TRUE(handler.shouldRetry(1));
+  EXPECT_TRUE(handler.shouldRetry(2));
+  EXPECT_FALSE(handler.shouldRetry(3));  // At max_retries
+  EXPECT_FALSE(handler.shouldRetry(4));  // Beyond max_retries
+}
+
+TEST_F(RetryHandlerTest, ExponentialBaseVariations) {
+  // Test with different exponential bases
+  RetryConfig config;
+  config.initial_delay = std::chrono::milliseconds(1000);
+  config.max_delay = std::chrono::milliseconds(100000);
+  config.exponential_base = 1.5;  // Slower growth
+  config.jitter = false;
+  RetryHandler handler(config);
+  
+  auto delay0 = handler.getDelay(0);
+  auto delay1 = handler.getDelay(1);
+  auto delay2 = handler.getDelay(2);
+  
+  EXPECT_EQ(delay0.count(), 1000);
+  EXPECT_EQ(delay1.count(), 1500);  // 1000 * 1.5
+  EXPECT_EQ(delay2.count(), 2250);  // 1000 * 1.5^2
+}
+
+TEST_F(RetryHandlerTest, JitterFactorVariations) {
+  // Test with different jitter factors
+  RetryConfig config;
+  config.initial_delay = std::chrono::milliseconds(1000);
+  config.jitter = true;
+  config.jitter_factor = 0.1;  // Small jitter
+  RetryHandler handler(config);
+  
+  // With small jitter, delays should be in [900, 1100] range
+  for (int i = 0; i < 10; ++i) {
+    auto delay = handler.getDelay(0);
+    EXPECT_GE(delay.count(), 900);
+    EXPECT_LE(delay.count(), 1100);
+  }
+}
+

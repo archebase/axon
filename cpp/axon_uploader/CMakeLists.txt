@@ -105,7 +105,7 @@ endif()
 
 option(AXON_UPLOADER_ENABLE_COVERAGE "Enable code coverage" OFF)
 
-if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if(AXON_UPLOADER_ENABLE_COVERAGE AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
     message(STATUS "axon_uploader: Coverage instrumentation enabled")
     target_compile_options(axon_uploader PRIVATE --coverage -fprofile-arcs -ftest-coverage)
     target_link_options(axon_uploader PRIVATE --coverage)
@@ -121,34 +121,40 @@ if(AXON_UPLOADER_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
     
-    # Helper function to create test with coverage
-    function(add_uploader_test TEST_NAME TEST_SOURCE)
-        add_executable(${TEST_NAME}
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/${TEST_SOURCE}
+    # Auto-discover all test files (excluding integration test which is handled separately)
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
     )
+    # Exclude integration test (handled separately below)
+    list(FILTER TEST_SOURCES EXCLUDE REGEX ".*test_edge_uploader\\.cpp$")
+    
+    foreach(TEST_SOURCE ${TEST_SOURCES})
+        get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        add_executable(${TEST_NAME} ${TEST_SOURCE})
+        target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+        
+        # Base libraries for all tests
         target_link_libraries(${TEST_NAME}
-        axon_uploader
-        GTest::gtest
-        GTest::gtest_main
-    )
-        # Apply coverage flags to test executables
-        if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            axon_uploader
+            GTest::gtest
+            GTest::gtest_main
+        )
+        
+        # Mocked tests need GoogleMock
+        if(TEST_SOURCE MATCHES ".*_mocked\\.cpp$")
+            target_link_libraries(${TEST_NAME} GTest::gmock)
+        endif()
+        
+        # Apply coverage flags to all tests (including mocked tests)
+        if(AXON_UPLOADER_ENABLE_COVERAGE AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
             target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
             target_link_options(${TEST_NAME} PRIVATE --coverage)
         endif()
+        
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-    endfunction()
+    endforeach()
     
-    # Test upload queue
-    add_uploader_test(test_upload_queue test_upload_queue.cpp)
-    
-    # Test retry handler
-    add_uploader_test(test_retry_handler test_retry_handler.cpp)
-    
-    # Test state manager
-    add_uploader_test(test_state_manager test_state_manager.cpp)
-    
-    # Integration test (requires MinIO)
+    # Integration test (requires MinIO) - not added to CTest by default
     add_executable(test_edge_uploader
         ${CMAKE_CURRENT_SOURCE_DIR}/test/test_edge_uploader.cpp
     )
@@ -157,7 +163,7 @@ if(AXON_UPLOADER_BUILD_TESTS)
         GTest::gtest
         GTest::gtest_main
     )
-    if(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if(AXON_UPLOADER_ENABLE_COVERAGE AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
         target_compile_options(test_edge_uploader PRIVATE --coverage -fprofile-arcs -ftest-coverage)
         target_link_options(test_edge_uploader PRIVATE --coverage)
     endif()
