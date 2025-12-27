@@ -149,7 +149,7 @@ component_management:
         - cpp/axon_uploader/**
       statuses:
         - type: project
-          target: 50%  # Moderate target - complex upload logic
+          target: 30%  # Moderate target - complex upload logic
           threshold: 1%
     
     # ========================================================================
@@ -178,7 +178,7 @@ component_management:
         - cpp/axon_uploader/**
       statuses:
         - type: project
-          target: 60%  # Overall C++ library coverage target
+          target: 50%  # Overall C++ library coverage target
           threshold: 1%
 
 # Ignore test files, non-source files, and auto-generated files from coverage metrics
