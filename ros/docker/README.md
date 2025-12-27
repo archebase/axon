@@ -30,7 +30,7 @@ docker-compose -f docker-compose.test.yml run test-ros2-humble /bin/bash
 
 Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructure.
 
-| CI Job (`ci.yml`) | Local Docker (`run_tests.sh`) | What it does |
+| CI Job (`ci.yml`) | Local Docker (`run_integration.sh`) | What it does |
 |-------------------|-------------------------------|--------------|
 | `ros-unit-tests` | Part 1: ROS Tests | `colcon test` / `catkin_make run_tests` |
 | `ros-integration-tests` | Part 2: E2E Tests | `run_e2e_tests.sh` |
@@ -67,13 +67,13 @@ cd ros/docker
 
 # Run coverage tests (builds with instrumentation + generates lcov report)
 docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
-  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # Coverage output is saved to /workspace/coverage inside container
 # Mount a local directory to extract it:
 docker compose -f docker-compose.test.yml run --rm \
   -v $(pwd)/coverage-output:/workspace/coverage \
-  test-ros2-humble /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
+  test-ros2-humble /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # View HTML report
 open coverage-output/html/index.html
@@ -84,15 +84,15 @@ open coverage-output/html/index.html
 ```bash
 # ROS 2 Humble
 docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
-  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # ROS 2 Jazzy
 docker compose -f docker-compose.test.yml run --rm test-ros2-jazzy \
-  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # ROS 1 Noetic
 docker compose -f docker-compose.test.yml run --rm test-ros1 \
-  /workspace/axon/ros/docker/scripts/run_integration_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 ```
 
 ### Interactive Coverage Debugging

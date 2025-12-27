@@ -7,7 +7,6 @@
 #
 # Functions:
 #   ros_build_package - Build axon_recorder package
-#   ros_build_source_workspace - Source the workspace after building
 # =============================================================================
 
 set -eo pipefail
@@ -192,46 +191,3 @@ ros_build_package() {
     ros_build_log "INFO" "  Build directory: ${WORKSPACE_BUILD_DIR}"
     ros_build_log "INFO" "  Install directory: ${WORKSPACE_INSTALL_DIR}"
 }
-
-# =============================================================================
-# Source Workspace (if already built)
-# =============================================================================
-#
-# Sources the workspace setup file if the package is already built.
-# This is useful when you want to use a pre-built package.
-#
-# Arguments:
-#   ROS_VERSION - ROS version (1 or 2)
-#   WORKSPACE_ROOT - Root of the workspace (default: /workspace/axon)
-#
-# Returns:
-#   0 if workspace was sourced successfully
-#   1 if workspace was not found
-#
-ros_build_source_workspace() {
-    local ros_version="${ROS_VERSION:-2}"
-    local workspace_root="${1:-/workspace/axon}"
-    
-    if [ "$ros_version" = "1" ]; then
-        local setup_file="${workspace_root}/ros/devel/setup.bash"
-        if [ -f "$setup_file" ]; then
-            source "$setup_file"
-            export WORKSPACE_INSTALL_DIR="${workspace_root}/ros/devel"
-            ros_build_log "INFO" "Sourced ROS 1 workspace: $setup_file"
-            return 0
-        fi
-    else
-        local setup_file="${workspace_root}/install/setup.bash"
-        if [ -f "$setup_file" ]; then
-            source "$setup_file"
-            export WORKSPACE_INSTALL_DIR="${workspace_root}/install"
-            export AMENT_PREFIX_PATH="${WORKSPACE_INSTALL_DIR}/axon_recorder:${WORKSPACE_INSTALL_DIR}:${AMENT_PREFIX_PATH}"
-            ros_build_log "INFO" "Sourced ROS 2 workspace: $setup_file"
-            return 0
-        fi
-    fi
-    
-    ros_build_log "WARN" "Workspace not found, package may need to be built"
-    return 1
-}
-

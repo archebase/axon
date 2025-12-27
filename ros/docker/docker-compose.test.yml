@@ -15,7 +15,7 @@ services:
     environment:
       - ROS_DISTRO=noetic
       - ROS_VERSION=1
-    command: /usr/local/bin/run_tests.sh
+    command: /usr/local/bin/run_integration.sh
     network_mode: host
 
   test-ros2-humble:
@@ -31,7 +31,7 @@ services:
     environment:
       - ROS_DISTRO=humble
       - ROS_VERSION=2
-    command: /usr/local/bin/run_tests.sh
+    command: /usr/local/bin/run_integration.sh
     network_mode: host
 
   test-ros2-jazzy:
@@ -47,7 +47,7 @@ services:
     environment:
       - ROS_DISTRO=jazzy
       - ROS_VERSION=2
-    command: /usr/local/bin/run_tests.sh
+    command: /usr/local/bin/run_integration.sh
     network_mode: host
 
   test-ros2-rolling:
@@ -63,7 +63,7 @@ services:
     environment:
       - ROS_DISTRO=rolling
       - ROS_VERSION=2
-    command: /usr/local/bin/run_tests.sh
+    command: /usr/local/bin/run_integration.sh
     network_mode: host
 
 volumes:

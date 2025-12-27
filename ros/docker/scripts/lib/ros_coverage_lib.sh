@@ -309,6 +309,89 @@ ros_coverage_generate() {
     echo "$filtered_file"
 }
 
+# =============================================================================
+# Generate HTML Coverage Report
+# =============================================================================
+#
+# Generates an HTML coverage report from a coverage.info file using genhtml.
+# Uses the same lcov version detection as other coverage functions since
+# genhtml is part of the lcov package.
+#
+# Arguments:
+#   coverage_info_file - Path to coverage.info file (required)
+#   output_dir - Directory to store HTML report (required, will create html/ subdirectory)
+#   title - Report title (optional, default: "Axon Test Coverage")
+#
+# Returns:
+#   0 if HTML report was generated successfully
+#   1 if genhtml is not available
+#   2 if coverage.info file is not found
+#
+ros_coverage_generate_html() {
+    local coverage_info_file="$1"
+    local output_dir="$2"
+    local title="${3:-Axon Test Coverage}"
+    
+    if [ -z "$coverage_info_file" ] || [ -z "$output_dir" ]; then
+        ros_coverage_error "Usage: ros_coverage_generate_html <coverage_info_file> <output_dir> [title]"
+    fi
+    
+    # Check if genhtml is available
+    if ! command -v genhtml &> /dev/null; then
+        ros_coverage_log "WARN" "genhtml not available, skipping HTML report generation"
+        return 1
+    fi
+    
+    # Check if coverage.info exists
+    if [ ! -f "$coverage_info_file" ]; then
+        ros_coverage_error "Coverage info file not found: $coverage_info_file"
+    fi
+    
+    ros_coverage_log "INFO" "Generating HTML coverage report..."
+    
+    # Get lcov version for genhtml flags (genhtml is part of lcov package)
+    local lcov_major
+    lcov_major=$(ros_coverage_get_lcov_major)
+    
+    # Build genhtml flags based on version
+    local genhtml_ignore_flags=""
+    if [ "$lcov_major" -ge 2 ]; then
+        genhtml_ignore_flags="--ignore-errors source,unmapped"
+        ros_coverage_log "INFO" "Using lcov 2.0+ genhtml flags: $genhtml_ignore_flags"
+    fi
+    
+    # Create HTML output directory
+    local html_dir="${output_dir}/html"
+    mkdir -p "$html_dir"
+    
+    # Generate HTML report
+    local genhtml_output
+    local genhtml_exit_code
+    genhtml_output=$(genhtml "$coverage_info_file" \
+        --output-directory "$html_dir" \
+        --title "$title" \
+        --legend \
+        --branch-coverage \
+        $genhtml_ignore_flags 2>&1)
+    genhtml_exit_code=$?
+    
+    # Filter out common warnings
+    echo "$genhtml_output" | grep -v "WARNING: ('unused')" || true
+    
+    if [ $genhtml_exit_code -ne 0 ]; then
+        ros_coverage_log "WARN" "HTML generation had issues, trying with --ignore-errors source..."
+        # Fallback: try with just source errors ignored
+        genhtml "$coverage_info_file" \
+            --output-directory "$html_dir" \
+            --title "$title" \
+            --legend \
+            --ignore-errors source 2>/dev/null || true
+    fi
+    
+    ros_coverage_log "INFO" "HTML report generated at: ${html_dir}/index.html"
+    echo "${html_dir}/index.html"
+}
+
 # Export functions for use in other scripts
 export -f ros_coverage_check_lcov
 export -f ros_coverage_get_lcov_version
@@ -318,6 +401,7 @@ export -f ros_coverage_get_lcov_flags
 export -f ros_coverage_capture
 export -f ros_coverage_filter
 export -f ros_coverage_generate
+export -f ros_coverage_generate_html
 export -f ros_coverage_log
 export -f ros_coverage_error
 

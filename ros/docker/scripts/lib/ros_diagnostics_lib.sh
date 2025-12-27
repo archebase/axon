@@ -108,13 +108,10 @@ ros_diagnostics_check_fastdds() {
     local missing_libs=()
     local found_libs=()
     
-    # Common FastDDS library names to check
-    # Note: libfastdds is the newer package name (ROS2 Rolling+), libfastrtps is older
+    # Required FastDDS library names to check
     local libs_to_check=(
         "libfastdds"
-        "libfastrtps"
         "libfastcdr"
-        "libfoonathan_memory"
     )
     
     # Check in common library paths (including ROS install directory)

@@ -6,6 +6,7 @@
 # Handles both ROS 1 (catkin) and ROS 2 (colcon) workspace paths.
 #
 # Functions:
+#   ros_workspace_detect_ros_version - Auto-detect ROS version from ROS_DISTRO
 #   ros_workspace_source_base - Source ROS base distribution
 #   ros_workspace_source_workspace - Source workspace setup files
 #   ros_workspace_verify_package - Verify package is available
@@ -26,6 +27,39 @@ ros_workspace_log() {
 ros_workspace_error() {
     ros_workspace_log "ERROR" "$@"
     exit 1
+}
+
+# =============================================================================
+# Auto-detect ROS Version from ROS_DISTRO
+# =============================================================================
+#
+# Auto-detects ROS_VERSION from ROS_DISTRO environment variable.
+# This is a shared helper function to avoid code duplication.
+#
+# Environment:
+#   ROS_DISTRO - ROS distribution (e.g., noetic, humble, jazzy, rolling)
+#
+# Outputs:
+#   Prints ROS version "1" or "2" to stdout
+#   Returns 0 if detection successful, 1 if ROS_DISTRO not set or unknown
+#
+ros_workspace_detect_ros_version() {
+    local ros_distro="${ROS_DISTRO:-}"
+    
+    if [ -z "$ros_distro" ]; then
+        return 1
+    fi
+    
+    case "$ros_distro" in
+        noetic|melodic|kinetic)
+            echo "1"
+            return 0
+            ;;
+        *)
+            echo "2"
+            return 0
+            ;;
+    esac
 }
 
 # =============================================================================
@@ -88,15 +122,10 @@ ros_workspace_source_workspace() {
     
     # Auto-detect ROS version from ROS_DISTRO if not set
     if [ -z "$ros_version" ] && [ -n "${ROS_DISTRO:-}" ]; then
-        case "${ROS_DISTRO}" in
-            noetic|melodic|kinetic)
-                ros_version=1
-                ;;
-            *)
-                ros_version=2
-                ;;
-        esac
-        ros_workspace_log "INFO" "Auto-detected ROS_VERSION=$ros_version from ROS_DISTRO=${ROS_DISTRO}"
+        ros_version=$(ros_workspace_detect_ros_version)
+        if [ -n "$ros_version" ]; then
+            ros_workspace_log "INFO" "Auto-detected ROS_VERSION=$ros_version from ROS_DISTRO=${ROS_DISTRO}"
+        fi
     fi
     
     if [ -z "$ros_version" ]; then
@@ -204,6 +233,7 @@ ros_workspace_verify_package() {
 }
 
 # Export functions for use in other scripts
+export -f ros_workspace_detect_ros_version
 export -f ros_workspace_source_base
 export -f ros_workspace_source_workspace
 export -f ros_workspace_verify_package

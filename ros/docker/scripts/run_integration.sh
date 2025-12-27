@@ -1,22 +1,16 @@
 #!/bin/bash
 # =============================================================================
-# E2E Test Runner (Unified)
+# Integration Test Runner
 # =============================================================================
-# This script builds the axon_recorder package, starts the axon_recorder_node,
-# runs E2E tests via ROS service calls, and optionally collects coverage data.
-# Used by both CI and local Docker testing.
+# This script builds and runs integration tests (unit + integration), and
+# optionally collects coverage data. Used by both CI and local Docker testing.
 #
 # Usage:
-#   ./run_e2e_tests.sh [OPTIONS] [source_path]
+#   ./run_integration.sh [OPTIONS]
 #
 # Options:
 #   --coverage              Build with coverage instrumentation and generate coverage report
-#   --coverage-output DIR   Coverage output directory (default: /coverage_output)
-#   --source-path PATH      Path to test source directory (default: auto-detect)
-#
-# Arguments:
-#   source_path             Optional path to the source directory (legacy positional arg)
-#                           Default: auto-detect from script location
+#   --coverage-output DIR   Coverage output directory (default: /workspace/coverage)
 #
 # Environment:
 #   ROS_VERSION             ROS version "1" or "2" (auto-detected from ROS_DISTRO if not set)
@@ -25,10 +19,10 @@
 #
 # Examples:
 #   # Build and run tests (default, no coverage)
-#   ./run_e2e_tests.sh
+#   ./run_integration.sh
 #
 #   # Build with coverage, run tests, generate coverage report
-#   ./run_e2e_tests.sh --coverage --coverage-output /coverage_output
+#   ./run_integration.sh --coverage --coverage-output /workspace/coverage
 # =============================================================================
 
 set -eo pipefail
@@ -39,7 +33,6 @@ set -eo pipefail
 
 ENABLE_COVERAGE=false
 COVERAGE_OUTPUT_DIR=""
-SOURCE_PATH=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -51,18 +44,14 @@ while [[ $# -gt 0 ]]; do
             COVERAGE_OUTPUT_DIR="$2"
             shift 2
             ;;
-        --source-path)
-            SOURCE_PATH="$2"
-            shift 2
-            ;;
         -*)
             echo "ERROR: Unknown option: $1" >&2
             exit 1
             ;;
         *)
-            # Legacy positional argument for source_path
-            SOURCE_PATH="$1"
-            shift
+            echo "ERROR: Unexpected argument: $1" >&2
+            echo "Usage: ./run_integration.sh [--coverage] [--coverage-output DIR]"
+            exit 1
             ;;
     esac
 done
@@ -88,12 +77,6 @@ if [ ! -f "${LIB_DIR}/ros_workspace_lib.sh" ]; then
 fi
 source "${LIB_DIR}/ros_workspace_lib.sh"
 
-if [ ! -f "${LIB_DIR}/ros_diagnostics_lib.sh" ]; then
-    echo "ERROR: ros_diagnostics_lib.sh not found at ${LIB_DIR}/ros_diagnostics_lib.sh" >&2
-    exit 1
-fi
-source "${LIB_DIR}/ros_diagnostics_lib.sh"
-
 # Source coverage library only if coverage is enabled
 if [ "$ENABLE_COVERAGE" = true ]; then
     if [ ! -f "${LIB_DIR}/ros_coverage_lib.sh" ]; then
@@ -113,7 +96,7 @@ WORKSPACE_ROOT="/workspace/axon"
 
 # Set coverage output directory if coverage is enabled
 if [ "$ENABLE_COVERAGE" = true ]; then
-    COVERAGE_OUTPUT_DIR="${COVERAGE_OUTPUT_DIR:-${COVERAGE_OUTPUT:-/coverage_output}}"
+    COVERAGE_OUTPUT_DIR="${COVERAGE_OUTPUT_DIR:-${COVERAGE_OUTPUT:-/workspace/coverage}}"
 fi
 
 # Auto-detect ROS version from ROS_DISTRO if ROS_VERSION not set
@@ -130,27 +113,16 @@ if [ -z "$ROS_VERSION" ]; then
     echo "Auto-detected ROS_VERSION=$ROS_VERSION from ROS_DISTRO=$ROS_DISTRO"
 fi
 
-# Determine source path for test script
-if [ -z "$SOURCE_PATH" ]; then
-    # Try to find test directory relative to workspace
-    if [ -d "${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e" ]; then
-        SOURCE_PATH="${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e"
-    else
-        # Fallback to script directory (for backward compatibility)
-        SOURCE_PATH="${SCRIPT_DIR}"
-    fi
-fi
-
 # =============================================================================
 # Display Header
 # =============================================================================
 
 echo "============================================"
 if [ "$ENABLE_COVERAGE" = true ]; then
-    echo "Running E2E Tests with Coverage (ROS $ROS_VERSION)"
+    echo "Running Integration Tests with Coverage (ROS $ROS_VERSION)"
     echo "Coverage output: ${COVERAGE_OUTPUT_DIR}"
 else
-    echo "Running E2E Tests (ROS $ROS_VERSION)"
+    echo "Running Integration Tests (ROS $ROS_VERSION)"
 fi
 echo "============================================"
 
@@ -198,110 +170,37 @@ ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
 }
 
 # =============================================================================
-# Part 2: Verify Package and Find Test Script
+# Part 2: Run Tests
 # =============================================================================
 
 echo ""
 echo "============================================"
-echo "Part 2: Verifying package and test setup..."
+echo "Part 2: Running tests..."
 echo "============================================"
 
-# Verify package is available
-ros_workspace_verify_package || {
-    echo "WARNING: Package verification failed, but continuing..."
-}
-
-# Find test script
-TEST_SCRIPT="${SOURCE_PATH}/test_ros_services.sh"
-if [ ! -f "$TEST_SCRIPT" ]; then
-    # Try alternative locations
-    if [ -f "${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
-        TEST_SCRIPT="${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e/test_ros_services.sh"
-    else
-        echo "ERROR: test_ros_services.sh not found"
-        echo "Searched: ${SOURCE_PATH}/test_ros_services.sh"
-        echo "Searched: ${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e/test_ros_services.sh"
-        exit 1
-    fi
-fi
-
-chmod +x "$TEST_SCRIPT"
-
-# =============================================================================
-# Part 3: Start ROS Node
-# =============================================================================
-
-echo ""
-echo "============================================"
-echo "Part 3: Starting axon_recorder_node..."
-echo "============================================"
-
-# Start node based on ROS version
 if [ "$ROS_VERSION" = "1" ]; then
-    # ROS 1 - Need roscore
-    roscore &
-    ROSCORE_PID=$!
-    sleep 2
-    
-    # Use __name:= to set node name so services appear at /axon_recorder/...
-    rosrun axon_recorder axon_recorder_node __name:=axon_recorder &
-    NODE_PID=$!
+    echo "Running catkin tests..."
+    catkin build --no-notify --catkin-make-args run_tests
+    catkin_test_results --verbose
 else
-    # ROS 2 - Set node name to match ROS 1 (so services appear at /axon_recorder/...)
-    ros2 run axon_recorder axon_recorder_node --ros-args -r __node:=axon_recorder &
-    NODE_PID=$!
+    echo "Running colcon tests..."
+    colcon test \
+        --packages-select axon_recorder \
+        --event-handlers console_direct+
+    colcon test-result --verbose
 fi
 
-sleep 3
-echo "Node started (PID: $NODE_PID)"
-
-# Run diagnostics if library is available (useful for both ROS1 and ROS2 issues)
 echo ""
-echo "Running diagnostics before tests..."
-ros_diagnostics_full "axon_recorder" "axon_recorder/recording_control" || {
-    echo "WARNING: Some diagnostic checks failed, but continuing with tests..."
-}
-echo ""
+echo "All tests passed!"
 
 # =============================================================================
-# Part 4: Run E2E Tests
+# Part 3: Generate Coverage Report (if enabled)
 # =============================================================================
 
-echo ""
-echo "============================================"
-echo "Part 4: Running E2E tests..."
-echo "============================================"
-
-TEST_RESULT=0
-if ! "$TEST_SCRIPT"; then
-    TEST_RESULT=1
-fi
-
-# =============================================================================
-# Part 5: Cleanup
-# =============================================================================
-
-echo ""
-echo "Cleaning up..."
-kill $NODE_PID 2>/dev/null || true
-
-if [ "$ROS_VERSION" = "1" ]; then
-    kill $ROSCORE_PID 2>/dev/null || true
-    killall roscore 2>/dev/null || true
-fi
-
-# Wait for processes to terminate
-sleep 1
-
-# =============================================================================
-# Part 6: Generate Coverage Report (if enabled and tests passed)
-# =============================================================================
-
-# Generate coverage report if enabled and tests passed
-if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
+if [ "$ENABLE_COVERAGE" = true ]; then
     echo ""
     echo "============================================"
-    echo "Part 6: Generating coverage report..."
+    echo "Part 3: Generating coverage report..."
     echo "============================================"
     
     # Generate coverage report using library function (COVERAGE_DIR is always set when coverage enabled)
@@ -309,31 +208,26 @@ if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
         ros_coverage_error "Failed to generate coverage report"
     }
     
-    # Display final summary
-    echo ""
-    echo "============================================"
-    echo "E2E Test Coverage Summary"
-    echo "============================================"
-    lcov --list "${COVERAGE_OUTPUT_DIR}/coverage.info" || true
+    # Generate HTML report
+    ros_coverage_generate_html "${COVERAGE_OUTPUT_DIR}/coverage.info" "${COVERAGE_OUTPUT_DIR}" "Axon Test Coverage" || {
+        ros_coverage_log "WARN" "HTML report generation skipped (genhtml not available)"
+    }
     
     echo ""
     echo "============================================"
-    echo "E2E test coverage collection complete!"
+    echo "Coverage report complete!"
     echo "============================================"
     echo "Coverage data: ${COVERAGE_OUTPUT_DIR}/coverage.info"
+    
+    # Print final statistics
+    if [ -f "${COVERAGE_OUTPUT_DIR}/coverage.info" ]; then
+        TOTAL_LINES=$(lcov --summary "${COVERAGE_OUTPUT_DIR}/coverage.info" 2>&1 | grep "lines" | awk '{print $2}' || echo "N/A")
+        echo "Total line coverage: ${TOTAL_LINES}"
+    fi
 fi
-
-# =============================================================================
-# Final Status
-# =============================================================================
 
 echo ""
 echo "============================================"
-if [ $TEST_RESULT -eq 0 ]; then
-    echo "✓ E2E tests passed"
-else
-    echo "✗ E2E tests failed"
-fi
+echo "✓ Integration tests passed"
 echo "============================================"
 
-exit $TEST_RESULT

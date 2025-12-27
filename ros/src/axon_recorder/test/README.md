@@ -98,7 +98,7 @@ Tests run via `ros-industrial/industrial_ci`:
 
 Both CI and local Docker use the same approach:
 
-| Step | CI (industrial_ci) | Local Docker (run_tests.sh) |
+| Step | CI (industrial_ci) | Local Docker (run_integration.sh) |
 |------|--------------------|-----------------------------|
 | **Part 1** | `colcon test` / `catkin_make run_tests` | Same |
 | **Part 2** | `run_e2e_tests.sh` (unified script) | Same |

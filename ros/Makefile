@@ -239,7 +239,7 @@ docker-test-ros1: docker-build-ros1
 		-e ROS_DISTRO=noetic \
 		-e ROS_VERSION=1 \
 		axon:ros1 \
-		/usr/local/bin/run_tests.sh
+		/usr/local/bin/run_integration.sh
 	@printf "%s\n" "$(GREEN)✓ ROS1 tests passed$(NC)"
 
 docker-build-ros2-humble:
@@ -260,7 +260,7 @@ docker-test-ros2-humble: docker-build-ros2-humble
 		-e ROS_DISTRO=humble \
 		-e ROS_VERSION=2 \
 		axon:ros2-humble \
-		/usr/local/bin/run_tests.sh
+		/usr/local/bin/run_integration.sh
 	@printf "%s\n" "$(GREEN)✓ ROS2 Humble tests passed$(NC)"
 
 docker-build-ros2-jazzy:
@@ -281,7 +281,7 @@ docker-test-ros2-jazzy: docker-build-ros2-jazzy
 		-e ROS_DISTRO=jazzy \
 		-e ROS_VERSION=2 \
 		axon:ros2-jazzy \
-		/usr/local/bin/run_tests.sh
+		/usr/local/bin/run_integration.sh
 	@printf "%s\n" "$(GREEN)✓ ROS2 Jazzy tests passed$(NC)"
 
 docker-build-ros2-rolling:
@@ -302,7 +302,7 @@ docker-test-ros2-rolling: docker-build-ros2-rolling
 		-e ROS_DISTRO=rolling \
 		-e ROS_VERSION=2 \
 		axon:ros2-rolling \
-		/usr/local/bin/run_tests.sh
+		/usr/local/bin/run_integration.sh
 	@printf "%s\n" "$(GREEN)✓ ROS2 Rolling tests passed$(NC)"
 
 docker-build: docker-build-ros1 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling
@@ -477,7 +477,7 @@ docker-coverage: docker-build-ros2-humble
 		-e ROS_DISTRO=humble \
 		-e ROS_VERSION=2 \
 		axon:ros2-humble \
-		/usr/local/bin/run_integration_with_coverage.sh /workspace/coverage
+		/usr/local/bin/run_integration.sh --coverage --coverage-output /workspace/coverage
 	@printf "%s\n" "$(GREEN)✓ Coverage report: $(PROJECT_ROOT)/coverage/coverage.info$(NC)"
 
 # Clean coverage data
