@@ -60,7 +60,9 @@ McapValidationResult validateMcapHeaderImpl(
 ) {
   // Check file exists
   if (!filesystem.exists(path)) {
-    return McapValidationResult::failure("File does not exist: " + path);
+    // Split string concatenation to separate line for better gcov coverage tracking
+    const std::string error_msg = "File does not exist: " + path;
+    return McapValidationResult::failure(error_msg);
   }
 
   auto file = stream_factory.create_file_stream(path, std::ios::binary);

@@ -101,8 +101,7 @@ TEST_F(McapValidatorMockedTest, HeaderPartialRead) {
 }
 
 TEST_F(McapValidatorMockedTest, HeaderCannotOpenFile) {
-  // Test file cannot be opened - covers line 66 (create_file_stream call),
-  // line 67 (nullptr check), and line 68 (return statement with string concatenation)
+  // Test file cannot be opened 
   EXPECT_CALL(*mock_filesystem_, exists(test_path_)).WillOnce(Return(true));
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_path_, std::ios::binary))
       .WillOnce(Return(ByMove(std::unique_ptr<IFileStream>())));  // Factory returns nullptr (open failed)
@@ -208,8 +207,7 @@ TEST_F(McapValidatorMockedTest, FooterCannotOpenFile) {
 // =============================================================================
 
 TEST_F(McapValidatorMockedTest, HeaderFileNotFound) {
-  // Test file not found error - covers branch 1 on line 62 (!filesystem.exists(path) == true)
-  // and line 63 (return statement with string concatenation)
+  // Test file not found error
   EXPECT_CALL(*mock_filesystem_, exists(test_path_)).WillOnce(Return(false));
   
   auto result = validateMcapHeaderImpl(test_path_, *mock_filesystem_, *mock_stream_factory_);
