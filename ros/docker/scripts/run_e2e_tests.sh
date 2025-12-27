@@ -12,7 +12,6 @@
 # Options:
 #   --coverage              Build with coverage instrumentation and generate coverage report
 #   --coverage-output DIR   Coverage output directory (default: /coverage_output)
-#   --no-build              Skip building (assumes package already built)
 #   --source-path PATH      Path to test source directory (default: auto-detect)
 #
 # Arguments:
@@ -30,9 +29,6 @@
 #
 #   # Build with coverage, run tests, generate coverage report
 #   ./run_e2e_tests.sh --coverage --coverage-output /coverage_output
-#
-#   # Skip build, just run tests (assumes package already built)
-#   ./run_e2e_tests.sh --no-build
 # =============================================================================
 
 set -eo pipefail
@@ -43,7 +39,6 @@ set -eo pipefail
 
 ENABLE_COVERAGE=false
 COVERAGE_OUTPUT_DIR=""
-SKIP_BUILD=false
 SOURCE_PATH=""
 
 while [[ $# -gt 0 ]]; do
@@ -55,10 +50,6 @@ while [[ $# -gt 0 ]]; do
         --coverage-output)
             COVERAGE_OUTPUT_DIR="$2"
             shift 2
-            ;;
-        --no-build)
-            SKIP_BUILD=true
-            shift
             ;;
         --source-path)
             SOURCE_PATH="$2"
@@ -123,7 +114,6 @@ fi
 
 # Set defaults
 ROS_DISTRO="${ROS_DISTRO:-humble}"
-ROS_VERSION="${ROS_VERSION:-2}"
 WORKSPACE_ROOT="/workspace/axon"
 
 # Auto-detect ROS version from ROS_DISTRO if ROS_VERSION not set
@@ -163,8 +153,6 @@ echo "============================================"
 if [ "$ENABLE_COVERAGE" = true ]; then
     echo "Running E2E Tests with Coverage (ROS $ROS_VERSION)"
     echo "Coverage output: ${COVERAGE_OUTPUT_DIR}"
-elif [ "$SKIP_BUILD" = true ]; then
-    echo "Running E2E Tests (ROS $ROS_VERSION) - No Build"
 else
     echo "Running E2E Tests (ROS $ROS_VERSION)"
 fi
@@ -186,47 +174,35 @@ if [ "$ENABLE_COVERAGE" = true ]; then
 fi
 
 # =============================================================================
-# Part 1: Build Package (if not skipped)
+# Part 1: Build Package
 # =============================================================================
 
-if [ "$SKIP_BUILD" = false ]; then
-    echo ""
-    echo "============================================"
-    if [ "$ENABLE_COVERAGE" = true ]; then
-        echo "Part 1: Building with coverage instrumentation..."
-    else
-        echo "Part 1: Building package..."
-    fi
-    echo "============================================"
-    
-    if [ "$ENABLE_COVERAGE" = true ]; then
-        # Build package with coverage enabled
-        ros_build_package "${WORKSPACE_ROOT}" "true" "true" "Debug" || {
-            ros_build_error "Failed to build package with coverage"
-        }
-        COVERAGE_DIR="${WORKSPACE_BUILD_DIR}"
-    else
-        # Build package without coverage (default)
-        ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" || {
-            ros_build_error "Failed to build package"
-        }
-    fi
-    
-    # Re-source workspace after build
-    ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
-        ros_workspace_error "Failed to source workspace after build"
-    }
+echo ""
+echo "============================================"
+if [ "$ENABLE_COVERAGE" = true ]; then
+    echo "Part 1: Building with coverage instrumentation..."
 else
-    # Skip build - just source workspace
-    echo ""
-    echo "============================================"
-    echo "Skipping build (using existing package)..."
-    echo "============================================"
-    
-    ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
-        ros_workspace_error "Failed to source workspace"
+    echo "Part 1: Building package..."
+fi
+echo "============================================"
+
+if [ "$ENABLE_COVERAGE" = true ]; then
+    # Build package with coverage enabled
+    ros_build_package "${WORKSPACE_ROOT}" "true" "true" "Debug" || {
+        ros_build_error "Failed to build package with coverage"
+    }
+    COVERAGE_DIR="${WORKSPACE_BUILD_DIR}"
+else
+    # Build package without coverage (default)
+    ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" || {
+        ros_build_error "Failed to build package"
     }
 fi
+
+# Re-source workspace after build
+ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
+    ros_workspace_error "Failed to source workspace after build"
+}
 
 # =============================================================================
 # Part 2: Verify Package and Find Test Script
@@ -333,6 +309,11 @@ if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
     echo "============================================"
     echo "Part 6: Generating coverage report..."
     echo "============================================"
+    
+    # Verify COVERAGE_DIR is set (should always be set when coverage is enabled)
+    if [ -z "${COVERAGE_DIR:-}" ]; then
+        ros_coverage_error "COVERAGE_DIR is not set. This should not happen when coverage is enabled."
+    fi
     
     # Generate coverage report using library function
     ros_coverage_generate "${COVERAGE_DIR}" "${COVERAGE_OUTPUT_DIR}" || {

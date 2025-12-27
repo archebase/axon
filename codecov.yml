@@ -74,7 +74,7 @@ component_management:
     - component_id: ros_axon_recorder
       name: axon_recorder
       paths:
-        - ros/axon_recorder/src/**
+        - ros/src/axon_recorder/**
     
     - component_id: cpp_all
       name: All C++ Libraries
