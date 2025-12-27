@@ -47,7 +47,7 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
         ${Boost_LIBRARIES}
     )
     # Apply coverage flags
-    if(AXON_LOGGING_ENABLE_COVERAGE AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+    if(AXON_LOGGING_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
         target_link_options(${TEST_NAME} PRIVATE --coverage)
     endif()
