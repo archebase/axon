@@ -1,7 +1,7 @@
 # Makefile for Axon C++ SDK (axon_mcap, axon_uploader, axon_logging)
 # Core libraries providing MCAP writer, uploader, and logging
 
-.PHONY: all build test test-all clean install help debug release format lint check-deps dev-setup verify coverage coverage-html build-uploader test-uploader coverage-all build-all
+.PHONY: all build test-mcap test-all clean clean-coverage install help debug release format lint check-deps dev-setup verify coverage coverage-html build-uploader test-uploader coverage-all build-all
 
 .DEFAULT_GOAL := help
 
@@ -46,7 +46,7 @@ help:
 	@echo ""
 	@printf "%s\n" "$(YELLOW)axon_mcap targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)          - Build the axon_mcap library"
-	@printf "%s\n" "  $(BLUE)make test$(NC)           - Build and run axon_mcap tests"
+	@printf "%s\n" "  $(BLUE)make test-mcap$(NC)      - Build and run axon_mcap tests"
 	@printf "%s\n" "  $(BLUE)make coverage$(NC)       - Run axon_mcap tests with coverage"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)axon_uploader targets:$(NC)"
@@ -105,17 +105,24 @@ debug:
 release:
 	@$(MAKE) BUILD_TYPE=Release build
 
-# Run all tests
-test: build
-	@printf "%s\n" "$(YELLOW)Running all tests...$(NC)"
+# Run axon_mcap tests
+test-mcap: build
+	@printf "%s\n" "$(YELLOW)Running axon_mcap tests...$(NC)"
 	@cd $(BUILD_DIR) && ctest --output-on-failure
-	@printf "%s\n" "$(GREEN)✓ All tests passed$(NC)"
+	@printf "%s\n" "$(GREEN)✓ axon_mcap tests passed$(NC)"
 
 # Clean build artifacts
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@rm -rf $(BUILD_DIR) $(UPLOADER_BUILD_DIR) $(LOGGING_BUILD_DIR) $(COVERAGE_DIR)
 	@printf "%s\n" "$(GREEN)✓ Build artifacts cleaned$(NC)"
+
+# Clean coverage data files (fixes corruption issues)
+clean-coverage:
+	@printf "%s\n" "$(YELLOW)Cleaning coverage data files...$(NC)"
+	@find $(BUILD_DIR) $(UPLOADER_BUILD_DIR) $(LOGGING_BUILD_DIR) -name "*.gcda" -type f -delete 2>/dev/null || true
+	@find $(BUILD_DIR) $(UPLOADER_BUILD_DIR) $(LOGGING_BUILD_DIR) -name "*.gcno" -type f -delete 2>/dev/null || true
+	@printf "%s\n" "$(GREEN)✓ Coverage data files cleaned$(NC)"
 
 # Install the library
 install: build
@@ -158,7 +165,7 @@ dev-setup: check-deps
 	@printf "%s\n" "$(GREEN)✓ Development environment ready$(NC)"
 
 # Verify (build + test)
-verify: build test
+verify: build test-mcap
 	@printf "%s\n" "$(GREEN)✓ Verification complete - build and tests passed!$(NC)"
 
 # =============================================================================
@@ -248,7 +255,14 @@ build-uploader:
 # Run uploader tests
 test-uploader: build-uploader
 	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
-	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure
+	@cd $(UPLOADER_BUILD_DIR) && \
+		find . -name "*.gcda" -type f -delete 2>/dev/null || true && \
+		if [ -f CMakeCache.txt ] && grep -q "AXON_UPLOADER_ENABLE_COVERAGE:BOOL=ON" CMakeCache.txt 2>/dev/null; then \
+			printf "%s\n" "$(YELLOW)Coverage enabled - running tests sequentially...$(NC)"; \
+			ctest --output-on-failure -j1; \
+		else \
+			ctest --output-on-failure; \
+		fi
 	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
 
 # Build uploader with coverage and run tests
@@ -263,8 +277,11 @@ coverage-uploader:
 			-DAXON_UPLOADER_ENABLE_COVERAGE=ON \
 			$(CMAKE_OPTIONS) && \
 		cmake --build . -j$(NPROC)
-	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
-	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(YELLOW)Cleaning up old coverage data...$(NC)"
+	@cd $(UPLOADER_BUILD_DIR) && \
+		find . -name "*.gcda" -type f -delete 2>/dev/null || true
+	@printf "%s\n" "$(YELLOW)Running tests sequentially (to avoid coverage data corruption)...$(NC)"
+	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure -j1
 	@printf "%s\n" "$(YELLOW)Generating uploader coverage report...$(NC)"
 	@if command -v lcov >/dev/null 2>&1; then \
 		cd $(UPLOADER_BUILD_DIR) && \
@@ -358,7 +375,7 @@ build-all: build build-uploader build-logging
 	@printf "%s\n" "$(GREEN)✓ All C++ libraries built$(NC)"
 
 # Run ALL C++ tests
-test-all: test test-uploader test-logging
+test-all: test-mcap test-uploader test-logging
 	@printf "%s\n" "$(GREEN)✓ All C++ tests passed$(NC)"
 	@printf "%s\n" "$(YELLOW)  - axon_mcap tests$(NC)"
 	@printf "%s\n" "$(YELLOW)  - axon_uploader tests$(NC)"

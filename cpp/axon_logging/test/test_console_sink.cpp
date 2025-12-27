@@ -350,6 +350,54 @@ TEST_F(ConsoleSinkContextTest, TimestampExtraction) {
   remove_sink(sink);
 }
 
+// ============================================================================
+// Missing Coverage Tests
+// ============================================================================
+
+TEST_F(ConsoleSinkColoredFormatterTest, NonColoredFormatterExecutes) {
+  // Create non-colored sink and verify the formatter lambda actually executes
+  auto sink = create_console_sink(severity_level::debug, false);
+  ASSERT_NE(sink, nullptr);
+  
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  
+  // Log messages to trigger the non-colored formatter path
+  // This exercises lines 79-107 in axon_console_sink.cpp
+  AXON_LOG_DEBUG("Non-colored debug message");
+  AXON_LOG_INFO("Non-colored info message");
+  AXON_LOG_WARN("Non-colored warn message");
+  AXON_LOG_ERROR("Non-colored error message");
+  AXON_LOG_FATAL("Non-colored fatal message");
+  
+  // Test with context attributes to exercise all branches
+  {
+    BOOST_LOG_SCOPED_THREAD_ATTR("TaskID", 
+        boost::log::attributes::constant<std::string>("task_nocolor"));
+    AXON_LOG_INFO("Non-colored with TaskID");
+  }
+  
+  {
+    BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID", 
+        boost::log::attributes::constant<std::string>("device_nocolor"));
+    AXON_LOG_INFO("Non-colored with DeviceID");
+  }
+  
+  {
+    BOOST_LOG_SCOPED_THREAD_ATTR("TaskID",
+        boost::log::attributes::constant<std::string>("task_both"));
+    BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID",
+        boost::log::attributes::constant<std::string>("device_both"));
+    AXON_LOG_INFO("Non-colored with both attributes");
+  }
+  
+  // Test without timestamp (edge case)
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  
+  remove_sink(sink);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

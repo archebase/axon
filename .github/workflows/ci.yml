@@ -4,9 +4,9 @@
 # Main entry point that orchestrates the full CI pipeline.
 #
 # Coverage Collection Strategy:
-#   - All tests collect coverage artifacts
-#   - Final merge-coverage job combines all artifacts
-#   - Single upload to Codecov with merged coverage
+#   - Each workflow uploads coverage directly with flags (cpp-unit, cpp-integration, ros-tests)
+#   - Codecov automatically merges multiple uploads from the same commit
+#   - No local merge step needed - simpler and faster
 #
 # Pipeline Diagram:
 #
@@ -97,289 +97,12 @@ jobs:
   # Stage 3: Merge All Coverage and Upload to Codecov
   # Combines coverage from ROS tests, C++ tests (unit + integration), and E2E tests
   # ===========================================================================
-  merge-coverage:
-    name: Merge Coverage
-    runs-on: ubuntu-22.04
-    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests]
-    if: always() && !cancelled()
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: coverage-*
-          merge-multiple: false
-
-      - name: Install lcov
-        run: sudo apt-get update && sudo apt-get install -y lcov
-
-      - name: List downloaded artifacts
-        run: |
-          echo "=== Downloaded coverage artifacts ==="
-          find . -name "*.info" -type f
-          ls -laR coverage-*/ 2>/dev/null || echo "No coverage directories found"
-          
-          echo ""
-          echo "=== Coverage file sizes and line counts ==="
-          for f in $(find . -name "*.info" -type f); do
-            echo "$f: $(wc -l < $f) lines, $(wc -c < $f) bytes"
-            echo "  Source files:"
-            grep "^SF:" "$f" | wc -l
-            echo "  Key files present:"
-            grep -c "recorder_node.cpp\|recording_service_impl.cpp" "$f" || echo "    0"
-          done
-
-      - name: Normalize coverage paths
-        run: |
-          # =============================================================================
-          # SYSTEMATIC PATH NORMALIZATION
-          # =============================================================================
-          # Goal: Normalize all paths to repo-relative format:
-          #   - cpp/axon_logging/...
-          #   - cpp/axon_mcap/...
-          #   - cpp/axon_uploader/...
-          #   - ros/axon_recorder/...
-          #
-          # Strategy:
-          #   1. Handle environment-specific prefixes (most specific first)
-          #   2. Handle package-to-repo mapping (symlinks, relative paths)
-          #   3. Clean up remaining container/clone paths
-          #   4. Filter out build directory paths
-          #
-          # Key: Only match at line start (^SF:) to avoid partial matches
-          # =============================================================================
-          
-          echo "=== Normalizing all coverage file paths (systematic) ==="
-          
-          for f in $(find . -name "*.info" -type f); do
-            echo "Processing: $f"
-            
-            # -----------------------------------------------------------------
-            # Step 1: GitHub Actions workspace prefix
-            # -----------------------------------------------------------------
-            # Path: /home/runner/work/Axon/Axon/cpp/... → cpp/...
-            # Path: /home/runner/work/Axon/Axon/ros/... → ros/...
-            sed -i 's|^SF:/home/runner/work/Axon/Axon/|SF:|' "$f"
-            
-            # -----------------------------------------------------------------
-            # Step 2: Docker ROS2 workspace (/workspace/axon/...)
-            # -----------------------------------------------------------------
-            # Path: /workspace/axon/ros/axon_recorder/... → ros/axon_recorder/...
-            # Path: /workspace/axon/cpp/axon_*/... → cpp/axon_*/...
-            sed -i 's|^SF:/workspace/axon/|SF:|' "$f"
-            
-            # -----------------------------------------------------------------
-            # Step 3: Docker ROS1 catkin workspace (symlink resolution)
-            # -----------------------------------------------------------------
-            # The catkin workspace has:
-            #   - src/axon_recorder → /workspace/axon/ros/axon_recorder (symlink)
-            #   - cpp → /workspace/axon/cpp (symlink)
-            #
-            # Relative path traversal: ../../cpp/ for axon_mcap, axon_logging deps
-            # Path: /workspace/catkin_ws/src/axon_recorder/../../cpp/... → cpp/...
-            sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$f"
-            sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$f"
-            
-            # Symlinked cpp directory
-            # Path: /workspace/catkin_ws/cpp/axon_*/... → cpp/axon_*/...
-            sed -i 's|^SF:/workspace/catkin_ws/cpp/|SF:cpp/|' "$f"
-            
-            # Package directory
-            # Path: /workspace/catkin_ws/src/axon_recorder/... → ros/axon_recorder/...
-            sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
-            
-            # Build directory (for filtering later)
-            sed -i 's|^SF:/workspace/catkin_ws/build/|SF:build/|' "$f"
-            
-            # -----------------------------------------------------------------
-            # Step 4: Industrial CI prefixes (ROS2 target_ws)
-            # -----------------------------------------------------------------
-            # Path: /root/target_ws/src/Axon/ros/... → ros/...
-            # Path: /root/target_ws/src/Axon/cpp/... → cpp/...
-            sed -i 's|^SF:/root/target_ws/src/Axon/|SF:|' "$f"
-            
-            # Package copied directly (without Axon/ parent)
-            # Path: /root/target_ws/src/axon_recorder/... → ros/axon_recorder/...
-            sed -i 's|^SF:/root/target_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
-            
-            # Build directory
-            sed -i 's|^SF:/root/target_ws/build/|SF:build/|' "$f"
-            
-            # -----------------------------------------------------------------
-            # Step 5: Industrial CI prefixes (ROS2 upstream_ws)
-            # -----------------------------------------------------------------
-            sed -i 's|^SF:/root/upstream_ws/src/Axon/|SF:|' "$f"
-            sed -i 's|^SF:/root/upstream_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
-            sed -i 's|^SF:/root/upstream_ws/build/|SF:build/|' "$f"
-            
-            # -----------------------------------------------------------------
-            # Step 6: Industrial CI prefixes (ROS1 catkin_ws)
-            # -----------------------------------------------------------------
-            # Relative path traversal
-            sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$f"
-            sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$f"
-            
-            # Symlinked cpp directory
-            sed -i 's|^SF:/root/catkin_ws/cpp/|SF:cpp/|' "$f"
-            
-            # Package directory
-            sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
-            
-            # Build directory
-            sed -i 's|^SF:/root/catkin_ws/build/|SF:build/|' "$f"
-            
-            # -----------------------------------------------------------------
-            # Step 7: Cleanup remaining relative paths
-            # -----------------------------------------------------------------
-            # Relative catkin_ws paths (after stripping /workspace/)
-            sed -i 's|^SF:catkin_ws/cpp/|SF:cpp/|' "$f"
-            sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$f"
-            
-            # Clone directory name
-            sed -i 's|^SF:Axon/|SF:|' "$f"
-          done
-          
-          # =================================================================
-          # Validation: Show normalized paths summary
-          # =================================================================
-          echo ""
-          echo "=== Normalized paths summary ==="
-          echo "--- cpp/axon_logging ---"
-          grep "^SF:cpp/axon_logging" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
-          echo "--- cpp/axon_mcap ---"
-          grep "^SF:cpp/axon_mcap" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
-          echo "--- cpp/axon_uploader ---"
-          grep "^SF:cpp/axon_uploader" */coverage*.info 2>/dev/null | sort -u | head -5 || echo "  (none)"
-          echo "--- ros/axon_recorder ---"
-          grep "^SF:ros/axon_recorder" */coverage*.info 2>/dev/null | sort -u | head -10 || echo "  (none)"
-          
-          # Check for any remaining absolute paths (should be none)
-          echo ""
-          echo "--- Checking for remaining absolute paths (should be empty) ---"
-          grep "^SF:/" */coverage*.info 2>/dev/null | head -5 || echo "  (none - good!)"
-
-      - name: Merge all coverage reports
-        run: |
-          # Detect lcov version for compatibility flags
-          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
-          echo "lcov version: ${LCOV_VERSION}"
-          
-          # Error types to ignore (lcov 2.0+):
-          #   mismatch - mismatched exception tags (C++ std lib differences)
-          #   unused   - unused coverage data
-          #   negative - negative branch counts (compiler/gcov compatibility issue)
-          #   gcov     - unexecuted blocks on non-branch lines
-          LCOV_IGNORE_FLAGS=""
-          if [ "${LCOV_MAJOR}" -ge 2 ]; then
-            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused,negative,gcov"
-          fi
-          
-          # Find all coverage files and merge them
-          MERGE_CMD="lcov"
-          FOUND_FILES=0
-          
-          # Find all coverage.info files in artifact directories
-          for info_file in $(find . -name "coverage*.info" -type f); do
-            echo "Found coverage file: $info_file"
-            MERGE_CMD="$MERGE_CMD -a $info_file"
-            FOUND_FILES=$((FOUND_FILES + 1))
-          done
-          
-          if [ "$FOUND_FILES" -eq 0 ]; then
-            echo "WARNING: No coverage files found!"
-            echo "This may happen if all test jobs failed."
-            # Create empty coverage file to avoid upload failure
-            touch merged_coverage.info
-            exit 0
-          fi
-          
-          echo "Found $FOUND_FILES coverage files to merge"
-          MERGE_CMD="$MERGE_CMD -o merged_coverage.info --rc lcov_branch_coverage=1 ${LCOV_IGNORE_FLAGS}"
-          
-          echo "Running: $MERGE_CMD"
-          eval $MERGE_CMD
-          
-          echo "=== Merged coverage summary (before filtering) ==="
-          lcov --list merged_coverage.info ${LCOV_IGNORE_FLAGS} || true
-          
-          # Filter out paths that won't match in Codecov
-          # - Absolute paths (/root/*, /home/*)
-          # - Build directory (auto-generated ROS files)
-          echo ""
-          echo "=== Filtering out non-matching paths ==="
-          # Note: lcov 1.14 uses shell-style globs. Use explicit patterns for generated files.
-          lcov --remove merged_coverage.info \
-            '/root/*' \
-            '/home/*' \
-            '*/build/*' \
-            '*rosidl_typesupport*' \
-            '*rosidl_generator*' \
-            '*rosidl_adapter*' \
-            --output-file merged_coverage_filtered.info \
-            --rc lcov_branch_coverage=1 \
-            ${LCOV_IGNORE_FLAGS} || cp merged_coverage.info merged_coverage_filtered.info
-          
-          mv merged_coverage_filtered.info merged_coverage.info
-          
-          echo ""
-          echo "=== Final coverage after filtering ==="
-          lcov --list merged_coverage.info ${LCOV_IGNORE_FLAGS} || true
-          
-          echo ""
-          echo "=== Source file count in merged coverage ==="
-          grep "^SF:" merged_coverage.info | wc -l
-          
-          echo ""
-          echo "=== All paths in final coverage ==="
-          grep "^SF:" merged_coverage.info | sort
-
-      - name: Remove individual coverage files to avoid duplication
-        run: |
-          # Remove individual coverage artifacts so Codecov only sees merged file
-          rm -rf coverage-cpp-* coverage-humble coverage-noetic coverage-jazzy coverage-rolling 2>/dev/null || true
-          echo "Remaining coverage files:"
-          find . -name "*.info" -type f
-
-      - name: Upload merged coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: merged_coverage.info
-          name: axon-coverage
-          fail_ci_if_error: false
-          verbose: true
-          # Disable file search to only upload the specified merged file
-          disable_search: true
-          # IMPORTANT: Disable automatic path fixes - our paths are already normalized
-          # This prevents Codecov from mangling correct paths like cpp/axon_logging/...
-          disable_file_fixes: true
-          # Override to ensure correct commit/branch association
-          # For PRs: use head commit SHA and PR branch name (not merge commit/ref)
-          # For push: fallback to github.sha and github.ref_name
-          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
-          override_branch: ${{ github.head_ref || github.ref_name }}
-          override_build: ${{ github.run_id }}
-          # Include PR number for PR status checks (empty string on push events is fine)
-          override_pr: ${{ github.event.pull_request.number }}
-
-      - name: Upload merged coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-merged-all
-          path: merged_coverage.info
-          retention-days: 30
-
-  # ===========================================================================
   # Final Status Check
   # ===========================================================================
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests, merge-coverage]
+    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests]
     if: always()
     steps:
       - name: Check pipeline status
@@ -388,7 +111,6 @@ jobs:
           echo "C++ Unit Tests: ${{ needs.unit-tests-cpp.result }}"
           echo "C++ Integration Tests: ${{ needs.integration-tests-cpp.result }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
-          echo "Merge Coverage: ${{ needs.merge-coverage.result }}"
           
           if [ "${{ needs.tests-ros.result }}" != "success" ]; then
             echo "❌ ROS tests failed"
@@ -410,9 +132,7 @@ jobs:
             exit 1
           fi
           
-          # Coverage merge is optional - don't fail CI if it fails
-          if [ "${{ needs.merge-coverage.result }}" != "success" ]; then
-            echo "⚠️ Coverage merge failed (non-blocking)"
-          fi
-          
           echo "✅ CI pipeline completed successfully!"
+          echo ""
+          echo "📊 Coverage: Individual workflows upload with flags (cpp-unit, cpp-integration, ros-tests)"
+          echo "   Codecov automatically merges multiple uploads from the same commit."

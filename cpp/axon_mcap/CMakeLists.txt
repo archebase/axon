@@ -149,7 +149,8 @@ option(AXON_MCAP_ENABLE_COVERAGE "Enable code coverage" OFF)
 
 if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     message(STATUS "axon_mcap: Coverage instrumentation enabled")
-    target_compile_options(axon_mcap PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+    # Use -O0 to prevent compiler from optimizing away branches, which affects coverage accuracy
+    target_compile_options(axon_mcap PRIVATE -O0 -g --coverage -fprofile-arcs -ftest-coverage)
     target_link_options(axon_mcap PRIVATE --coverage)
 endif()
 
@@ -163,29 +164,36 @@ if(AXON_MCAP_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
     
-    # Helper function to create test with coverage
-    function(add_mcap_test TEST_NAME TEST_SOURCE)
-        add_executable(${TEST_NAME}
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/${TEST_SOURCE}
-        )
+    # Auto-discover all test files
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
+    )
+    
+    foreach(TEST_SOURCE ${TEST_SOURCES})
+        get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        add_executable(${TEST_NAME} ${TEST_SOURCE})
+        target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         
-        target_include_directories(${TEST_NAME} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-        )
-        
+        # Base libraries for all tests
         target_link_libraries(${TEST_NAME}
             axon_mcap
             GTest::gtest
             GTest::gtest_main
         )
         
-        # Apply coverage flags to test executable
+        # Mocked tests need GoogleMock
+        if(TEST_SOURCE MATCHES ".*_mocked\\.cpp$")
+            target_link_libraries(${TEST_NAME} GTest::gmock)
+        endif()
+        
+        # Apply coverage flags to all tests (including mocked tests)
         if(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            # Use -O0 to prevent compiler from optimizing away branches, which affects coverage accuracy
+            target_compile_options(${TEST_NAME} PRIVATE -O0 -g --coverage -fprofile-arcs -ftest-coverage)
             target_link_options(${TEST_NAME} PRIVATE --coverage)
         endif()
         
-        # Link compression libraries for tests (using imported targets)
+        # Link compression libraries (if available)
         if(ZSTD_FOUND)
             target_link_libraries(${TEST_NAME} PkgConfig::ZSTD)
         endif()
@@ -194,9 +202,5 @@ if(AXON_MCAP_BUILD_TESTS)
         endif()
         
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-    endfunction()
-    
-    # Add test executables
-    add_mcap_test(test_mcap_writer test_mcap_writer.cpp)
-    add_mcap_test(test_mcap_validator test_mcap_validator.cpp)
+    endforeach()
 endif()

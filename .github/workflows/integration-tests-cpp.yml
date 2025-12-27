@@ -205,9 +205,25 @@ jobs:
             cp coverage_raw.info coverage.info
           }
           
-          # Debug: show sample paths
-          echo "Sample paths in coverage file:"
+          # Debug: show sample paths before normalization
+          echo "Sample paths in coverage file (before normalization):"
           grep "^SF:" coverage.info | head -10 || true
+
+      - name: Normalize coverage paths
+        run: |
+          cd cpp/build_uploader_integration
+          chmod +x ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh
+          ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh coverage.info
+          echo "Sample paths after normalization:"
+          grep "^SF:" coverage.info | head -10 || true
+          
+          # Re-detect lcov version for ignore flags (each step runs in new shell)
+          LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
+          LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
+          LCOV_IGNORE_FLAGS=""
+          if [ "${LCOV_MAJOR}" -ge 2 ]; then
+            LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused,negative,gcov"
+          fi
           
           # Show coverage summary
           echo ""
@@ -216,6 +232,22 @@ jobs:
 
       - name: Copy coverage to root for artifact upload
         run: cp cpp/build_uploader_integration/coverage.info coverage.info
+
+      - name: Upload coverage to Codecov with flag
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.info
+          flags: cpp-integration
+          name: cpp-integration
+          fail_ci_if_error: false
+          verbose: true
+          disable_search: true
+          disable_file_fixes: true
+          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          override_build: ${{ github.run_id }}
+          override_pr: ${{ github.event.pull_request.number }}
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
