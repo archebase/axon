@@ -8,7 +8,7 @@
 # and uploaded as artifacts for merging in ci.yml.
 #
 # NOTE: E2E tests (service call tests) run separately via e2e-tests.yml
-#       on Humble only.
+#       on all ROS distributions (Noetic, Humble, Jazzy, Rolling).
 # =============================================================================
 
 name: ROS Tests

@@ -4,7 +4,7 @@
 # Main entry point that orchestrates the full CI pipeline.
 #
 # Coverage Collection Strategy:
-#   - Each workflow uploads coverage directly with flags (cpp-unit, cpp-integration, ros-tests)
+#   - Each workflow uploads coverage directly with flags (cpp-unit, cpp-integration, ros-*, e2e-*)
 #   - Codecov automatically merges multiple uploads from the same commit
 #   - No local merge step needed - simpler and faster
 #
@@ -134,5 +134,5 @@ jobs:
           
           echo "✅ CI pipeline completed successfully!"
           echo ""
-          echo "📊 Coverage: Individual workflows upload with flags (cpp-unit, cpp-integration, ros-tests)"
+          echo "📊 Coverage: Individual workflows upload with flags (cpp-unit, cpp-integration, ros-*, e2e-*)"
           echo "   Codecov automatically merges multiple uploads from the same commit."
