@@ -74,8 +74,7 @@ else
         --packages-select axon_recorder \
         --cmake-args \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_COVERAGE=ON \
-        --base-paths ros
+            -DENABLE_COVERAGE=ON
 
     source install/setup.bash
 
@@ -98,8 +97,7 @@ else
     echo "Running colcon tests..."
     colcon test \
         --packages-select axon_recorder \
-        --event-handlers console_direct+ \
-        --base-paths ros
+        --event-handlers console_direct+
     colcon test-result --verbose
 fi
 

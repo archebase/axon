@@ -58,10 +58,6 @@ for ws in /root/target_ws /workspace/axon/ros /workspace/catkin_ws; do
     if [ -f "$ws/install/setup.bash" ]; then
         echo "Sourcing $ws/install/setup.bash"
         . "$ws/install/setup.bash"
-        # For ROS 2: Ensure workspace is in AMENT_PREFIX_PATH
-        if [ "$ROS_VERSION" = "2" ]; then
-            export AMENT_PREFIX_PATH="$ws/install/axon_recorder:$ws/install:$AMENT_PREFIX_PATH"
-        fi
         break
     elif [ -f "$ws/devel/setup.bash" ]; then
         echo "Sourcing $ws/devel/setup.bash"

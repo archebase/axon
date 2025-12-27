@@ -425,13 +425,11 @@ coverage-ros2:
 		source /opt/ros/$${ROS_DISTRO}/setup.bash && \
 		colcon build \
 			--packages-select axon_recorder \
-			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON \
-			--base-paths ros && \
+			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON && \
 		source install/setup.bash && \
 		colcon test \
 			--packages-select axon_recorder \
-			--event-handlers console_direct+ \
-			--base-paths ros || true
+			--event-handlers console_direct+ || true
 	@printf "%s\n" "$(GREEN)✓ Tests completed, generating coverage report...$(NC)"
 	@LCOV_MAJOR=$$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9]+' || echo "1"); \
 	IGNORE_FLAGS=""; \

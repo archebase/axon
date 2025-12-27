@@ -195,8 +195,7 @@ if [ "$SKIP_BUILD" = false ]; then
         source /opt/ros/${ROS_DISTRO}/setup.bash
         colcon build \
             --packages-select axon_recorder \
-            --cmake-args -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${CMAKE_EXTRA_ARGS} \
-            --base-paths ros
+            --cmake-args -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} ${CMAKE_EXTRA_ARGS}
 
         source install/setup.bash
 

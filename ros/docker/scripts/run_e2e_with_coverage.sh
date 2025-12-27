@@ -77,8 +77,7 @@ else
         --packages-select axon_recorder \
         --cmake-args \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_COVERAGE=ON \
-        --base-paths ros
+            -DENABLE_COVERAGE=ON
 
     source install/setup.bash
 
