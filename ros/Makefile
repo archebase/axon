@@ -17,7 +17,7 @@ ROS_DISTRO ?= $(shell echo $$ROS_DISTRO)
 
 # Build directories (relative to this Makefile location)
 BUILD_DIR := build
-TEST_BUILD_DIR := axon_recorder/test/build
+TEST_BUILD_DIR := src/axon_recorder/test/build
 C_FFI_DIR := ../c
 RUST_TARGET_DIR := $(C_FFI_DIR)/target
 
@@ -139,7 +139,7 @@ cpp-build-ros1:
 		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 		fi && \
-		cmake ../axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
+		cmake ../src/axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS1$(NC)"
 
@@ -156,7 +156,7 @@ cpp-build-ros2:
 		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 		fi && \
-		cmake ../axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
+		cmake ../src/axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS2$(NC)"
 
@@ -183,8 +183,8 @@ cpp-test:
 # ROS integration tests
 integration-test:
 	@printf "%s\n" "$(YELLOW)Running integration tests...$(NC)"
-	@if [ -f axon_recorder/test/integration/test_rust_bridge.sh ]; then \
-		bash axon_recorder/test/integration/test_rust_bridge.sh; \
+	@if [ -f src/axon_recorder/test/integration/test_rust_bridge.sh ]; then \
+		bash src/axon_recorder/test/integration/test_rust_bridge.sh; \
 	fi
 	@printf "%s\n" "$(GREEN)✓ Integration tests passed$(NC)"
 

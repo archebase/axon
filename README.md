@@ -168,7 +168,7 @@ Docker containers include:
 
 ## Configuration
 
-Create a YAML configuration file (see `ros/axon_recorder/config/default_config.yaml` for example):
+Create a YAML configuration file (see `ros/src/axon_recorder/config/default_config.yaml` for example):
 
 ```yaml
 dataset:
@@ -338,7 +338,7 @@ ctest --output-on-failure
 - ✅ Metadata injector (MCAP metadata, sidecar JSON)
 - ✅ Recording service (all 4 services)
 
-See `ros/axon_recorder/test/` for the full test suite.
+See `ros/src/axon_recorder/test/` for the full test suite.
 
 ### Generating Coverage Reports
 

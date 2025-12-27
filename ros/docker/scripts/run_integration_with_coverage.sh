@@ -46,45 +46,39 @@ echo "============================================"
 echo "Part 1: Building with coverage instrumentation..."
 echo "============================================"
 
-# Clean previous build
-rm -rf build install log
-
-# Build with coverage flags
 if [ "${ROS_VERSION:-2}" = "1" ]; then
-    # ROS 1 - Use catkin with coverage
-    echo "Building with catkin (ROS 1) + coverage..."
-    
-    rm -rf /workspace/catkin_ws
-    mkdir -p /workspace/catkin_ws/src
-    cd /workspace/catkin_ws
-    # Symlink the package
-    ln -sf /workspace/axon/ros/axon_recorder src/axon_recorder
-    # Symlink cpp/ directory for dependencies (axon_mcap, axon_logging)
-    # CMakeLists.txt uses ../../cpp/ relative paths
-    ln -sf /workspace/axon/cpp cpp
-    
-    catkin_make \
+    # ROS 1 - Use catkin build
+    echo "Building with catkin build (ROS 1) + coverage..."
+
+    cd /workspace/axon/ros
+    # Clean previous build (union of ROS1 and ROS2 build artifacts)
+    rm -rf build devel install log
+
+    source /opt/ros/${ROS_DISTRO}/setup.bash
+    catkin build --no-notify \
         -DCMAKE_BUILD_TYPE=Debug \
         -DENABLE_COVERAGE=ON
-    
+
     source devel/setup.bash
-    
-    COVERAGE_DIR="${PWD}/build"
+
+    COVERAGE_DIR="${PWD}/build/axon_recorder"
 else
-    # ROS 2 - Use colcon with coverage
+    # ROS 2 - Use colcon
     echo "Building with colcon (ROS 2) + coverage..."
-    
+
     cd /workspace/axon
-    
+    rm -rf build devel install log
+
+    source /opt/ros/${ROS_DISTRO}/setup.bash
     colcon build \
         --packages-select axon_recorder \
         --cmake-args \
             -DCMAKE_BUILD_TYPE=Debug \
             -DENABLE_COVERAGE=ON \
         --base-paths ros
-    
+
     source install/setup.bash
-    
+
     COVERAGE_DIR="${PWD}/build/axon_recorder"
 fi
 
@@ -98,7 +92,7 @@ echo "============================================"
 
 if [ "${ROS_VERSION:-2}" = "1" ]; then
     echo "Running catkin tests..."
-    catkin_make run_tests
+    catkin build --no-notify --catkin-make-args run_tests
     catkin_test_results --verbose
 else
     echo "Running colcon tests..."

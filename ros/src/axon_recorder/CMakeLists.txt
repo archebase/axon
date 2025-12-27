@@ -82,12 +82,12 @@ set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 # Find axon_mcap directory - check multiple possible locations
 if(EXISTS "${PROJECT_ROOT}/cpp/axon_mcap/CMakeLists.txt")
     set(CPP_MCAP_DIR ${PROJECT_ROOT}/cpp/axon_mcap)
-elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_mcap/CMakeLists.txt")
-    set(CPP_MCAP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_mcap)
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_mcap/CMakeLists.txt")
+    set(CPP_MCAP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_mcap)
 else()
     message(FATAL_ERROR "Could not find axon_mcap directory. Searched:\n"
         "  ${PROJECT_ROOT}/cpp/axon_mcap\n"
-        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_mcap\n"
+        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_mcap\n"
         "Please ensure the cpp/axon_mcap directory exists relative to the project root.")
 endif()
 message(STATUS "Found axon_mcap at: ${CPP_MCAP_DIR}")
@@ -163,12 +163,12 @@ endif()
 # Find axon_logging directory
 if(EXISTS "${PROJECT_ROOT}/cpp/axon_logging/CMakeLists.txt")
     set(CPP_LOGGING_DIR ${PROJECT_ROOT}/cpp/axon_logging)
-elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_logging/CMakeLists.txt")
-    set(CPP_LOGGING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_logging)
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging/CMakeLists.txt")
+    set(CPP_LOGGING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging)
 else()
     message(FATAL_ERROR "Could not find axon_logging directory. Searched:\n"
         "  ${PROJECT_ROOT}/cpp/axon_logging\n"
-        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../cpp/axon_logging\n"
+        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging\n"
         "Please ensure the cpp/axon_logging directory exists relative to the project root.")
 endif()
 message(STATUS "Found axon_logging at: ${CPP_LOGGING_DIR}")
