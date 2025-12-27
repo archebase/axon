@@ -93,6 +93,27 @@ echo "============================================"
 echo "Part 2: Running E2E tests only..."
 echo "============================================"
 
+# CRITICAL: Re-source workspace setup files after build
+# The build tool warns: "Workspace packages have changed, please re-source setup files"
+# This ensures the test environment can find the newly built packages
+if [ "${ROS_VERSION:-2}" = "1" ]; then
+    if [ -f "/workspace/axon/ros/devel/setup.bash" ]; then
+        echo "Sourcing workspace setup file: /workspace/axon/ros/devel/setup.bash"
+        source /workspace/axon/ros/devel/setup.bash
+    else
+        echo "WARNING: Workspace setup file not found at /workspace/axon/ros/devel/setup.bash"
+    fi
+else
+    if [ -f "/workspace/axon/install/setup.bash" ]; then
+        echo "Sourcing workspace setup file: /workspace/axon/install/setup.bash"
+        source /workspace/axon/install/setup.bash
+        # For ROS 2: Ensure workspace is in AMENT_PREFIX_PATH
+        export AMENT_PREFIX_PATH="/workspace/axon/install/axon_recorder:/workspace/axon/install:${AMENT_PREFIX_PATH}"
+    else
+        echo "WARNING: Workspace setup file not found at /workspace/axon/install/setup.bash"
+    fi
+fi
+
 if [ -f "${E2E_RUNNER}" ]; then
     chmod +x "${E2E_RUNNER}"
     "${E2E_RUNNER}"

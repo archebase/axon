@@ -83,45 +83,6 @@ component_management:
         - cpp/axon_mcap/**
         - cpp/axon_uploader/**
 
-# Ignore test files, non-source files, and auto-generated files from coverage metrics
-ignore:
-  # Test files
-  - "ros/src/axon_recorder/test/**/*"
-  - "cpp/axon_logging/test/**/*"
-  - "cpp/axon_mcap/test/**/*"
-  - "cpp/axon_uploader/test/**/*"
-  - "**/test/**/*"
-  - "**/*_test.cpp"
-  - "**/test_*.cpp"
-  # Build directory (auto-generated ROS files)
-  - "build/**/*"
-  # ROS auto-generated code (from .srv/.msg files)
-  - "**/rosidl_typesupport_cpp/**/*"
-  - "**/rosidl_typesupport_introspection_cpp/**/*"
-  - "**/rosidl_typesupport_fastrtps_cpp/**/*"
-  - "**/rosidl_generator_cpp/**/*"
-  # Non-source files (documentation, config, CI, build scripts)
-  - "**/*.md"
-  - "**/*.yml"
-  - "**/*.yaml"
-  - "**/*.xml"
-  - "**/*.txt"
-  - "**/*.cmake"
-  - "**/CMakeLists.txt"
-  - "**/*.sh"
-  - "**/*.in"
-  - ".github/**/*"
-  - ".cursor/**/*"
-  - ".vscode/**/*"
-  - "docs/**/*"
-  - "ros/docker/**/*"
-  - "**/Makefile"
-  - "**/Makefile.*"
-  - "**/*.srv"
-  - "**/package.xml"
-  - "**/launch/**/*"
-  - "**/config/**/*"
-
 # Comment configuration for PR feedback
 comment:
   layout: "reach,diff,files,flags,components"  # Include components in PR comments

@@ -54,7 +54,10 @@ set +eu
 if [ -n "$ROS_DISTRO" ]; then
     . /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
 fi
-for ws in /root/target_ws /workspace/axon/ros /workspace/catkin_ws; do
+# Check workspace paths in order of preference
+# ROS1: /workspace/axon/ros/devel/setup.bash (catkin workspace)
+# ROS2: /workspace/axon/install/setup.bash (colcon workspace)
+for ws in /root/target_ws /workspace/axon/ros /workspace/axon /workspace/catkin_ws; do
     if [ -f "$ws/install/setup.bash" ]; then
         echo "Sourcing $ws/install/setup.bash"
         . "$ws/install/setup.bash"
