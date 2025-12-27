@@ -4,10 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "mcap_validator.hpp"
@@ -203,6 +205,35 @@ TEST_F(McapValidatorTest, HeaderPartialRead) {
   EXPECT_FALSE(result.valid);
   // File is 10 bytes, can read 8 byte header but magic won't match
   EXPECT_FALSE(result.error_message.empty());
+}
+
+TEST_F(McapValidatorTest, HeaderFileTooSmallToRead) {
+  // Create a 1-byte file (too small to read full header)
+  std::string path = test_dir_ + "/tiny.mcap";
+  std::ofstream file(path, std::ios::binary);
+  file << "x";
+  file.close();
+  
+  auto result = validateMcapHeader(path);
+  EXPECT_FALSE(result.valid);
+  EXPECT_NE(result.error_message.find("too small"), std::string::npos);
+}
+
+TEST_F(McapValidatorTest, FooterExactMinSize) {
+  // File with exactly MIN_MCAP_SIZE bytes (16 bytes = 2 * magic)
+  // This tests the edge case where file size equals minimum
+  std::string path = test_dir_ + "/exact_min.mcap";
+  std::ofstream file(path, std::ios::binary);
+  
+  static const char MAGIC[] = {'\x89', 'M', 'C', 'A', 'P', '0', '\r', '\n'};
+  file.write(MAGIC, 8);  // Header magic
+  file.write(MAGIC, 8);  // Footer magic (immediately after)
+  
+  file.close();
+  
+  // Footer validation should pass (file is exactly minimum size)
+  auto result = validateMcapFooter(path);
+  EXPECT_TRUE(result.valid);
 }
 
 // =============================================================================
@@ -560,6 +591,86 @@ TEST_F(McapValidatorTest, LargeValidMcapFile) {
   // Validate the large file
   auto result = validateMcapStructure(path);
   EXPECT_TRUE(result.valid) << "Error: " << result.error_message;
+}
+
+// =============================================================================
+// Thread Safety Tests
+// =============================================================================
+
+TEST_F(McapValidatorTest, ConcurrentValidationThreadSafety) {
+  // Create multiple valid MCAP files for concurrent validation
+  const int num_files = 10;
+  const int num_threads = 8;
+  const int validations_per_thread = 20;
+  
+  std::vector<std::string> file_paths;
+  for (int i = 0; i < num_files; ++i) {
+    file_paths.push_back(createValidMcapFile("concurrent_" + std::to_string(i) + ".mcap"));
+  }
+  
+  // Track validation results per file to detect cross-contamination
+  std::vector<std::atomic<int>> success_counts(num_files);
+  std::vector<std::atomic<int>> failure_counts(num_files);
+  for (int i = 0; i < num_files; ++i) {
+    success_counts[i] = 0;
+    failure_counts[i] = 0;
+  }
+  
+  // Run concurrent validations
+  std::vector<std::thread> threads;
+  std::atomic<bool> start_flag{false};
+  
+  for (int t = 0; t < num_threads; ++t) {
+    threads.emplace_back([&, t]() {
+      // Wait for all threads to be ready
+      while (!start_flag.load()) {
+        std::this_thread::yield();
+      }
+      
+      // Each thread validates random files multiple times
+      for (int i = 0; i < validations_per_thread; ++i) {
+        int file_idx = (t * validations_per_thread + i) % num_files;
+        const std::string& path = file_paths[file_idx];
+        
+        auto result = validateMcapStructure(path);
+        
+        if (result.valid) {
+          success_counts[file_idx]++;
+        } else {
+          failure_counts[file_idx]++;
+        }
+      }
+    });
+  }
+  
+  // Start all threads simultaneously
+  start_flag = true;
+  
+  // Wait for all threads to complete
+  for (auto& thread : threads) {
+    thread.join();
+  }
+  
+  // Verify all validations succeeded (no cross-contamination)
+  for (int i = 0; i < num_files; ++i) {
+    EXPECT_GT(success_counts[i].load(), 0) 
+        << "File " << i << " should have at least one successful validation";
+    EXPECT_EQ(failure_counts[i].load(), 0)
+        << "File " << i << " should have no failures (indicates thread-safety issue)";
+  }
+  
+  // Verify total counts match expected
+  int total_success = 0;
+  int total_failure = 0;
+  for (int i = 0; i < num_files; ++i) {
+    total_success += success_counts[i].load();
+    total_failure += failure_counts[i].load();
+  }
+  
+  EXPECT_EQ(total_success + total_failure, num_threads * validations_per_thread)
+      << "Total validation count should match expected";
+  EXPECT_EQ(total_failure, 0) 
+      << "No validations should fail (indicates thread-safety issue with shared reader)";
 }
 
 int main(int argc, char** argv) {

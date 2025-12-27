@@ -550,6 +550,45 @@ TEST_F(FileSinkDirectoryTest, CreateNestedNonExistentDirectory) {
   EXPECT_TRUE(fs::exists(nested_dir));
 }
 
+TEST_F(FileSinkDirectoryTest, FallbackToTmpOnUnwritableDirectory) {
+  // Test the fallback path when directory creation fails
+  // Use a path that cannot be created (e.g., under /proc or read-only)
+  // Note: This test may not work on all systems, so we'll use a path that
+  // should fail on most Unix systems
+  FileSinkConfig config;
+  config.directory = "/nonexistent_root_dir_12345/subdir/logs";
+  config.file_pattern = "test_%N.log";
+  
+  // Should fall back to /tmp without crashing
+  auto sink = create_file_sink(config, severity_level::info);
+  ASSERT_NE(sink, nullptr);
+  
+  // Verify logs can be written (to /tmp fallback)
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  AXON_LOG_INFO("Message after fallback to /tmp");
+  sink->flush();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  
+  remove_sink(sink);
+}
+
+TEST_F(FileSinkTest, MidnightRotationEnabled) {
+  FileSinkConfig config;
+  config.directory = test_dir_.string();
+  config.rotate_at_midnight = true;  // Explicitly test this path
+  
+  auto sink = create_file_sink(config, severity_level::debug);
+  ASSERT_NE(sink, nullptr);
+  
+  // Verify sink works
+  add_sink(sink);
+  boost::log::add_common_attributes();
+  AXON_LOG_INFO("Test message with midnight rotation enabled");
+  sink->flush();
+  remove_sink(sink);
+}
+
 // ============================================================================
 // Integration Tests
 // ============================================================================

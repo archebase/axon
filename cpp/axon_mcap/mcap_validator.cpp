@@ -1,11 +1,16 @@
 #include "mcap_validator.hpp"
 
+#include "mcap_validator_impl.hpp"
+#include "mcap_validator_interfaces.hpp"
+
 #include <mcap/reader.hpp>
+#include <mcap/errors.hpp>
 
 #include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 
 // Logging infrastructure (optional - only if axon_logging is linked)
 #ifdef AXON_HAS_LOGGING
@@ -48,22 +53,26 @@ static constexpr size_t MCAP_MAGIC_SIZE = 8;
 // Minimum valid MCAP file size (header + footer at minimum)
 static constexpr size_t MIN_MCAP_SIZE = MCAP_MAGIC_SIZE * 2;
 
-McapValidationResult validateMcapHeader(const std::string& path) {
+// Internal implementation with dependency injection
+// Exposed for testing - declared in mcap_validator_test_helpers.hpp
+McapValidationResult validateMcapHeaderImpl(
+    const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory
+) {
   // Check file exists
-  if (!std::filesystem::exists(path)) {
+  if (!filesystem.exists(path)) {
     return McapValidationResult::failure("File does not exist: " + path);
   }
 
-  std::ifstream file(path, std::ios::binary);
+  auto file = stream_factory.create_file_stream(path, std::ios::binary);
   if (!file) {
     return McapValidationResult::failure("Cannot open file: " + path);
   }
 
   // Read header magic bytes
   std::array<char, MCAP_MAGIC_SIZE> header_magic{};
-  file.read(header_magic.data(), MCAP_MAGIC_SIZE);
+  file->read(header_magic.data(), MCAP_MAGIC_SIZE);
 
-  if (!file || static_cast<size_t>(file.gcount()) != MCAP_MAGIC_SIZE) {
+  if (!file->good() || static_cast<size_t>(file->gcount()) != MCAP_MAGIC_SIZE) {
     return McapValidationResult::failure("File too small to contain MCAP header");
   }
 
@@ -75,35 +84,46 @@ McapValidationResult validateMcapHeader(const std::string& path) {
   return McapValidationResult::success();
 }
 
-McapValidationResult validateMcapFooter(const std::string& path) {
+// Public API - uses default implementations
+McapValidationResult validateMcapHeader(const std::string& path) {
+  static FileSystemImpl default_filesystem;
+  static FileStreamFactoryImpl default_stream_factory;
+  return validateMcapHeaderImpl(path, default_filesystem, default_stream_factory);
+}
+
+// Internal implementation with dependency injection
+// Exposed for testing via mcap_validator_test_helpers.hpp
+McapValidationResult validateMcapFooterImpl(
+    const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory
+) {
   // Check file exists
-  if (!std::filesystem::exists(path)) {
+  if (!filesystem.exists(path)) {
     return McapValidationResult::failure("File does not exist: " + path);
   }
 
   // Get file size
-  auto file_size = std::filesystem::file_size(path);
+  auto file_size = filesystem.file_size(path);
   if (file_size < MIN_MCAP_SIZE) {
     return McapValidationResult::failure("File too small to be valid MCAP (minimum " +
                                          std::to_string(MIN_MCAP_SIZE) + " bytes)");
   }
 
-  std::ifstream file(path, std::ios::binary);
+  auto file = stream_factory.create_file_stream(path, std::ios::binary);
   if (!file) {
     return McapValidationResult::failure("Cannot open file: " + path);
   }
 
   // Seek to footer magic position
-  file.seekg(-static_cast<std::streamoff>(MCAP_MAGIC_SIZE), std::ios::end);
-  if (!file) {
+  file->seekg(-static_cast<std::streamoff>(MCAP_MAGIC_SIZE), std::ios::end);
+  if (!file->good()) {
     return McapValidationResult::failure("Cannot seek to footer position");
   }
 
   // Read footer magic bytes
   std::array<char, MCAP_MAGIC_SIZE> footer_magic{};
-  file.read(footer_magic.data(), MCAP_MAGIC_SIZE);
+  file->read(footer_magic.data(), MCAP_MAGIC_SIZE);
 
-  if (!file || static_cast<size_t>(file.gcount()) != MCAP_MAGIC_SIZE) {
+  if (!file->good() || static_cast<size_t>(file->gcount()) != MCAP_MAGIC_SIZE) {
     return McapValidationResult::failure("Cannot read footer magic bytes");
   }
 
@@ -116,27 +136,47 @@ McapValidationResult validateMcapFooter(const std::string& path) {
   return McapValidationResult::success();
 }
 
-McapValidationResult validateMcapStructure(const std::string& path) {
+// Public API - uses default implementations
+McapValidationResult validateMcapFooter(const std::string& path) {
+  static FileSystemImpl default_filesystem;
+  static FileStreamFactoryImpl default_stream_factory;
+  return validateMcapFooterImpl(path, default_filesystem, default_stream_factory);
+}
+
+// Internal implementation with dependency injection
+// Exposed for testing via mcap_validator_test_helpers.hpp
+McapValidationResult validateMcapStructureImpl(
+    const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory,
+    IMcapReader& reader
+) {
   // Step 1: Validate header
-  auto header_result = validateMcapHeader(path);
+  auto header_result = validateMcapHeaderImpl(path, filesystem, stream_factory);
   if (!header_result) {
+    // LCOV_EXCL_START - Logging macro generates many internal branches from string formatting
+    // These branches are implementation details of the logging infrastructure, not validation logic
     AXON_LOG_ERROR("MCAP header validation failed: " + header_result.error_message);
+    // LCOV_EXCL_STOP
     return header_result;
   }
 
   // Step 2: Validate footer
-  auto footer_result = validateMcapFooter(path);
+  auto footer_result = validateMcapFooterImpl(path, filesystem, stream_factory);
   if (!footer_result) {
+    // LCOV_EXCL_START - Logging macro generates many internal branches from string formatting
+    // These branches are implementation details of the logging infrastructure, not validation logic
     AXON_LOG_ERROR("MCAP footer validation failed: " + footer_result.error_message);
+    // LCOV_EXCL_STOP
     return footer_result;
   }
 
   // Step 3: Validate summary section is parseable using MCAP library
-  mcap::McapReader reader;
   auto status = reader.open(path);
   if (!status.ok()) {
     std::string error_msg = "Cannot open MCAP for reading: " + status.message;
+    // LCOV_EXCL_START - Logging macro generates many internal branches from string formatting
+    // These branches are implementation details of the logging infrastructure, not validation logic
     AXON_LOG_ERROR(error_msg);
+    // LCOV_EXCL_STOP
     return McapValidationResult::failure(error_msg);
   }
 
@@ -145,15 +185,35 @@ McapValidationResult validateMcapStructure(const std::string& path) {
   auto summary_status = reader.readSummary(mcap::ReadSummaryMethod::NoFallbackScan);
   if (!summary_status.ok()) {
     std::string error_msg = "MCAP summary section invalid or missing: " + summary_status.message;
+    // LCOV_EXCL_START - Logging macro generates many internal branches from string formatting
+    // These branches are implementation details of the logging infrastructure, not validation logic
     AXON_LOG_ERROR(error_msg);
+    // LCOV_EXCL_STOP
     reader.close();
     return McapValidationResult::failure(error_msg);
   }
 
   reader.close();
 
+  // LCOV_EXCL_START - Logging macro generates many internal branches from string formatting
+  // These branches are implementation details of the logging infrastructure, not validation logic
   AXON_LOG_DEBUG("MCAP validation successful: " + path);
+  // LCOV_EXCL_STOP
   return McapValidationResult::success();
+}
+
+// Public API - uses default implementations
+McapValidationResult validateMcapStructure(const std::string& path) {
+  static FileSystemImpl default_filesystem;
+  static FileStreamFactoryImpl default_stream_factory;
+  // CRITICAL: Create a new reader instance per call to ensure thread safety.
+  // McapReaderImpl wraps a stateful mcap::McapReader which maintains an open file handle.
+  // If this were static (shared across calls), concurrent calls would race:
+  // one thread could open file A, another could open file B (resetting state),
+  // and the first thread would validate the wrong file.
+  // DO NOT make this static - it must remain a local variable.
+  McapReaderImpl reader;
+  return validateMcapStructureImpl(path, default_filesystem, default_stream_factory, reader);
 }
 
 }  // namespace mcap_wrapper

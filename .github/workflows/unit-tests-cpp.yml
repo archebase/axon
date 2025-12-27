@@ -183,12 +183,36 @@ jobs:
             cp coverage_raw.info coverage.info
           }
           
-          # Debug: show sample paths (will be normalized in ci.yml merge step)
-          echo "Sample paths in coverage file:"
+          # Debug: show sample paths before normalization
+          echo "Sample paths in coverage file (before normalization):"
+          grep "^SF:" coverage.info | head -5 || true
+
+      - name: Normalize coverage paths
+        run: |
+          cd cpp/build_${{ matrix.library }}
+          chmod +x ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh
+          ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh coverage.info
+          echo "Sample paths after normalization:"
           grep "^SF:" coverage.info | head -5 || true
 
       - name: Copy coverage to root for artifact upload
         run: cp cpp/build_${{ matrix.library }}/coverage.info coverage.info
+
+      - name: Upload coverage to Codecov with flag
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.info
+          flags: cpp-unit
+          name: cpp-unit-${{ matrix.library }}
+          fail_ci_if_error: false
+          verbose: true
+          disable_search: true
+          disable_file_fixes: true
+          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          override_build: ${{ github.run_id }}
+          override_pr: ${{ github.event.pull_request.number }}
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
