@@ -50,25 +50,60 @@ ros_coverage_check_lcov() {
 # Get lcov Version and Flags
 # =============================================================================
 
+ros_coverage_get_lcov_version() {
+    local lcov_version
+    # Try multiple patterns to match different lcov version output formats
+    # Format 1: "LCOV version 2.0.0"
+    # Format 2: "lcov 2.0.0"
+    # Format 3: "lcov: LCOV version 2.0.0"
+    lcov_version=$(lcov --version 2>&1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || echo "1.0")
+    echo "$lcov_version"
+}
+
+ros_coverage_get_lcov_major() {
+    local lcov_version
+    lcov_version=$(ros_coverage_get_lcov_version)
+    echo "$lcov_version" | cut -d. -f1
+}
+
+ros_coverage_get_branch_coverage_rc() {
+    # Returns the appropriate RC option for branch coverage based on lcov version
+    # Newer versions (2.0+) prefer 'branch_coverage', older versions use 'lcov_branch_coverage'
+    # We use the new option for versions that support it to avoid deprecation warnings
+    local lcov_major
+    lcov_major=$(ros_coverage_get_lcov_major)
+    
+    # lcov 2.0+ supports the new 'branch_coverage' option
+    # For older versions, use the deprecated but still supported 'lcov_branch_coverage'
+    if [ "$lcov_major" -ge 2 ]; then
+        echo "--rc branch_coverage=1"
+    else
+        echo "--rc lcov_branch_coverage=1"
+    fi
+}
+
 ros_coverage_get_lcov_flags() {
     local lcov_version
     local lcov_major
     
     # Get lcov version
-    lcov_version=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
-    lcov_major=$(echo "$lcov_version" | cut -d. -f1)
+    lcov_version=$(ros_coverage_get_lcov_version)
+    lcov_major=$(ros_coverage_get_lcov_major)
     
     ros_coverage_log "INFO" "Detected lcov version: $lcov_version (major: $lcov_major)"
     
     # Build ignore flags based on version
     # Error types to ignore:
     #   mismatch - mismatched exception tags (C++ std lib differences)
-    #   unused   - unused coverage data
+    #   unused   - unused coverage data (suppresses warnings about unused exclude patterns)
     #   negative - negative branch counts (compiler/gcov compatibility issue)
     #   gcov     - unexecuted blocks on non-branch lines
     local ignore_flags=""
     if [ "$lcov_major" -ge 2 ]; then
         ignore_flags="--ignore-errors mismatch,unused,negative,gcov"
+        ros_coverage_log "INFO" "Using lcov 2.0+ ignore flags: $ignore_flags"
+    else
+        ros_coverage_log "WARN" "lcov version < 2.0, ignore flags not available"
     fi
     
     echo "$ignore_flags"
@@ -101,35 +136,48 @@ ros_coverage_capture() {
         ros_coverage_log "INFO" "  $dir"
     done
     
-    # Get lcov flags
+    # Get lcov flags and branch coverage RC option
     local ignore_flags
     ignore_flags=$(ros_coverage_get_lcov_flags)
+    local branch_coverage_rc
+    branch_coverage_rc=$(ros_coverage_get_branch_coverage_rc)
     
     # Capture coverage data
     ros_coverage_log "INFO" "Capturing coverage data from $coverage_dir..."
-    if ! lcov --capture \
+    local capture_output
+    local capture_exit_code
+    capture_output=$(lcov --capture \
         --directory "$coverage_dir" \
         --output-file "$output_file" \
-        --rc lcov_branch_coverage=1 \
-        $ignore_flags 2>&1; then
+        $branch_coverage_rc \
+        $ignore_flags 2>&1)
+    capture_exit_code=$?
+    
+    # Filter out geninfo mismatch warnings (harmless, caused by exception tag differences in system headers)
+    # The --ignore-errors mismatch flag should suppress them, but filter as fallback
+    echo "$capture_output" | grep -v "geninfo: WARNING: ('mismatch')" || true
+    
+    if [ $capture_exit_code -ne 0 ]; then
         
         ros_coverage_log "WARN" "lcov capture had issues, trying with more permissive ignore flags..."
         
         # Fallback: try with all common error types ignored (lcov 2.0+ only)
         local lcov_major
-        lcov_major=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' | cut -d. -f1 || echo "1")
+        lcov_major=$(ros_coverage_get_lcov_major)
         
         if [ "$lcov_major" -ge 2 ]; then
-            lcov --capture \
+            capture_output=$(lcov --capture \
                 --directory "$coverage_dir" \
                 --output-file "$output_file" \
-                --rc lcov_branch_coverage=1 \
-                --ignore-errors mismatch,unused,negative,gcov,source 2>&1 || true
+                $branch_coverage_rc \
+                --ignore-errors mismatch,unused,negative,gcov,source 2>&1 || true)
+            echo "$capture_output" | grep -v "geninfo: WARNING: ('mismatch')" || true
         else
-            lcov --capture \
+            capture_output=$(lcov --capture \
                 --directory "$coverage_dir" \
                 --output-file "$output_file" \
-                --rc lcov_branch_coverage=1 2>&1 || true
+                $branch_coverage_rc 2>&1 || true)
+            echo "$capture_output" | grep -v "geninfo: WARNING: ('mismatch')" || true
         fi
     fi
     
@@ -161,12 +209,20 @@ ros_coverage_filter() {
     
     ros_coverage_log "INFO" "Filtering coverage data..."
     
-    # Get lcov flags
+    # Get lcov flags and branch coverage RC option
     local ignore_flags
     ignore_flags=$(ros_coverage_get_lcov_flags)
+    local branch_coverage_rc
+    branch_coverage_rc=$(ros_coverage_get_branch_coverage_rc)
     
     # Remove external dependencies from coverage
-    if ! lcov --remove "$input_file" \
+    # Note: $ignore_flags and $branch_coverage_rc are intentionally unquoted to allow
+    # proper expansion of multiple arguments (they may contain multiple space-separated flags)
+    # The --ignore-errors unused flag (for lcov 2.0+) suppresses warnings about unused exclude patterns
+    # If warnings still appear (e.g., if version detection failed), filter them while preserving exit code
+    local lcov_output
+    local lcov_exit_code
+    lcov_output=$(lcov --remove "$input_file" \
         '/usr/*' \
         '/opt/*' \
         '*/_deps/*' \
@@ -184,8 +240,15 @@ ros_coverage_filter() {
         '*/rosidl_typesupport_introspection_cpp/*' \
         '*/rosidl_generator_cpp/*' \
         --output-file "$output_file" \
-        --rc lcov_branch_coverage=1 \
-        $ignore_flags 2>&1; then
+        $branch_coverage_rc \
+        $ignore_flags 2>&1)
+    lcov_exit_code=$?
+    
+    # Filter out unused pattern warnings (they're harmless but noisy)
+    # The --ignore-errors unused flag should suppress them, but filter as fallback
+    echo "$lcov_output" | grep -v "WARNING: ('unused') 'exclude' pattern" || true
+    
+    if [ $lcov_exit_code -ne 0 ]; then
         
         ros_coverage_log "WARN" "lcov filtering had issues, using raw coverage..."
         cp "$input_file" "$output_file"
@@ -248,6 +311,9 @@ ros_coverage_generate() {
 
 # Export functions for use in other scripts
 export -f ros_coverage_check_lcov
+export -f ros_coverage_get_lcov_version
+export -f ros_coverage_get_lcov_major
+export -f ros_coverage_get_branch_coverage_rc
 export -f ros_coverage_get_lcov_flags
 export -f ros_coverage_capture
 export -f ros_coverage_filter

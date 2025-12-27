@@ -41,38 +41,22 @@ sed -i 's|^SF:/workspace/axon/|SF:|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/cpp/|SF:cpp/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$COVERAGE_FILE"
+sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/build/|SF:build/|' "$COVERAGE_FILE"
 
 # -----------------------------------------------------------------
-# Step 4: Industrial CI prefixes (ROS2 target_ws)
-# -----------------------------------------------------------------
-sed -i 's|^SF:/root/target_ws/src/Axon/|SF:|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/target_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/target_ws/build/|SF:build/|' "$COVERAGE_FILE"
-
-# -----------------------------------------------------------------
-# Step 5: Industrial CI prefixes (ROS2 upstream_ws)
-# -----------------------------------------------------------------
-sed -i 's|^SF:/root/upstream_ws/src/Axon/|SF:|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/upstream_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/upstream_ws/build/|SF:build/|' "$COVERAGE_FILE"
-
-# -----------------------------------------------------------------
-# Step 6: Industrial CI prefixes (ROS1 catkin_ws)
-# -----------------------------------------------------------------
-sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/catkin_ws/cpp/|SF:cpp/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/root/catkin_ws/build/|SF:build/|' "$COVERAGE_FILE"
-
-# -----------------------------------------------------------------
-# Step 7: Cleanup remaining relative paths
+# Step 4: Cleanup remaining relative paths
 # -----------------------------------------------------------------
 sed -i 's|^SF:catkin_ws/cpp/|SF:cpp/|' "$COVERAGE_FILE"
-sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:ros/axon_recorder/|' "$COVERAGE_FILE"
+sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
 sed -i 's|^SF:Axon/|SF:|' "$COVERAGE_FILE"
+
+# -----------------------------------------------------------------
+# Step 5: Fix incorrect normalizations (ros/axon_recorder/ → ros/src/axon_recorder/)
+# -----------------------------------------------------------------
+# Some paths may have been normalized incorrectly to ros/axon_recorder/ (missing src/)
+# This step fixes them to match the actual repo structure: ros/src/axon_recorder/
+sed -i 's|^SF:ros/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
 
 # Note: Build directory paths (SF:build/...) are kept as-is so that
 # Codecov's ignore rule "build/**/*" in codecov.yml can properly filter them.

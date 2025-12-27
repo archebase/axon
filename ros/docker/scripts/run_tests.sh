@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 # =============================================================================
 # ROS Test Runner
@@ -11,20 +11,35 @@ set -e
 # This matches how CI runs tests via industrial_ci.
 # =============================================================================
 
+# Source shared libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/lib"
+
+# Source libraries (with error handling)
+# Note: We can't use library error functions here since libraries aren't loaded yet
+if [ ! -f "${LIB_DIR}/ros_build_lib.sh" ]; then
+    echo "ERROR: ros_build_lib.sh not found at ${LIB_DIR}/ros_build_lib.sh" >&2
+    exit 1
+fi
+source "${LIB_DIR}/ros_build_lib.sh"
+
+if [ ! -f "${LIB_DIR}/ros_workspace_lib.sh" ]; then
+    echo "ERROR: ros_workspace_lib.sh not found at ${LIB_DIR}/ros_workspace_lib.sh" >&2
+    exit 1
+fi
+source "${LIB_DIR}/ros_workspace_lib.sh"
+
 echo "============================================"
 echo "Running ROS tests for ROS ${ROS_VERSION} (${ROS_DISTRO})"
 echo "============================================"
 
-# Source ROS environment
-if [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then
-    source /opt/ros/${ROS_DISTRO}/setup.bash
-    echo "Sourced ROS ${ROS_DISTRO} environment"
-else
-    echo "ERROR: ROS setup.bash not found at /opt/ros/${ROS_DISTRO}/setup.bash"
-    exit 1
-fi
+# Source ROS base environment
+ros_workspace_source_base || {
+    ros_workspace_error "Failed to source ROS base environment"
+}
 
-cd /workspace/axon
+WORKSPACE_ROOT="/workspace/axon"
+cd "${WORKSPACE_ROOT}"
 
 # =============================================================================
 # Part 1: Build and Run ROS Tests
@@ -36,37 +51,23 @@ echo "============================================"
 echo "Part 1: Building and running ROS tests..."
 echo "============================================"
 
+# Build package (Release, no coverage)
+ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" || {
+    ros_build_error "Failed to build package"
+}
+
+# Re-source workspace after build
+ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
+    ros_workspace_error "Failed to source workspace after build"
+}
+
+# Run tests based on ROS version
 if [ "${ROS_VERSION}" = "1" ]; then
-    # ROS 1 - Use catkin build
-    echo "Building with catkin build (ROS 1)..."
-
-    cd /workspace/axon/ros
-    # Clean previous build (union of ROS1 and ROS2 build artifacts)
-    rm -rf build devel install log
-
-    source /opt/ros/${ROS_DISTRO}/setup.bash
-    catkin build --no-notify -DCMAKE_BUILD_TYPE=Release
-    source devel/setup.bash
-
     echo "Running catkin tests..."
     catkin build --no-notify --catkin-make-args run_tests
     catkin_test_results --verbose
     echo "✓ ROS 1 tests passed"
-
 else
-    # ROS 2 - Use colcon
-    echo "Building with colcon (ROS 2)..."
-    
-    cd /workspace/axon/ros
-    rm -rf build devel install log logs
-    
-    source /opt/ros/${ROS_DISTRO}/setup.bash
-    colcon build \
-        --packages-select axon_recorder \
-        --cmake-args -DCMAKE_BUILD_TYPE=Release
-    
-    source install/setup.bash
-    
     echo "Running colcon tests..."
     colcon test \
         --packages-select axon_recorder \
@@ -80,5 +81,5 @@ echo "============================================"
 echo "All unit/integration tests passed!"
 echo "============================================"
 echo ""
-echo "NOTE: E2E tests (ROS service calls) run separately via run_e2e_with_coverage.sh"
-echo "      and are only executed on Humble via e2e-tests.yml workflow."
+echo "NOTE: E2E tests (ROS service calls) run separately via run_e2e_tests.sh"
+echo "      (with --coverage flag for coverage collection) via e2e-tests.yml workflow."

@@ -18,47 +18,50 @@ E2E tests start the `axon_recorder_node` and make actual ROS service calls.
    rm -rf ../../install ../../build ../../log
    ```
 
-2. **Use the coverage script** which builds inside Docker:
+2. **Use the unified E2E test script** which builds inside Docker:
    ```bash
    cd ros/docker
+   # Without coverage (builds Release, runs tests)
    docker compose -f docker-compose.test.yml run --rm test-ros1 \
-     /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
+     /workspace/axon/ros/docker/scripts/run_e2e_tests.sh
+   
+   # With coverage (builds Debug with coverage, runs tests, generates coverage)
+   docker compose -f docker-compose.test.yml run --rm \
+     -v $(pwd)/../../coverage_output:/coverage_output \
+     test-ros1 \
+     /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
    ```
 
 ```bash
 cd ros/docker
 
-# ROS 1 Noetic
+# ROS 1 Noetic (with coverage)
 docker compose -f docker-compose.test.yml build test-ros1
 docker compose -f docker-compose.test.yml run --rm \
   -v $(pwd)/../../coverage_output:/coverage_output \
-  -e COVERAGE_OUTPUT=/coverage_output \
   test-ros1 \
-  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
 
-# ROS 2 Humble
+# ROS 2 Humble (with coverage)
 docker compose -f docker-compose.test.yml build test-ros2-humble
 docker compose -f docker-compose.test.yml run --rm \
   -v $(pwd)/../../coverage_output:/coverage_output \
-  -e COVERAGE_OUTPUT=/coverage_output \
   test-ros2-humble \
-  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
 
-# ROS 2 Jazzy
+# ROS 2 Jazzy (with coverage)
 docker compose -f docker-compose.test.yml build test-ros2-jazzy
 docker compose -f docker-compose.test.yml run --rm \
   -v $(pwd)/../../coverage_output:/coverage_output \
-  -e COVERAGE_OUTPUT=/coverage_output \
   test-ros2-jazzy \
-  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
 
-# ROS 2 Rolling
+# ROS 2 Rolling (with coverage)
 docker compose -f docker-compose.test.yml build test-ros2-rolling
 docker compose -f docker-compose.test.yml run --rm \
   -v $(pwd)/../../coverage_output:/coverage_output \
-  -e COVERAGE_OUTPUT=/coverage_output \
   test-ros2-rolling \
-  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
+  /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
 ```
 
 **Note:** The same build artifact cleanup applies to all ROS distributions if you encounter library version mismatch errors.
@@ -98,7 +101,7 @@ Both CI and local Docker use the same approach:
 | Step | CI (industrial_ci) | Local Docker (run_tests.sh) |
 |------|--------------------|-----------------------------|
 | **Part 1** | `colcon test` / `catkin_make run_tests` | Same |
-| **Part 2** | `run_e2e_tests.sh` | Same |
+| **Part 2** | `run_e2e_tests.sh` (unified script) | Same |
 
 ## Test Types
 

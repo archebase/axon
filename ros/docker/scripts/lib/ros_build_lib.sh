@@ -40,6 +40,7 @@ ros_build_error() {
 #   CLEAN_BUILD - If set to "true", clean build artifacts first (default: false)
 #   ENABLE_COVERAGE - If set to "true", enable coverage instrumentation (default: false)
 #   BUILD_TYPE - CMake build type (default: Release, or Debug if coverage enabled)
+#   EXTRA_CMAKE_ARGS - Extra CMake arguments (optional, e.g., "-DENABLE_ASAN=ON")
 #
 # Environment:
 #   Sets WORKSPACE_BUILD_DIR - Directory where build artifacts are located
@@ -53,6 +54,7 @@ ros_build_package() {
     local clean_build="${2:-false}"
     local enable_coverage="${3:-false}"
     local build_type="${4:-}"
+    local extra_cmake_args="${5:-}"
     
     # Determine build type
     if [ -z "$build_type" ]; then
@@ -104,6 +106,11 @@ ros_build_package() {
             catkin_args+=(-DENABLE_COVERAGE=ON)
         fi
         
+        # Add extra CMake args if provided
+        if [ -n "$extra_cmake_args" ]; then
+            catkin_args+=($extra_cmake_args)
+        fi
+        
         ros_build_log "INFO" "Running: catkin build ${catkin_args[*]}"
         catkin build "${catkin_args[@]}" || {
             ros_build_error "catkin build failed"
@@ -153,6 +160,11 @@ ros_build_package() {
         
         if [ "$enable_coverage" = "true" ]; then
             colcon_args+=(-DENABLE_COVERAGE=ON)
+        fi
+        
+        # Add extra CMake args if provided
+        if [ -n "$extra_cmake_args" ]; then
+            colcon_args+=($extra_cmake_args)
         fi
         
         ros_build_log "INFO" "Running: colcon build ${colcon_args[*]}"

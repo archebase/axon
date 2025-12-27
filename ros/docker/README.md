@@ -39,7 +39,7 @@ Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructu
 
 | Script | Used by |
 |--------|---------|
-| `test/e2e/run_e2e_tests.sh` | CI `AFTER_SCRIPT` + Docker `run_tests.sh` |
+| `docker/scripts/run_e2e_tests.sh` | CI E2E workflow + Docker testing (unified script with --coverage support) |
 | `test/e2e/test_ros_services.sh` | Called by `run_e2e_tests.sh` |
 
 ### Test Flow
