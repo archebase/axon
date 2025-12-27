@@ -54,7 +54,7 @@ if [ "${ROS_VERSION:-2}" = "1" ]; then
 
     cd /workspace/axon/ros
     # Clean previous build (union of ROS1 and ROS2 build artifacts)
-    rm -rf build devel install log
+    rm -rf build devel install log logs
 
     source /opt/ros/${ROS_DISTRO}/setup.bash
     catkin build --no-notify \
@@ -69,8 +69,8 @@ else
     # ROS 2 - Use colcon
     echo "Building with colcon (ROS 2) + coverage..."
 
-    cd /workspace/axon
-    rm -rf build devel install log
+    cd /workspace/axon/ros
+    rm -rf build devel install log logs
 
     source /opt/ros/${ROS_DISTRO}/setup.bash
     colcon build \

@@ -54,7 +54,7 @@ set +eu
 if [ -n "$ROS_DISTRO" ]; then
     . /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
 fi
-for ws in /root/target_ws /workspace/axon /workspace/catkin_ws; do
+for ws in /root/target_ws /workspace/axon/ros /workspace/catkin_ws; do
     if [ -f "$ws/install/setup.bash" ]; then
         echo "Sourcing $ws/install/setup.bash"
         . "$ws/install/setup.bash"
