@@ -16,14 +16,6 @@
 #   - ROS tests cover BOTH ros/ code AND cpp/ code (via library usage)
 # =============================================================================
 
-<<<<<<< HEAD
-=======
-# Path fixes - NOT needed since paths are normalized before upload in ci.yml
-# The merge step normalizes all paths to match repo structure:
-#   cpp/axon_logging/*, cpp/axon_mcap/*, ros/src/axon_recorder/src/*
-# See: .github/workflows/ci.yml "Normalize coverage paths" step
-
->>>>>>> f309c3a (refactor: update paths for ROS1 and ROS2 integration, adjust CMake and script configurations)
 coverage:
   status:
     project:

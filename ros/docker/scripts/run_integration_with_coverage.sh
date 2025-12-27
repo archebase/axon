@@ -52,7 +52,7 @@ if [ "${ROS_VERSION:-2}" = "1" ]; then
 
     cd /workspace/axon/ros
     # Clean previous build (union of ROS1 and ROS2 build artifacts)
-    rm -rf build devel install log
+    rm -rf build devel install log logs
 
     source /opt/ros/${ROS_DISTRO}/setup.bash
     catkin build --no-notify \
@@ -66,16 +66,15 @@ else
     # ROS 2 - Use colcon
     echo "Building with colcon (ROS 2) + coverage..."
 
-    cd /workspace/axon
-    rm -rf build devel install log
+    cd /workspace/axon/ros
+    rm -rf build devel install log logs
 
     source /opt/ros/${ROS_DISTRO}/setup.bash
     colcon build \
         --packages-select axon_recorder \
         --cmake-args \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_COVERAGE=ON \
-        --base-paths ros
+            -DENABLE_COVERAGE=ON
 
     source install/setup.bash
 
@@ -98,8 +97,7 @@ else
     echo "Running colcon tests..."
     colcon test \
         --packages-select axon_recorder \
-        --event-handlers console_direct+ \
-        --base-paths ros
+        --event-handlers console_direct+
     colcon test-result --verbose
 fi
 

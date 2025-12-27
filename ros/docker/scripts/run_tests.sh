@@ -57,22 +57,20 @@ else
     # ROS 2 - Use colcon
     echo "Building with colcon (ROS 2)..."
     
-    cd /workspace/axon
-    rm -rf build devel install log
+    cd /workspace/axon/ros
+    rm -rf build devel install log logs
     
     source /opt/ros/${ROS_DISTRO}/setup.bash
     colcon build \
         --packages-select axon_recorder \
-        --cmake-args -DCMAKE_BUILD_TYPE=Release \
-        --base-paths ros
+        --cmake-args -DCMAKE_BUILD_TYPE=Release
     
     source install/setup.bash
     
     echo "Running colcon tests..."
     colcon test \
         --packages-select axon_recorder \
-        --event-handlers console_direct+ \
-        --base-paths ros
+        --event-handlers console_direct+
     colcon test-result --verbose
     echo "✓ ROS 2 tests passed"
 fi
