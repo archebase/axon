@@ -23,7 +23,6 @@
 
 #if defined(AXON_ROS2)
 #include <rclcpp/rclcpp.hpp>
-#include <rclcpp/executors/single_threaded_executor.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <geometry_msgs/msg/twist.hpp>
@@ -188,14 +187,11 @@ protected:
   }
 
   void spin_some(int iterations = 10, int delay_ms = 10) {
-    rclcpp::executors::SingleThreadedExecutor executor;
-    executor.add_node(test_node_);
     for (int i = 0; i < iterations; ++i) {
-      executor.spin_some(std::chrono::milliseconds(0));
+      rclcpp::spin_some(test_node_);
       ros_interface_->spin_once();
       std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
     }
-    executor.remove_node(test_node_);
   }
 
   rclcpp::Node::SharedPtr test_node_;

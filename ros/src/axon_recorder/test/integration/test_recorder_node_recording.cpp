@@ -33,7 +33,6 @@
 
 #if defined(AXON_ROS2)
 #include <rclcpp/rclcpp.hpp>
-#include <rclcpp/executors/single_threaded_executor.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/int32.hpp>
 #elif defined(AXON_ROS1)
@@ -452,8 +451,6 @@ protected:
   }
 
   void publish_test_messages(int count) {
-    rclcpp::executors::SingleThreadedExecutor executor;
-    executor.add_node(publisher_node_);
     for (int i = 0; i < count; ++i) {
       auto str_msg = std_msgs::msg::String();
       str_msg.data = "Test message " + std::to_string(i);
@@ -463,10 +460,9 @@ protected:
       int_msg.data = i;
       int_pub_->publish(int_msg);
       
-      executor.spin_some(std::chrono::milliseconds(0));
+      rclcpp::spin_some(publisher_node_);
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    executor.remove_node(publisher_node_);
   }
 
   rclcpp::Node::SharedPtr publisher_node_;
