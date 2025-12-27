@@ -50,11 +50,38 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ROS CLI tools (required for integration tests)
+# Install FastDDS/FastRTPS libraries and RMW implementation (required for ROS2 service discovery)
+# FastDDS is the default DDS implementation for ROS2 Rolling
+# Note: In ROS2 Rolling, FastDDS must come from ROS packages (not system packages) to ensure
+# version compatibility with rmw-fastrtps-cpp. System packages (libfastrtps-dev) may have
+# incompatible versions.
+# Note: ros-rolling-fastrtps has been replaced by ros-rolling-fastdds in Rolling
+# CRITICAL: Remove any system FastRTPS packages that might conflict. The base image or other
+# dependencies may have pulled in libfastrtps-dev/libfastcdr-dev from Ubuntu repos, which
+# are incompatible with ROS2 Rolling's rmw-fastrtps-cpp (compiled against ROS FastDDS packages).
+RUN apt-get update && \
+    apt-get install -y --upgrade \
+    ros-rolling-fastdds \
+    ros-rolling-fastcdr \
+    ros-rolling-foonathan-memory-vendor \
+    ros-rolling-rmw-dds-common \
+    ros-rolling-rmw-fastrtps-shared-cpp \
+    ros-rolling-rmw-fastrtps-cpp \
+    && ldconfig && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install ROS CLI tools and core libraries (required for integration tests)
+# Note: rcl and rclpy must be from the same version to avoid symbol mismatches
+# The undefined symbol error indicates rclpy was compiled against a different rcl version
 RUN apt-get update && apt-get install -y \
+    ros-rolling-rcl \
+    ros-rolling-rclpy \
+    ros-rolling-rmw \
+    ros-rolling-rmw-implementation \
     ros-rolling-ros2cli \
     ros-rolling-ros2service \
     ros-rolling-ros2run \
+    ros-rolling-ros2node \
     && rm -rf /var/lib/apt/lists/*
 
 # Install profiling tools for flamegraph generation

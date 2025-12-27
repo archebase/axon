@@ -12,11 +12,11 @@
 #   source_path - Optional path to the source directory (default: script's location)
 #
 # Environment:
-#   ROS_VERSION - Must be set to "1" or "2"
+#   ROS_VERSION - Must be set to "1" or "2" (or auto-detected from ROS_DISTRO)
 #   ROS_DISTRO  - Must be set (e.g., "noetic", "humble")
 #
 # Prerequisites:
-#   - ROS workspace must be sourced before calling this script
+#   - ROS workspace should be sourced before calling this script (will attempt to source if not)
 #   - axon_recorder package must be built and installed
 # ============================================================================
 
@@ -25,6 +25,24 @@ set -eo pipefail
 # Determine script directory and source path
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_PATH="${1:-$SCRIPT_DIR}"
+
+# Try to source workspace library if available (for CI/Docker environments)
+# If not available, we'll handle workspace sourcing manually
+LIB_DIR="/workspace/axon/ros/docker/scripts/lib"
+if [ -f "${LIB_DIR}/ros_workspace_lib.sh" ]; then
+    source "${LIB_DIR}/ros_workspace_lib.sh"
+    USE_WORKSPACE_LIB=true
+else
+    USE_WORKSPACE_LIB=false
+fi
+
+# Try to source diagnostics library if available
+if [ -f "${LIB_DIR}/ros_diagnostics_lib.sh" ]; then
+    source "${LIB_DIR}/ros_diagnostics_lib.sh"
+    USE_DIAGNOSTICS_LIB=true
+else
+    USE_DIAGNOSTICS_LIB=false
+fi
 
 # Auto-detect ROS version from ROS_DISTRO if ROS_VERSION not set
 if [ -z "$ROS_VERSION" ]; then
@@ -48,27 +66,38 @@ echo "============================================"
 echo "Running Integration Tests (ROS $ROS_VERSION)"
 echo "============================================"
 
-# Source ROS workspace if not already sourced
-# This handles both CI (/root/target_ws) and local Docker (/workspace) paths
-set +eu
-if [ -n "$ROS_DISTRO" ]; then
-    . /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
-fi
-# Check workspace paths in order of preference
-# ROS1: /workspace/axon/ros/devel/setup.bash (catkin workspace)
-# ROS2: /workspace/axon/install/setup.bash (colcon workspace)
-for ws in /root/target_ws /workspace/axon/ros /workspace/axon /workspace/catkin_ws; do
-    if [ -f "$ws/install/setup.bash" ]; then
-        echo "Sourcing $ws/install/setup.bash"
-        . "$ws/install/setup.bash"
-        break
-    elif [ -f "$ws/devel/setup.bash" ]; then
-        echo "Sourcing $ws/devel/setup.bash"
-        . "$ws/devel/setup.bash"
-        break
+# Source ROS workspace using library if available, otherwise fall back to manual sourcing
+if [ "$USE_WORKSPACE_LIB" = true ]; then
+    # Use library functions for workspace sourcing
+    ros_workspace_source_base || true  # Non-fatal if already sourced
+    
+    WORKSPACE_ROOT="/workspace/axon"
+    if ! ros_workspace_source_workspace "${WORKSPACE_ROOT}"; then
+        echo "WARNING: Failed to source workspace using library, trying manual sourcing..."
+        USE_WORKSPACE_LIB=false
     fi
-done
-set -e
+fi
+
+# Fallback to manual workspace sourcing if library not available or failed
+if [ "$USE_WORKSPACE_LIB" = false ]; then
+    set +eu
+    if [ -n "$ROS_DISTRO" ]; then
+        . /opt/ros/$ROS_DISTRO/setup.bash 2>/dev/null || true
+    fi
+    # Check workspace paths in order of preference
+    for ws in /root/target_ws /workspace/axon/ros /workspace/axon /workspace/catkin_ws; do
+        if [ -f "$ws/install/setup.bash" ]; then
+            echo "Sourcing $ws/install/setup.bash"
+            . "$ws/install/setup.bash"
+            break
+        elif [ -f "$ws/devel/setup.bash" ]; then
+            echo "Sourcing $ws/devel/setup.bash"
+            . "$ws/devel/setup.bash"
+            break
+        fi
+    done
+    set -e
+fi
 
 # Debug: Show what's installed
 echo "Checking installed packages..."
@@ -85,21 +114,24 @@ echo "--- lib directory (executables) ---"
 ls -la /root/target_ws/install/axon_recorder/lib/axon_recorder/ 2>/dev/null || echo "No lib/axon_recorder dir"
 
 # Verify package is available
-echo "Checking if axon_recorder is available..."
-if [ "$ROS_VERSION" = "2" ]; then
-    # Check if package is in the list (grep for specific package to avoid pipefail issues with head)
-    if ros2 pkg list 2>/dev/null | grep -q "^axon_recorder$"; then
-        echo "✓ axon_recorder found in ros2 pkg list"
-    else
-        echo "WARNING: axon_recorder not found in ros2 pkg list"
-        echo "First 30 packages:"
-        ros2 pkg list 2>/dev/null | head -30 || true
-    fi
+if [ "$USE_WORKSPACE_LIB" = true ]; then
+    ros_workspace_verify_package || echo "WARNING: Package verification failed"
 else
-    if rospack find axon_recorder 2>/dev/null; then
-        echo "✓ axon_recorder found via rospack"
+    echo "Checking if axon_recorder is available..."
+    if [ "$ROS_VERSION" = "2" ]; then
+        if ros2 pkg list 2>/dev/null | grep -q "^axon_recorder$"; then
+            echo "✓ axon_recorder found in ros2 pkg list"
+        else
+            echo "WARNING: axon_recorder not found in ros2 pkg list"
+            echo "First 30 packages:"
+            ros2 pkg list 2>/dev/null | head -30 || true
+        fi
     else
-        echo "WARNING: axon_recorder not found via rospack"
+        if rospack find axon_recorder 2>/dev/null; then
+            echo "✓ axon_recorder found via rospack"
+        else
+            echo "WARNING: axon_recorder not found via rospack"
+        fi
     fi
 fi
 
@@ -139,6 +171,16 @@ fi
 
 sleep 3
 echo "Node started (PID: $NODE_PID)"
+
+# Run diagnostics if library is available (useful for both ROS1 and ROS2 issues)
+if [ "$USE_DIAGNOSTICS_LIB" = true ]; then
+    echo ""
+    echo "Running diagnostics before tests..."
+    ros_diagnostics_full "axon_recorder" "axon_recorder/recording_control" || {
+        echo "WARNING: Some diagnostic checks failed, but continuing with tests..."
+    }
+    echo ""
+fi
 
 # Run integration tests
 echo "Running test_ros_services.sh..."

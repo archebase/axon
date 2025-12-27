@@ -30,23 +30,35 @@ cd ros/docker
 
 # ROS 1 Noetic
 docker compose -f docker-compose.test.yml build test-ros1
-docker compose -f docker-compose.test.yml run --rm test-ros1 \
-  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+docker compose -f docker-compose.test.yml run --rm \
+  -v $(pwd)/../../coverage_output:/coverage_output \
+  -e COVERAGE_OUTPUT=/coverage_output \
+  test-ros1 \
+  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
 
 # ROS 2 Humble
 docker compose -f docker-compose.test.yml build test-ros2-humble
-docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
-  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+docker compose -f docker-compose.test.yml run --rm \
+  -v $(pwd)/../../coverage_output:/coverage_output \
+  -e COVERAGE_OUTPUT=/coverage_output \
+  test-ros2-humble \
+  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
 
 # ROS 2 Jazzy
 docker compose -f docker-compose.test.yml build test-ros2-jazzy
-docker compose -f docker-compose.test.yml run --rm test-ros2-jazzy \
-  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+docker compose -f docker-compose.test.yml run --rm \
+  -v $(pwd)/../../coverage_output:/coverage_output \
+  -e COVERAGE_OUTPUT=/coverage_output \
+  test-ros2-jazzy \
+  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
 
 # ROS 2 Rolling
 docker compose -f docker-compose.test.yml build test-ros2-rolling
-docker compose -f docker-compose.test.yml run --rm test-ros2-rolling \
-  /workspace/axon/ros/src/axon_recorder/test/e2e/run_e2e_tests.sh
+docker compose -f docker-compose.test.yml run --rm \
+  -v $(pwd)/../../coverage_output:/coverage_output \
+  -e COVERAGE_OUTPUT=/coverage_output \
+  test-ros2-rolling \
+  /workspace/axon/ros/docker/scripts/run_e2e_with_coverage.sh
 ```
 
 **Note:** The same build artifact cleanup applies to all ROS distributions if you encounter library version mismatch errors.
