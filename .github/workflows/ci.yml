@@ -11,32 +11,30 @@
 # Pipeline Diagram:
 #
 #   ┌─────────────────────────────────────────────────┐
-#   │            Tests (Stage 1 - parallel)           │
-#   │  ┌───────────────────┐  ┌───────────────────┐   │
-#   │  │ ROS Tests         │  │ C++ Unit Tests    │   │
-#   │  │ (unit+integration)│  │ +cov artifacts    │   │
-#   │  │ +cov artifacts    │  │                   │   │
-#   │  └───────────────────┘  └─────────┬─────────┘   │
-#   └─────────────────────┬─────────────┼─────────────┘
-#                         │             │
-#                         │             ▼
-#                         │     ┌───────────────┐
-#                         │     │ C++ Integr.   │  (MinIO tests)
-#                         │     │ Tests +cov    │
-#                         │     └───────┬───────┘
-#                         │             │
-#                         ▼             ▼
-#                   ┌───────────────────────┐
-#                   │       E2E Tests       │  (ROS service tests)
-#                   │         +cov          │
-#                   └───────────┬───────────┘
-#                               │
-#                               ▼
-#                       ┌───────────────┐
-#                       │    Merge      │  (Merge all coverage)
-#                       │   Coverage    │
-#                       │   → Codecov   │
-#                       └───────────────┘
+#   │            Stage 1: C++ Unit Tests              │
+#   │  ┌───────────────────────────────────────────┐   │
+#   │  │ C++ Unit Tests +cov artifacts             │   │
+#   │  └───────────────────┬───────────────────────┘   │
+#   └─────────────────────┼───────────────────────────┘
+#                         │
+#         ┌───────────────┼───────────────┐
+#         │               │               │
+#         ▼               ▼               ▼
+#   ┌──────────┐   ┌──────────┐   ┌───────────────┐
+#   │ ROS Tests │   │ E2E     │   │ C++ Integr.   │
+#   │ (unit+   │   │ Tests    │   │ Tests +cov    │
+#   │ integ.)  │   │ +cov     │   │               │
+#   │ +cov     │   │          │   │               │
+#   └──────────┘   └──────────┘   └───────────────┘
+#         │               │               │
+#         └───────────────┼───────────────┘
+#                         │
+#                         ▼
+#                 ┌───────────────┐
+#                 │    Merge      │  (Merge all coverage)
+#                 │   Coverage    │
+#                 │   → Codecov   │
+#                 └───────────────┘
 #
 # =============================================================================
 
@@ -61,36 +59,37 @@ permissions:
 
 jobs:
   # ===========================================================================
-  # Stage 1: ROS Tests and C++ Tests (run in parallel)
-  # ROS tests include both unit and integration tests
+  # Stage 1: C++ Unit Tests (runs first)
   # ===========================================================================
-  tests-ros:
-    name: ROS Tests
-    uses: ./.github/workflows/tests-ros.yml
-    secrets: inherit
-
   unit-tests-cpp:
     name: C++ Unit Tests
     uses: ./.github/workflows/unit-tests-cpp.yml
     secrets: inherit
 
   # ===========================================================================
-  # Stage 1.5: C++ Integration Tests (after C++ unit tests pass)
+  # Stage 2: ROS Tests and E2E Tests (run in parallel after unit tests)
+  # ROS tests include both unit and integration tests
+  # ===========================================================================
+  tests-ros:
+    name: ROS Tests
+    needs: [unit-tests-cpp]
+    uses: ./.github/workflows/tests-ros.yml
+    secrets: inherit
+
+  e2e-tests:
+    name: E2E Tests
+    needs: [unit-tests-cpp]
+    uses: ./.github/workflows/e2e-tests.yml
+    secrets: inherit
+
+  # ===========================================================================
+  # Stage 2 (parallel): C++ Integration Tests (after C++ unit tests pass)
   # Runs EdgeUploader integration tests with MinIO
   # ===========================================================================
   integration-tests-cpp:
     name: C++ Integration Tests
     needs: [unit-tests-cpp]
     uses: ./.github/workflows/integration-tests-cpp.yml
-    secrets: inherit
-
-  # ===========================================================================
-  # Stage 2: E2E Tests (after all unit/integration tests pass)
-  # ===========================================================================
-  e2e-tests:
-    name: E2E Tests
-    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp]
-    uses: ./.github/workflows/e2e-tests.yml
     secrets: inherit
 
   # ===========================================================================
