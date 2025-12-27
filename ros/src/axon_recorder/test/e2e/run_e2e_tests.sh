@@ -129,8 +129,8 @@ if [ "$ROS_VERSION" = "1" ]; then
     rosrun axon_recorder axon_recorder_node __name:=axon_recorder &
     NODE_PID=$!
 else
-    # ROS 2 - Direct node start
-    ros2 run axon_recorder axon_recorder_node &
+    # ROS 2 - Set node name to match ROS 1 (so services appear at /axon_recorder/...)
+    ros2 run axon_recorder axon_recorder_node --ros-args -r __node:=axon_recorder &
     NODE_PID=$!
 fi
 
