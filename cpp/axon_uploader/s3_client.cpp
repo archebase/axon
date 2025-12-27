@@ -1,5 +1,7 @@
 #include "s3_client.hpp"
 
+#include "uploader_impl.hpp"
+
 #include <aws/core/Aws.h>
 #include <aws/core/auth/AWSCredentials.h>
 #include <aws/core/client/DefaultRetryStrategy.h>
@@ -219,17 +221,51 @@ S3Client::S3Client(const S3Config& config) : impl_(std::make_unique<Impl>()) {
 
 S3Client::~S3Client() = default;
 
+// Internal implementation with dependency injection
+// Exposed for testing via s3_client_test_helpers.hpp
+uint64_t getFileSizeForUploadImpl(
+    const std::string& local_path, IFileStreamFactory& stream_factory
+) {
+  auto file = stream_factory.create_file_stream(local_path, std::ios::binary | std::ios::ate);
+  if (!file) {
+    return 0;  // Indicates failure
+  }
+  std::streampos pos = file->tellg();
+  // Check for tellg() error: -1 indicates failure
+  // Also check stream state for robustness
+  if (pos == std::streampos(-1) || !file->good()) {
+    return 0;  // Indicates failure
+  }
+  uint64_t file_size = static_cast<uint64_t>(pos);
+  return file_size;
+}
+
 UploadResult S3Client::uploadFile(
     const std::string& local_path, const std::string& s3_key,
     const std::map<std::string, std::string>& metadata, ProgressCallback progress_cb
 ) {
   // Check file exists and get size
-  std::ifstream file(local_path, std::ios::binary | std::ios::ate);
-  if (!file) {
-    return UploadResult::Failure("Cannot open local file: " + local_path, "FileNotFound", false);
+  static FileStreamFactoryImpl default_stream_factory;
+  uint64_t file_size = getFileSizeForUploadImpl(local_path, default_stream_factory);
+  if (file_size == 0) {
+    // Check if file actually exists (might be empty file or open failure)
+    // For testing with mocks, we need to handle the case where stream_factory returns nullptr
+    // In production, we fall back to direct ifstream check
+    std::ifstream test_file(local_path, std::ios::binary | std::ios::ate);
+    if (!test_file) {
+      return UploadResult::Failure("Cannot open local file: " + local_path, "FileNotFound", false);
+    }
+    // File exists - get size (might be 0 for empty file)
+    std::streampos pos = test_file.tellg();
+    // Check for tellg() error: -1 indicates failure
+    if (pos == std::streampos(-1) || !test_file.good()) {
+      return UploadResult::Failure(
+          "Cannot determine file size: " + local_path, "FileSizeError", false
+      );
+    }
+    file_size = static_cast<uint64_t>(pos);
+    test_file.close();
   }
-  uint64_t file_size = static_cast<uint64_t>(file.tellg());
-  file.close();
 
   // Determine content type based on file extension
   std::string content_type = "application/octet-stream";

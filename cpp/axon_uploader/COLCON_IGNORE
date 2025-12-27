@@ -1,8 +1,0 @@
-# This directory is not a ROS package.
-# axon_uploader is a C++ library that can be linked into axon_recorder
-# when S3 upload functionality is needed.
-#
-# To enable S3 uploads in axon_recorder:
-# 1. Install dependencies: sudo apt-get install libcurl4-openssl-dev libssl-dev libsqlite3-dev
-# 2. Build axon_recorder with -DAXON_HAS_UPLOADER=ON
-
