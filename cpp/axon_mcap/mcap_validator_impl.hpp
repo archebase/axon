@@ -53,7 +53,7 @@ public:
 
   bool bad() const override { return stream_.bad(); }
 
-private
+private:
   std::ifstream stream_;
 };
 
