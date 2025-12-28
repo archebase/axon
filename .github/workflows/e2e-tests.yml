@@ -28,15 +28,28 @@ env:
 
 jobs:
   # ==========================================================================
+  # Build Docker Images (only when triggered via workflow_dispatch)
+  # When called from ci.yml, images are already built by ci.yml's build-images job
+  # ==========================================================================
+  build-images:
+    name: Build Images
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/docker-build.yml
+    secrets: inherit
+
+  # ==========================================================================
   # E2E Tests - End-to-end ROS service tests
   # Starts axon_recorder_node and runs actual ROS service calls
   # Runs on all ROS distributions (Noetic, Humble, Jazzy, Rolling)
   # Collects coverage to capture code paths exercised by E2E scenarios
   # Note: Docker images are expected to be pre-built by ci.yml's build-images job
+  #       or by the build-images job above when triggered via workflow_dispatch
   # ==========================================================================
   ros-e2e-tests:
     name: (${{ matrix.ros_distro }})
     runs-on: ubuntu-latest
+    needs: [build-images]
+    if: always() && (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
     timeout-minutes: 45
     strategy:
       fail-fast: false
