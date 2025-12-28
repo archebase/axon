@@ -50,6 +50,7 @@ namespace recorder {
 // Custom Deleter for EdgeUploader
 // =============================================================================
 
+// LCOV_EXCL_BR_START - conditional compilation branches
 void RecorderNode::UploaderDeleter::operator()(uploader::EdgeUploader* ptr) const {
 #ifdef AXON_HAS_UPLOADER
   delete ptr;
@@ -57,6 +58,7 @@ void RecorderNode::UploaderDeleter::operator()(uploader::EdgeUploader* ptr) cons
   (void)ptr;  // Suppress unused parameter warning
 #endif
 }
+// LCOV_EXCL_BR_STOP
 
 // =============================================================================
 // Factory Method
