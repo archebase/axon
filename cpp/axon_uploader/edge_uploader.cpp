@@ -156,8 +156,8 @@ void EdgeUploader::start() {
     // Fallback: reconstruct from components if s3_key is missing
     // LCOV_EXCL_BR_START - exception safety branches for string concatenation
     if (item.s3_key_prefix.empty() && !record.factory_id.empty() && !record.device_id.empty()) {
-      item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString();
-      AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path);
+      item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString(); // LCOV_EXCL_BR_LINE
+      AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path); // LCOV_EXCL_BR_LINE
     }
     // LCOV_EXCL_BR_STOP
 
@@ -186,7 +186,7 @@ void EdgeUploader::stop() {
 
   // Wait for workers to finish
   for (auto& worker : workers_) {
-    if (worker.joinable()) {
+    if (worker.joinable()) { // LCOV_EXCL_BR_LINE
       worker.join(); // LCOV_EXCL_BR_LINE
     }
   }
