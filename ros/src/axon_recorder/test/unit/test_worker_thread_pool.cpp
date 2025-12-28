@@ -1277,6 +1277,59 @@ TEST_F(WorkerThreadPoolTest, SharedLockForConcurrentReads) {
   EXPECT_GT(push_count.load(), 0);
 }
 
+// ============================================================================
+// Exception During Drain Tests
+// These tests cover exception handling in worker_thread_func's drain loop,
+// which processes remaining messages after the worker is signaled to stop.
+// ============================================================================
+
+TEST_F(WorkerThreadPoolTest, StdExceptionDuringDrain) {
+  // Handler that always throws std::exception
+  // Covers: catch (const std::exception& e) branch in drain loop
+  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) -> bool {
+    throw std::runtime_error("Simulated drain exception");
+  };
+
+  pool_->create_topic_worker("/test", handler);
+
+  // Queue messages without starting - they will be processed during drain
+  for (int i = 0; i < 5; ++i) {
+    MessageItem item(1000 + i, {0x01});
+    pool_->try_push("/test", std::move(item));
+  }
+
+  // Start and immediately stop - messages are drained during stop
+  // Handler throws during drain, should be caught and logged
+  pool_->start();
+  pool_->stop();
+
+  // Should complete without crash
+  EXPECT_FALSE(pool_->is_running());
+}
+
+TEST_F(WorkerThreadPoolTest, UnknownExceptionDuringDrain) {
+  // Handler that throws a non-std::exception (e.g., int)
+  // Covers: catch (...) branch in drain loop
+  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) -> bool {
+    throw 42;  // Non-std::exception type
+  };
+
+  pool_->create_topic_worker("/test", handler);
+
+  // Queue messages without starting
+  for (int i = 0; i < 5; ++i) {
+    MessageItem item(1000 + i, {0x01});
+    pool_->try_push("/test", std::move(item));
+  }
+
+  // Start and immediately stop - drain will catch unknown exception
+  pool_->start();
+  pool_->stop();
+
+  // Should complete without crash
+  EXPECT_FALSE(pool_->is_running());
+}
+
 }  // namespace
 }  // namespace recorder
 }  // namespace axon
