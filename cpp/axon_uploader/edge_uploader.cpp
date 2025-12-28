@@ -151,7 +151,10 @@ void EdgeUploader::start() {
         item.s3_key_prefix = record.s3_key.substr(0, last_slash);
       }
     }
+    // LCOV_EXCL_BR_STOP
+
     // Fallback: reconstruct from components if s3_key is missing
+    // LCOV_EXCL_BR_START - exception safety branches for string concatenation
     if (item.s3_key_prefix.empty() && !record.factory_id.empty() && !record.device_id.empty()) {
       item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString();
       AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path);
@@ -159,17 +162,17 @@ void EdgeUploader::start() {
     // LCOV_EXCL_BR_STOP
 
     // Reset status to pending for re-upload
-    state_manager_->updateStatus(record.file_path, UploadStatus::PENDING);
-    queue_->enqueue(std::move(item));
+    state_manager_->updateStatus(record.file_path, UploadStatus::PENDING); // LCOV_EXCL_BR_LINE
+    queue_->enqueue(std::move(item)); // LCOV_EXCL_BR_LINE
   }
 
   // Update stats
-  stats_.files_pending = queue_->size() + queue_->retry_size();
+  stats_.files_pending = queue_->size() + queue_->retry_size(); // LCOV_EXCL_BR_LINE
 
   // Start worker threads
   workers_.reserve(config_.num_workers);
   for (int i = 0; i < config_.num_workers; ++i) {
-    workers_.emplace_back(&EdgeUploader::workerLoop, this, i);
+    workers_.emplace_back(&EdgeUploader::workerLoop, this, i); // LCOV_EXCL_BR_LINE
   }
 }
 
@@ -184,7 +187,7 @@ void EdgeUploader::stop() {
   // Wait for workers to finish
   for (auto& worker : workers_) {
     if (worker.joinable()) {
-      worker.join();
+      worker.join(); // LCOV_EXCL_BR_LINE
     }
   }
   workers_.clear();
