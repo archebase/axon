@@ -97,7 +97,7 @@ protected:
     // Start spinning the recorder node in a background thread
     spin_thread_running_ = true;
     spin_thread_ = std::thread([this]() {
-      while (spin_thread_running_ && rclcpp::ok()) {
+      while (spin_thread_running_.load(std::memory_order_acquire) && rclcpp::ok()) {
         auto* ros_interface = recorder_node_->get_ros_interface();
         if (ros_interface) {
           ros_interface->spin_once();
@@ -111,11 +111,17 @@ protected:
   }
 
   void TearDown() override {
-    // Stop spin thread
-    spin_thread_running_ = false;
+    // Stop spin thread - use memory_order_release to ensure visibility
+    spin_thread_running_.store(false, std::memory_order_release);
+    
+    // Wait for thread to exit the loop and finish any in-flight spin_once() calls
     if (spin_thread_.joinable()) {
       spin_thread_.join();
     }
+    
+    // Small delay to ensure any executor operations have fully completed
+    // This prevents race conditions where executor is accessed during shutdown
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     
     // Shutdown recorder node
     if (recorder_node_) {
