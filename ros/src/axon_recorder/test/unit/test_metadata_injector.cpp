@@ -1428,29 +1428,102 @@ TEST_F(MetadataInjectorTest, ChecksumGeneratedCorrectly) {
 
 TEST_F(MetadataInjectorTest, SidecarPathMatchesMcapPath) {
   std::string mcap_path = (test_dir_ / "sidecar_path_test.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path,
     std::filesystem::file_size(mcap_path)));
-  
+
   std::string sidecar_path = injector.get_sidecar_path();
-  
+
   // Sidecar should be in same directory as MCAP
   auto mcap_dir = std::filesystem::path(mcap_path).parent_path();
   auto sidecar_dir = std::filesystem::path(sidecar_path).parent_path();
   EXPECT_EQ(mcap_dir, sidecar_dir);
-  
+
   // Sidecar should have .json extension
   EXPECT_TRUE(sidecar_path.find(".json") != std::string::npos);
+}
+
+// ============================================================================
+// TopicStats Frequency Calculation Tests (Fixed precision issue)
+// ============================================================================
+
+TEST(TopicStatsTest, ComputeFrequencyWithLessThanTwoMessages) {
+  TopicStats stats;
+  stats.message_count = 0;
+  EXPECT_DOUBLE_EQ(stats.compute_frequency_hz(), 0.0);
+
+  stats.message_count = 1;
+  EXPECT_DOUBLE_EQ(stats.compute_frequency_hz(), 0.0);
+}
+
+TEST(TopicStatsTest, ComputeFrequencyWithZeroDuration) {
+  TopicStats stats;
+  stats.message_count = 100;
+  auto now = std::chrono::system_clock::now();
+  stats.first_message_time = now;
+  stats.last_message_time = now;  // Same time - zero duration
+
+  EXPECT_DOUBLE_EQ(stats.compute_frequency_hz(), 0.0);
+}
+
+TEST(TopicStatsTest, ComputeFrequencyNormalCase) {
+  TopicStats stats;
+  stats.message_count = 101;  // 100 intervals
+  auto start = std::chrono::system_clock::now();
+  stats.first_message_time = start;
+  stats.last_message_time = start + std::chrono::seconds(10);  // 10 seconds
+
+  // 100 intervals / 10 seconds = 10 Hz
+  double freq = stats.compute_frequency_hz();
+  EXPECT_NEAR(freq, 10.0, 0.1);
+}
+
+TEST(TopicStatsTest, ComputeFrequencyHighFrequency) {
+  TopicStats stats;
+  stats.message_count = 1001;  // 1000 intervals
+  auto start = std::chrono::system_clock::now();
+  stats.first_message_time = start;
+  stats.last_message_time = start + std::chrono::milliseconds(100);  // 100ms = 0.1 seconds
+
+  // 1000 intervals / 0.1 seconds = 10000 Hz
+  double freq = stats.compute_frequency_hz();
+  EXPECT_NEAR(freq, 10000.0, 100.0);  // Allow some tolerance
+}
+
+TEST(TopicStatsTest, ComputeFrequencyVeryHighFrequency) {
+  // Test precision fix: messages arriving within 1ms should be calculated correctly
+  TopicStats stats;
+  stats.message_count = 1001;  // 1000 intervals
+  auto start = std::chrono::system_clock::now();
+  stats.first_message_time = start;
+  stats.last_message_time = start + std::chrono::microseconds(1000);  // 1ms = 1000us
+
+  // 1000 intervals / 0.001 seconds = 1,000,000 Hz (1 MHz)
+  // With microsecond precision fix, this should be accurate
+  double freq = stats.compute_frequency_hz();
+  EXPECT_NEAR(freq, 1000000.0, 10000.0);  // Allow 1% tolerance
+}
+
+TEST(TopicStatsTest, ComputeFrequencyLowFrequency) {
+  TopicStats stats;
+  stats.message_count = 11;  // 10 intervals
+  auto start = std::chrono::system_clock::now();
+  stats.first_message_time = start;
+  stats.last_message_time = start + std::chrono::seconds(100);  // 100 seconds
+
+  // 10 intervals / 100 seconds = 0.1 Hz
+  double freq = stats.compute_frequency_hz();
+  EXPECT_NEAR(freq, 0.1, 0.01);
 }
 
 int main(int argc, char** argv) {

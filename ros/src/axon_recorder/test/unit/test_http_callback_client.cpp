@@ -1341,7 +1341,9 @@ TEST_F(HttpCallbackClientTest, UrlMissingPath) {
 TEST_F(HttpCallbackClientTest, AsyncStartCallbackWithInvalidUrl) {
   TaskConfig config;
   config.task_id = "task_001";
-  config.start_callback_url = "http://unreachable.invalid:59999/api";
+  // Use localhost with unused port - fails immediately with "connection refused"
+  // instead of DNS lookup which can race with test cleanup
+  config.start_callback_url = "http://127.0.0.1:59999/api";
   
   StartCallbackPayload payload;
   payload.task_id = "task_001";
@@ -1356,7 +1358,9 @@ TEST_F(HttpCallbackClientTest, AsyncStartCallbackWithInvalidUrl) {
 TEST_F(HttpCallbackClientTest, AsyncFinishCallbackWithInvalidUrl) {
   TaskConfig config;
   config.task_id = "task_001";
-  config.finish_callback_url = "http://unreachable.invalid:59999/api";
+  // Use localhost with unused port - fails immediately with "connection refused"
+  // instead of DNS lookup which can race with test cleanup
+  config.finish_callback_url = "http://127.0.0.1:59999/api";
   
   FinishCallbackPayload payload;
   payload.task_id = "task_001";

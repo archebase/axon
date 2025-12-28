@@ -2,10 +2,12 @@
 #define AXON_RECORDER_WORKER_THREAD_POOL_HPP
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -225,13 +227,16 @@ public:
 private:
   /**
    * Per-topic context with queue and worker thread.
+   * Uses shared_ptr to prevent use-after-free when worker threads access context.
    */
-  struct TopicContext {
+  struct TopicContext : public std::enable_shared_from_this<TopicContext> {
     std::unique_ptr<SPSCQueue<MessageItem>> queue;
     std::thread worker_thread;
     std::atomic<bool> running{false};
     MessageHandler handler;
     WorkerTopicStats stats;
+    std::string topic_name;  // Store topic name for logging
+    std::mutex push_mutex;   // Serializes pushes to maintain SPSC single-producer guarantee
 
     TopicContext() = default;
 
@@ -244,15 +249,23 @@ private:
 
   /**
    * Worker thread function for a specific topic.
+   * Takes shared_ptr to context to prevent use-after-free.
    */
-  void worker_thread_func(const std::string& topic);
+  void worker_thread_func(std::shared_ptr<TopicContext> context);
 
   Config config_;
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
+  std::atomic<bool> stopping_{false};  // Prevent concurrent stop() calls
 
-  mutable std::mutex contexts_mutex_;
-  std::unordered_map<std::string, std::unique_ptr<TopicContext>> topic_contexts_;
+  // Condition variable for pause/resume signaling
+  mutable std::mutex pause_mutex_;
+  std::condition_variable pause_cv_;
+
+  // Use shared_mutex to allow concurrent reads in try_push while preventing
+  // modifications during iteration
+  mutable std::shared_mutex contexts_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<TopicContext>> topic_contexts_;
 };
 
 }  // namespace recorder

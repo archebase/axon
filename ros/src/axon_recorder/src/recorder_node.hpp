@@ -21,6 +21,9 @@ namespace axon {
 namespace recorder {
 class ServiceAdapter;
 }
+namespace uploader {
+class EdgeUploader;
+}
 }  // namespace axon
 
 namespace axon {
@@ -336,9 +339,11 @@ private:
   // =========================================================================
   // Note: EdgeUploader is conditionally compiled. When AXON_HAS_UPLOADER is
   // defined, the recorder will upload MCAP files to S3 after finalization.
-  // The uploader_ member is managed via void* to avoid incomplete type issues
-  // with forward declarations. See recorder_node.cpp for the actual type.
-  void* uploader_ = nullptr;  // Actually uploader::EdgeUploader* when enabled
+  // Uses unique_ptr with custom deleter to handle incomplete type properly.
+  struct UploaderDeleter {
+    void operator()(uploader::EdgeUploader* ptr) const;
+  };
+  std::unique_ptr<uploader::EdgeUploader, UploaderDeleter> uploader_;
 
   // Recording start time (for duration calculation)
   std::chrono::system_clock::time_point recording_start_time_;
