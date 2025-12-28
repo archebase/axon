@@ -381,18 +381,31 @@ format-rust:
 	@if [ ! -f $(C_FFI_DIR)/Cargo.toml ]; then \
 		printf "%s\n" "$(YELLOW)⚠ C FFI library not found (Cargo.toml missing), skipping format...$(NC)"; \
 	else \
-		printf "%s\n" "$(YELLOW)Formatting C FFI code (Rust)...$(NC)"; \
-		cd $(C_FFI_DIR) && cargo fmt; \
-		printf "%s\n" "$(GREEN)✓ C FFI code formatted$(NC)"; \
+		if command -v cargo >/dev/null 2>&1; then \
+			printf "%s\n" "$(YELLOW)Formatting C FFI code (Rust)...$(NC)"; \
+			cd $(C_FFI_DIR) && cargo fmt; \
+			printf "%s\n" "$(GREEN)✓ C FFI code formatted$(NC)"; \
+		else \
+			printf "%s\n" "$(YELLOW)⚠ cargo not found, skipping Rust format...$(NC)"; \
+		fi; \
 	fi
 
 format-cpp:
-	@printf "%s\n" "$(YELLOW)Formatting C++ code...$(NC)"
+	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
-		find ../cpp/src . -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i; \
-		echo "$(GREEN)✓ C++ code formatted$(NC)"; \
+		printf "%s\n" "$(YELLOW)  Formatting cpp/ libraries...$(NC)"; \
+		find $(PROJECT_ROOT)/cpp/axon_mcap $(PROJECT_ROOT)/cpp/axon_uploader $(PROJECT_ROOT)/cpp/axon_logging \
+			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
+			xargs -0 clang-format -i; \
+		printf "%s\n" "$(YELLOW)  Formatting ros/src/ code...$(NC)"; \
+		find ./src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" -print0 2>/dev/null | \
+			xargs -0 clang-format -i; \
+		printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"; \
 	else \
-		echo "$(YELLOW)clang-format not found, skipping$(NC)"; \
+		printf "%s\n" "$(YELLOW)⚠ clang-format not found, skipping C/C++ format...$(NC)"; \
+		printf "%s\n" "$(YELLOW)  Install with: sudo apt install clang-format$(NC)"; \
 	fi
 
 format: format-rust format-cpp
@@ -415,10 +428,21 @@ lint-rust:
 lint-cpp:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --enable=all --suppress=missingIncludeSystem ../cpp/src/ ./; \
-		echo "$(GREEN)✓ C++ linting passed$(NC)"; \
+		find ../cpp ./src \
+			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" \
+			! -path "*/test/*" \
+			! -path "*/install/*" \
+			-print0 2>/dev/null | \
+		xargs -0 cppcheck --enable=all \
+			--suppress=missingInclude \
+			-I../cpp/axon_mcap/include \
+			-I../cpp/axon_uploader/include \
+			-I../cpp/axon_logging/include \
+			-I$(PROJECT_ROOT)/ros/src/axon_recorder/include; \
+		printf "%s\n" "$(GREEN)✓ C++ linting passed$(NC)"; \
 	else \
-		echo "$(YELLOW)cppcheck not found, skipping$(NC)"; \
+		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \
 	fi
 
 lint: lint-rust lint-cpp
