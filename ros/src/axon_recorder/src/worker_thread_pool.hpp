@@ -236,6 +236,7 @@ private:
     MessageHandler handler;
     WorkerTopicStats stats;
     std::string topic_name;  // Store topic name for logging
+    std::mutex push_mutex;   // Serializes pushes to maintain SPSC single-producer guarantee
 
     TopicContext() = default;
 
