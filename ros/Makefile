@@ -142,13 +142,10 @@ cpp-build-ros1:
 		echo "Example: source /opt/ros/noetic/setup.bash"; \
 		exit 1; \
 	fi
-	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && \
-		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi && \
-		cmake ../src/axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
-		cmake --build . -j$(NPROC)
+	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
+		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
+	fi
+	@catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS1$(NC)"
 
 # C++ build for ROS2
@@ -212,7 +209,7 @@ clean-cpp:
 	@if [ "$(ROS_VERSION)" = "2" ]; then \
 		rm -rf build install log; \
 	else \
-		rm -rf $(BUILD_DIR) $(TEST_BUILD_DIR); \
+		catkin clean --yes; \
 	fi
 	@printf "%s\n" "$(GREEN)✓ C++ artifacts cleaned$(NC)"
 
@@ -236,11 +233,10 @@ install: build
 			--event-handlers console_direct+; \
 		printf "%s\n" "$(GREEN)✓ Package installed to install/ directory$(NC)"; \
 	else \
-		cd $(BUILD_DIR) && \
-			if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-				. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-			fi && \
-			cmake --install .; \
+		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
+			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
+		fi; \
+		catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE); \
 		printf "%s\n" "$(GREEN)✓ Package installed$(NC)"; \
 	fi
 
