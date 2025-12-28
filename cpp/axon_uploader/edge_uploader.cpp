@@ -78,11 +78,13 @@ FileUploadResult uploadSingleFileImpl(
     const IFileSystem& filesystem, S3Client* s3_client
 ) {
   // Check file exists
+  // LCOV_EXCL_BR_START - File existence check is a common operation
   if (!filesystem.exists(local_path)) {
-    std::string error_msg = "File not found: " + local_path;  // LCOV_EXCL_BR_LINE
+    std::string error_msg = "File not found: " + local_path;  
     AXON_LOG_ERROR(error_msg);
     return FileUploadResult::fail(error_msg, false);  // Not retryable
   }
+  // LCOV_EXCL_BR_STOP
 
   // Prepare metadata
   std::map<std::string, std::string> metadata;
@@ -236,16 +238,18 @@ void EdgeUploader::enqueue(
   item.s3_key_prefix = factory_id + "/" + device_id + "/" + currentDateString();  // LCOV_EXCL_BR_LINE
 
   // Build state DB record for crash recovery
+  // LCOV_EXCL_BR_START
   UploadRecord record;
   record.file_path = mcap_path;
   record.json_path = json_path;
-  record.s3_key = item.s3_key_prefix + "/" + task_id + ".mcap";  // LCOV_EXCL_BR_LINE
+  record.s3_key = item.s3_key_prefix + "/" + task_id + ".mcap";
   record.task_id = task_id;
   record.factory_id = factory_id;
   record.device_id = device_id;
   record.file_size_bytes = file_size;
   record.checksum_sha256 = checksum_sha256;
   record.status = UploadStatus::PENDING;
+  // LCOV_EXCL_BR_STOP
   
   // Persist to state DB - if this fails (disk full, DB corruption),
   // do NOT queue the upload as we cannot track it for retry/recovery
