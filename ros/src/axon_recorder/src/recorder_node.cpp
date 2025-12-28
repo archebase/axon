@@ -47,6 +47,18 @@ namespace axon {
 namespace recorder {
 
 // =============================================================================
+// Custom Deleter for EdgeUploader
+// =============================================================================
+
+void RecorderNode::UploaderDeleter::operator()(uploader::EdgeUploader* ptr) const {
+#ifdef AXON_HAS_UPLOADER
+  delete ptr;
+#else
+  (void)ptr;  // Suppress unused parameter warning
+#endif
+}
+
+// =============================================================================
 // Factory Method
 // =============================================================================
 
@@ -197,14 +209,13 @@ bool RecorderNode::complete_initialization() {
     uploader_config.alert_pending_bytes = 
         static_cast<uint64_t>(config_.upload.alert_pending_gb * 1024 * 1024 * 1024);
     
-    auto* uploader = new uploader::EdgeUploader(uploader_config);
-    uploader_ = uploader;
-    
+    uploader_.reset(new uploader::EdgeUploader(uploader_config));
+
     // start() performs crash recovery:
     // - Queries State DB for incomplete uploads from previous run
     // - Re-queues them for upload
     // - Then starts worker threads
-    uploader->start();
+    uploader_->start();
     
     AXON_LOG_INFO("Edge Uploader started" 
                   << axon::logging::kv("workers", config_.upload.num_workers)
@@ -255,16 +266,14 @@ void RecorderNode::shutdown() {
 #ifdef AXON_HAS_UPLOADER
   // Stop Edge Uploader (waits for current uploads to complete)
   if (uploader_) {
-    auto* uploader = static_cast<uploader::EdgeUploader*>(uploader_);
     AXON_LOG_DEBUG("Stopping Edge Uploader...");
-    uploader->stop();
-    
-    auto health = uploader->getHealthStatus();
+    uploader_->stop();
+
+    auto health = uploader_->getHealthStatus();
     AXON_LOG_INFO("Edge Uploader stopped"
                   << axon::logging::kv("pending", health.pending_count)
                   << axon::logging::kv("failed", health.failed_count));
-    delete uploader;
-    uploader_ = nullptr;
+    uploader_.reset();  // unique_ptr handles deletion
   }
 #endif
 
@@ -592,6 +601,12 @@ bool RecorderNode::start_recording() {
 void RecorderNode::pause_recording() {
   // Note: State validation is done by RecordingServiceImpl before calling this method
   // StateManager is the single source of truth for recording state
+
+  // Actually pause message processing in worker pool
+  if (worker_pool_) {
+    worker_pool_->pause();
+  }
+
   if (ros_interface_) {
     ros_interface_->log_info("Recording paused");
   }
@@ -600,6 +615,12 @@ void RecorderNode::pause_recording() {
 void RecorderNode::resume_recording() {
   // Note: State validation is done by RecordingServiceImpl before calling this method
   // StateManager is the single source of truth for recording state
+
+  // Resume message processing in worker pool
+  if (worker_pool_) {
+    worker_pool_->resume();
+  }
+
   if (ros_interface_) {
     ros_interface_->log_info("Recording resumed");
   }
@@ -693,8 +714,7 @@ void RecorderNode::stop_recording() {
     if (task_config_for_upload) {
       // Validate MCAP structure before upload
       if (mcap_wrapper::isValidMcap(output_path_)) {
-        auto* uploader = static_cast<uploader::EdgeUploader*>(uploader_);
-        uploader->enqueue(
+        uploader_->enqueue(
             output_path_,
             sidecar_path,
             task_config_for_upload->task_id,

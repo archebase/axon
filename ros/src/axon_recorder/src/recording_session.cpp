@@ -87,8 +87,15 @@ void RecordingSession::close() {
   if (has_task_config_ && !output_path_.empty()) {
     std::error_code ec;
     auto actual_size = std::filesystem::file_size(output_path_, ec);
-    if (!ec) {
-      metadata_injector_.generate_sidecar_json(output_path_, actual_size);
+    if (ec) {
+      AXON_LOG_WARN("Failed to get file size for sidecar"
+                    << axon::logging::kv("path", output_path_)
+                    << axon::logging::kv("error", ec.message()));
+    } else {
+      if (!metadata_injector_.generate_sidecar_json(output_path_, actual_size)) {
+        AXON_LOG_WARN("Failed to generate sidecar JSON"
+                      << axon::logging::kv("path", output_path_));
+      }
     }
   }
 

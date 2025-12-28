@@ -50,6 +50,8 @@ bool StateManager::is_recording_active() const {
 }
 
 bool StateManager::is_valid_transition(RecorderState from, RecorderState to) const {
+  // Note: valid_transitions_ is only modified in constructor, so no lock needed
+  // for the map itself. However, we add const-correctness here.
   auto it = valid_transitions_.find(from);
   if (it == valid_transitions_.end()) {
     return false;
@@ -147,12 +149,9 @@ void StateManager::reset() {
   current_state_ = RecorderState::IDLE;
 }
 
-void StateManager::notify_transition(RecorderState from, RecorderState to) {
-  // Called internally with lock held
-  for (const auto& callback : callbacks_) {
-    callback(from, to);
-  }
-}
+// Note: notify_transition() was removed as dead code.
+// Callback notification is done inline in transition_to() and transition() methods
+// to avoid holding the mutex while calling callbacks.
 
 }  // namespace recorder
 }  // namespace axon

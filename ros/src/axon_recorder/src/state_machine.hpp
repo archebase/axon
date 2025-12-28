@@ -146,11 +146,6 @@ public:
 
 private:
   /**
-   * Notify all registered callbacks of a state transition.
-   */
-  void notify_transition(RecorderState from, RecorderState to);
-
-  /**
    * Build the valid transitions map.
    */
   void build_transition_map();
