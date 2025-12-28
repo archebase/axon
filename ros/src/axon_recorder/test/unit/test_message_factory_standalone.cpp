@@ -8,10 +8,10 @@
 
 #include <gtest/gtest.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <functional>
 
 // ============================================================================
 // Standalone MessageFactory Implementation for Testing
@@ -103,9 +103,9 @@ protected:
 TEST_F(MessageFactoryTest, GetRegistry_ReturnsConsistentInstance) {
   // Register a type and verify it persists
   TestMessageFactory::register_mock_type("test_msgs/TestMessage");
-  
+
   EXPECT_TRUE(TestMessageFactory::is_registered("test_msgs/TestMessage"));
-  
+
   // Should still be registered after second call
   EXPECT_TRUE(TestMessageFactory::is_registered("test_msgs/TestMessage"));
 }
@@ -117,7 +117,7 @@ TEST_F(MessageFactoryTest, CreateMessage_UnknownType_ReturnsNull) {
 
 TEST_F(MessageFactoryTest, CreateMessage_RegisteredType_ReturnsInstance) {
   TestMessageFactory::register_mock_type("test_msgs/MockMessage");
-  
+
   auto msg = TestMessageFactory::create_message("test_msgs/MockMessage");
   EXPECT_NE(msg, nullptr);
 }
@@ -139,10 +139,10 @@ TEST_F(MessageFactoryTest, GetMessageInfo_UnknownType_ReturnsFalse) {
 
 TEST_F(MessageFactoryTest, GetMessageInfo_RegisteredType_ReturnsTrue) {
   TestMessageFactory::register_mock_type("geometry_msgs/Twist");
-  
+
   TestMessageFactory::MessageInfo info;
   bool result = TestMessageFactory::get_message_info("geometry_msgs/Twist", info);
-  
+
   EXPECT_TRUE(result);
   EXPECT_EQ(info.type_name, "geometry_msgs/Twist");
 }
@@ -151,7 +151,7 @@ TEST_F(MessageFactoryTest, MultipleTypes_CanBeRegistered) {
   TestMessageFactory::register_mock_type("sensor_msgs/Image");
   TestMessageFactory::register_mock_type("sensor_msgs/Imu");
   TestMessageFactory::register_mock_type("nav_msgs/Odometry");
-  
+
   EXPECT_TRUE(TestMessageFactory::is_registered("sensor_msgs/Image"));
   EXPECT_TRUE(TestMessageFactory::is_registered("sensor_msgs/Imu"));
   EXPECT_TRUE(TestMessageFactory::is_registered("nav_msgs/Odometry"));
@@ -160,10 +160,10 @@ TEST_F(MessageFactoryTest, MultipleTypes_CanBeRegistered) {
 
 TEST_F(MessageFactoryTest, CreateMessage_MultipleInstances_AreIndependent) {
   TestMessageFactory::register_mock_type("test_msgs/TestMessage");
-  
+
   auto msg1 = TestMessageFactory::create_message("test_msgs/TestMessage");
   auto msg2 = TestMessageFactory::create_message("test_msgs/TestMessage");
-  
+
   EXPECT_NE(msg1, nullptr);
   EXPECT_NE(msg2, nullptr);
   EXPECT_NE(msg1.get(), msg2.get());  // Different instances
@@ -172,12 +172,12 @@ TEST_F(MessageFactoryTest, CreateMessage_MultipleInstances_AreIndependent) {
 TEST_F(MessageFactoryTest, ClearRegistry_RemovesAllTypes) {
   TestMessageFactory::register_mock_type("type1");
   TestMessageFactory::register_mock_type("type2");
-  
+
   EXPECT_TRUE(TestMessageFactory::is_registered("type1"));
   EXPECT_TRUE(TestMessageFactory::is_registered("type2"));
-  
+
   TestMessageFactory::clear_registry();
-  
+
   EXPECT_FALSE(TestMessageFactory::is_registered("type1"));
   EXPECT_FALSE(TestMessageFactory::is_registered("type2"));
 }
@@ -206,17 +206,17 @@ TEST_F(MessageFactoryTest, ROS2StyleTypeName) {
   // ROS2 uses package/msg/MessageName format
   TestMessageFactory::register_mock_type("sensor_msgs/msg/Image");
   EXPECT_TRUE(TestMessageFactory::is_registered("sensor_msgs/msg/Image"));
-  
+
   // But not registered under ROS1 style
   EXPECT_FALSE(TestMessageFactory::is_registered("sensor_msgs/Image"));
 }
 
 TEST_F(MessageFactoryTest, GetMessageInfo_PopulatesTypeName) {
   TestMessageFactory::register_mock_type("nav_msgs/msg/Path");
-  
+
   TestMessageFactory::MessageInfo info;
   TestMessageFactory::get_message_info("nav_msgs/msg/Path", info);
-  
+
   EXPECT_EQ(info.type_name, "nav_msgs/msg/Path");
   EXPECT_NE(info.creator, nullptr);
 }
@@ -225,4 +225,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

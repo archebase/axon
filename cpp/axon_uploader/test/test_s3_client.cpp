@@ -162,11 +162,11 @@ TEST_F(S3ClientTest, UploadResultFailureDefaults) {
 // For unit tests, we can only test error paths that don't require SDK:
 TEST_F(S3ClientTest, UploadFileFileNotFound) {
   S3Client client(config_);
-  
+
   // Try to upload a non-existent file
   // This should fail before even attempting S3 connection
   auto result = client.uploadFile("/nonexistent/file.mcap", "test-key");
-  
+
   EXPECT_FALSE(result.success);
   EXPECT_FALSE(result.error_message.empty());
   EXPECT_EQ(result.error_code, "FileNotFound");
@@ -175,10 +175,10 @@ TEST_F(S3ClientTest, UploadFileFileNotFound) {
 
 TEST_F(S3ClientTest, UploadFileWithEmptyPath) {
   S3Client client(config_);
-  
+
   // Empty path should fail
   auto result = client.uploadFile("", "test-key");
-  
+
   EXPECT_FALSE(result.success);
   EXPECT_FALSE(result.error_message.empty());
   EXPECT_FALSE(result.is_retryable);
@@ -186,23 +186,23 @@ TEST_F(S3ClientTest, UploadFileWithEmptyPath) {
 
 TEST_F(S3ClientTest, UploadFileWithMetadata) {
   S3Client client(config_);
-  
+
   // Create a temporary test file
   std::string test_file = "/tmp/test_upload_metadata.mcap";
   std::ofstream file(test_file, std::ios::binary);
   file << "test data";
   file.close();
-  
+
   // Try to upload with metadata (will fail without S3 connection, but tests metadata handling)
   std::map<std::string, std::string> metadata;
   metadata["checksum-sha256"] = "abc123";
   metadata["custom-key"] = "custom-value";
-  
+
   auto result = client.uploadFile(test_file, "test-key", metadata);
-  
+
   // Cleanup
   std::remove(test_file.c_str());
-  
+
   // Result depends on S3 connection, but metadata should be passed correctly
   // If S3 is not available, we expect a connection error (not a metadata error)
   // This test mainly ensures the function accepts metadata parameter correctly
@@ -210,85 +210,85 @@ TEST_F(S3ClientTest, UploadFileWithMetadata) {
 
 TEST_F(S3ClientTest, UploadFileEmptyFile) {
   S3Client client(config_);
-  
+
   // Create an empty file
   std::string test_file = "/tmp/test_empty.mcap";
   std::ofstream file(test_file, std::ios::binary);
   file.close();
-  
+
   // Try to upload empty file
   auto result = client.uploadFile(test_file, "test-key");
-  
+
   // Cleanup
   std::remove(test_file.c_str());
-  
+
   // Empty file should be handled (file size = 0)
   // Result depends on S3 connection, but should not crash
 }
 
 TEST_F(S3ClientTest, UploadFileWithProgressCallback) {
   S3Client client(config_);
-  
+
   // Create a test file
   std::string test_file = "/tmp/test_progress.mcap";
   std::ofstream file(test_file, std::ios::binary);
   file << std::string(1000, 'x');  // 1000 bytes
   file.close();
-  
+
   // Track progress callbacks
   std::atomic<int> progress_calls{0};
   uint64_t last_transferred = 0;
   uint64_t last_total = 0;
-  
+
   auto progress_cb = [&](uint64_t transferred, uint64_t total) {
     progress_calls++;
     last_transferred = transferred;
     last_total = total;
   };
-  
+
   auto result = client.uploadFile(test_file, "test-key", {}, progress_cb);
-  
+
   // Cleanup
   std::remove(test_file.c_str());
-  
+
   // Progress callback should be called (if upload progresses)
   // Result depends on S3 connection
 }
 
 TEST_F(S3ClientTest, UploadFileContentTypeJson) {
   S3Client client(config_);
-  
+
   // Create a test file
   std::string test_file = "/tmp/test.json";
   std::ofstream file(test_file, std::ios::binary);
   file << R"({"test": "data"})";
   file.close();
-  
+
   // Upload with .json extension - should set content type to application/json
   auto result = client.uploadFile(test_file, "test-key.json");
-  
+
   // Cleanup
   std::remove(test_file.c_str());
-  
+
   // Content type should be set correctly based on extension
   // Result depends on S3 connection
 }
 
 TEST_F(S3ClientTest, UploadFileContentTypeDefault) {
   S3Client client(config_);
-  
+
   // Create a test file with no extension
   std::string test_file = "/tmp/test_file";
   std::ofstream file(test_file, std::ios::binary);
   file << "test data";
   file.close();
-  
+
   // Upload with no extension - should use default content type
   auto result = client.uploadFile(test_file, "test-key");
-  
+
   // Cleanup
   std::remove(test_file.c_str());
-  
+
   // Should use default content type (application/octet-stream)
   // Result depends on S3 connection
 }
@@ -298,41 +298,41 @@ TEST_F(S3ClientTest, UploadFileContentTypeDefault) {
 // For unit tests, we focus on error paths that don't require S3:
 TEST_F(S3ClientTest, ObjectExistsRequiresS3) {
   S3Client client(config_);
-  
+
   // objectExists() requires S3 connection
   // Without connection, this will fail but tests the code path
   bool exists = client.objectExists("test-key");
-  
+
   // Result depends on S3 connection availability
   // This test mainly ensures the function doesn't crash
 }
 
 TEST_F(S3ClientTest, GetObjectMetadataRequiresS3) {
   S3Client client(config_);
-  
+
   // getObjectMetadata() requires S3 connection
   auto metadata = client.getObjectMetadata("test-key");
-  
+
   // Should return empty map if object doesn't exist or S3 unavailable
   // This test mainly ensures the function doesn't crash
 }
 
 TEST_F(S3ClientTest, VerifyUploadRequiresS3) {
   S3Client client(config_);
-  
+
   // verifyUpload() requires S3 connection
   bool verified = client.verifyUpload("test-key", "expected-checksum");
-  
+
   // Should return false if object doesn't exist or checksum doesn't match
   // This test mainly ensures the function doesn't crash
 }
 
 TEST_F(S3ClientTest, VerifyUploadWithEmptyChecksum) {
   S3Client client(config_);
-  
+
   // verifyUpload() with empty checksum should return false
   bool verified = client.verifyUpload("test-key", "");
-  
+
   // Empty checksum should not match
   // This test mainly ensures the function handles empty checksum correctly
 }
@@ -342,16 +342,16 @@ TEST_F(S3ClientTest, CredentialLoadingFromEnvironment) {
   // Set environment variables
   setenv("AWS_ACCESS_KEY_ID", "env_access_key", 1);
   setenv("AWS_SECRET_ACCESS_KEY", "env_secret_key", 1);
-  
+
   S3Config config_no_creds = config_;
   config_no_creds.access_key = "";
   config_no_creds.secret_key = "";
-  
+
   S3Client client(config_no_creds);
-  
+
   // Client should be created successfully (credentials loaded from env)
   // This tests the credential loading path in constructor
-  
+
   // Cleanup
   unsetenv("AWS_ACCESS_KEY_ID");
   unsetenv("AWS_SECRET_ACCESS_KEY");
@@ -361,9 +361,9 @@ TEST_F(S3ClientTest, EndpointTrailingSlashHandling) {
   // Test endpoint URL trailing slash handling in initClient
   S3Config config_slash = config_;
   config_slash.endpoint_url = "http://localhost:9000/";
-  
+
   S3Client client(config_slash);
-  
+
   // The endpoint getter returns config value (with slash)
   // But initClient removes trailing slash internally
   EXPECT_EQ(client.endpoint(), "http://localhost:9000/");
@@ -373,9 +373,9 @@ TEST_F(S3ClientTest, PartSizeValidation) {
   // Test part size validation in initClient
   S3Config config_small = config_;
   config_small.part_size = 1024;  // Below 5MB minimum
-  
+
   S3Client client(config_small);
-  
+
   // Part size should be validated and adjusted to minimum (5MB)
   // This tests the validation logic in initClient
 }
@@ -384,9 +384,9 @@ TEST_F(S3ClientTest, PartSizeMaxValidation) {
   // Test part size max validation
   S3Config config_large = config_;
   config_large.part_size = 10ULL * 1024 * 1024 * 1024;  // 10GB, above 5GB max
-  
+
   S3Client client(config_large);
-  
+
   // Part size should be capped at maximum (5GB)
   // This tests the max validation logic
 }
@@ -396,19 +396,18 @@ TEST_F(S3ClientTest, VirtualAddressingConfig) {
   // For custom endpoints (MinIO), useVirtualAddressing = false
   S3Config minio_config = config_;
   minio_config.endpoint_url = "http://localhost:9000";
-  
+
   S3Client minio_client(minio_config);
-  
+
   // Should use path-style addressing for MinIO
   EXPECT_EQ(minio_client.endpoint(), "http://localhost:9000");
-  
+
   // For AWS S3 (no endpoint), useVirtualAddressing = true
   S3Config aws_config = config_;
   aws_config.endpoint_url = "";
-  
+
   S3Client aws_client(aws_config);
-  
+
   // Should use virtual-hosted addressing for AWS S3
   EXPECT_EQ(aws_client.endpoint(), "");
 }
-

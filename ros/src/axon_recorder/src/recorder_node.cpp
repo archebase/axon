@@ -206,11 +206,11 @@ bool RecorderNode::complete_initialization() {
     uploader_config.state_db_path = config_.upload.state_db_path;
     uploader_config.delete_after_upload = config_.upload.delete_after_upload;
     uploader_config.failed_uploads_dir = config_.upload.failed_uploads_dir;
-    uploader_config.warn_pending_bytes = 
-        static_cast<uint64_t>(config_.upload.warn_pending_gb * 1024 * 1024 * 1024);
-    uploader_config.alert_pending_bytes = 
-        static_cast<uint64_t>(config_.upload.alert_pending_gb * 1024 * 1024 * 1024);
-    
+    uploader_config.warn_pending_bytes =
+      static_cast<uint64_t>(config_.upload.warn_pending_gb * 1024 * 1024 * 1024);
+    uploader_config.alert_pending_bytes =
+      static_cast<uint64_t>(config_.upload.alert_pending_gb * 1024 * 1024 * 1024);
+
     uploader_.reset(new uploader::EdgeUploader(uploader_config));
 
     // start() performs crash recovery:
@@ -218,10 +218,11 @@ bool RecorderNode::complete_initialization() {
     // - Re-queues them for upload
     // - Then starts worker threads
     uploader_->start();
-    
-    AXON_LOG_INFO("Edge Uploader started" 
-                  << axon::logging::kv("workers", config_.upload.num_workers)
-                  << axon::logging::kv("bucket", config_.upload.s3.bucket));
+
+    AXON_LOG_INFO(
+      "Edge Uploader started" << axon::logging::kv("workers", config_.upload.num_workers)
+                              << axon::logging::kv("bucket", config_.upload.s3.bucket)
+    );
   }
 #endif
 
@@ -274,9 +275,10 @@ void RecorderNode::shutdown() {
     uploader_->stop();
 
     auto health = uploader_->getHealthStatus();
-    AXON_LOG_INFO("Edge Uploader stopped"
-                  << axon::logging::kv("pending", health.pending_count)
-                  << axon::logging::kv("failed", health.failed_count));
+    AXON_LOG_INFO(
+      "Edge Uploader stopped" << axon::logging::kv("pending", health.pending_count)
+                              << axon::logging::kv("failed", health.failed_count)
+    );
     uploader_.reset();  // unique_ptr handles deletion
   }
 #endif
@@ -732,12 +734,12 @@ void RecorderNode::stop_recording() {
       // Validate MCAP structure before upload
       if (mcap_wrapper::isValidMcap(output_path_)) {
         uploader_->enqueue(
-            output_path_,
-            sidecar_path,
-            task_config_for_upload->task_id,
-            task_config_for_upload->factory,
-            task_config_for_upload->device_id,
-            checksum
+          output_path_,
+          sidecar_path,
+          task_config_for_upload->task_id,
+          task_config_for_upload->factory,
+          task_config_for_upload->device_id,
+          checksum
         );
       } else {
         AXON_LOG_ERROR(

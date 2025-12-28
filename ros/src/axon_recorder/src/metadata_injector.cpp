@@ -29,9 +29,8 @@ double TopicStats::compute_frequency_hz() const {
   }
 
   // Use microseconds for better precision with high-frequency topics
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(
-    last_message_time - first_message_time
-  );
+  auto duration_us =
+    std::chrono::duration_cast<std::chrono::microseconds>(last_message_time - first_message_time);
 
   if (duration_us.count() <= 0) {
     return 0.0;
@@ -39,7 +38,8 @@ double TopicStats::compute_frequency_hz() const {
 
   // Frequency = (N-1) intervals / duration
   // Using microseconds: freq_hz = (message_count - 1) * 1,000,000 / duration_us
-  return static_cast<double>(message_count - 1) * 1000000.0 / static_cast<double>(duration_us.count());
+  return static_cast<double>(message_count - 1) * 1000000.0 /
+         static_cast<double>(duration_us.count());
 }
 
 // ============================================================================

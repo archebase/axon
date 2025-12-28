@@ -266,7 +266,10 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
           topic, item.timestamp_ns, item.raw_data.data(), item.raw_data.size(), seq
         );
       } catch (const std::exception& e) {
-        AXON_LOG_ERROR("Worker exception" << axon::logging::kv("topic", topic) << axon::logging::kv("error", e.what()));
+        AXON_LOG_ERROR(
+          "Worker exception" << axon::logging::kv("topic", topic)
+                             << axon::logging::kv("error", e.what())
+        );
       } catch (...) {
         AXON_LOG_ERROR("Worker unknown exception" << axon::logging::kv("topic", topic));
       }
@@ -306,7 +309,10 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
         context->stats.written.fetch_add(1, std::memory_order_relaxed);
       }
     } catch (const std::exception& e) {
-      AXON_LOG_WARN("Exception during drain" << axon::logging::kv("topic", topic) << axon::logging::kv("error", e.what()));
+      AXON_LOG_WARN(
+        "Exception during drain" << axon::logging::kv("topic", topic)
+                                 << axon::logging::kv("error", e.what())
+      );
     } catch (...) {
       AXON_LOG_WARN("Unknown exception during drain" << axon::logging::kv("topic", topic));
     }

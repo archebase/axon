@@ -137,8 +137,8 @@ public:
     record.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11));
     record.updated_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
     record.completed_at = sqlite3_column_text(stmt, 13)
-                              ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13))
-                              : "";
+                            ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13))
+                            : "";
     // LCOV_EXCL_BR_STOP
     return record;
   }
@@ -148,7 +148,7 @@ UploadStateManager::UploadStateManager(const std::string& db_path)
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
     : impl_(std::make_unique<Impl>())
-    // LCOV_EXCL_BR_STOP
+// LCOV_EXCL_BR_STOP
 {
   impl_->db_path = db_path;
   impl_->initDatabase();

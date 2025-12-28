@@ -66,12 +66,12 @@ void moveToFailedDirImpl(
 
   // Move files
   if (!mcap_path.empty() && filesystem.exists(mcap_path)) {
-    fs::path dest = fs::path(failed_dir) / fs::path(mcap_path).filename(); // LCOV_EXCL_BR_LINE
-    filesystem.rename(mcap_path, dest.string()); // LCOV_EXCL_BR_LINE
+    fs::path dest = fs::path(failed_dir) / fs::path(mcap_path).filename();  // LCOV_EXCL_BR_LINE
+    filesystem.rename(mcap_path, dest.string());                            // LCOV_EXCL_BR_LINE
   }
   if (!json_path.empty() && filesystem.exists(json_path)) {
-    fs::path dest = fs::path(failed_dir) / fs::path(json_path).filename(); // LCOV_EXCL_BR_LINE
-    filesystem.rename(json_path, dest.string()); // LCOV_EXCL_BR_LINE
+    fs::path dest = fs::path(failed_dir) / fs::path(json_path).filename();  // LCOV_EXCL_BR_LINE
+    filesystem.rename(json_path, dest.string());                            // LCOV_EXCL_BR_LINE
   }
 }
 
@@ -83,7 +83,7 @@ FileUploadResult uploadSingleFileImpl(
   // LCOV_EXCL_BR_START - File existence check is a common operation
   if (!filesystem.exists(local_path)) {
     // LCOV_EXCL_BR_LINE - String concatenation
-    std::string error_msg = "File not found: " + local_path;  
+    std::string error_msg = "File not found: " + local_path;
     AXON_LOG_ERROR(error_msg);
     return FileUploadResult::fail(error_msg, false);  // Not retryable
   }
@@ -96,7 +96,7 @@ FileUploadResult uploadSingleFileImpl(
   }
 
   // Upload
-  auto result = s3_client->uploadFile(local_path, s3_key, metadata); // LCOV_EXCL_BR_LINE
+  auto result = s3_client->uploadFile(local_path, s3_key, metadata);  // LCOV_EXCL_BR_LINE
 
   if (result.success) {
     // Verify checksum if provided
@@ -112,15 +112,17 @@ FileUploadResult uploadSingleFileImpl(
 }
 
 EdgeUploader::EdgeUploader(const UploaderConfig& config)
-    : config_(config),
-      // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
-      // that are standard library implementation details
-      queue_(std::make_unique<UploadQueue>()),
-      s3_client_(std::make_unique<S3Client>(config.s3)),
-      state_manager_(std::make_unique<UploadStateManager>(config.state_db_path)),
-      retry_handler_(std::make_unique<RetryHandler>(config.retry)),
-      // LCOV_EXCL_BR_STOP
-      last_successful_upload_(std::chrono::system_clock::now()) {}
+    : config_(config)
+    ,
+    // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
+    // that are standard library implementation details
+    queue_(std::make_unique<UploadQueue>())
+    , s3_client_(std::make_unique<S3Client>(config.s3))
+    , state_manager_(std::make_unique<UploadStateManager>(config.state_db_path))
+    , retry_handler_(std::make_unique<RetryHandler>(config.retry))
+    ,
+    // LCOV_EXCL_BR_STOP
+    last_successful_upload_(std::chrono::system_clock::now()) {}
 
 EdgeUploader::~EdgeUploader() {
   stop();
@@ -132,15 +134,15 @@ void EdgeUploader::start() {
   }
 
   // Crash recovery: re-queue incomplete uploads from previous run
-  auto incomplete = state_manager_->getIncomplete(); // LCOV_EXCL_BR_LINE
+  auto incomplete = state_manager_->getIncomplete();  // LCOV_EXCL_BR_LINE
   for (const auto& record : incomplete) {
-    UploadItem item; // LCOV_EXCL_BR_LINE
-    item.mcap_path = record.file_path; // LCOV_EXCL_BR_LINE
-    item.json_path = record.json_path; // LCOV_EXCL_BR_LINE
-    item.task_id = record.task_id; // LCOV_EXCL_BR_LINE
-    item.factory_id = record.factory_id; // LCOV_EXCL_BR_LINE
-    item.device_id = record.device_id; // LCOV_EXCL_BR_LINE
-    item.checksum_sha256 = record.checksum_sha256; // LCOV_EXCL_BR_LINE
+    UploadItem item;                                // LCOV_EXCL_BR_LINE
+    item.mcap_path = record.file_path;              // LCOV_EXCL_BR_LINE
+    item.json_path = record.json_path;              // LCOV_EXCL_BR_LINE
+    item.task_id = record.task_id;                  // LCOV_EXCL_BR_LINE
+    item.factory_id = record.factory_id;            // LCOV_EXCL_BR_LINE
+    item.device_id = record.device_id;              // LCOV_EXCL_BR_LINE
+    item.checksum_sha256 = record.checksum_sha256;  // LCOV_EXCL_BR_LINE
     item.file_size_bytes = record.file_size_bytes;
     item.retry_count = record.retry_count;
     item.created_at = std::chrono::steady_clock::now();
@@ -159,7 +161,8 @@ void EdgeUploader::start() {
 
     // Fallback: reconstruct from components if s3_key is missing
     if (item.s3_key_prefix.empty() && !record.factory_id.empty() && !record.device_id.empty()) {
-      item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString();  // LCOV_EXCL_BR_LINE
+      item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" +
+                           currentDateString();  // LCOV_EXCL_BR_LINE
 
       AXON_LOG_WARN(
         "Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path
@@ -167,17 +170,17 @@ void EdgeUploader::start() {
     }
 
     // Reset status to pending for re-upload
-    state_manager_->updateStatus(record.file_path, UploadStatus::PENDING); // LCOV_EXCL_BR_LINE
-    queue_->enqueue(std::move(item)); // LCOV_EXCL_BR_LINE
+    state_manager_->updateStatus(record.file_path, UploadStatus::PENDING);  // LCOV_EXCL_BR_LINE
+    queue_->enqueue(std::move(item));                                       // LCOV_EXCL_BR_LINE
   }
 
   // Update stats
-  stats_.files_pending = queue_->size() + queue_->retry_size(); // LCOV_EXCL_BR_LINE
+  stats_.files_pending = queue_->size() + queue_->retry_size();  // LCOV_EXCL_BR_LINE
 
   // Start worker threads
   workers_.reserve(config_.num_workers);
   for (int i = 0; i < config_.num_workers; ++i) {
-    workers_.emplace_back(&EdgeUploader::workerLoop, this, i); // LCOV_EXCL_BR_LINE
+    workers_.emplace_back(&EdgeUploader::workerLoop, this, i);  // LCOV_EXCL_BR_LINE
   }
 }
 
@@ -191,8 +194,8 @@ void EdgeUploader::stop() {
 
   // Wait for workers to finish
   for (auto& worker : workers_) {
-    if (worker.joinable()) { // LCOV_EXCL_BR_LINE
-      worker.join(); // LCOV_EXCL_BR_LINE
+    if (worker.joinable()) {  // LCOV_EXCL_BR_LINE
+      worker.join();          // LCOV_EXCL_BR_LINE
     }
   }
   workers_.clear();
@@ -208,23 +211,24 @@ void EdgeUploader::enqueue(
 ) {
   // Validate required parameters to prevent malformed S3 keys
   if (mcap_path.empty()) {
-    AXON_LOG_ERROR("Cannot enqueue upload - mcap_path is empty"); // LCOV_EXCL_BR_LINE
+    AXON_LOG_ERROR("Cannot enqueue upload - mcap_path is empty");  // LCOV_EXCL_BR_LINE
     return;
   }
   if (json_path.empty()) {
-    AXON_LOG_ERROR("Cannot enqueue upload - json_path is empty (JSON sidecar is required)"); // LCOV_EXCL_BR_LINE
+    AXON_LOG_ERROR("Cannot enqueue upload - json_path is empty (JSON sidecar is required)"
+    );  // LCOV_EXCL_BR_LINE
     return;
   }
   if (task_id.empty()) {
-    AXON_LOG_ERROR("Cannot enqueue upload - task_id is empty"); // LCOV_EXCL_BR_LINE
+    AXON_LOG_ERROR("Cannot enqueue upload - task_id is empty");  // LCOV_EXCL_BR_LINE
     return;
   }
   if (factory_id.empty()) {
-    AXON_LOG_ERROR("Cannot enqueue upload - factory_id is empty"); // LCOV_EXCL_BR_LINE
+    AXON_LOG_ERROR("Cannot enqueue upload - factory_id is empty");  // LCOV_EXCL_BR_LINE
     return;
   }
   if (device_id.empty()) {
-    AXON_LOG_ERROR("Cannot enqueue upload - device_id is empty"); // LCOV_EXCL_BR_LINE
+    AXON_LOG_ERROR("Cannot enqueue upload - device_id is empty");  // LCOV_EXCL_BR_LINE
     return;
   }
 
@@ -244,13 +248,16 @@ void EdgeUploader::enqueue(
   // LCOV_EXCL_BR_STOP
 
   // Get file size (file existence already verified above)
-  uint64_t file_size = getFileSizeImpl(mcap_path, default_filesystem); // LCOV_EXCL_BR_LINE
+  uint64_t file_size = getFileSizeImpl(mcap_path, default_filesystem);  // LCOV_EXCL_BR_LINE
 
   // Create upload item
-  UploadItem item(mcap_path, json_path, task_id, factory_id, device_id, checksum_sha256, file_size); // LCOV_EXCL_BR_LINE
+  UploadItem item(
+    mcap_path, json_path, task_id, factory_id, device_id, checksum_sha256, file_size
+  );  // LCOV_EXCL_BR_LINE
 
   // Construct S3 key prefix
-  item.s3_key_prefix = factory_id + "/" + device_id + "/" + currentDateString();  // LCOV_EXCL_BR_LINE
+  item.s3_key_prefix =
+    factory_id + "/" + device_id + "/" + currentDateString();  // LCOV_EXCL_BR_LINE
 
   // Build state DB record for crash recovery
   // LCOV_EXCL_BR_START
@@ -265,7 +272,7 @@ void EdgeUploader::enqueue(
   record.checksum_sha256 = checksum_sha256;
   record.status = UploadStatus::PENDING;
   // LCOV_EXCL_BR_STOP
-  
+
   // Persist to state DB - if this fails (disk full, DB corruption),
   // do NOT queue the upload as we cannot track it for retry/recovery
   if (!state_manager_->insert(record)) {
@@ -387,7 +394,9 @@ void EdgeUploader::processItem(const UploadItem& item) {
     // JSON upload failed after MCAP succeeded
     // Re-queue with complete item - on retry, MCAP upload will succeed quickly
     // since the file is already in S3 (objectExists check above)
-    onUploadFailure(item, "JSON sidecar upload failed: " + json_result.error_message, json_result.is_retryable);  // LCOV_EXCL_BR_LINE
+    onUploadFailure(
+      item, "JSON sidecar upload failed: " + json_result.error_message, json_result.is_retryable
+    );  // LCOV_EXCL_BR_LINE
     return;
   }
 
@@ -406,7 +415,8 @@ std::string EdgeUploader::constructS3Key(
   const std::string& factory_id, const std::string& device_id, const std::string& task_id,
   const std::string& extension
 ) {
-  return factory_id + "/" + device_id + "/" + currentDateString() + "/" + task_id + "." + extension;  // LCOV_EXCL_BR_LINE
+  return factory_id + "/" + device_id + "/" + currentDateString() + "/" + task_id + "." +
+         extension;  // LCOV_EXCL_BR_LINE
 }
 
 std::string EdgeUploader::currentDateString() {

@@ -214,8 +214,7 @@ TEST_F(TaskConfigCacheTest, ThreadSafety) {
   for (int t = 0; t < num_threads / 2; ++t) {
     threads.emplace_back([&, t]() {
       for (int i = 0; i < iterations; ++i) {
-        auto config =
-          create_sample_config("task_" + std::to_string(t) + "_" + std::to_string(i));
+        auto config = create_sample_config("task_" + std::to_string(t) + "_" + std::to_string(i));
         cache.cache(config);
         success_count++;
       }
@@ -246,4 +245,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

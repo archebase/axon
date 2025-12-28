@@ -90,15 +90,15 @@ void RecordingSession::close() {
     auto actual_size = std::filesystem::file_size(output_path_, ec);
     if (ec) {
       // LCOV_EXCL_BR_START - logging macro branch coverage
-      AXON_LOG_WARN("Failed to get file size for sidecar"
-                    << axon::logging::kv("path", output_path_)
-                    << axon::logging::kv("error", ec.message()));
+      AXON_LOG_WARN(
+        "Failed to get file size for sidecar" << axon::logging::kv("path", output_path_)
+                                              << axon::logging::kv("error", ec.message())
+      );
       // LCOV_EXCL_BR_STOP
     } else {
       // LCOV_EXCL_BR_START - logging macro branch coverage
       if (!metadata_injector_.generate_sidecar_json(output_path_, actual_size)) {
-        AXON_LOG_WARN("Failed to generate sidecar JSON"
-                      << axon::logging::kv("path", output_path_));
+        AXON_LOG_WARN("Failed to generate sidecar JSON" << axon::logging::kv("path", output_path_));
       }
       // LCOV_EXCL_BR_STOP
     }

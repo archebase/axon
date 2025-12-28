@@ -124,7 +124,7 @@ TEST_F(RosIntrospectorFactoryTest, Create_ReturnsNonNull) {
 TEST_F(RosIntrospectorFactoryTest, Create_ReturnsNewInstanceEachTime) {
   auto introspector1 = RosIntrospectorFactory::create();
   auto introspector2 = RosIntrospectorFactory::create();
-  
+
   EXPECT_NE(introspector1, nullptr);
   EXPECT_NE(introspector2, nullptr);
   EXPECT_NE(introspector1.get(), introspector2.get());
@@ -210,7 +210,7 @@ TEST_F(MessageDescriptorTest, GetMessageDescriptor_NavMsgs) {
 TEST_F(MessageDescriptorTest, GetFieldPointer_NullMessage_ReturnsNull) {
   size_t size = 0;
   const void* ptr = introspector_->get_field_pointer(nullptr, "data", size);
-  
+
   EXPECT_EQ(ptr, nullptr);
 }
 
@@ -222,7 +222,7 @@ TEST_F(MessageDescriptorTest, GetFieldValue_ReturnsFalse) {
   // The base implementation returns false (not implemented)
   int output = 0;
   bool result = introspector_->get_field_value(nullptr, "field", &output);
-  
+
   EXPECT_FALSE(result);
 }
 
@@ -259,4 +259,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

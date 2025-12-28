@@ -12,8 +12,8 @@
 #include <thread>
 #include <vector>
 
-#include "metadata_injector.hpp"
 #include "mcap_writer_wrapper.hpp"
+#include "metadata_injector.hpp"
 
 using namespace axon::recorder;
 using namespace axon::mcap_wrapper;
@@ -166,8 +166,7 @@ TEST_F(MetadataInjectorTest, SidecarJsonContainsRequiredFields) {
 
   // Read sidecar JSON
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   // Verify required fields are present
   EXPECT_TRUE(content.find("\"version\": \"1.0\"") != std::string::npos);
@@ -206,8 +205,7 @@ TEST_F(MetadataInjectorTest, SidecarJsonContainsNewFields) {
 
   // Read sidecar JSON
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   // Verify new fields
   EXPECT_TRUE(content.find("\"order_id\"") != std::string::npos);
@@ -272,8 +270,7 @@ TEST_F(MetadataInjectorTest, EnvVarOverridesRosParam) {
 
   // Read sidecar and verify env var values are used
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   EXPECT_TRUE(content.find("\"device_model\": \"env_model\"") != std::string::npos);
   EXPECT_TRUE(content.find("\"device_serial\": \"env_serial\"") != std::string::npos);
@@ -377,7 +374,7 @@ TEST_F(MetadataInjectorTest, ChecksumDifferentForDifferentFiles) {
   // First file
   McapWriterWrapper writer1;
   ASSERT_TRUE(writer1.open(mcap_path1));
-  
+
   MetadataInjector injector1;
   injector1.set_task_config(create_sample_config());
   injector1.set_recording_start_time(std::chrono::system_clock::now());
@@ -388,7 +385,7 @@ TEST_F(MetadataInjectorTest, ChecksumDifferentForDifferentFiles) {
   // Second file with different content
   McapWriterWrapper writer2;
   ASSERT_TRUE(writer2.open(mcap_path2));
-  
+
   MetadataInjector injector2;
   auto config2 = create_sample_config();
   config2.task_id = "different_task";
@@ -423,13 +420,11 @@ TEST_F(MetadataInjectorTest, ValidJsonFormat) {
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   // Read sidecar
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   // Basic JSON structure checks
   EXPECT_TRUE(content.front() == '{');
@@ -459,12 +454,10 @@ TEST_F(MetadataInjectorTest, SidecarContainsSkills) {
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   EXPECT_TRUE(content.find("\"skills\"") != std::string::npos);
   EXPECT_TRUE(content.find("\"grasp\"") != std::string::npos);
@@ -491,12 +484,10 @@ TEST_F(MetadataInjectorTest, SidecarContainsTopicsSummary) {
   EXPECT_TRUE(injector.inject_metadata(writer, 1150, 1024 * 1024));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   EXPECT_TRUE(content.find("\"topics_summary\"") != std::string::npos);
   EXPECT_TRUE(content.find("/camera/image") != std::string::npos);
@@ -514,7 +505,7 @@ TEST_F(MetadataInjectorTest, GenerateSidecarWithZeroFileSize) {
 
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
@@ -531,12 +522,12 @@ TEST_F(MetadataInjectorTest, GenerateSidecarRequiresConfig) {
   // Test that sidecar generation requires task config to be set
   MetadataInjector injector;
   // Don't set task config
-  
+
   std::string mcap_path = (test_dir_ / "test_no_config.mcap").string();
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
   writer.close();
-  
+
   // Without config set, inject_metadata should fail
   McapWriterWrapper writer2;
   ASSERT_TRUE(writer2.open(mcap_path));
@@ -590,12 +581,10 @@ TEST_F(MetadataInjectorTest, LargeMessageCount) {
   EXPECT_TRUE(injector.inject_metadata(writer, 1000000, 50 * 1024 * 1024));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   EXPECT_TRUE(content.find("1000000") != std::string::npos);
 }
@@ -608,7 +597,7 @@ TEST_F(MetadataInjectorTest, ManyTopics) {
 
   MetadataInjector injector;
   auto config = create_sample_config();
-  
+
   // Clear existing topics and add many
   config.topics.clear();
   for (int i = 0; i < 50; ++i) {
@@ -619,19 +608,16 @@ TEST_F(MetadataInjectorTest, ManyTopics) {
 
   // Add stats for all topics
   for (int i = 0; i < 50; ++i) {
-    injector.update_topic_stats("/topic_" + std::to_string(i), 
-                                 "std_msgs/String", i * 10);
+    injector.update_topic_stats("/topic_" + std::to_string(i), "std_msgs/String", i * 10);
   }
 
   EXPECT_TRUE(injector.inject_metadata(writer, 12250, 1024 * 1024));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   EXPECT_TRUE(content.find("/topic_0") != std::string::npos);
   EXPECT_TRUE(content.find("/topic_49") != std::string::npos);
@@ -664,8 +650,7 @@ TEST_F(MetadataInjectorTest, SpecialCharactersInConfig) {
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   // Sidecar should be created without errors
   EXPECT_TRUE(std::filesystem::exists(injector.get_sidecar_path()));
@@ -694,12 +679,10 @@ TEST_F(MetadataInjectorTest, UnicodeInConfig) {
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   // Unicode should be preserved
   EXPECT_TRUE(content.find("日本語") != std::string::npos);
@@ -723,12 +706,10 @@ TEST_F(MetadataInjectorTest, TimestampFormat) {
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
   // Verify ISO8601 timestamp format (YYYY-MM-DDTHH:MM:SS)
   EXPECT_TRUE(content.find("\"recording_started_at\"") != std::string::npos);
@@ -742,32 +723,31 @@ TEST_F(MetadataInjectorTest, TimestampFormat) {
 
 TEST_F(MetadataInjectorTest, ChecksumForNonExistentFile) {
   MetadataInjector injector;
-  
+
   // Attempt to get checksum for non-existent file
   std::string checksum = injector.get_checksum();
-  
+
   // Should be empty since no file was processed
   EXPECT_TRUE(checksum.empty());
 }
 
 TEST_F(MetadataInjectorTest, GenerateSidecarWithoutConfig) {
   std::string mcap_path = (test_dir_ / "test_no_config.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
   writer.close();
-  
+
   MetadataInjector injector;
   // Don't set task config
-  
+
   // Should return false when task config is not set
-  EXPECT_FALSE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_FALSE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 }
 
 TEST_F(MetadataInjectorTest, UpdateTopicStatsEmpty) {
   MetadataInjector injector;
-  
+
   // No updates - should handle gracefully
   // Can proceed with metadata injection (topic summary will be empty)
   // This tests that the injector works without any topic stats set
@@ -775,43 +755,41 @@ TEST_F(MetadataInjectorTest, UpdateTopicStatsEmpty) {
 
 TEST_F(MetadataInjectorTest, SidecarPathBeforeGeneration) {
   MetadataInjector injector;
-  
+
   // Get sidecar path before any file is generated
   std::string path = injector.get_sidecar_path();
-  
+
   // Should be empty
   EXPECT_TRUE(path.empty());
 }
 
 TEST_F(MetadataInjectorTest, MultipleTopicStatsUpdates) {
   std::string mcap_path = (test_dir_ / "test_multi_stats.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // First update for camera
   injector.update_topic_stats("/camera", "sensor_msgs/Image", 100);
-  
+
   // Second update - additional messages
   injector.update_topic_stats("/camera", "sensor_msgs/Image", 200);
-  
+
   // Add another topic
   injector.update_topic_stats("/lidar", "sensor_msgs/LaserScan", 50);
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
-  
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   // Should have both topics
   EXPECT_TRUE(content.find("/camera") != std::string::npos);
   EXPECT_TRUE(content.find("/lidar") != std::string::npos);
@@ -819,25 +797,24 @@ TEST_F(MetadataInjectorTest, MultipleTopicStatsUpdates) {
 
 TEST_F(MetadataInjectorTest, ChecksumFormatVerification) {
   std::string mcap_path = (test_dir_ / "test_checksum_format.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::string checksum = injector.get_checksum();
-  
+
   // SHA-256 checksum should be 64 hex characters
   EXPECT_EQ(checksum.length(), 64);
-  
+
   // All characters should be lowercase hex
   for (char c : checksum) {
     bool is_hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
@@ -847,14 +824,14 @@ TEST_F(MetadataInjectorTest, ChecksumFormatVerification) {
 
 TEST_F(MetadataInjectorTest, RecordingStartTimeNotSet) {
   std::string mcap_path = (test_dir_ / "test_no_start_time.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   // Don't set recording start time
-  
+
   // Should still succeed (will use default time or current time)
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
@@ -862,17 +839,17 @@ TEST_F(MetadataInjectorTest, RecordingStartTimeNotSet) {
 
 TEST_F(MetadataInjectorTest, ZeroFileSize) {
   std::string mcap_path = (test_dir_ / "test_zero_size.mcap").string();
-  
+
   // Create an empty file
   { std::ofstream ofs(mcap_path); }
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Generate sidecar with zero file size - may or may not succeed depending on checksum handling
   bool result = injector.generate_sidecar_json(mcap_path, 0);
-  
+
   // If it succeeded, verify sidecar was created
   if (result) {
     std::string sidecar_path = injector.get_sidecar_path();
@@ -883,61 +860,58 @@ TEST_F(MetadataInjectorTest, ZeroFileSize) {
 
 TEST_F(MetadataInjectorTest, VeryLargeMessageCounts) {
   std::string mcap_path = (test_dir_ / "test_large_counts.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Update with large message counts (1 billion messages)
   injector.update_topic_stats("/high_freq_topic", "sensor_msgs/PointCloud2", 1000000000);
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   // Verify sidecar was created
   EXPECT_TRUE(std::filesystem::exists(injector.get_sidecar_path()));
 }
 
 TEST_F(MetadataInjectorTest, ManyTopicsWithStats) {
   std::string mcap_path = (test_dir_ / "test_many_topics_stats.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   TaskConfig config = create_sample_config();
-  
+
   // Add many topics
   config.topics.clear();
   for (int i = 0; i < 100; ++i) {
     config.topics.push_back("/topic_" + std::to_string(i));
   }
-  
+
   injector.set_task_config(config);
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Add stats for all topics using the 3-argument API
   for (int i = 0; i < 100; ++i) {
     std::string topic = "/topic_" + std::to_string(i);
     injector.update_topic_stats(topic, "std_msgs/String", i * 100);
   }
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
-  
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   // Verify first and last topics are present
   EXPECT_TRUE(content.find("/topic_0") != std::string::npos);
   EXPECT_TRUE(content.find("/topic_99") != std::string::npos);
@@ -945,30 +919,28 @@ TEST_F(MetadataInjectorTest, ManyTopicsWithStats) {
 
 TEST_F(MetadataInjectorTest, ConfigWithEmptySkills) {
   std::string mcap_path = (test_dir_ / "test_empty_skills.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   TaskConfig config = create_sample_config();
   config.skills.clear();
-  
+
   injector.set_task_config(config);
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
-  
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   // When skills is empty, it should be omitted from JSON (implementation design choice)
   EXPECT_FALSE(content.find("\"skills\"") != std::string::npos);
-  
+
   // But other task fields should still be present
   EXPECT_TRUE(content.find("\"task\"") != std::string::npos);
   EXPECT_TRUE(content.find("\"task_id\"") != std::string::npos);
@@ -976,50 +948,48 @@ TEST_F(MetadataInjectorTest, ConfigWithEmptySkills) {
 
 TEST_F(MetadataInjectorTest, ConfigWithEmptyTopics) {
   std::string mcap_path = (test_dir_ / "test_empty_topics.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   TaskConfig config = create_sample_config();
   config.topics.clear();
-  
+
   injector.set_task_config(config);
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 }
 
 TEST_F(MetadataInjectorTest, TopicFrequencyCalculationExtended) {
   std::string mcap_path = (test_dir_ / "test_frequency_ext.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
-  
+
   // Set recording start time (10 seconds ago)
   auto start_time = std::chrono::system_clock::now() - std::chrono::seconds(10);
   injector.set_recording_start_time(start_time);
-  
+
   // Add topic stats - 100 messages over 10 seconds = 10 Hz
   injector.update_topic_stats("/camera", "sensor_msgs/Image", 100);
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 }
 
 TEST_F(MetadataInjectorTest, RosParameterLoaderSetter) {
   MetadataInjector injector;
-  
+
   // Set the parameter loader callback
   // ConfigLoaderCallback takes a param name and returns the value
   std::vector<std::string> requested_params;
@@ -1035,7 +1005,7 @@ TEST_F(MetadataInjectorTest, RosParameterLoaderSetter) {
     }
     return "";
   });
-  
+
   // Verify the callback was set (no crash, no exception)
   // The callback will be invoked during metadata generation when env vars aren't set
   // This test verifies the setter works without exceptions
@@ -1057,7 +1027,7 @@ public:
     }
     setenv(name, value, 1);
   }
-  
+
   ~ScopedEnvVar() {
     // Restore original value or unset if there was no original
     if (had_original_) {
@@ -1066,13 +1036,13 @@ public:
       unsetenv(name_.c_str());
     }
   }
-  
+
   // Non-copyable and non-movable (prevent double-restore bugs)
   ScopedEnvVar(const ScopedEnvVar&) = delete;
   ScopedEnvVar& operator=(const ScopedEnvVar&) = delete;
   ScopedEnvVar(ScopedEnvVar&&) = delete;
   ScopedEnvVar& operator=(ScopedEnvVar&&) = delete;
-  
+
 private:
   std::string name_;
   std::string original_value_;
@@ -1081,28 +1051,26 @@ private:
 
 TEST_F(MetadataInjectorTest, EnvironmentVariableOverrides) {
   std::string mcap_path = (test_dir_ / "test_env_override.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   // Use RAII for environment variable cleanup - ensures cleanup even on test failure
   ScopedEnvVar env_model("AXON_DEVICE_MODEL", "TestRobot");
   ScopedEnvVar env_serial("AXON_DEVICE_SERIAL", "SN123456");
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
-  
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   // Should contain environment variable values
   EXPECT_TRUE(content.find("TestRobot") != std::string::npos);
   EXPECT_TRUE(content.find("SN123456") != std::string::npos);
@@ -1111,31 +1079,29 @@ TEST_F(MetadataInjectorTest, EnvironmentVariableOverrides) {
 
 TEST_F(MetadataInjectorTest, AtomicFileWriteVerification) {
   std::string mcap_path = (test_dir_ / "test_atomic.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::string sidecar_path = injector.get_sidecar_path();
-  
+
   // Verify the sidecar file exists and is not a temp file
   EXPECT_TRUE(std::filesystem::exists(sidecar_path));
   EXPECT_TRUE(sidecar_path.find(".tmp") == std::string::npos);
-  
+
   // Verify the file is valid JSON by reading it
   std::ifstream ifs(sidecar_path);
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
-  
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   // Basic JSON structure check
   EXPECT_TRUE(content.front() == '{');
   EXPECT_TRUE(content.back() == '}' || content.back() == '\n');
@@ -1147,12 +1113,12 @@ TEST_F(MetadataInjectorTest, AtomicFileWriteVerification) {
 
 TEST_F(MetadataInjectorTest, MetadataWithAllConfigFields) {
   std::string mcap_path = (test_dir_ / "all_fields.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
-  
+
   // Create config with ALL fields populated
   TaskConfig config;
   config.task_id = "comprehensive_task_001";
@@ -1168,26 +1134,24 @@ TEST_F(MetadataInjectorTest, MetadataWithAllConfigFields) {
   config.start_callback_url = "http://server/start";
   config.finish_callback_url = "http://server/finish";
   config.user_token = "jwt_token_12345";
-  
+
   injector.set_task_config(config);
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Add topic stats for all topics
   injector.update_topic_stats("/camera/image", "sensor_msgs/Image", 300);
   injector.update_topic_stats("/lidar/scan", "sensor_msgs/LaserScan", 100);
   injector.update_topic_stats("/imu/data", "sensor_msgs/Imu", 1000);
   injector.update_topic_stats("/joint_states", "sensor_msgs/JointState", 500);
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
-  
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   // Verify all fields are present
   EXPECT_TRUE(content.find("comprehensive_task_001") != std::string::npos);
   EXPECT_TRUE(content.find("device_comprehensive") != std::string::npos);
@@ -1197,30 +1161,28 @@ TEST_F(MetadataInjectorTest, MetadataWithAllConfigFields) {
 
 TEST_F(MetadataInjectorTest, MetadataWithMinimalConfig) {
   std::string mcap_path = (test_dir_ / "minimal_config.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
-  
+
   // Minimal config - only required fields
   TaskConfig config;
   config.task_id = "minimal_task";
   config.device_id = "minimal_device";
-  
+
   injector.set_task_config(config);
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::ifstream ifs(injector.get_sidecar_path());
-  std::string content((std::istreambuf_iterator<char>(ifs)),
-                       std::istreambuf_iterator<char>());
-  
+  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   // Should still have required fields
   EXPECT_TRUE(content.find("minimal_task") != std::string::npos);
   EXPECT_TRUE(content.find("minimal_device") != std::string::npos);
@@ -1228,52 +1190,50 @@ TEST_F(MetadataInjectorTest, MetadataWithMinimalConfig) {
 
 TEST_F(MetadataInjectorTest, MetadataWithSpecialCharactersInConfig) {
   std::string mcap_path = (test_dir_ / "special_chars.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
-  
+
   TaskConfig config;
   config.task_id = "task_with\"quotes\"and\\backslash";
   config.device_id = "device/with/slashes";
   config.scene = "scene\twith\ttabs";
   config.skills = {"skill:with:colons", "skill;with;semicolons"};
-  
+
   injector.set_task_config(config);
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Should handle special characters without crashing
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 }
 
 TEST_F(MetadataInjectorTest, MetadataWithUnicodeCharacters) {
   std::string mcap_path = (test_dir_ / "unicode.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
-  
+
   TaskConfig config;
   config.task_id = "task_日本語_001";
   config.device_id = "设备_中文";
   config.scene = "场景_한국어";
   config.operator_name = "Оператор_русский";
-  
+
   injector.set_task_config(config);
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Should handle Unicode without crashing
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 }
 
 // ============================================================================
@@ -1283,15 +1243,15 @@ TEST_F(MetadataInjectorTest, MetadataWithUnicodeCharacters) {
 TEST_F(MetadataInjectorTest, TopicStatsFrequencyCalculation) {
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
-  
+
   auto start_time = std::chrono::system_clock::now() - std::chrono::seconds(10);
   injector.set_recording_start_time(start_time);
-  
+
   // Simulate 100 messages over 10 seconds = 10 Hz
   for (int i = 0; i < 100; ++i) {
     injector.update_topic_stats("/camera", "sensor_msgs/Image", 1);
   }
-  
+
   // Topic stats should accumulate
   // (No direct accessor, but coverage is the goal)
   SUCCEED();
@@ -1301,14 +1261,14 @@ TEST_F(MetadataInjectorTest, TopicStatsMultipleTopics) {
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Update stats for multiple topics
   for (int i = 0; i < 10; ++i) {
     injector.update_topic_stats("/topic1", "std_msgs/String", 10);
     injector.update_topic_stats("/topic2", "std_msgs/Int32", 5);
     injector.update_topic_stats("/topic3", "sensor_msgs/Image", 2);
   }
-  
+
   SUCCEED();
 }
 
@@ -1316,10 +1276,10 @@ TEST_F(MetadataInjectorTest, TopicStatsWithZeroMessages) {
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Zero message count
   injector.update_topic_stats("/empty_topic", "std_msgs/Empty", 0);
-  
+
   SUCCEED();
 }
 
@@ -1327,27 +1287,27 @@ TEST_F(MetadataInjectorTest, TopicStatsWithVeryHighCount) {
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Very high message count
   injector.update_topic_stats("/high_freq", "sensor_msgs/Imu", 10000000);
-  
+
   SUCCEED();
 }
 
 TEST_F(MetadataInjectorTest, RecordingStartTimeNotSetInjectMetadata) {
   std::string mcap_path = (test_dir_ / "no_start_time_inject.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   // Don't set recording start time
-  
+
   // Should handle missing start time gracefully
   bool result = injector.inject_metadata(writer, 0, 0);
   writer.close();
-  
+
   // May succeed or fail depending on implementation
   // The important thing is no crash
   (void)result;  // Suppress unused variable warning
@@ -1356,67 +1316,66 @@ TEST_F(MetadataInjectorTest, RecordingStartTimeNotSetInjectMetadata) {
 
 TEST_F(MetadataInjectorTest, GenerateSidecarWithZeroFileSizeP2) {
   std::string mcap_path = (test_dir_ / "zero_size_p2.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
+
   // Generate sidecar with zero file size
   EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 0));
 }
 
 TEST_F(MetadataInjectorTest, GenerateSidecarWithLargeFileSize) {
   std::string mcap_path = (test_dir_ / "large_file.mcap").string();
-  
+
   McapWriterWrapper writer;
   ASSERT_TRUE(writer.open(mcap_path));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
+
   // Simulate very large file (1 TB)
   EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 1099511627776ULL));
 }
 
 TEST_F(MetadataInjectorTest, ChecksumGeneratedCorrectly) {
   std::string mcap_path = (test_dir_ / "checksum_verify.mcap").string();
-  
+
   McapWriterWrapper writer;
   McapWriterOptions options;
   options.profile = "ros2";
   ASSERT_TRUE(writer.open(mcap_path, options));
-  
+
   MetadataInjector injector;
   injector.set_task_config(create_sample_config());
   injector.set_recording_start_time(std::chrono::system_clock::now());
-  
+
   // Register a schema and channel, then write some data to ensure non-empty file
   uint16_t schema_id = writer.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   ASSERT_GT(schema_id, 0);
-  
+
   uint16_t channel_id = writer.register_channel("/test_topic", "cdr", schema_id);
   ASSERT_GT(channel_id, 0);
-  
+
   // Write some data
   std::vector<uint8_t> data = {0x01, 0x02, 0x03};
   writer.write(channel_id, 1000000000ULL, 1000000000ULL, data.data(), data.size());
-  
+
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
-  
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, 
-    std::filesystem::file_size(mcap_path)));
-  
+
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
+
   std::string checksum = injector.get_checksum();
   if (!checksum.empty()) {
     // Checksum should be consistent format (hex string)
@@ -1439,8 +1398,7 @@ TEST_F(MetadataInjectorTest, SidecarPathMatchesMcapPath) {
   EXPECT_TRUE(injector.inject_metadata(writer, 0, 0));
   writer.close();
 
-  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path,
-    std::filesystem::file_size(mcap_path)));
+  EXPECT_TRUE(injector.generate_sidecar_json(mcap_path, std::filesystem::file_size(mcap_path)));
 
   std::string sidecar_path = injector.get_sidecar_path();
 
@@ -1530,4 +1488,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

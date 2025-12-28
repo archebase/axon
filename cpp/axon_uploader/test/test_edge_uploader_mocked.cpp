@@ -5,8 +5,8 @@
  * with real files, such as I/O errors, permission errors, and file system failures.
  */
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include <memory>
 #include <string>
@@ -17,11 +17,11 @@
 using namespace axon::uploader;
 using namespace axon::uploader::test;
 using ::testing::_;
-using ::testing::Return;
-using ::testing::ReturnRef;
+using ::testing::ByMove;
 using ::testing::DoAll;
 using ::testing::InSequence;
-using ::testing::ByMove;
+using ::testing::Return;
+using ::testing::ReturnRef;
 
 class EdgeUploaderMockedTest : public ::testing::Test {
 protected:
@@ -206,9 +206,8 @@ TEST_F(EdgeUploaderMockedTest, UploadSingleFile_FileNotFound) {
 
   // Create a mock S3Client (we can't easily mock S3Client, so we'll use nullptr
   // and expect the function to handle file existence check first)
-  FileUploadResult result = uploadSingleFileImpl(
-      test_mcap_path_, s3_key, checksum, *mock_filesystem_, nullptr
-  );
+  FileUploadResult result =
+    uploadSingleFileImpl(test_mcap_path_, s3_key, checksum, *mock_filesystem_, nullptr);
 
   EXPECT_FALSE(result.success);
   EXPECT_NE(result.error_message.find("not found"), std::string::npos);
@@ -219,4 +218,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

@@ -126,7 +126,7 @@ public:
   }
 
   void initClient() {
-    Aws::Client::ClientConfiguration client_config; // LCOV_EXCL_BR_LINE
+    Aws::Client::ClientConfiguration client_config;  // LCOV_EXCL_BR_LINE
 
     // Set region
     client_config.region = config.region;
@@ -160,12 +160,14 @@ public:
     // This controls AWS SDK's internal retries (separate from EdgeUploader's retry logic)
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
-    client_config.retryStrategy = std::make_shared<Aws::Client::DefaultRetryStrategy>(
-        config.max_sdk_retries);
+    client_config.retryStrategy =
+      std::make_shared<Aws::Client::DefaultRetryStrategy>(config.max_sdk_retries);
     // LCOV_EXCL_BR_STOP
 
     // Create credentials
-    Aws::Auth::AWSCredentials credentials(config.access_key, config.secret_key); // LCOV_EXCL_BR_LINE
+    Aws::Auth::AWSCredentials credentials(
+      config.access_key, config.secret_key
+    );  // LCOV_EXCL_BR_LINE
 
     // Configure addressing style for S3 vs S3-compatible storage (MinIO, etc.)
     // The S3Client constructor's 4th parameter is 'useVirtualAddressing':
@@ -191,11 +193,13 @@ public:
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
     executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
-        "S3Executor", config.executor_thread_count);
+      "S3Executor", config.executor_thread_count
+    );
     // LCOV_EXCL_BR_STOP
 
     // Configure TransferManager for multipart uploads
-    Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get()); // LCOV_EXCL_BR_LINE
+    Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get()
+    );  // LCOV_EXCL_BR_LINE
     transfer_config.s3Client = client;
 
     // Enforce S3 part size constraints (5MB minimum, 5GB maximum)
@@ -203,10 +207,14 @@ public:
     constexpr uint64_t MAX_PART_SIZE = 5ULL * 1024 * 1024 * 1024;  // 5GB
     uint64_t validated_part_size = config.part_size;
     if (validated_part_size < MIN_PART_SIZE) {
-      AXON_LOG_WARN("part_size " << config.part_size << " is below S3 minimum (5MB), using 5MB"); // LCOV_EXCL_BR_LINE
+      AXON_LOG_WARN(
+        "part_size " << config.part_size << " is below S3 minimum (5MB), using 5MB"
+      );  // LCOV_EXCL_BR_LINE
       validated_part_size = MIN_PART_SIZE;
     } else if (validated_part_size > MAX_PART_SIZE) {
-      AXON_LOG_WARN("part_size " << config.part_size << " exceeds S3 maximum (5GB), using 5GB"); // LCOV_EXCL_BR_LINE
+      AXON_LOG_WARN(
+        "part_size " << config.part_size << " exceeds S3 maximum (5GB), using 5GB"
+      );  // LCOV_EXCL_BR_LINE
       validated_part_size = MAX_PART_SIZE;
     }
     transfer_config.bufferSize = validated_part_size;
@@ -222,16 +230,16 @@ public:
 S3Client::S3Client(const S3Config& config)
     : impl_(std::make_unique<Impl>())  // LCOV_EXCL_BR_LINE
 {
-  impl_->config = config; // LCOV_EXCL_BR_LINE
+  impl_->config = config;  // LCOV_EXCL_BR_LINE
   // Load credentials from environment if not provided
   if (impl_->config.access_key.empty()) {
-    if (const char* key = std::getenv("AWS_ACCESS_KEY_ID")) { // LCOV_EXCL_BR_LINE
-      impl_->config.access_key = key; // LCOV_EXCL_BR_LINE
+    if (const char* key = std::getenv("AWS_ACCESS_KEY_ID")) {  // LCOV_EXCL_BR_LINE
+      impl_->config.access_key = key;                          // LCOV_EXCL_BR_LINE
     }
   }
   if (impl_->config.secret_key.empty()) {
-    if (const char* key = std::getenv("AWS_SECRET_ACCESS_KEY")) { // LCOV_EXCL_BR_LINE
-      impl_->config.secret_key = key; // LCOV_EXCL_BR_LINE
+    if (const char* key = std::getenv("AWS_SECRET_ACCESS_KEY")) {  // LCOV_EXCL_BR_LINE
+      impl_->config.secret_key = key;                              // LCOV_EXCL_BR_LINE
     }
   }
 
@@ -275,13 +283,17 @@ UploadResult S3Client::uploadFile(
     // In production, we fall back to direct ifstream check
     std::ifstream test_file(local_path, std::ios::binary | std::ios::ate);
     if (!test_file) {
-      return UploadResult::Failure("Cannot open local file: " + local_path, "FileNotFound", false);  // LCOV_EXCL_BR_LINE
+      return UploadResult::Failure(
+        "Cannot open local file: " + local_path, "FileNotFound", false
+      );  // LCOV_EXCL_BR_LINE
     }
     // File exists - get size (might be 0 for empty file)
     std::streampos pos = test_file.tellg();
     // Check for tellg() error: -1 indicates failure
     if (pos == std::streampos(-1) || !test_file.good()) {
-      return UploadResult::Failure("Cannot determine file size: " + local_path, "FileSizeError", false);  // LCOV_EXCL_BR_LINE
+      return UploadResult::Failure(
+        "Cannot determine file size: " + local_path, "FileSizeError", false
+      );  // LCOV_EXCL_BR_LINE
     }
     file_size = static_cast<uint64_t>(pos);
     test_file.close();

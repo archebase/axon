@@ -73,9 +73,13 @@ TEST_F(WorkerThreadPoolTest, DoubleStopIsNoOp) {
 
 TEST_F(WorkerThreadPoolTest, CreateTopicWorker) {
   std::atomic<int> message_count{0};
-  auto handler = [&](const std::string& /* topic */, int64_t /* ts */,
-                     const uint8_t* /* data */, size_t /* size */,
-                     uint32_t /* seq */) {
+  auto handler = [&](
+                   const std::string& /* topic */,
+                   int64_t /* ts */,
+                   const uint8_t* /* data */,
+                   size_t /* size */,
+                   uint32_t /* seq */
+                 ) {
     message_count.fetch_add(1);
     return true;
   };
@@ -136,9 +140,13 @@ TEST_F(WorkerThreadPoolTest, MessageProcessing) {
   std::vector<int64_t> received_timestamps;
   std::mutex ts_mutex;
 
-  auto handler = [&](const std::string& topic, int64_t ts,
-                     const uint8_t* /* data */, size_t /* size */,
-                     uint32_t /* seq */) {
+  auto handler = [&](
+                   const std::string& topic,
+                   int64_t ts,
+                   const uint8_t* /* data */,
+                   size_t /* size */,
+                   uint32_t /* seq */
+                 ) {
     EXPECT_EQ(topic, "/test");
     {
       std::lock_guard<std::mutex> lock(ts_mutex);
@@ -655,7 +663,7 @@ TEST_F(WorkerThreadPoolTest, ConfigCustomValues) {
 
 TEST_F(WorkerThreadPoolTest, HandlerThrowsException) {
   std::atomic<int> call_count{0};
-  
+
   auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
     call_count++;
     if (call_count == 2) {
@@ -682,7 +690,7 @@ TEST_F(WorkerThreadPoolTest, HandlerThrowsException) {
 
 TEST_F(WorkerThreadPoolTest, HandlerReturnsFalse) {
   std::atomic<int> call_count{0};
-  
+
   auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
     call_count++;
     return false;  // Always return failure
@@ -751,7 +759,7 @@ TEST_F(WorkerThreadPoolTest, CreateTopicWhileRunning) {
 TEST_F(WorkerThreadPoolTest, StopWhileProcessing) {
   std::atomic<int> processed{0};
   std::atomic<bool> in_handler{false};
-  
+
   auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
     in_handler = true;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -783,7 +791,7 @@ TEST_F(WorkerThreadPoolTest, StopWhileProcessing) {
 
 TEST_F(WorkerThreadPoolTest, PauseResumeWhileProcessing) {
   std::atomic<int> processed{0};
-  
+
   auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
     processed++;
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -850,7 +858,7 @@ TEST_F(WorkerThreadPoolTest, QueueOverflow) {
 
 TEST_F(WorkerThreadPoolTest, StatsAccumulateCorrectly) {
   std::atomic<int> processed{0};
-  
+
   auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
     processed++;
     return true;
@@ -868,7 +876,7 @@ TEST_F(WorkerThreadPoolTest, StatsAccumulateCorrectly) {
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   auto stats = pool_->get_aggregate_stats();
-  
+
   // Stats should reflect messages pushed
   EXPECT_GT(stats.total_received, 0);
   // After processing, written count should match received
@@ -886,7 +894,7 @@ TEST_F(WorkerThreadPoolTest, EmptyTopicName) {
 
   // Empty topic name
   bool result = pool_->create_topic_worker("", handler);
-  
+
   // Should handle gracefully - may succeed or fail
   // Just ensure no crash
   SUCCEED();
@@ -1345,4 +1353,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

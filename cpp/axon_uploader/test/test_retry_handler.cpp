@@ -55,7 +55,9 @@ TEST_F(RetryHandlerTest, ShouldRetry) {
   EXPECT_FALSE(handler_->shouldRetry(10));
 }
 
-TEST_F(RetryHandlerTest, MaxRetries) { EXPECT_EQ(handler_->maxRetries(), 5); }
+TEST_F(RetryHandlerTest, MaxRetries) {
+  EXPECT_EQ(handler_->maxRetries(), 5);
+}
 
 TEST_F(RetryHandlerTest, JitterEnabled) {
   RetryConfig config;
@@ -157,7 +159,7 @@ TEST_F(RetryHandlerTest, IsRetryableErrorAllCases) {
   EXPECT_TRUE(RetryHandler::isRetryableError("ThrottlingException"));
   EXPECT_TRUE(RetryHandler::isRetryableError("ProvisionedThroughputExceededException"));
   EXPECT_TRUE(RetryHandler::isRetryableError("TransientError"));
-  
+
   // Test non-retryable errors
   EXPECT_FALSE(RetryHandler::isRetryableError("AccessDenied"));
   EXPECT_FALSE(RetryHandler::isRetryableError("NoSuchBucket"));
@@ -174,10 +176,10 @@ TEST_F(RetryHandlerTest, GetDelayWithJitterDisabled) {
   config.max_delay = std::chrono::milliseconds(10000);
   config.jitter = false;
   RetryHandler handler(config);
-  
+
   auto delay = handler.getDelay(0);
   EXPECT_EQ(delay.count(), 1000);
-  
+
   delay = handler.getDelay(1);
   EXPECT_EQ(delay.count(), 2000);
 }
@@ -189,7 +191,7 @@ TEST_F(RetryHandlerTest, GetDelayMinimumOneMs) {
   config.max_delay = std::chrono::milliseconds(1000);
   config.jitter = false;
   RetryHandler handler(config);
-  
+
   auto delay = handler.getDelay(0);
   EXPECT_GE(delay.count(), 1);  // Should be at least 1ms
 }
@@ -199,7 +201,7 @@ TEST_F(RetryHandlerTest, NextRetryTimeMultipleCalls) {
   auto time0 = handler_->nextRetryTime(0);
   auto time1 = handler_->nextRetryTime(1);
   auto time2 = handler_->nextRetryTime(2);
-  
+
   // Each should be further in the future
   EXPECT_GT(time1, time0);
   EXPECT_GT(time2, time1);
@@ -210,7 +212,7 @@ TEST_F(RetryHandlerTest, ShouldRetryBoundary) {
   RetryConfig config;
   config.max_retries = 3;
   RetryHandler handler(config);
-  
+
   EXPECT_TRUE(handler.shouldRetry(0));
   EXPECT_TRUE(handler.shouldRetry(1));
   EXPECT_TRUE(handler.shouldRetry(2));
@@ -226,11 +228,11 @@ TEST_F(RetryHandlerTest, ExponentialBaseVariations) {
   config.exponential_base = 1.5;  // Slower growth
   config.jitter = false;
   RetryHandler handler(config);
-  
+
   auto delay0 = handler.getDelay(0);
   auto delay1 = handler.getDelay(1);
   auto delay2 = handler.getDelay(2);
-  
+
   EXPECT_EQ(delay0.count(), 1000);
   EXPECT_EQ(delay1.count(), 1500);  // 1000 * 1.5
   EXPECT_EQ(delay2.count(), 2250);  // 1000 * 1.5^2
@@ -243,7 +245,7 @@ TEST_F(RetryHandlerTest, JitterFactorVariations) {
   config.jitter = true;
   config.jitter_factor = 0.1;  // Small jitter
   RetryHandler handler(config);
-  
+
   // With small jitter, delays should be in [900, 1100] range
   for (int i = 0; i < 10; ++i) {
     auto delay = handler.getDelay(0);
@@ -251,4 +253,3 @@ TEST_F(RetryHandlerTest, JitterFactorVariations) {
     EXPECT_LE(delay.count(), 1100);
   }
 }
-
