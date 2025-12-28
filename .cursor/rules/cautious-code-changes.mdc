@@ -1,0 +1,214 @@
+---
+description: Require cautious, systematic, and minimal code changes
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Cautious and Systematic Code Changes
+
+**Always make code changes cautiously, systematically, and with minimal scope.** Do not solve problems by introducing large amounts of new code.
+
+## Core Principles
+
+### 1. Understand Root Cause First
+**Always identify the root cause before making changes.** Do not treat symptoms.
+
+```cpp
+// BAD: Adding workaround without understanding root cause
+void process_data() {
+  // Bug: data is sometimes null
+  if (data == nullptr) {
+    return;  // Just return, don't fix why data is null
+  }
+  // ... rest of code
+}
+
+// GOOD: Identify why data is null and fix at the source
+void process_data() {
+  // Root cause: data not initialized in caller
+  // Fix: Ensure initialization in caller or add proper initialization here
+  if (data == nullptr) {
+    throw std::invalid_argument("Data must be initialized");
+  }
+  // ... rest of code
+}
+```
+
+### 2. Minimal Scope Changes
+**Make the smallest change that solves the problem.** Avoid refactoring unrelated code.
+
+```cpp
+// BAD: Fixing a bug by rewriting entire function
+void process_items(std::vector<Item>& items) {
+  // Original bug: off-by-one error in loop
+  // But also rewrote entire function with new algorithm
+  std::vector<Item> processed;
+  for (size_t i = 0; i < items.size(); ++i) {
+    // ... completely new implementation
+  }
+  items = std::move(processed);
+}
+
+// GOOD: Fix only the specific bug
+void process_items(std::vector<Item>& items) {
+  // Fix: Change i <= items.size() to i < items.size()
+  for (size_t i = 0; i < items.size(); ++i) {  // Was: i <= items.size()
+    process_item(items[i]);
+  }
+}
+```
+
+### 3. Systematic Approach
+**Follow a systematic process when making changes:**
+
+1. **Investigate** - Understand the problem thoroughly
+2. **Isolate** - Identify the minimal code that needs to change
+3. **Change** - Make the smallest necessary change
+4. **Verify** - Test that the change fixes the issue without breaking other things
+
+```cpp
+// BAD: Making multiple unrelated changes at once
+void handle_request(Request& req) {
+  // Change 1: Fix null pointer bug
+  if (req.data == nullptr) return;
+  
+  // Change 2: Add new feature (unrelated to bug)
+  req.metadata = compute_metadata(req);
+  
+  // Change 3: Refactor logging (unrelated to bug)
+  logger.log("Processing", req.id);
+  
+  // ... original code
+}
+
+// GOOD: Make one focused change
+void handle_request(Request& req) {
+  // Only fix the null pointer bug
+  if (req.data == nullptr) {
+    throw std::invalid_argument("Request data cannot be null");
+  }
+  // ... rest of original code unchanged
+}
+```
+
+### 4. Avoid Over-Engineering
+**Do not add new abstractions, patterns, or infrastructure unless explicitly needed.**
+
+```cpp
+// BAD: Solving simple bug by adding complex infrastructure
+class RequestProcessorFactory {
+  // ... 50 lines of factory pattern code
+};
+
+class RequestProcessorBuilder {
+  // ... 30 lines of builder pattern code
+};
+
+// Just to fix: req.data sometimes null
+
+// GOOD: Simple, direct fix
+void handle_request(Request& req) {
+  if (req.data == nullptr) {
+    throw std::invalid_argument("Request data cannot be null");
+  }
+  // ... existing code
+}
+```
+
+### 5. Incremental Changes
+**Make changes incrementally, one logical unit at a time.** Test after each change.
+
+```cpp
+// BAD: Making 10 changes in one commit
+// - Fix bug A
+// - Add feature B
+// - Refactor function C
+// - Optimize loop D
+// - Update error handling E
+// ... etc
+
+// GOOD: Make one change, test, then proceed
+// Commit 1: Fix bug A
+// Commit 2: Add feature B (if needed)
+// Commit 3: Refactor function C (if needed)
+// ... etc
+```
+
+## Change Process Checklist
+
+Before making any code change, ask:
+
+1. ✅ **Root Cause Identified?** - Do I understand why the problem exists?
+2. ✅ **Minimal Scope?** - Is this the smallest change that fixes it?
+3. ✅ **Systematic?** - Have I followed a clear process?
+4. ✅ **No Over-Engineering?** - Am I adding unnecessary complexity?
+5. ✅ **Incremental?** - Can this be broken into smaller steps?
+6. ✅ **Tested?** - Will I verify the change works?
+
+## Examples
+
+### ❌ BAD: Large Refactoring to Fix Small Bug
+
+```
+Problem: Function returns wrong value in edge case
+Solution: Rewrite entire class with new design patterns, add 5 new helper classes
+```
+
+### ✅ GOOD: Targeted Fix
+
+```
+Problem: Function returns wrong value in edge case
+Solution: Fix the specific condition that causes wrong return value (2-3 lines)
+```
+
+### ❌ BAD: Adding Infrastructure for Simple Problem
+
+```
+Problem: Need to log error message
+Solution: Create logging framework, add configuration system, dependency injection
+```
+
+### ✅ GOOD: Use Existing Infrastructure
+
+```
+Problem: Need to log error message
+Solution: Use existing logger (1 line)
+```
+
+### ❌ BAD: Multiple Unrelated Changes
+
+```
+Problem: Fix null pointer bug
+Solution: Fix null pointer + add new feature + refactor unrelated code + optimize
+```
+
+### ✅ GOOD: Single Focused Change
+
+```
+Problem: Fix null pointer bug
+Solution: Add null check (2-3 lines)
+```
+
+## When Larger Changes Are Acceptable
+
+Larger changes are acceptable **only** when:
+- Explicitly requested by the user
+- Part of a planned refactoring task
+- Required to fix architectural issues (not just bugs)
+- Necessary for performance improvements that cannot be achieved incrementally
+
+Even in these cases, still:
+- Understand root cause first
+- Make changes systematically
+- Test incrementally
+- Document why larger change was necessary
+
+## Summary
+
+**Remember: The best fix is the smallest fix that solves the problem.**
+
+- 🔍 **Investigate** before changing
+- 🎯 **Target** the minimal scope
+- 📋 **Follow** a systematic process
+- 🚫 **Avoid** unnecessary complexity
+- ✅ **Test** each change incrementally
