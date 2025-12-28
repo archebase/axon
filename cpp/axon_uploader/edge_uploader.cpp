@@ -154,12 +154,10 @@ void EdgeUploader::start() {
     // LCOV_EXCL_BR_STOP
 
     // Fallback: reconstruct from components if s3_key is missing
-    // LCOV_EXCL_BR_START - exception safety branches for string concatenation
     if (item.s3_key_prefix.empty() && !record.factory_id.empty() && !record.device_id.empty()) {
       item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString(); // LCOV_EXCL_BR_LINE
       AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path); // LCOV_EXCL_BR_LINE
     }
-    // LCOV_EXCL_BR_STOP
 
     // Reset status to pending for re-upload
     state_manager_->updateStatus(record.file_path, UploadStatus::PENDING); // LCOV_EXCL_BR_LINE
