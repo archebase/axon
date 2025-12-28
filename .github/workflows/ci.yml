@@ -20,21 +20,30 @@
 #         ┌───────────────┼───────────────┐
 #         │               │               │
 #         ▼               ▼               ▼
-#   ┌──────────┐   ┌──────────┐   ┌───────────────┐
-#   │ ROS Tests │   │ E2E     │   │ C++ Integr.   │
-#   │ (unit+   │   │ Tests    │   │ Tests +cov    │
-#   │ integ.)  │   │ +cov     │   │               │
-#   │ +cov     │   │          │   │               │
-#   └──────────┘   └──────────┘   └───────────────┘
-#         │               │               │
-#         └───────────────┼───────────────┘
-#                         │
-#                         ▼
-#                 ┌───────────────┐
-#                 │    Merge      │  (Merge all coverage)
-#                 │   Coverage    │
-#                 │   → Codecov   │
-#                 └───────────────┘
+#   ┌───────────────┐   ┌───────────────┐
+#   │ Build Images  │   │ C++ Integr.   │
+#   │ (shared,      │   │ Tests +cov    │
+#   │  4 distros)   │   │               │
+#   └───────┬───────┘   └───────────────┘
+#           │
+#      ┌────┴────┐
+#      │         │
+#      ▼         ▼
+#   ┌──────────┐   ┌──────────┐
+#   │ ROS Tests │   │ E2E     │
+#   │ (unit+   │   │ Tests    │
+#   │ integ.)  │   │ +cov     │
+#   │ +cov     │   │          │
+#   └──────────┘   └──────────┘
+#         │               │
+#         └───────┬───────┘
+#                 │
+#                 ▼
+#         ┌───────────────┐
+#         │    Merge      │  (Merge all coverage)
+#         │   Coverage    │
+#         │   → Codecov   │
+#         └───────────────┘
 #
 # =============================================================================
 
@@ -59,6 +68,15 @@ permissions:
 
 jobs:
   # ===========================================================================
+  # Stage 0: Build Docker Images (shared for ROS and E2E tests)
+  # Builds all ROS distributions once, used by both tests-ros and e2e-tests
+  # ===========================================================================
+  build-images:
+    name: Build Images
+    uses: ./.github/workflows/docker-build.yml
+    secrets: inherit
+
+  # ===========================================================================
   # Stage 1: C++ Unit Tests (runs first)
   # ===========================================================================
   unit-tests-cpp:
@@ -69,16 +87,17 @@ jobs:
   # ===========================================================================
   # Stage 2: ROS Tests and E2E Tests (run in parallel after unit tests)
   # ROS tests include both unit and integration tests
+  # Note: These depend on build-images but only pull pre-built images
   # ===========================================================================
   tests-ros:
     name: ROS Tests
-    needs: [unit-tests-cpp]
+    needs: [unit-tests-cpp, build-images]
     uses: ./.github/workflows/tests-ros.yml
     secrets: inherit
 
   e2e-tests:
     name: E2E Tests
-    needs: [unit-tests-cpp]
+    needs: [unit-tests-cpp, build-images]
     uses: ./.github/workflows/e2e-tests.yml
     secrets: inherit
 
