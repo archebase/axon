@@ -84,9 +84,15 @@ struct FileUploadResult {
   bool is_retryable;
   std::string error_message;
 
-  static FileUploadResult ok() { return {true, false, ""}; }
+  static FileUploadResult ok() {
+    // LCOV_EXCL_BR_START - Aggregate initialization generates exception-safety branches
+    return {true, false, ""};
+    // LCOV_EXCL_BR_STOP
+  }
   static FileUploadResult fail(const std::string& error, bool retryable) {
+    // LCOV_EXCL_BR_START - Aggregate initialization generates exception-safety branches
     return {false, retryable, error};
+    // LCOV_EXCL_BR_STOP
   }
 };
 

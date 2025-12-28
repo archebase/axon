@@ -101,7 +101,7 @@ TEST_F(McapValidatorMockedTest, HeaderPartialRead) {
 }
 
 TEST_F(McapValidatorMockedTest, HeaderCannotOpenFile) {
-  // Test file cannot be opened
+  // Test file cannot be opened 
   EXPECT_CALL(*mock_filesystem_, exists(test_path_)).WillOnce(Return(true));
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_path_, std::ios::binary))
       .WillOnce(Return(ByMove(std::unique_ptr<IFileStream>())));  // Factory returns nullptr (open failed)
@@ -109,6 +109,7 @@ TEST_F(McapValidatorMockedTest, HeaderCannotOpenFile) {
   auto result = validateMcapHeaderImpl(test_path_, *mock_filesystem_, *mock_stream_factory_);
   EXPECT_FALSE(result.valid);
   EXPECT_NE(result.error_message.find("Cannot open"), std::string::npos);
+  EXPECT_NE(result.error_message.find(test_path_), std::string::npos);  // Verify path is in error message
 }
 
 // =============================================================================
@@ -189,12 +190,24 @@ TEST_F(McapValidatorMockedTest, FooterPartialRead) {
   EXPECT_NE(result.error_message.find("read"), std::string::npos);
 }
 
+TEST_F(McapValidatorMockedTest, FooterCannotOpenFile) {
+  // Test file cannot be opened during footer validation
+  EXPECT_CALL(*mock_filesystem_, exists(test_path_)).WillOnce(Return(true));
+  EXPECT_CALL(*mock_filesystem_, file_size(test_path_)).WillOnce(Return(1000));  // Large enough
+  EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_path_, std::ios::binary))
+      .WillOnce(Return(ByMove(std::unique_ptr<IFileStream>())));  // Factory returns nullptr (open failed)
+  
+  auto result = validateMcapFooterImpl(test_path_, *mock_filesystem_, *mock_stream_factory_);
+  EXPECT_FALSE(result.valid);
+  EXPECT_NE(result.error_message.find("Cannot open"), std::string::npos);
+}
+
 // =============================================================================
 // Filesystem Error Tests
 // =============================================================================
 
 TEST_F(McapValidatorMockedTest, HeaderFileNotFound) {
-  // Test file not found error - covers branch 1 on line 62 (!filesystem.exists(path) == true)
+  // Test file not found error
   EXPECT_CALL(*mock_filesystem_, exists(test_path_)).WillOnce(Return(false));
   
   auto result = validateMcapHeaderImpl(test_path_, *mock_filesystem_, *mock_stream_factory_);

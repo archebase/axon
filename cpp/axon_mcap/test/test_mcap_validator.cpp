@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "mcap_validator.hpp"
+#include "mcap_validator_impl.hpp"
 #include "mcap_writer_wrapper.hpp"
 
 namespace fs = std::filesystem;
@@ -358,6 +359,75 @@ TEST_F(McapValidatorTest, ResultFailure) {
   EXPECT_FALSE(result.valid);
   EXPECT_EQ(result.error_message, "Test error message");
   EXPECT_FALSE(static_cast<bool>(result));
+}
+
+// =============================================================================
+// FileStreamImpl Implementation Tests
+// =============================================================================
+
+TEST_F(McapValidatorTest, FileStreamImpl_FailMethod) {
+  // Create a small test file
+  std::string test_file = test_dir_ + "/test_fail.mcap";
+  std::ofstream out(test_file, std::ios::binary);
+  out.write("test", 4);
+  out.close();
+
+  // Create FileStreamImpl and read past EOF to trigger fail state
+  FileStreamImpl stream(test_file, std::ios::binary);
+  
+  // Initially should be good
+  EXPECT_TRUE(stream.good());
+  EXPECT_FALSE(stream.fail());
+  EXPECT_FALSE(stream.bad());
+  
+  // Read past EOF to trigger fail state
+  char buffer[100];
+  stream.read(buffer, 100);  // Try to read more than file size
+  
+  // After reading past EOF, fail() should be true
+  EXPECT_TRUE(stream.fail());
+  EXPECT_FALSE(stream.good());
+  // bad() might be false even when fail() is true (fail is recoverable)
+  EXPECT_FALSE(stream.bad());
+}
+
+TEST_F(McapValidatorTest, FileStreamImpl_BadMethod) {
+  // Create a test file
+  std::string test_file = test_dir_ + "/test_bad.mcap";
+  std::ofstream out(test_file, std::ios::binary);
+  out.write("test", 4);
+  out.close();
+
+  // Create FileStreamImpl
+  FileStreamImpl stream(test_file, std::ios::binary);
+  
+  // For a valid stream, bad() should be false
+  EXPECT_FALSE(stream.bad());
+  EXPECT_TRUE(stream.good());
+  EXPECT_FALSE(stream.fail());
+}
+
+TEST_F(McapValidatorTest, FileStreamImpl_GoodState) {
+  // Create a test file
+  std::string test_file = test_dir_ + "/test_good.mcap";
+  std::ofstream out(test_file, std::ios::binary);
+  out.write("test", 4);
+  out.close();
+
+  // Create FileStreamImpl
+  FileStreamImpl stream(test_file, std::ios::binary);
+  
+  // All state methods should reflect good state
+  EXPECT_TRUE(stream.good());
+  EXPECT_FALSE(stream.fail());
+  EXPECT_FALSE(stream.bad());
+  
+  // Read some data (should still be good)
+  char buffer[4];
+  stream.read(buffer, 4);
+  EXPECT_TRUE(stream.good());
+  EXPECT_FALSE(stream.fail());
+  EXPECT_FALSE(stream.bad());
 }
 
 // =============================================================================

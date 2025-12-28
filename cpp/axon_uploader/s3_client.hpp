@@ -55,13 +55,17 @@ struct UploadResult {
   bool is_retryable;          // True for transient errors
 
   static UploadResult Success(const std::string& etag, const std::string& version_id = "") {
+    // LCOV_EXCL_BR_START - Aggregate initialization generates exception-safety branches
     return {true, etag, version_id, "", "", false};
+    // LCOV_EXCL_BR_STOP
   }
 
   static UploadResult Failure(
       const std::string& message, const std::string& code = "", bool retryable = false
   ) {
+    // LCOV_EXCL_BR_START - Aggregate initialization generates exception-safety branches
     return {false, "", "", message, code, retryable};
+    // LCOV_EXCL_BR_STOP
   }
 };
 
