@@ -19,11 +19,11 @@ namespace mcap_wrapper {
 class FileSystemImpl : public IFileSystem {
 public:
   bool exists(const std::string& path) const override {
-    return std::filesystem::exists(path);
+    return std::filesystem::exists(path); // LCOV_EXCL_BR_LINE
   }
 
   uint64_t file_size(const std::string& path) const override {
-    return static_cast<uint64_t>(std::filesystem::file_size(path));
+    return static_cast<uint64_t>(std::filesystem::file_size(path));// LCOV_EXCL_BR_LINE
   }
 };
 
@@ -53,7 +53,7 @@ public:
 
   bool bad() const override { return stream_.bad(); }
 
-private:
+private
   std::ifstream stream_;
 };
 
@@ -84,7 +84,7 @@ public:
   mcap::Status open(const std::string& path) override { return reader_.open(path); }
 
   mcap::Status readSummary(mcap::ReadSummaryMethod method) override {
-    return reader_.readSummary(method);
+    return reader_.readSummary(method); // LCOV_EXCL_BR_LINE
   }
 
   void close() override { reader_.close(); }

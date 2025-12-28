@@ -152,8 +152,11 @@ public:
 
     // Configure retry strategy
     // This controls AWS SDK's internal retries (separate from EdgeUploader's retry logic)
+    // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
+    // that are standard library implementation details
     client_config.retryStrategy = std::make_shared<Aws::Client::DefaultRetryStrategy>(
         config.max_sdk_retries);
+    // LCOV_EXCL_BR_STOP
 
     // Create credentials
     Aws::Auth::AWSCredentials credentials(config.access_key, config.secret_key);
@@ -168,16 +171,22 @@ public:
     bool use_virtual_addressing = config.endpoint_url.empty();
 
     // Create S3 client
+    // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
+    // that are standard library implementation details
     client = std::make_shared<Aws::S3::S3Client>(
         credentials,
         client_config,
         Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
         use_virtual_addressing  // false for MinIO (path style), true for AWS S3 (virtual hosted)
     );
+    // LCOV_EXCL_BR_STOP
 
     // Create thread pool executor for TransferManager
+    // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
+    // that are standard library implementation details
     executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
         "S3Executor", config.executor_thread_count);
+    // LCOV_EXCL_BR_STOP
 
     // Configure TransferManager for multipart uploads
     Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get());
@@ -277,10 +286,12 @@ UploadResult S3Client::uploadFile(
   }
 
   // Convert metadata to AWS format
+  // LCOV_EXCL_BR_START - String map operations generate exception-safety branches
   Aws::Map<Aws::String, Aws::String> aws_metadata;
   for (const auto& [key, value] : metadata) {
     aws_metadata[key] = value;
   }
+  // LCOV_EXCL_BR_STOP
 
   // Create upload handle using TransferManager
   // TransferManager automatically uses multipart upload for files > 5MB
@@ -352,7 +363,8 @@ UploadResult S3Client::uploadFile(
     }
     std::string error_msg = error.GetMessage();
     if (error_msg.empty()) {
-      error_msg = "Transfer failed with status: " + std::to_string(static_cast<int>(status));  // LCOV_EXCL_BR_LINE
+      // LCOV_EXCL_BR_LINE - String concatenation
+      error_msg = "Transfer failed with status: " + std::to_string(static_cast<int>(status));
     }
     bool retryable = isRetryableError(error_code) || error.ShouldRetry();
 

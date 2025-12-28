@@ -80,6 +80,7 @@ FileUploadResult uploadSingleFileImpl(
   // Check file exists
   // LCOV_EXCL_BR_START - File existence check is a common operation
   if (!filesystem.exists(local_path)) {
+    // LCOV_EXCL_BR_LINE - String concatenation
     std::string error_msg = "File not found: " + local_path;  
     AXON_LOG_ERROR(error_msg);
     return FileUploadResult::fail(error_msg, false);  // Not retryable
@@ -152,7 +153,7 @@ void EdgeUploader::start() {
     // Fallback: reconstruct from components if s3_key is missing
     if (item.s3_key_prefix.empty() && !record.factory_id.empty() && !record.device_id.empty()) {
       item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString();  // LCOV_EXCL_BR_LINE
-      AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path);
+      AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path); // LCOV_EXCL_BR_LINE
     }
 
     // Reset status to pending for re-upload
