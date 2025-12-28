@@ -76,6 +76,9 @@ void WorkerThreadPool::remove_topic_worker(const std::string& topic) {
 
 bool WorkerThreadPool::try_push(const std::string& topic, MessageItem&& item) {
   // Use shared_lock for concurrent read access - reduces lock contention
+  // IMPORTANT: Hold lock throughout push to prevent race with remove_topic_worker.
+  // Early unlock would allow remove_topic_worker to erase topic, stop worker, and
+  // drain queue before our push completes - causing silent message loss.
   std::shared_lock<std::shared_mutex> lock(contexts_mutex_);
 
   auto it = topic_contexts_.find(topic);
@@ -83,11 +86,7 @@ bool WorkerThreadPool::try_push(const std::string& topic, MessageItem&& item) {
     return false;
   }
 
-  // Get shared_ptr to context - safe even if context is removed after we release lock
   auto context = it->second;
-
-  // Release lock before queue operations to minimize contention
-  lock.unlock();
 
   context->stats.received.fetch_add(1, std::memory_order_relaxed);
 
