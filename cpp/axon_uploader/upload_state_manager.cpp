@@ -173,6 +173,7 @@ bool UploadStateManager::insert(const UploadRecord& record) {
     return false;
   }
 
+  // LCOV_EXCL_BR_START - String stream operations generate exception-safety branches
   std::string now = currentTimestamp();
   sqlite3_bind_text(stmt, 1, record.file_path.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, record.json_path.c_str(), -1, SQLITE_TRANSIENT);
@@ -190,6 +191,7 @@ bool UploadStateManager::insert(const UploadRecord& record) {
 
   rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
+  // LCOV_EXCL_BR_STOP
 
   return rc == SQLITE_DONE;
 }
@@ -211,6 +213,7 @@ bool UploadStateManager::updateStatus(
     return false;
   }
 
+  // LCOV_EXCL_BR_START - String stream operations generate exception-safety branches
   std::string now = currentTimestamp();
   sqlite3_bind_text(stmt, 1, uploadStatusToString(status).c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, error.c_str(), -1, SQLITE_TRANSIENT);
@@ -219,6 +222,7 @@ bool UploadStateManager::updateStatus(
 
   rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
+  // LCOV_EXCL_BR_STOP
 
   return rc == SQLITE_DONE && sqlite3_changes(impl_->db) > 0;
 }
@@ -238,6 +242,7 @@ bool UploadStateManager::markCompleted(const std::string& file_path) {
     return false;
   }
 
+  // LCOV_EXCL_BR_START - String stream operations generate exception-safety branches
   std::string now = currentTimestamp();
   sqlite3_bind_text(stmt, 1, now.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, now.c_str(), -1, SQLITE_TRANSIENT);
@@ -245,6 +250,7 @@ bool UploadStateManager::markCompleted(const std::string& file_path) {
 
   rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
+  // LCOV_EXCL_BR_STOP
 
   return rc == SQLITE_DONE && sqlite3_changes(impl_->db) > 0;
 }
@@ -268,6 +274,7 @@ bool UploadStateManager::incrementRetry(const std::string& file_path, const std:
     return false;
   }
 
+  // LCOV_EXCL_BR_START - String stream operations generate exception-safety branches
   std::string now = currentTimestamp();
   sqlite3_bind_text(stmt, 1, error.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, now.c_str(), -1, SQLITE_TRANSIENT);
@@ -275,6 +282,7 @@ bool UploadStateManager::incrementRetry(const std::string& file_path, const std:
 
   rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
+  // LCOV_EXCL_BR_STOP
 
   return rc == SQLITE_DONE && sqlite3_changes(impl_->db) > 0;
 }

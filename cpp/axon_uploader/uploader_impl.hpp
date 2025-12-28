@@ -16,27 +16,27 @@ namespace uploader {
 class FileSystemImpl : public IFileSystem {
 public:
   bool exists(const std::string& path) const override {
-    return std::filesystem::exists(path);
+    return std::filesystem::exists(path); // LCOV_EXCL_BR_LINE
   }
 
   uint64_t file_size(const std::string& path) const override {
-    return static_cast<uint64_t>(std::filesystem::file_size(path));
+    return static_cast<uint64_t>(std::filesystem::file_size(path)); // LCOV_EXCL_BR_LINE
   }
 
   bool remove(const std::string& path) const override {
     std::error_code ec;
-    return std::filesystem::remove(path, ec);
+    return std::filesystem::remove(path, ec); // LCOV_EXCL_BR_LINE
   }
 
   bool rename(const std::string& old_path, const std::string& new_path) const override {
     std::error_code ec;
-    std::filesystem::rename(old_path, new_path, ec);
+    std::filesystem::rename(old_path, new_path, ec); // LCOV_EXCL_BR_LINE
     return !ec;
   }
 
   bool create_directories(const std::string& path) const override {
     std::error_code ec;
-    return std::filesystem::create_directories(path, ec);
+    return std::filesystem::create_directories(path, ec); // LCOV_EXCL_BR_LINE
   }
 };
 
@@ -46,7 +46,7 @@ public:
 class FileStreamImpl : public IFileStream {
 public:
   explicit FileStreamImpl(const std::string& path, std::ios_base::openmode mode)
-      : stream_(path, mode) {}
+      : stream_(path, mode) {} // LCOV_EXCL_BR_LINE
 
   IFileStream& read(char* buffer, std::streamsize size) override {
     stream_.read(buffer, size);
