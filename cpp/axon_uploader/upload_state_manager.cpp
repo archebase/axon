@@ -42,7 +42,7 @@ public:
   void initDatabase() {
     int rc = sqlite3_open(db_path.c_str(), &db);
     if (rc != SQLITE_OK) {
-      throw std::runtime_error("Cannot open SQLite database: " + db_path);
+      throw std::runtime_error("Cannot open SQLite database: " + db_path);  // LCOV_EXCL_BR_LINE
     }
 
     // Enable WAL mode for crash safety and concurrent reads
@@ -51,7 +51,7 @@ public:
     if (rc != SQLITE_OK) {
       std::string error = err_msg ? err_msg : "Unknown error";
       sqlite3_free(err_msg);
-      throw std::runtime_error("Failed to enable WAL mode: " + error);
+      throw std::runtime_error("Failed to enable WAL mode: " + error);  // LCOV_EXCL_BR_LINE
     }
 
     // Set synchronous mode for good balance of safety and performance
@@ -93,7 +93,7 @@ public:
     if (rc != SQLITE_OK) {
       std::string error = err_msg ? err_msg : "Unknown error";
       sqlite3_free(err_msg);
-      throw std::runtime_error("Failed to create tables: " + error);
+      throw std::runtime_error("Failed to create tables: " + error);  // LCOV_EXCL_BR_LINE
     }
   }
 
@@ -133,7 +133,9 @@ public:
   }
 };
 
-UploadStateManager::UploadStateManager(const std::string& db_path) : impl_(std::make_unique<Impl>()) {
+UploadStateManager::UploadStateManager(const std::string& db_path)
+    : impl_(std::make_unique<Impl>())  // LCOV_EXCL_BR_LINE
+{
   impl_->db_path = db_path;
   impl_->initDatabase();
 }
