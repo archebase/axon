@@ -1,16 +1,18 @@
 #ifndef AXON_LOG_MACROS_HPP
 #define AXON_LOG_MACROS_HPP
 
-#include "axon_log_severity.hpp"
-#include <boost/log/sources/severity_logger.hpp>
-#include <boost/log/sources/record_ostream.hpp>
-#include <boost/log/attributes/scoped_attribute.hpp>
 #include <boost/log/attributes/constant.hpp>
 #include <boost/log/attributes/named_scope.hpp>
+#include <boost/log/attributes/scoped_attribute.hpp>
+#include <boost/log/sources/record_ostream.hpp>
+#include <boost/log/sources/severity_logger.hpp>
+
 #include <atomic>
 #include <chrono>
 #include <mutex>
 #include <sstream>
+
+#include "axon_log_severity.hpp"
 
 namespace axon {
 namespace logging {
@@ -31,24 +33,24 @@ logger_type& get_logger();
  */
 template<typename T>
 inline std::string kv(const char* name, const T& value) {
-    std::ostringstream oss;
-    oss << " " << name << "=" << value;
-    return oss.str();
+  std::ostringstream oss;
+  oss << " " << name << "=" << value;
+  return oss.str();
 }
 
 // Specialization for std::string to add quotes
 template<>
 inline std::string kv(const char* name, const std::string& value) {
-    std::ostringstream oss;
-    oss << " " << name << "=\"" << value << "\"";
-    return oss.str();
+  std::ostringstream oss;
+  oss << " " << name << "=\"" << value << "\"";
+  return oss.str();
 }
 
 // Specialization for const char* to add quotes
 inline std::string kv(const char* name, const char* value) {
-    std::ostringstream oss;
-    oss << " " << name << "=\"" << value << "\"";
-    return oss.str();
+  std::ostringstream oss;
+  oss << " " << name << "=\"" << value << "\"";
+  return oss.str();
 }
 
 }  // namespace logging
@@ -88,36 +90,36 @@ inline std::string kv(const char* name, const char* value) {
 // =============================================================================
 
 #define AXON_LOG_DEBUG(msg) \
-    do { \
-        if (AXON_LOG_ENABLE_DEBUG) { \
-            BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::debug) \
-                << "[" << AXON_LOG_COMPONENT << "] " << msg; \
-        } \
-    } while(0)
+  do { \
+    if (AXON_LOG_ENABLE_DEBUG) { \
+      BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::debug) \
+        << "[" << AXON_LOG_COMPONENT << "] " << msg; \
+    } \
+  } while (0)
 
 #define AXON_LOG_INFO(msg) \
-    do { \
-        BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::info) \
-            << "[" << AXON_LOG_COMPONENT << "] " << msg; \
-    } while(0)
+  do { \
+    BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::info) \
+      << "[" << AXON_LOG_COMPONENT << "] " << msg; \
+  } while (0)
 
 #define AXON_LOG_WARN(msg) \
-    do { \
-        BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::warn) \
-            << "[" << AXON_LOG_COMPONENT << "] " << msg; \
-    } while(0)
+  do { \
+    BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::warn) \
+      << "[" << AXON_LOG_COMPONENT << "] " << msg; \
+  } while (0)
 
 #define AXON_LOG_ERROR(msg) \
-    do { \
-        BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::error) \
-            << "[" << AXON_LOG_COMPONENT << "] " << msg; \
-    } while(0)
+  do { \
+    BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::error) \
+      << "[" << AXON_LOG_COMPONENT << "] " << msg; \
+  } while (0)
 
 #define AXON_LOG_FATAL(msg) \
-    do { \
-        BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::fatal) \
-            << "[" << AXON_LOG_COMPONENT << "] " << msg; \
-    } while(0)
+  do { \
+    BOOST_LOG_SEV(::axon::logging::get_logger(), ::axon::logging::severity_level::fatal) \
+      << "[" << AXON_LOG_COMPONENT << "] " << msg; \
+  } while (0)
 
 // =============================================================================
 // Context management using scoped attributes
@@ -125,10 +127,12 @@ inline std::string kv(const char* name, const char* value) {
 // Context is automatically cleared when the scope exits
 // =============================================================================
 #define AXON_LOG_SCOPED_CONTEXT(task_id_val, device_id_val) \
-    BOOST_LOG_SCOPED_THREAD_ATTR("TaskID", \
-        boost::log::attributes::constant<std::string>(task_id_val)); \
-    BOOST_LOG_SCOPED_THREAD_ATTR("DeviceID", \
-        boost::log::attributes::constant<std::string>(device_id_val))
+  BOOST_LOG_SCOPED_THREAD_ATTR( \
+    "TaskID", boost::log::attributes::constant<std::string>(task_id_val) \
+  ); \
+  BOOST_LOG_SCOPED_THREAD_ATTR( \
+    "DeviceID", boost::log::attributes::constant<std::string>(device_id_val) \
+  )
 
 // =============================================================================
 // Count-based sampling macros: AXON_LOG_*_EVERY_N
@@ -140,36 +144,36 @@ inline std::string kv(const char* name, const char* value) {
 // =============================================================================
 
 #define AXON_LOG_DEBUG_EVERY_N(n, msg) \
-    do { \
-        static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((_axon_log_counter++ % (n)) == 0) { \
-            AXON_LOG_DEBUG(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::atomic<uint64_t> _axon_log_counter{0}; \
+    if ((_axon_log_counter++ % (n)) == 0) { \
+      AXON_LOG_DEBUG(msg); \
+    } \
+  } while (0)
 
 #define AXON_LOG_INFO_EVERY_N(n, msg) \
-    do { \
-        static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((_axon_log_counter++ % (n)) == 0) { \
-            AXON_LOG_INFO(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::atomic<uint64_t> _axon_log_counter{0}; \
+    if ((_axon_log_counter++ % (n)) == 0) { \
+      AXON_LOG_INFO(msg); \
+    } \
+  } while (0)
 
 #define AXON_LOG_WARN_EVERY_N(n, msg) \
-    do { \
-        static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((_axon_log_counter++ % (n)) == 0) { \
-            AXON_LOG_WARN(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::atomic<uint64_t> _axon_log_counter{0}; \
+    if ((_axon_log_counter++ % (n)) == 0) { \
+      AXON_LOG_WARN(msg); \
+    } \
+  } while (0)
 
 #define AXON_LOG_ERROR_EVERY_N(n, msg) \
-    do { \
-        static std::atomic<uint64_t> _axon_log_counter{0}; \
-        if ((_axon_log_counter++ % (n)) == 0) { \
-            AXON_LOG_ERROR(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::atomic<uint64_t> _axon_log_counter{0}; \
+    if ((_axon_log_counter++ % (n)) == 0) { \
+      AXON_LOG_ERROR(msg); \
+    } \
+  } while (0)
 
 // =============================================================================
 // Time-based throttling macros: AXON_LOG_*_THROTTLE
@@ -180,75 +184,75 @@ inline std::string kv(const char* name, const char* value) {
 // =============================================================================
 
 #define AXON_LOG_DEBUG_THROTTLE(interval_sec, msg) \
-    do { \
-        static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
-        static std::mutex _axon_throttle_mutex; \
-        auto _axon_now = std::chrono::steady_clock::now(); \
-        bool _axon_should_log = false; \
-        { \
-            std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
-            if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
-                _axon_last_log_time = _axon_now; \
-                _axon_should_log = true; \
-            } \
-        } \
-        if (_axon_should_log) { \
-            AXON_LOG_DEBUG(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
+    static std::mutex _axon_throttle_mutex; \
+    auto _axon_now = std::chrono::steady_clock::now(); \
+    bool _axon_should_log = false; \
+    { \
+      std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
+      if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
+        _axon_last_log_time = _axon_now; \
+        _axon_should_log = true; \
+      } \
+    } \
+    if (_axon_should_log) { \
+      AXON_LOG_DEBUG(msg); \
+    } \
+  } while (0)
 
 #define AXON_LOG_INFO_THROTTLE(interval_sec, msg) \
-    do { \
-        static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
-        static std::mutex _axon_throttle_mutex; \
-        auto _axon_now = std::chrono::steady_clock::now(); \
-        bool _axon_should_log = false; \
-        { \
-            std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
-            if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
-                _axon_last_log_time = _axon_now; \
-                _axon_should_log = true; \
-            } \
-        } \
-        if (_axon_should_log) { \
-            AXON_LOG_INFO(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
+    static std::mutex _axon_throttle_mutex; \
+    auto _axon_now = std::chrono::steady_clock::now(); \
+    bool _axon_should_log = false; \
+    { \
+      std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
+      if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
+        _axon_last_log_time = _axon_now; \
+        _axon_should_log = true; \
+      } \
+    } \
+    if (_axon_should_log) { \
+      AXON_LOG_INFO(msg); \
+    } \
+  } while (0)
 
 #define AXON_LOG_WARN_THROTTLE(interval_sec, msg) \
-    do { \
-        static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
-        static std::mutex _axon_throttle_mutex; \
-        auto _axon_now = std::chrono::steady_clock::now(); \
-        bool _axon_should_log = false; \
-        { \
-            std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
-            if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
-                _axon_last_log_time = _axon_now; \
-                _axon_should_log = true; \
-            } \
-        } \
-        if (_axon_should_log) { \
-            AXON_LOG_WARN(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
+    static std::mutex _axon_throttle_mutex; \
+    auto _axon_now = std::chrono::steady_clock::now(); \
+    bool _axon_should_log = false; \
+    { \
+      std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
+      if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
+        _axon_last_log_time = _axon_now; \
+        _axon_should_log = true; \
+      } \
+    } \
+    if (_axon_should_log) { \
+      AXON_LOG_WARN(msg); \
+    } \
+  } while (0)
 
 #define AXON_LOG_ERROR_THROTTLE(interval_sec, msg) \
-    do { \
-        static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
-        static std::mutex _axon_throttle_mutex; \
-        auto _axon_now = std::chrono::steady_clock::now(); \
-        bool _axon_should_log = false; \
-        { \
-            std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
-            if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
-                _axon_last_log_time = _axon_now; \
-                _axon_should_log = true; \
-            } \
-        } \
-        if (_axon_should_log) { \
-            AXON_LOG_ERROR(msg); \
-        } \
-    } while(0)
+  do { \
+    static std::chrono::steady_clock::time_point _axon_last_log_time{}; \
+    static std::mutex _axon_throttle_mutex; \
+    auto _axon_now = std::chrono::steady_clock::now(); \
+    bool _axon_should_log = false; \
+    { \
+      std::lock_guard<std::mutex> _axon_lock(_axon_throttle_mutex); \
+      if (_axon_now - _axon_last_log_time >= std::chrono::duration<double>(interval_sec)) { \
+        _axon_last_log_time = _axon_now; \
+        _axon_should_log = true; \
+      } \
+    } \
+    if (_axon_should_log) { \
+      AXON_LOG_ERROR(msg); \
+    } \
+  } while (0)
 
 #endif  // AXON_LOG_MACROS_HPP

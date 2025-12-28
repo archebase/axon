@@ -3,9 +3,12 @@
 namespace axon {
 namespace uploader {
 
-UploadQueue::UploadQueue(size_t capacity) : capacity_(capacity) {}
+UploadQueue::UploadQueue(size_t capacity)
+    : capacity_(capacity) {}
 
-UploadQueue::~UploadQueue() { shutdown(); }
+UploadQueue::~UploadQueue() {
+  shutdown();
+}
 
 bool UploadQueue::enqueue(UploadItem item) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -136,14 +139,18 @@ bool UploadQueue::empty() const {
   return main_queue_.empty() && retry_queue_.empty();
 }
 
-uint64_t UploadQueue::pending_bytes() const { return pending_bytes_.load(); }
+uint64_t UploadQueue::pending_bytes() const {
+  return pending_bytes_.load();
+}
 
 void UploadQueue::shutdown() {
   shutdown_ = true;
   cv_.notify_all();
 }
 
-bool UploadQueue::is_shutdown() const { return shutdown_.load(); }
+bool UploadQueue::is_shutdown() const {
+  return shutdown_.load();
+}
 
 void UploadQueue::process_retry_queue() {
   // Must be called with mutex held
@@ -166,4 +173,3 @@ void UploadQueue::process_retry_queue() {
 
 }  // namespace uploader
 }  // namespace axon
-

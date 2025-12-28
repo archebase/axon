@@ -63,8 +63,7 @@ void register_common_message_types() {
 
   // Sensor messages
   MessageFactory::register_message_type<sensor_msgs::msg::Image>("sensor_msgs/msg/Image");
-  MessageFactory::register_message_type<sensor_msgs::msg::PointCloud2>(
-    "sensor_msgs/msg/PointCloud2"
+  MessageFactory::register_message_type<sensor_msgs::msg::PointCloud2>("sensor_msgs/msg/PointCloud2"
   );
 
   // Navigation messages

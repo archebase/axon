@@ -18,8 +18,9 @@ RecordingSession::~RecordingSession() {
   }
 }
 
-bool RecordingSession::open(const std::string& path,
-                            const mcap_wrapper::McapWriterOptions& options) {
+bool RecordingSession::open(
+  const std::string& path, const mcap_wrapper::McapWriterOptions& options
+) {
   if (is_open()) {
     AXON_LOG_WARN("Already open, close first");
     return false;
@@ -116,8 +117,9 @@ void RecordingSession::flush() {
   }
 }
 
-uint16_t RecordingSession::register_schema(const std::string& name, const std::string& encoding,
-                                           const std::string& definition) {
+uint16_t RecordingSession::register_schema(
+  const std::string& name, const std::string& encoding, const std::string& definition
+) {
   if (!is_open()) {
     AXON_LOG_WARN("Cannot register schema, session not open");
     return 0;
@@ -178,13 +180,16 @@ uint16_t RecordingSession::register_channel(
   return channel_id;
 }
 
-bool RecordingSession::write(uint16_t channel_id, uint32_t sequence, uint64_t log_time_ns,
-                             uint64_t publish_time_ns, const uint8_t* data, size_t data_size) {
+bool RecordingSession::write(
+  uint16_t channel_id, uint32_t sequence, uint64_t log_time_ns, uint64_t publish_time_ns,
+  const uint8_t* data, size_t data_size
+) {
   if (!is_open()) {
     return false;
   }
 
-  bool success = writer_->write(channel_id, sequence, log_time_ns, publish_time_ns, data, data_size);
+  bool success =
+    writer_->write(channel_id, sequence, log_time_ns, publish_time_ns, data, data_size);
   if (success) {
     messages_written_.fetch_add(1, std::memory_order_relaxed);
   }
@@ -249,7 +254,9 @@ std::string RecordingSession::get_checksum() const {
   return metadata_injector_.get_checksum();
 }
 
-void RecordingSession::update_topic_stats(const std::string& topic, const std::string& message_type) {
+void RecordingSession::update_topic_stats(
+  const std::string& topic, const std::string& message_type
+) {
   std::lock_guard<std::mutex> lock(topic_stats_mutex_);
 
   // Increment message count for this topic
@@ -263,4 +270,3 @@ void RecordingSession::update_topic_stats(const std::string& topic, const std::s
 
 }  // namespace recorder
 }  // namespace axon
-

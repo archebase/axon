@@ -20,11 +20,10 @@ namespace uploader {
  * @return File size in bytes, or 0 on failure
  */
 uint64_t getFileSizeForUploadImpl(
-    const std::string& local_path, IFileStreamFactory& stream_factory
+  const std::string& local_path, IFileStreamFactory& stream_factory
 );
 
 }  // namespace uploader
 }  // namespace axon
 
 #endif  // AXON_S3_CLIENT_TEST_HELPERS_HPP
-

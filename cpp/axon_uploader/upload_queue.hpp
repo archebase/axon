@@ -31,23 +31,26 @@ struct UploadItem {
   std::chrono::steady_clock::time_point next_retry_at;
 
   // Default constructor
-  UploadItem() : file_size_bytes(0), retry_count(0), created_at(std::chrono::steady_clock::now()) {}
+  UploadItem()
+      : file_size_bytes(0)
+      , retry_count(0)
+      , created_at(std::chrono::steady_clock::now()) {}
 
   // Convenience constructor
   UploadItem(
-      const std::string& mcap, const std::string& json, const std::string& task,
-      const std::string& factory, const std::string& device, const std::string& checksum,
-      uint64_t size = 0
+    const std::string& mcap, const std::string& json, const std::string& task,
+    const std::string& factory, const std::string& device, const std::string& checksum,
+    uint64_t size = 0
   )
-      : mcap_path(mcap),
-        json_path(json),
-        task_id(task),
-        factory_id(factory),
-        device_id(device),
-        checksum_sha256(checksum),
-        file_size_bytes(size),
-        retry_count(0),
-        created_at(std::chrono::steady_clock::now()) {}
+      : mcap_path(mcap)
+      , json_path(json)
+      , task_id(task)
+      , factory_id(factory)
+      , device_id(device)
+      , checksum_sha256(checksum)
+      , file_size_bytes(size)
+      , retry_count(0)
+      , created_at(std::chrono::steady_clock::now()) {}
 };
 
 /**
@@ -177,4 +180,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_UPLOAD_QUEUE_HPP
-

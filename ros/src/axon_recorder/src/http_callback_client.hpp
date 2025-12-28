@@ -20,7 +20,7 @@ namespace recorder {
 struct StartCallbackPayload {
   std::string task_id;
   std::string device_id;
-  std::string status;  // "recording"
+  std::string status;      // "recording"
   std::string started_at;  // ISO8601 timestamp
   std::vector<std::string> topics;
 
@@ -43,8 +43,8 @@ struct CallbackMetadata {
 struct FinishCallbackPayload {
   std::string task_id;
   std::string device_id;
-  std::string status;  // "finished" or "cancelled"
-  std::string started_at;  // ISO8601 timestamp
+  std::string status;       // "finished" or "cancelled"
+  std::string started_at;   // ISO8601 timestamp
   std::string finished_at;  // ISO8601 timestamp
   double duration_sec;
   int64_t message_count;
@@ -53,7 +53,7 @@ struct FinishCallbackPayload {
   std::string sidecar_path;  // Path to the JSON sidecar file
   std::vector<std::string> topics;
   CallbackMetadata metadata;  // Task metadata summary
-  std::string error;  // Empty if no error
+  std::string error;          // Empty if no error
 
   std::string to_json() const;
 };
@@ -135,7 +135,9 @@ public:
   /**
    * Post start callback asynchronously (fire-and-forget with logging).
    */
-  void post_start_callback_async(const TaskConfig& task_config, const StartCallbackPayload& payload);
+  void post_start_callback_async(
+    const TaskConfig& task_config, const StartCallbackPayload& payload
+  );
 
   /**
    * Post finish callback asynchronously (fire-and-forget with logging).
@@ -176,4 +178,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_HTTP_CALLBACK_CLIENT_HPP
-

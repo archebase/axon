@@ -1,11 +1,6 @@
 #ifndef AXON_EDGE_UPLOADER_HPP
 #define AXON_EDGE_UPLOADER_HPP
 
-#include "retry_handler.hpp"
-#include "s3_client.hpp"
-#include "upload_queue.hpp"
-#include "upload_state_manager.hpp"
-
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -14,6 +9,11 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include "retry_handler.hpp"
+#include "s3_client.hpp"
+#include "upload_queue.hpp"
+#include "upload_state_manager.hpp"
 
 namespace axon {
 namespace uploader {
@@ -35,12 +35,12 @@ struct UploaderConfig {
   std::string state_db_path = "/var/lib/axon/uploader_state.db";
 
   // Cleanup policy
-  bool delete_after_upload = true;                         // Delete device copy after successful upload
-  std::string failed_uploads_dir = "/data/failed_uploads/"; // Move permanently failed files here
+  bool delete_after_upload = true;  // Delete device copy after successful upload
+  std::string failed_uploads_dir = "/data/failed_uploads/";  // Move permanently failed files here
 
   // Backpressure thresholds (bytes)
-  uint64_t warn_pending_bytes = 8ULL * 1024 * 1024 * 1024;   // 8GB - emit warning
-  uint64_t alert_pending_bytes = 20ULL * 1024 * 1024 * 1024; // 20GB - alert operator
+  uint64_t warn_pending_bytes = 8ULL * 1024 * 1024 * 1024;    // 8GB - emit warning
+  uint64_t alert_pending_bytes = 20ULL * 1024 * 1024 * 1024;  // 20GB - alert operator
 };
 
 /**
@@ -70,7 +70,8 @@ struct HealthStatus {
 /**
  * Callback for upload events
  */
-using UploadCallback = std::function<void(const std::string& task_id, bool success, const std::string& error)>;
+using UploadCallback =
+  std::function<void(const std::string& task_id, bool success, const std::string& error)>;
 
 /**
  * Result of a single file upload attempt (internal use)
@@ -169,8 +170,8 @@ public:
    * @param checksum_sha256 Pre-computed SHA-256 checksum
    */
   void enqueue(
-      const std::string& mcap_path, const std::string& json_path, const std::string& task_id,
-      const std::string& factory_id, const std::string& device_id, const std::string& checksum_sha256
+    const std::string& mcap_path, const std::string& json_path, const std::string& task_id,
+    const std::string& factory_id, const std::string& device_id, const std::string& checksum_sha256
   );
 
   /**
@@ -203,14 +204,13 @@ private:
   // Upload a single file (MCAP or JSON)
   // Returns result - caller (processItem) handles retry logic with complete item context
   FileUploadResult uploadSingleFile(
-      const std::string& local_path, const std::string& s3_key,
-      const std::string& checksum
+    const std::string& local_path, const std::string& s3_key, const std::string& checksum
   );
 
   // Construct S3 key from components
   std::string constructS3Key(
-      const std::string& factory_id, const std::string& device_id,
-      const std::string& task_id, const std::string& extension
+    const std::string& factory_id, const std::string& device_id, const std::string& task_id,
+    const std::string& extension
   );
 
   // Get current date string for S3 key
@@ -252,4 +252,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_EDGE_UPLOADER_HPP
-

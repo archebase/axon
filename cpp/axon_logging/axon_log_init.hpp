@@ -1,12 +1,14 @@
 #ifndef AXON_LOG_INIT_HPP
 #define AXON_LOG_INIT_HPP
 
-#include "axon_log_severity.hpp"
+#include <boost/log/sinks/sink.hpp>
+
+#include <optional>
+#include <string>
+
 #include "axon_console_sink.hpp"
 #include "axon_file_sink.hpp"
-#include <boost/log/sinks/sink.hpp>
-#include <string>
-#include <optional>
+#include "axon_log_severity.hpp"
 
 namespace axon {
 namespace logging {
@@ -17,21 +19,21 @@ namespace logging {
  * ROS sink is configured separately in ros/axon_recorder/.
  */
 struct LoggingConfig {
-    // Console sink
-    bool console_enabled = true;
-    bool console_colors = true;
-    severity_level console_level = severity_level::info;
-    
-    // File sink
-    bool file_enabled = true;
-    FileSinkConfig file_config;  // Uses FileSinkConfig defaults
-    severity_level file_level = severity_level::debug;
+  // Console sink
+  bool console_enabled = true;
+  bool console_colors = true;
+  severity_level console_level = severity_level::info;
+
+  // File sink
+  bool file_enabled = true;
+  FileSinkConfig file_config;  // Uses FileSinkConfig defaults
+  severity_level file_level = severity_level::debug;
 };
 
 /**
  * Parse a string to severity_level.
  * Accepts: "debug", "info", "warn", "warning", "error", "fatal" (case-insensitive)
- * 
+ *
  * @param level_str The string representation of the level
  * @return The parsed severity_level, or std::nullopt if invalid
  */
@@ -39,7 +41,7 @@ std::optional<severity_level> parse_severity_level(const std::string& level_str)
 
 /**
  * Apply environment variable overrides to a LoggingConfig.
- * 
+ *
  * Supported environment variables:
  *   AXON_LOG_LEVEL          - Global level (overrides both console and file)
  *   AXON_LOG_CONSOLE_LEVEL  - Console sink level
@@ -48,7 +50,7 @@ std::optional<severity_level> parse_severity_level(const std::string& level_str)
  *   AXON_LOG_FORMAT         - File format ("json" or "text")
  *   AXON_LOG_FILE_ENABLED   - Enable file logging ("true" or "false")
  *   AXON_LOG_CONSOLE_ENABLED - Enable console logging ("true" or "false")
- * 
+ *
  * @param config The configuration to modify (in-place)
  */
 void apply_env_overrides(LoggingConfig& config);
@@ -56,9 +58,9 @@ void apply_env_overrides(LoggingConfig& config);
 /**
  * Initialize core logging (console and file sinks).
  * Should be called once at application startup.
- * 
+ *
  * ROS sink should be added separately via add_sink() after ROS is initialized.
- * 
+ *
  * @param config Logging configuration
  */
 void init_logging(const LoggingConfig& config);
@@ -80,14 +82,14 @@ void shutdown_logging();
 /**
  * Add a custom sink to the logging core.
  * Use this to add ROS sink or other custom sinks.
- * 
+ *
  * @param sink The sink to add
  */
 void add_sink(boost::shared_ptr<boost::log::sinks::sink> sink);
 
 /**
  * Remove a sink from the logging core.
- * 
+ *
  * @param sink The sink to remove
  */
 void remove_sink(boost::shared_ptr<boost::log::sinks::sink> sink);
@@ -101,7 +103,7 @@ void flush_logging();
  * Reconfigure logging with new settings.
  * This shuts down existing sinks and reinitializes with the new config.
  * Environment variable overrides are applied automatically.
- * 
+ *
  * @param config New logging configuration
  */
 void reconfigure_logging(const LoggingConfig& config);

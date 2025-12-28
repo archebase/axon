@@ -37,8 +37,8 @@ public:
    * - timestamp_ns: Receive timestamp in nanoseconds
    * - data: Serialized message data (ownership transferred)
    */
-  using MessageCallback =
-    std::function<void(const std::string& topic, int64_t timestamp_ns, std::vector<uint8_t>&& data)>;
+  using MessageCallback = std::function<
+    void(const std::string& topic, int64_t timestamp_ns, std::vector<uint8_t>&& data)>;
 
   /**
    * Topic subscription info.
@@ -72,8 +72,10 @@ public:
    * @param config Optional subscription configuration
    * @return true if subscription was created successfully
    */
-  bool subscribe(const std::string& topic, const std::string& message_type, MessageCallback callback,
-                 const SubscriptionConfig& config = SubscriptionConfig::high_throughput());
+  bool subscribe(
+    const std::string& topic, const std::string& message_type, MessageCallback callback,
+    const SubscriptionConfig& config = SubscriptionConfig::high_throughput()
+  );
 
   /**
    * Unsubscribe from a specific topic.
@@ -129,4 +131,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_TOPIC_MANAGER_HPP
-

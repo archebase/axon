@@ -248,4 +248,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_STATE_MACHINE_HPP
-

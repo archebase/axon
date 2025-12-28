@@ -21,11 +21,7 @@ namespace mcap_wrapper {
 /**
  * Compression options for MCAP files
  */
-enum class Compression {
-  None,
-  Zstd,
-  Lz4
-};
+enum class Compression { None, Zstd, Lz4 };
 
 /**
  * Configuration options for MCAP writer

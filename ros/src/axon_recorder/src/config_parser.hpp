@@ -8,7 +8,11 @@
 #include <vector>
 
 // Forward declaration in global namespace
-namespace axon { namespace logging { struct LoggingConfig; } }
+namespace axon {
+namespace logging {
+struct LoggingConfig;
+}
+}  // namespace axon
 
 namespace axon {
 namespace recorder {
@@ -22,7 +26,7 @@ struct TopicConfig {
 
 struct DatasetConfig {
   std::string path;
-  std::string mode = "append";  // "create" or "append"
+  std::string mode = "append";                                           // "create" or "append"
   std::string stats_file_path = "/data/recordings/recorder_stats.json";  // Stats output file
 };
 
@@ -34,9 +38,9 @@ struct RecordingConfig {
  * S3 upload configuration for edge uploader
  */
 struct S3ConfigYaml {
-  std::string endpoint_url;             // S3-compatible endpoint (empty for AWS S3)
-  std::string bucket;                   // Bucket name (required when upload enabled)
-  std::string region = "us-east-1";     // AWS region
+  std::string endpoint_url;          // S3-compatible endpoint (empty for AWS S3)
+  std::string bucket;                // Bucket name (required when upload enabled)
+  std::string region = "us-east-1";  // AWS region
   bool use_ssl = true;
   bool verify_ssl = true;
 };
@@ -76,8 +80,8 @@ struct LoggingConfigYaml {
   bool console_enabled = true;
   bool console_colors = true;
   std::string console_level = "info";  // debug, info, warn, error, fatal
-  
-  // File sink  
+
+  // File sink
   bool file_enabled = false;
   std::string file_level = "debug";
   std::string file_directory = "/var/log/axon";
@@ -92,15 +96,16 @@ struct LoggingConfigYaml {
  * Convert LoggingConfigYaml to axon::logging::LoggingConfig.
  * This bridges the YAML parser output to the logging library input.
  */
-void convert_logging_config(const LoggingConfigYaml& yaml_config, 
-                             ::axon::logging::LoggingConfig& log_config);
+void convert_logging_config(
+  const LoggingConfigYaml& yaml_config, ::axon::logging::LoggingConfig& log_config
+);
 
 struct RecorderConfig {
   DatasetConfig dataset;
   std::vector<TopicConfig> topics;
   RecordingConfig recording;
-  LoggingConfigYaml logging;       // Logging configuration
-  UploadConfigYaml upload;         // Edge upload configuration
+  LoggingConfigYaml logging;  // Logging configuration
+  UploadConfigYaml upload;    // Edge upload configuration
 
   static RecorderConfig from_yaml(const std::string& yaml_path);
   static RecorderConfig from_yaml_string(const std::string& yaml_content);
@@ -132,7 +137,7 @@ public:
    * Validate configuration
    */
   static bool validate(const RecorderConfig& config, std::string& error_msg);
-  
+
   /**
    * Validate upload configuration when enabled
    */
@@ -150,4 +155,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_CONFIG_PARSER_HPP
-

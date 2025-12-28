@@ -5,8 +5,8 @@
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "config_parser"
-#include <axon_log_macros.hpp>
 #include <axon_log_init.hpp>
+#include <axon_log_macros.hpp>
 
 namespace axon {
 namespace recorder {
@@ -118,16 +118,18 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
     if (!config.validate()) {
       return false;
     }
-    
+
     // Validate upload config if enabled
     if (config.upload.enabled) {
       std::string error_msg;
       if (!validate_upload_config(config.upload, error_msg)) {
-        AXON_LOG_ERROR("Upload configuration validation failed" << ::axon::logging::kv("error", error_msg));
+        AXON_LOG_ERROR(
+          "Upload configuration validation failed" << ::axon::logging::kv("error", error_msg)
+        );
         return false;
       }
     }
-    
+
     return true;
   } catch (const YAML::Exception& e) {
     AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
@@ -225,7 +227,7 @@ bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfigYaml& logg
       logging.console_level = console["level"].as<std::string>();
     }
   }
-  
+
   // Parse file section
   if (node["file"]) {
     const auto& file = node["file"];
@@ -254,7 +256,7 @@ bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfigYaml& logg
       logging.rotate_at_midnight = file["rotate_at_midnight"].as<bool>();
     }
   }
-  
+
   return true;
 }
 
@@ -262,7 +264,7 @@ bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload
   if (node["enabled"]) {
     upload.enabled = node["enabled"].as<bool>();
   }
-  
+
   // Parse S3 section
   if (node["s3"]) {
     const auto& s3 = node["s3"];
@@ -282,7 +284,7 @@ bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload
       upload.s3.verify_ssl = s3["verify_ssl"].as<bool>();
     }
   }
-  
+
   // Parse retry section
   if (node["retry"]) {
     const auto& retry = node["retry"];
@@ -302,7 +304,7 @@ bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload
       upload.retry.jitter = retry["jitter"].as<bool>();
     }
   }
-  
+
   // Parse other upload settings
   if (node["num_workers"]) {
     upload.num_workers = node["num_workers"].as<int>();
@@ -322,7 +324,7 @@ bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload
   if (node["alert_pending_gb"]) {
     upload.alert_pending_gb = node["alert_pending_gb"].as<double>();
   }
-  
+
   return true;
 }
 
@@ -333,18 +335,18 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
       return false;
     }
   }
-  
+
   // Then validate basic config
   if (config.dataset.path.empty()) {
     error_msg = "Dataset path is empty";
     return false;
   }
-  
+
   if (config.topics.empty()) {
     error_msg = "No topics configured";
     return false;
   }
-  
+
   for (const auto& topic : config.topics) {
     if (topic.name.empty()) {
       error_msg = "Topic name is empty";
@@ -359,12 +361,12 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
       return false;
     }
   }
-  
+
   if (config.dataset.mode != "create" && config.dataset.mode != "append") {
     error_msg = "Dataset mode must be 'create' or 'append'";
     return false;
   }
-  
+
   return true;
 }
 
@@ -372,84 +374,84 @@ bool ConfigParser::validate_upload_config(const UploadConfigYaml& upload, std::s
   if (!upload.enabled) {
     return true;  // Nothing to validate if disabled
   }
-  
+
   // Validate S3 bucket (required)
   if (upload.s3.bucket.empty()) {
     error_msg = "Upload enabled but s3.bucket is not configured";
     return false;
   }
-  
+
   // Validate endpoint_url format if provided
   if (!upload.s3.endpoint_url.empty()) {
     // Basic URL validation - should start with http:// or https://
-    if (upload.s3.endpoint_url.find("http://") != 0 && 
-        upload.s3.endpoint_url.find("https://") != 0) {
+    if (upload.s3.endpoint_url.find("http://") != 0 && upload.s3.endpoint_url.find("https://") != 0) {
       error_msg = "Invalid s3.endpoint_url - must start with http:// or https://";
       return false;
     }
   }
-  
+
   // Validate num_workers
   if (upload.num_workers < 1 || upload.num_workers > 16) {
     error_msg = "Invalid num_workers - must be between 1 and 16";
     return false;
   }
-  
+
   // Validate retry configuration
   if (upload.retry.max_retries < 0 || upload.retry.max_retries > 100) {
     error_msg = "Invalid retry.max_retries - must be between 0 and 100";
     return false;
   }
-  
+
   if (upload.retry.initial_delay_ms < 0) {
     error_msg = "Invalid retry.initial_delay_ms - must be >= 0";
     return false;
   }
-  
+
   if (upload.retry.max_delay_ms < upload.retry.initial_delay_ms) {
     error_msg = "Invalid retry.max_delay_ms - must be >= initial_delay_ms";
     return false;
   }
-  
+
   // Validate backpressure thresholds
   if (upload.warn_pending_gb < 0 || upload.alert_pending_gb < 0) {
     error_msg = "Invalid backpressure thresholds - must be >= 0";
     return false;
   }
-  
+
   if (upload.alert_pending_gb < upload.warn_pending_gb) {
     error_msg = "Invalid backpressure thresholds - alert_pending_gb must be >= warn_pending_gb";
     return false;
   }
-  
+
   // Validate state_db_path is not empty
   if (upload.state_db_path.empty()) {
     error_msg = "Upload enabled but state_db_path is empty";
     return false;
   }
-  
+
   return true;
 }
 
-void convert_logging_config(const LoggingConfigYaml& yaml_config, 
-                             ::axon::logging::LoggingConfig& log_config) {
+void convert_logging_config(
+  const LoggingConfigYaml& yaml_config, ::axon::logging::LoggingConfig& log_config
+) {
   // Console settings
   log_config.console_enabled = yaml_config.console_enabled;
   log_config.console_colors = yaml_config.console_colors;
-  
+
   // Parse console level
   if (auto level = ::axon::logging::parse_severity_level(yaml_config.console_level)) {
     log_config.console_level = *level;
   }
-  
+
   // File settings
   log_config.file_enabled = yaml_config.file_enabled;
-  
+
   // Parse file level
   if (auto level = ::axon::logging::parse_severity_level(yaml_config.file_level)) {
     log_config.file_level = *level;
   }
-  
+
   // File sink config
   log_config.file_config.directory = yaml_config.file_directory;
   log_config.file_config.file_pattern = yaml_config.file_pattern;
@@ -461,4 +463,3 @@ void convert_logging_config(const LoggingConfigYaml& yaml_config,
 
 }  // namespace recorder
 }  // namespace axon
-

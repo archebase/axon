@@ -18,8 +18,8 @@
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "recorder_node"
-#include <axon_log_macros.hpp>
 #include <axon_log_init.hpp>
+#include <axon_log_macros.hpp>
 
 #if defined(AXON_ROS1)
 #include <ros/package.h>
@@ -90,8 +90,9 @@ RecorderNode::~RecorderNode() {
 void RecorderNode::setup_worker_pool() {
   // Worker pool is already initialized in constructor
   // This method sets up message handlers for each topic
-  ros_interface_->log_info("Worker pool configured with " + 
-                           std::to_string(worker_pool_->topic_count()) + " topics");
+  ros_interface_->log_info(
+    "Worker pool configured with " + std::to_string(worker_pool_->topic_count()) + " topics"
+  );
 }
 
 bool RecorderNode::initialize(int argc, char** argv) {
@@ -138,12 +139,12 @@ bool RecorderNode::initialize(int argc, char** argv, const RecorderConfig& confi
 
   // Use injected configuration (skip file loading)
   config_ = config;
-  
+
   if (!config_.validate()) {
     ros_interface_->log_error("Injected configuration is invalid");
     return false;
   }
-  
+
   ros_interface_->log_info("Using injected configuration: " + config_.to_string());
 
   // Complete common initialization
@@ -184,23 +185,22 @@ bool RecorderNode::complete_initialization() {
   // Initialize Edge Uploader if configured
   if (config_.upload.enabled) {
     uploader::UploaderConfig uploader_config;
-    
+
     // S3 configuration
     uploader_config.s3.endpoint_url = config_.upload.s3.endpoint_url;
     uploader_config.s3.bucket = config_.upload.s3.bucket;
     uploader_config.s3.region = config_.upload.s3.region;
     uploader_config.s3.use_ssl = config_.upload.s3.use_ssl;
     uploader_config.s3.verify_ssl = config_.upload.s3.verify_ssl;
-    
+
     // Retry configuration
     uploader_config.retry.max_retries = config_.upload.retry.max_retries;
-    uploader_config.retry.initial_delay = 
-        std::chrono::milliseconds(config_.upload.retry.initial_delay_ms);
-    uploader_config.retry.max_delay = 
-        std::chrono::milliseconds(config_.upload.retry.max_delay_ms);
+    uploader_config.retry.initial_delay =
+      std::chrono::milliseconds(config_.upload.retry.initial_delay_ms);
+    uploader_config.retry.max_delay = std::chrono::milliseconds(config_.upload.retry.max_delay_ms);
     uploader_config.retry.exponential_base = config_.upload.retry.exponential_base;
     uploader_config.retry.jitter = config_.upload.retry.jitter;
-    
+
     // Worker configuration
     uploader_config.num_workers = config_.upload.num_workers;
     uploader_config.state_db_path = config_.upload.state_db_path;
@@ -261,7 +261,9 @@ void RecorderNode::shutdown() {
   // Recording session already closed by stop_recording(), just reset
   if (recording_session_) {
     auto stats = recording_session_->get_stats();
-    AXON_LOG_INFO("Final recording stats" << axon::logging::kv("messages_written", stats.messages_written));
+    AXON_LOG_INFO(
+      "Final recording stats" << axon::logging::kv("messages_written", stats.messages_written)
+    );
   }
   recording_session_.reset();
 
@@ -392,11 +394,13 @@ bool RecorderNode::initialize_mcap_writer() {
 #endif
 
   options.compression = mcap_wrapper::Compression::Zstd;
-  options.compression_level = 3;   // Fast compression
+  options.compression_level = 3;         // Fast compression
   options.chunk_size = 4 * 1024 * 1024;  // 4MB chunks
 
   if (!recording_session_->open(output_path_, options)) {
-    ros_interface_->log_error("Failed to open recording session: " + recording_session_->get_last_error());
+    ros_interface_->log_error(
+      "Failed to open recording session: " + recording_session_->get_last_error()
+    );
     return false;
   }
 
@@ -466,8 +470,9 @@ bool RecorderNode::register_topic_schemas() {
     // Add QoS profile metadata for ROS 2 compatibility
     metadata["offered_qos_profiles"] = "- history: keep_last\n  depth: 10\n  reliability: reliable";
 
-    uint16_t channel_id =
-      recording_session_->register_channel(topic_config.name, message_encoding, schema_id, metadata);
+    uint16_t channel_id = recording_session_->register_channel(
+      topic_config.name, message_encoding, schema_id, metadata
+    );
 
     if (channel_id == 0) {
       ros_interface_->log_error("Failed to register channel for: " + topic_config.name);
@@ -501,19 +506,27 @@ void RecorderNode::setup_topic_recording(const TopicConfig& topic_config) {
   RecordingSession* session_ptr = recording_session_.get();
   const std::string& msg_type = topic_config.message_type;
 
-  WorkerThreadPool::MessageHandler handler = 
-    [session_ptr, channel_id, topic_name, msg_type](const std::string& topic, int64_t timestamp_ns,
-                              const uint8_t* data, size_t data_size, uint32_t sequence) -> bool {
-      bool success = session_ptr->write(channel_id, sequence, 
-                                static_cast<uint64_t>(timestamp_ns),
-                                static_cast<uint64_t>(timestamp_ns),  // publish_time = log_time
-                                data, data_size);
-      if (success) {
-        // Track topic stats for metadata injection
-        session_ptr->update_topic_stats(topic_name, msg_type);
-      }
-      return success;
-    };
+  WorkerThreadPool::MessageHandler handler = [session_ptr, channel_id, topic_name, msg_type](
+                                               const std::string& topic,
+                                               int64_t timestamp_ns,
+                                               const uint8_t* data,
+                                               size_t data_size,
+                                               uint32_t sequence
+                                             ) -> bool {
+    bool success = session_ptr->write(
+      channel_id,
+      sequence,
+      static_cast<uint64_t>(timestamp_ns),
+      static_cast<uint64_t>(timestamp_ns),  // publish_time = log_time
+      data,
+      data_size
+    );
+    if (success) {
+      // Track topic stats for metadata injection
+      session_ptr->update_topic_stats(topic_name, msg_type);
+    }
+    return success;
+  };
 
   if (!worker_pool_->create_topic_worker(topic_name, handler)) {
     ros_interface_->log_error("Failed to create worker for topic: " + topic_name);
@@ -537,8 +550,9 @@ void RecorderNode::setup_topic_recording(const TopicConfig& topic_config) {
   }
 
   // Callback routes messages to worker pool
-  TopicManager::MessageCallback callback = 
-    [this, topic_name](const std::string& topic, int64_t timestamp_ns, std::vector<uint8_t>&& data) {
+  TopicManager::MessageCallback callback =
+    [this,
+     topic_name](const std::string& topic, int64_t timestamp_ns, std::vector<uint8_t>&& data) {
       // Fast path: check recording state
       if (!is_actively_recording()) {
         return;
@@ -645,7 +659,8 @@ void RecorderNode::cancel_recording() {
   auto config_opt = task_config_cache_.get();
   if (config_opt && config_opt->has_callbacks()) {
     auto now = std::chrono::system_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - recording_start_time_);
+    auto duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - recording_start_time_);
 
     FinishCallbackPayload payload;
     payload.task_id = config_opt->task_id;
@@ -695,8 +710,8 @@ void RecorderNode::stop_recording() {
 
   // Get stats before closing (close will inject metadata and generate sidecar)
   auto aggregate_stats = worker_pool_->get_aggregate_stats();
-  auto session_stats = recording_session_ ? recording_session_->get_stats()
-                                          : RecordingSession::Stats{};
+  auto session_stats =
+    recording_session_ ? recording_session_->get_stats() : RecordingSession::Stats{};
 
   // Close recording session (this injects metadata and generates sidecar JSON)
   std::string sidecar_path;
@@ -724,12 +739,10 @@ void RecorderNode::stop_recording() {
             task_config_for_upload->device_id,
             checksum
         );
-        AXON_LOG_INFO("Recording queued for upload"
-                      << axon::logging::kv("task_id", task_config_for_upload->task_id)
-                      << axon::logging::kv("path", output_path_));
       } else {
-        AXON_LOG_ERROR("MCAP validation failed - skipping upload"
-                       << axon::logging::kv("path", output_path_));
+        AXON_LOG_ERROR(
+          "MCAP validation failed - skipping upload" << axon::logging::kv("path", output_path_)
+        );
         // Delete corrupt file
         std::filesystem::remove(output_path_);
         std::filesystem::remove(sidecar_path);
@@ -742,7 +755,8 @@ void RecorderNode::stop_recording() {
   auto config_opt = task_config_cache_.get();
   if (config_opt && config_opt->has_callbacks()) {
     auto now = std::chrono::system_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - recording_start_time_);
+    auto duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - recording_start_time_);
 
     FinishCallbackPayload payload;
     payload.task_id = config_opt->task_id;
@@ -837,20 +851,21 @@ double RecorderNode::get_recording_duration_sec() const {
 
 void RecorderNode::write_stats_file() {
   const std::string& stats_path = config_.dataset.stats_file_path;
-  
+
   // Create parent directory if it doesn't exist
   std::filesystem::path parent_dir = std::filesystem::path(stats_path).parent_path();
   if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
     std::error_code ec;
     std::filesystem::create_directories(parent_dir, ec);
     if (ec) {
-      AXON_LOG_WARN("Could not create stats directory" 
-                   << axon::logging::kv("path", parent_dir.string())
-                   << axon::logging::kv("error", ec.message()));
+      AXON_LOG_WARN(
+        "Could not create stats directory" << axon::logging::kv("path", parent_dir.string())
+                                           << axon::logging::kv("error", ec.message())
+      );
       return;
     }
   }
-  
+
   std::ofstream stats_file(stats_path);
   if (!stats_file.is_open()) {
     AXON_LOG_WARN("Could not write stats file" << axon::logging::kv("path", stats_path));
@@ -858,8 +873,8 @@ void RecorderNode::write_stats_file() {
   }
 
   auto stats = get_stats();
-  auto session_stats = recording_session_ ? recording_session_->get_stats()
-                                          : RecordingSession::Stats{};
+  auto session_stats =
+    recording_session_ ? recording_session_->get_stats() : RecordingSession::Stats{};
 
   // Also write per-topic statistics
   stats_file << "{\n"
@@ -880,9 +895,8 @@ void RecorderNode::write_stats_file() {
     first = false;
 
     auto topic_stats = worker_pool_->get_topic_stats(topic_name);
-    double topic_drop_rate = (topic_stats.received > 0) 
-                             ? (100.0 * topic_stats.dropped / topic_stats.received) 
-                             : 0.0;
+    double topic_drop_rate =
+      (topic_stats.received > 0) ? (100.0 * topic_stats.dropped / topic_stats.received) : 0.0;
 
     stats_file << "    \"" << topic_name << "\": {"
                << "\"received\": " << topic_stats.received << ", "
@@ -894,7 +908,12 @@ void RecorderNode::write_stats_file() {
   stats_file << "\n  }\n}\n";
   stats_file.close();
 
-  AXON_LOG_INFO("Stats written" << axon::logging::kv("received", stats.messages_received) << axon::logging::kv("dropped", stats.messages_dropped) << axon::logging::kv("written", stats.messages_written) << axon::logging::kv("drop_rate_percent", stats.drop_rate_percent));
+  AXON_LOG_INFO(
+    "Stats written" << axon::logging::kv("received", stats.messages_received)
+                    << axon::logging::kv("dropped", stats.messages_dropped)
+                    << axon::logging::kv("written", stats.messages_written)
+                    << axon::logging::kv("drop_rate_percent", stats.drop_rate_percent)
+  );
 }
 
 }  // namespace recorder

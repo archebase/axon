@@ -15,8 +15,8 @@ namespace uploader {
  * S3 configuration options
  */
 struct S3Config {
-  std::string endpoint_url;    // e.g., "https://play.min.io" or "https://s3.amazonaws.com"
-  std::string bucket;          // Bucket name
+  std::string endpoint_url;  // e.g., "https://play.min.io" or "https://s3.amazonaws.com"
+  std::string bucket;        // Bucket name
   std::string region = "us-east-1";
   bool use_ssl = true;
   bool verify_ssl = true;
@@ -61,7 +61,7 @@ struct UploadResult {
   }
 
   static UploadResult Failure(
-      const std::string& message, const std::string& code = "", bool retryable = false
+    const std::string& message, const std::string& code = "", bool retryable = false
   ) {
     // LCOV_EXCL_BR_START - Aggregate initialization generates exception-safety branches
     return {false, "", "", message, code, retryable};
@@ -123,8 +123,8 @@ public:
    * @return UploadResult with success/failure status
    */
   UploadResult uploadFile(
-      const std::string& local_path, const std::string& s3_key,
-      const std::map<std::string, std::string>& metadata = {}, ProgressCallback progress_cb = nullptr
+    const std::string& local_path, const std::string& s3_key,
+    const std::map<std::string, std::string>& metadata = {}, ProgressCallback progress_cb = nullptr
   );
 
   /**
@@ -183,4 +183,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_S3_CLIENT_HPP
-

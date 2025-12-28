@@ -116,7 +116,7 @@ public:
    * @return Unique pointer to the file stream, or nullptr on failure
    */
   virtual std::unique_ptr<IFileStream> create_file_stream(
-      const std::string& path, std::ios_base::openmode mode
+    const std::string& path, std::ios_base::openmode mode
   ) = 0;
 };
 
@@ -124,4 +124,3 @@ public:
 }  // namespace axon
 
 #endif  // AXON_UPLOADER_INTERFACES_HPP
-

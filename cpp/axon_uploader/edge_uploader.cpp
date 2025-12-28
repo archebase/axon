@@ -1,7 +1,5 @@
 #include "edge_uploader.hpp"
 
-#include "uploader_impl.hpp"
-
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
@@ -9,13 +7,17 @@
 #include <map>
 #include <sstream>
 
+#include "uploader_impl.hpp"
+
 // Logging infrastructure (optional - only if axon_logging is linked)
 #ifdef AXON_HAS_LOGGING
 #define AXON_LOG_COMPONENT "edge_uploader"
 #include <axon_log_macros.hpp>
 #else
 // Fallback to stderr when logging is not available
-#define AXON_LOG_DEBUG(msg) do {} while(0)
+#define AXON_LOG_DEBUG(msg) \
+  do { \
+  } while (0)
 #define AXON_LOG_INFO(msg) std::cerr << "[INFO] " << msg << std::endl
 #define AXON_LOG_WARN(msg) std::cerr << "[WARN] " << msg << std::endl
 #define AXON_LOG_ERROR(msg) std::cerr << "[ERROR] " << msg << std::endl
@@ -29,7 +31,7 @@ namespace uploader {
 // Internal implementation with dependency injection
 // Exposed for testing via edge_uploader_test_helpers.hpp
 bool validateFilesExistImpl(
-    const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
+  const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
 ) {
   if (!filesystem.exists(mcap_path)) {
     return false;
@@ -45,7 +47,7 @@ uint64_t getFileSizeImpl(const std::string& path, const IFileSystem& filesystem)
 }
 
 void cleanupLocalFilesImpl(
-    const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
+  const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
 ) {
   if (!mcap_path.empty() && filesystem.exists(mcap_path)) {
     filesystem.remove(mcap_path);
@@ -56,8 +58,8 @@ void cleanupLocalFilesImpl(
 }
 
 void moveToFailedDirImpl(
-    const std::string& mcap_path, const std::string& json_path,
-    const std::string& failed_dir, const IFileSystem& filesystem
+  const std::string& mcap_path, const std::string& json_path, const std::string& failed_dir,
+  const IFileSystem& filesystem
 ) {
   // Create failed directory if needed
   filesystem.create_directories(failed_dir);
@@ -74,8 +76,8 @@ void moveToFailedDirImpl(
 }
 
 FileUploadResult uploadSingleFileImpl(
-    const std::string& local_path, const std::string& s3_key, const std::string& checksum,
-    const IFileSystem& filesystem, S3Client* s3_client
+  const std::string& local_path, const std::string& s3_key, const std::string& checksum,
+  const IFileSystem& filesystem, S3Client* s3_client
 ) {
   // Check file exists
   // LCOV_EXCL_BR_START - File existence check is a common operation
@@ -120,7 +122,9 @@ EdgeUploader::EdgeUploader(const UploaderConfig& config)
       // LCOV_EXCL_BR_STOP
       last_successful_upload_(std::chrono::system_clock::now()) {}
 
-EdgeUploader::~EdgeUploader() { stop(); }
+EdgeUploader::~EdgeUploader() {
+  stop();
+}
 
 void EdgeUploader::start() {
   if (running_.exchange(true)) {
@@ -155,8 +159,11 @@ void EdgeUploader::start() {
 
     // Fallback: reconstruct from components if s3_key is missing
     if (item.s3_key_prefix.empty() && !record.factory_id.empty() && !record.device_id.empty()) {
-      item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString(); // LCOV_EXCL_BR_LINE
-      AXON_LOG_WARN("Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path); // LCOV_EXCL_BR_LINE
+      item.s3_key_prefix = record.factory_id + "/" + record.device_id + "/" + currentDateString();  // LCOV_EXCL_BR_LINE
+
+      AXON_LOG_WARN(
+        "Crash recovery: reconstructed s3_key_prefix from components for " << record.file_path
+      );
     }
 
     // Reset status to pending for re-upload
@@ -191,11 +198,13 @@ void EdgeUploader::stop() {
   workers_.clear();
 }
 
-bool EdgeUploader::isRunning() const { return running_.load(); }
+bool EdgeUploader::isRunning() const {
+  return running_.load();
+}
 
 void EdgeUploader::enqueue(
-    const std::string& mcap_path, const std::string& json_path, const std::string& task_id,
-    const std::string& factory_id, const std::string& device_id, const std::string& checksum_sha256
+  const std::string& mcap_path, const std::string& json_path, const std::string& task_id,
+  const std::string& factory_id, const std::string& device_id, const std::string& checksum_sha256
 ) {
   // Validate required parameters to prevent malformed S3 keys
   if (mcap_path.empty()) {
@@ -260,8 +269,10 @@ void EdgeUploader::enqueue(
   // Persist to state DB - if this fails (disk full, DB corruption),
   // do NOT queue the upload as we cannot track it for retry/recovery
   if (!state_manager_->insert(record)) {
-    AXON_LOG_ERROR("Failed to persist upload state for " << mcap_path 
-                   << " - upload not queued (disk full or DB error?)");
+    AXON_LOG_ERROR(
+      "Failed to persist upload state for " << mcap_path
+                                            << " - upload not queued (disk full or DB error?)"
+    );
     return;
   }
 
@@ -274,8 +285,7 @@ void EdgeUploader::enqueue(
     // Queue full (capacity exceeded) - revert the pending count and clean up orphan state record
     stats_.files_pending--;
     state_manager_->remove(mcap_path);
-    AXON_LOG_ERROR("Failed to enqueue upload for " << mcap_path 
-                   << " - queue at capacity");
+    AXON_LOG_ERROR("Failed to enqueue upload for " << mcap_path << " - queue at capacity");
     return;
   }
 
@@ -283,7 +293,9 @@ void EdgeUploader::enqueue(
   checkBackpressure();
 }
 
-const UploaderStats& EdgeUploader::stats() const { return stats_; }
+const UploaderStats& EdgeUploader::stats() const {
+  return stats_;
+}
 
 HealthStatus EdgeUploader::getHealthStatus() const {
   std::lock_guard<std::mutex> lock(stats_mutex_);
@@ -317,7 +329,9 @@ void EdgeUploader::setCallback(UploadCallback callback) {
   callback_ = std::move(callback);
 }
 
-const UploaderConfig& EdgeUploader::config() const { return config_; }
+const UploaderConfig& EdgeUploader::config() const {
+  return config_;
+}
 
 void EdgeUploader::workerLoop(int worker_id) {
   (void)worker_id;  // May use for logging
@@ -349,8 +363,7 @@ void EdgeUploader::processItem(const UploadItem& item) {
   FileUploadResult mcap_result = FileUploadResult::ok();
   if (s3_client_->objectExists(mcap_s3_key)) {
     // MCAP already uploaded (retry after JSON failure) - verify checksum
-    if (item.checksum_sha256.empty() || 
-        s3_client_->verifyUpload(mcap_s3_key, item.checksum_sha256)) {
+    if (item.checksum_sha256.empty() || s3_client_->verifyUpload(mcap_s3_key, item.checksum_sha256)) {
       AXON_LOG_INFO("MCAP already in S3, skipping upload: " << mcap_s3_key);
       // mcap_result already set to ok()
     } else {
@@ -383,16 +396,15 @@ void EdgeUploader::processItem(const UploadItem& item) {
 }
 
 FileUploadResult EdgeUploader::uploadSingleFile(
-    const std::string& local_path, const std::string& s3_key,
-    const std::string& checksum
+  const std::string& local_path, const std::string& s3_key, const std::string& checksum
 ) {
   static FileSystemImpl default_filesystem;  // LCOV_EXCL_BR_LINE
   return uploadSingleFileImpl(local_path, s3_key, checksum, default_filesystem, s3_client_.get());
 }
 
 std::string EdgeUploader::constructS3Key(
-    const std::string& factory_id, const std::string& device_id,
-    const std::string& task_id, const std::string& extension
+  const std::string& factory_id, const std::string& device_id, const std::string& task_id,
+  const std::string& extension
 ) {
   return factory_id + "/" + device_id + "/" + currentDateString() + "/" + task_id + "." + extension;  // LCOV_EXCL_BR_LINE
 }
@@ -439,32 +451,36 @@ void EdgeUploader::onUploadSuccess(const UploadItem& item) {
   }
 }
 
-void EdgeUploader::onUploadFailure(const UploadItem& item, const std::string& error, bool retryable) {
+void EdgeUploader::onUploadFailure(
+  const UploadItem& item, const std::string& error, bool retryable
+) {
   // Increment retry count in state DB (reads current count internally)
   state_manager_->incrementRetry(item.mcap_path, error);
 
   // Read the updated retry count from state DB to ensure consistency
   auto record = state_manager_->get(item.mcap_path);
-  
+
   // Defensive check: if record is missing, treat as permanent failure
   // This should not happen if enqueue() worked correctly, but handles
   // edge cases like DB corruption during upload
   if (!record) {
-    AXON_LOG_ERROR("Upload state record missing for " << item.mcap_path 
-                   << " - marking as permanent failure (cannot track retries)");
+    AXON_LOG_ERROR(
+      "Upload state record missing for " << item.mcap_path
+                                         << " - marking as permanent failure (cannot track retries)"
+    );
     stats_.files_failed++;
-    
+
     if (!config_.failed_uploads_dir.empty()) {
       moveToFailedDir(item.mcap_path, item.json_path);
     }
-    
+
     std::lock_guard<std::mutex> lock(callback_mutex_);
     if (callback_) {
       callback_(item.task_id, false, "Upload state record missing: " + error);  // LCOV_EXCL_BR_LINE
     }
     return;
   }
-  
+
   int current_retry_count = record->retry_count;
 
   // Check if should retry
@@ -513,14 +529,17 @@ void EdgeUploader::checkBackpressure() {
   uint64_t pending = queue_->pending_bytes();
 
   if (pending > config_.alert_pending_bytes) {
-    AXON_LOG_ERROR("ALERT: Upload queue pending bytes (" << pending
-                   << ") exceeds threshold (" << config_.alert_pending_bytes << ")");
+    AXON_LOG_ERROR(
+      "ALERT: Upload queue pending bytes (" << pending << ") exceeds threshold ("
+                                            << config_.alert_pending_bytes << ")"
+    );
   } else if (pending > config_.warn_pending_bytes) {
-    AXON_LOG_WARN("Upload queue pending bytes (" << pending
-                  << ") exceeds warning threshold (" << config_.warn_pending_bytes << ")");
+    AXON_LOG_WARN(
+      "Upload queue pending bytes (" << pending << ") exceeds warning threshold ("
+                                     << config_.warn_pending_bytes << ")"
+    );
   }
 }
 
 }  // namespace uploader
 }  // namespace axon
-

@@ -1,16 +1,16 @@
 #include "mcap_validator.hpp"
 
-#include "mcap_validator_impl.hpp"
-#include "mcap_validator_interfaces.hpp"
-
-#include <mcap/reader.hpp>
 #include <mcap/errors.hpp>
+#include <mcap/reader.hpp>
 
 #include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+
+#include "mcap_validator_impl.hpp"
+#include "mcap_validator_interfaces.hpp"
 
 // Logging infrastructure (optional - only if axon_logging is linked)
 #ifdef AXON_HAS_LOGGING
@@ -19,20 +19,20 @@
 #else
 // No-op macros when logging is not available
 #define AXON_LOG_DEBUG(msg) \
-  do {                      \
+  do { \
   } while (0)
 #define AXON_LOG_INFO(msg) \
-  do {                     \
+  do { \
   } while (0)
 #define AXON_LOG_WARN(msg) \
-  do {                     \
+  do { \
   } while (0)
 #define AXON_LOG_ERROR(msg) \
-  do {                      \
+  do { \
   } while (0)
 namespace axon {
 namespace logging {
-template <typename T>
+template<typename T>
 inline std::string kv(const char* key, const T& value) {
   (void)key;
   (void)value;
@@ -56,7 +56,7 @@ static constexpr size_t MIN_MCAP_SIZE = MCAP_MAGIC_SIZE * 2;
 // Internal implementation with dependency injection
 // Exposed for testing - declared in mcap_validator_test_helpers.hpp
 McapValidationResult validateMcapHeaderImpl(
-    const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory
+  const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory
 ) {
   // Check file exists
   // LCOV_EXCL_BR_START - String concatenation and smart pointer operations generate
@@ -102,7 +102,7 @@ McapValidationResult validateMcapHeader(const std::string& path) {
 // Internal implementation with dependency injection
 // Exposed for testing via mcap_validator_test_helpers.hpp
 McapValidationResult validateMcapFooterImpl(
-    const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory
+  const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory
 ) {
   // Check file exists
   // LCOV_EXCL_BR_START - String concatenation and smart pointer operations generate
@@ -114,8 +114,9 @@ McapValidationResult validateMcapFooterImpl(
   // Get file size
   auto file_size = filesystem.file_size(path);
   if (file_size < MIN_MCAP_SIZE) {
-    return McapValidationResult::failure("File too small to be valid MCAP (minimum " +
-                                         std::to_string(MIN_MCAP_SIZE) + " bytes)");
+    return McapValidationResult::failure(
+      "File too small to be valid MCAP (minimum " + std::to_string(MIN_MCAP_SIZE) + " bytes)"
+    );
   }
 
   auto file = stream_factory.create_file_stream(path, std::ios::binary);
@@ -141,7 +142,8 @@ McapValidationResult validateMcapFooterImpl(
   // Compare with expected magic
   if (footer_magic != MCAP_MAGIC) {
     return McapValidationResult::failure(
-        "Invalid MCAP footer magic bytes (file may be truncated or corrupted)");
+      "Invalid MCAP footer magic bytes (file may be truncated or corrupted)"
+    );
   }
 
   return McapValidationResult::success();
@@ -159,8 +161,8 @@ McapValidationResult validateMcapFooter(const std::string& path) {
 // Internal implementation with dependency injection
 // Exposed for testing via mcap_validator_test_helpers.hpp
 McapValidationResult validateMcapStructureImpl(
-    const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory,
-    IMcapReader& reader
+  const std::string& path, const IFileSystem& filesystem, IFileStreamFactory& stream_factory,
+  IMcapReader& reader
 ) {
   // Step 1: Validate header
   auto header_result = validateMcapHeaderImpl(path, filesystem, stream_factory); // LCOV_EXCL_BR_LINE
@@ -236,4 +238,3 @@ McapValidationResult validateMcapStructure(const std::string& path) {
 
 }  // namespace mcap_wrapper
 }  // namespace axon
-

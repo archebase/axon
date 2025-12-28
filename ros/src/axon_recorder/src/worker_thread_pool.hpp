@@ -272,4 +272,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_WORKER_THREAD_POOL_HPP
-

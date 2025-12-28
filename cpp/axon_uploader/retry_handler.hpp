@@ -15,12 +15,12 @@ namespace uploader {
  * Configuration for retry behavior
  */
 struct RetryConfig {
-  int max_retries = 5;                                        // Maximum retry attempts
-  std::chrono::milliseconds initial_delay{1000};              // Initial delay (1 second)
-  std::chrono::milliseconds max_delay{300000};                // Maximum delay (5 minutes)
-  double exponential_base = 2.0;                              // Exponential backoff base
-  bool jitter = true;                                         // Add random jitter
-  double jitter_factor = 0.5;                                 // Jitter range: [1-factor, 1+factor]
+  int max_retries = 5;                            // Maximum retry attempts
+  std::chrono::milliseconds initial_delay{1000};  // Initial delay (1 second)
+  std::chrono::milliseconds max_delay{300000};    // Maximum delay (5 minutes)
+  double exponential_base = 2.0;                  // Exponential backoff base
+  bool jitter = true;                             // Add random jitter
+  double jitter_factor = 0.5;                     // Jitter range: [1-factor, 1+factor]
 };
 
 /**
@@ -39,7 +39,8 @@ public:
    * Create retry handler with configuration
    */
   explicit RetryHandler(const RetryConfig& config = {})
-      : config_(config), rng_(std::random_device{}()) {}
+      : config_(config)
+      , rng_(std::random_device{}()) {}
 
   /**
    * Calculate delay before next retry attempt
@@ -52,9 +53,8 @@ public:
    */
   std::chrono::milliseconds getDelay(int retry_count) const {
     // Calculate base delay with exponential backoff
-    double delay_ms =
-        static_cast<double>(config_.initial_delay.count()) *
-        std::pow(config_.exponential_base, static_cast<double>(retry_count));
+    double delay_ms = static_cast<double>(config_.initial_delay.count()) *
+                      std::pow(config_.exponential_base, static_cast<double>(retry_count));
 
     // Cap at maximum delay
     delay_ms = std::min(delay_ms, static_cast<double>(config_.max_delay.count()));
@@ -62,7 +62,9 @@ public:
     // Apply jitter if enabled (thread-safe via mutex)
     if (config_.jitter) {
       std::lock_guard<std::mutex> lock(rng_mutex_);
-      std::uniform_real_distribution<> dist(1.0 - config_.jitter_factor, 1.0 + config_.jitter_factor);
+      std::uniform_real_distribution<> dist(
+        1.0 - config_.jitter_factor, 1.0 + config_.jitter_factor
+      );
       delay_ms *= dist(rng_);
     }
 
@@ -78,12 +80,16 @@ public:
    * @param retry_count Current retry attempt (0-indexed)
    * @return true if retry_count < max_retries
    */
-  bool shouldRetry(int retry_count) const { return retry_count < config_.max_retries; }
+  bool shouldRetry(int retry_count) const {
+    return retry_count < config_.max_retries;
+  }
 
   /**
    * Get the maximum number of retries
    */
-  int maxRetries() const { return config_.max_retries; }
+  int maxRetries() const {
+    return config_.max_retries;
+  }
 
   /**
    * Check if an error code is retryable
@@ -95,32 +101,30 @@ public:
    * @return true if the error is transient and should be retried
    */
   static bool isRetryableError(const std::string& error_code) {
-    static const std::set<std::string> retryable = {
-        // S3/HTTP errors
-        "RequestTimeout",
-        "ServiceUnavailable",
-        "InternalError",
-        "SlowDown",
-        "RequestTimeTooSkewed",
-        "OperationAborted",
+    static const std::set<std::string> retryable = {// S3/HTTP errors
+                                                    "RequestTimeout",
+                                                    "ServiceUnavailable",
+                                                    "InternalError",
+                                                    "SlowDown",
+                                                    "RequestTimeTooSkewed",
+                                                    "OperationAborted",
 
-        // Network errors
-        "ConnectionReset",
-        "ConnectionTimeout",
-        "ConnectionRefused",
-        "NetworkingError",
-        "UnknownEndpoint",
+                                                    // Network errors
+                                                    "ConnectionReset",
+                                                    "ConnectionTimeout",
+                                                    "ConnectionRefused",
+                                                    "NetworkingError",
+                                                    "UnknownEndpoint",
 
-        // MinIO-specific
-        "XMinioServerNotInitialized",
-        "XAmzContentSHA256Mismatch",
+                                                    // MinIO-specific
+                                                    "XMinioServerNotInitialized",
+                                                    "XAmzContentSHA256Mismatch",
 
-        // Generic
-        "Throttling",
-        "ThrottlingException",
-        "ProvisionedThroughputExceededException",
-        "TransientError"
-    };
+                                                    // Generic
+                                                    "Throttling",
+                                                    "ThrottlingException",
+                                                    "ProvisionedThroughputExceededException",
+                                                    "TransientError"};
     return retryable.count(error_code) > 0;
   }
 
@@ -137,16 +141,17 @@ public:
   /**
    * Get configuration
    */
-  const RetryConfig& config() const { return config_; }
+  const RetryConfig& config() const {
+    return config_;
+  }
 
 private:
   RetryConfig config_;
-  mutable std::mt19937 rng_;     // mutable for const getDelay()
-  mutable std::mutex rng_mutex_; // protects rng_ for thread-safe jitter
+  mutable std::mt19937 rng_;      // mutable for const getDelay()
+  mutable std::mutex rng_mutex_;  // protects rng_ for thread-safe jitter
 };
 
 }  // namespace uploader
 }  // namespace axon
 
 #endif  // AXON_RETRY_HANDLER_HPP
-

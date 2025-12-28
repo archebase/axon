@@ -6,15 +6,16 @@
  * is in recorder_node.cpp which is part of axon_recorder_lib.
  */
 
+#include <csignal>
+
 #include "recorder_node.hpp"
 #include "version.hpp"
 
-#include <csignal>
-
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "main"
-#include <axon_log_macros.hpp>
 #include <axon_log_init.hpp>
+#include <axon_log_macros.hpp>
+
 #include "logging/axon_ros_sink.hpp"
 
 #if defined(AXON_ROS1)
@@ -35,7 +36,7 @@ void signal_handler(int signum) {
   // Simply set flags and return. Logging happens after main loop exits.
   g_received_signal = signum;
   g_shutdown_requested = 1;
-  
+
   // Note: ros::shutdown() and rclcpp::shutdown() are not strictly async-signal-safe,
   // but they're designed to be callable from signal handlers in practice.
 #if defined(AXON_ROS1)
@@ -55,10 +56,12 @@ int main(int argc, char** argv) {
   log_config.console_colors = true;
   log_config.console_level = axon::logging::severity_level::info;
   log_config.file_enabled = false;  // Can be enabled via config file later
-  
+
   axon::logging::init_logging(log_config);
-  
-  AXON_LOG_INFO("axon_recorder starting (MCAP backend)" << axon::logging::kv("version", AXON_RECORDER_VERSION));
+
+  AXON_LOG_INFO(
+    "axon_recorder starting (MCAP backend)" << axon::logging::kv("version", AXON_RECORDER_VERSION)
+  );
 
   // Use a block scope to ensure RecorderNode is fully destroyed before main() returns
   int exit_code = 0;
@@ -76,8 +79,8 @@ int main(int argc, char** argv) {
     // Add ROS sink now that ROS is initialized
     // This bridges AXON_LOG_* to rqt_console, rosout, etc.
     auto ros_sink = axon::logging::create_ros_sink(
-        node->get_ros_interface(),
-        axon::logging::severity_level::info);
+      node->get_ros_interface(), axon::logging::severity_level::info
+    );
     axon::logging::add_sink(ros_sink);
     AXON_LOG_DEBUG("ROS logging sink added");
 
@@ -93,7 +96,10 @@ int main(int argc, char** argv) {
 
     // Log the signal that triggered shutdown (safe to log here, outside signal handler)
     if (g_received_signal != 0) {
-      AXON_LOG_INFO("Received signal, shutting down" << ::axon::logging::kv("signal", static_cast<int>(g_received_signal)));
+      AXON_LOG_INFO(
+        "Received signal, shutting down"
+        << ::axon::logging::kv("signal", static_cast<int>(g_received_signal))
+      );
     }
     AXON_LOG_INFO("Main loop exited, calling shutdown()");
 
@@ -109,9 +115,9 @@ int main(int argc, char** argv) {
   }  // RecorderNode shared_ptr released here, destructor runs before main() exits
 
   AXON_LOG_INFO("Exiting normally");
-  
+
   // Shutdown logging (flushes all pending log messages)
   axon::logging::shutdown_logging();
-  
+
   return exit_code;
 }

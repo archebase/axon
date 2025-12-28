@@ -20,8 +20,10 @@ TopicManager::~TopicManager() {
   unsubscribe_all();
 }
 
-bool TopicManager::subscribe(const std::string& topic, const std::string& message_type,
-                             MessageCallback callback, const SubscriptionConfig& config) {
+bool TopicManager::subscribe(
+  const std::string& topic, const std::string& message_type, MessageCallback callback,
+  const SubscriptionConfig& config
+) {
   if (!ros_interface_) {
     AXON_LOG_ERROR("ROS interface not available");
     return false;
@@ -132,4 +134,3 @@ std::string TopicManager::get_message_type(const std::string& topic) const {
 
 }  // namespace recorder
 }  // namespace axon
-

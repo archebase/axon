@@ -1,5 +1,8 @@
 #include "metadata_injector.hpp"
 
+#include <nlohmann/json.hpp>
+#include <openssl/evp.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -8,9 +11,6 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-
-#include <nlohmann/json.hpp>
-#include <openssl/evp.h>
 #include <unistd.h>
 
 #include "mcap_writer_wrapper.hpp"
@@ -207,7 +207,8 @@ bool MetadataInjector::generate_sidecar_json(
 
   // Sort topics_summary by topic name
   std::sort(
-    sidecar["topics_summary"].begin(), sidecar["topics_summary"].end(),
+    sidecar["topics_summary"].begin(),
+    sidecar["topics_summary"].end(),
     [](const nlohmann::json& a, const nlohmann::json& b) {
       return a["topic"].get<std::string>() < b["topic"].get<std::string>();
     }
@@ -475,4 +476,3 @@ std::string MetadataInjector::join(
 
 }  // namespace recorder
 }  // namespace axon
-

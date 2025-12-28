@@ -1,11 +1,11 @@
 #ifndef AXON_UPLOADER_IMPL_HPP
 #define AXON_UPLOADER_IMPL_HPP
 
-#include "uploader_interfaces.hpp"
-
 #include <filesystem>
 #include <fstream>
 #include <memory>
+
+#include "uploader_interfaces.hpp"
 
 namespace axon {
 namespace uploader {
@@ -58,15 +58,25 @@ public:
     return *this;
   }
 
-  std::streampos tellg() override { return stream_.tellg(); }
+  std::streampos tellg() override {
+    return stream_.tellg();
+  }
 
-  std::streamsize gcount() const override { return stream_.gcount(); }
+  std::streamsize gcount() const override {
+    return stream_.gcount();
+  }
 
-  bool good() const override { return stream_.good(); }
+  bool good() const override {
+    return stream_.good();
+  }
 
-  bool fail() const override { return stream_.fail(); }
+  bool fail() const override {
+    return stream_.fail();
+  }
 
-  bool bad() const override { return stream_.bad(); }
+  bool bad() const override {
+    return stream_.bad();
+  }
 
 private:
   std::ifstream stream_;
@@ -78,7 +88,7 @@ private:
 class FileStreamFactoryImpl : public IFileStreamFactory {
 public:
   std::unique_ptr<IFileStream> create_file_stream(
-      const std::string& path, std::ios_base::openmode mode
+    const std::string& path, std::ios_base::openmode mode
   ) override {
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
@@ -95,4 +105,3 @@ public:
 }  // namespace axon
 
 #endif  // AXON_UPLOADER_IMPL_HPP
-

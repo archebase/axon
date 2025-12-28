@@ -21,7 +21,7 @@ namespace uploader {
  * @return true if both files exist, false otherwise
  */
 bool validateFilesExistImpl(
-    const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
+  const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
 );
 
 /**
@@ -39,7 +39,7 @@ uint64_t getFileSizeImpl(const std::string& path, const IFileSystem& filesystem)
  * @param filesystem File system interface
  */
 void cleanupLocalFilesImpl(
-    const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
+  const std::string& mcap_path, const std::string& json_path, const IFileSystem& filesystem
 );
 
 /**
@@ -50,8 +50,8 @@ void cleanupLocalFilesImpl(
  * @param filesystem File system interface
  */
 void moveToFailedDirImpl(
-    const std::string& mcap_path, const std::string& json_path,
-    const std::string& failed_dir, const IFileSystem& filesystem
+  const std::string& mcap_path, const std::string& json_path, const std::string& failed_dir,
+  const IFileSystem& filesystem
 );
 
 /**
@@ -64,12 +64,11 @@ void moveToFailedDirImpl(
  * @return Upload result
  */
 FileUploadResult uploadSingleFileImpl(
-    const std::string& local_path, const std::string& s3_key, const std::string& checksum,
-    const IFileSystem& filesystem, S3Client* s3_client
+  const std::string& local_path, const std::string& s3_key, const std::string& checksum,
+  const IFileSystem& filesystem, S3Client* s3_client
 );
 
 }  // namespace uploader
 }  // namespace axon
 
 #endif  // AXON_EDGE_UPLOADER_TEST_HELPERS_HPP
-

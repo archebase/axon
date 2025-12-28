@@ -67,8 +67,7 @@ namespace recorder {
  * - Single source of truth for recording state (via StateManager)
  * - Testable interface for mock implementations
  */
-class RecorderNode : public IRecorderContext,
-                     public std::enable_shared_from_this<RecorderNode> {
+class RecorderNode : public IRecorderContext, public std::enable_shared_from_this<RecorderNode> {
 public:
   /**
    * Create a RecorderNode instance.
@@ -272,13 +271,13 @@ private:
   // =========================================================================
   // Initialization
   // =========================================================================
-  
+
   /**
    * Common initialization logic after ROS and config are ready.
    * Called by both initialize() overloads.
    */
   bool complete_initialization();
-  
+
   bool load_configuration();
   bool initialize_mcap_writer();
   bool register_topic_schemas();
@@ -354,7 +353,6 @@ private:
   // Note: recording_ and paused_ flags removed - use StateManager as single source of truth
   // Use is_recording(), is_paused(), is_actively_recording() methods instead
   std::atomic<bool> shutdown_requested_{false};
-
 };
 
 }  // namespace recorder
