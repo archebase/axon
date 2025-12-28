@@ -422,6 +422,13 @@ TEST_F(WorkerThreadPoolTest, RemoveNonexistentTopic) {
   EXPECT_EQ(pool_->topic_count(), 1);  // Original still there
 }
 
+TEST_F(WorkerThreadPoolTest, RemoveTopicFromEmptyPool) {
+  // Remove from completely empty pool - covers early return in remove_topic_worker
+  EXPECT_EQ(pool_->topic_count(), 0);
+  pool_->remove_topic_worker("/nonexistent");
+  EXPECT_EQ(pool_->topic_count(), 0);
+}
+
 TEST_F(WorkerThreadPoolTest, PauseWhenNotRunning) {
   // Pool not started yet
   EXPECT_FALSE(pool_->is_running());

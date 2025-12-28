@@ -87,6 +87,7 @@ void RecordingSession::close() {
   if (has_task_config_ && !output_path_.empty()) {
     std::error_code ec;
     auto actual_size = std::filesystem::file_size(output_path_, ec);
+    // LCOV_EXCL_BR_START - logging macro branch coverage
     if (ec) {
       AXON_LOG_WARN("Failed to get file size for sidecar"
                     << axon::logging::kv("path", output_path_)
@@ -97,6 +98,7 @@ void RecordingSession::close() {
                       << axon::logging::kv("path", output_path_));
       }
     }
+    // LCOV_EXCL_BR_STOP
   }
 
   output_path_.clear();
