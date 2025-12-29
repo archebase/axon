@@ -65,6 +65,11 @@ if(NOT EXISTS "${CPP_LOGGING_DIR}/CMakeLists.txt")
 endif()
 message(STATUS "Found axon_logging at: ${CPP_LOGGING_DIR}")
 
+# Export to test subdirectory
+set(PROJECT_ROOT ${PROJECT_ROOT} CACHE INTERNAL "Axon repo root")
+set(CPP_LOGGING_DIR ${CPP_LOGGING_DIR} CACHE INTERNAL "Path to axon_logging")
+set(CPP_MCAP_DIR ${CPP_MCAP_DIR} CACHE INTERNAL "Path to axon_mcap")
+
 # =============================================================================
 # ROS Version Detection
 # =============================================================================
@@ -151,13 +156,18 @@ configure_file(
 message(STATUS "Building with MCAP backend")
 
 # Normalize ENABLE_COVERAGE (ROS) to AXON_ENABLE_COVERAGE (centralized)
-if(DEFINED ENABLE_COVERAGE AND NOT DEFINED AXON_ENABLE_COVERAGE)
-    set(AXON_ENABLE_COVERAGE ${ENABLE_COVERAGE})
+# Explicitly set to OFF/empty to prevent cached values from persisting
+if(DEFINED ENABLE_COVERAGE)
+    set(AXON_ENABLE_COVERAGE ${ENABLE_COVERAGE} CACHE BOOL "Coverage enabled" FORCE)
+else()
+    set(AXON_ENABLE_COVERAGE OFF CACHE BOOL "Coverage enabled" FORCE)
 endif()
 
-# Propagate coverage flag to axon_mcap
+# Propagate coverage flag to axon_mcap (must explicitly set OFF to clear cache)
 if(AXON_ENABLE_COVERAGE)
     set(AXON_MCAP_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_mcap" FORCE)
+else()
+    set(AXON_MCAP_ENABLE_COVERAGE OFF CACHE BOOL "Enable coverage for axon_mcap" FORCE)
 endif()
 
 add_subdirectory(${CPP_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)

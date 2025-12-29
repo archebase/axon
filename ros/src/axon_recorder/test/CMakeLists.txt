@@ -5,11 +5,21 @@ cmake_minimum_required(VERSION 3.15)
 # ============================================================================
 
 # =============================================================================
-# Path Configuration
+# Path Configuration (from parent)
 # =============================================================================
-# Calculate repo root for centralized modules
+# Parent CMakeLists.txt must set these via CACHE
+if(NOT DEFINED PROJECT_ROOT)
+    message(FATAL_ERROR "PROJECT_ROOT not set. Parent CMakeLists.txt must be built first.")
+endif()
+if(NOT DEFINED CPP_LOGGING_DIR)
+    message(FATAL_ERROR "CPP_LOGGING_DIR not set. Parent CMakeLists.txt must be built first.")
+endif()
+if(NOT DEFINED CPP_MCAP_DIR)
+    message(FATAL_ERROR "CPP_MCAP_DIR not set. Parent CMakeLists.txt must be built first.")
+endif()
+
+# Calculate AXON_CMAKE_MODULES_DIR from parent's PROJECT_ROOT
 if(NOT DEFINED AXON_CMAKE_MODULES_DIR)
-    set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
     set(AXON_CMAKE_MODULES_DIR "${PROJECT_ROOT}/cmake/Modules")
 endif()
 
@@ -63,17 +73,8 @@ find_package(Boost REQUIRED COMPONENTS system log log_setup thread filesystem)
 find_package(yaml-cpp REQUIRED)
 
 # =============================================================================
-# Path Configuration
+# Build Dependencies
 # =============================================================================
-# Use centralized AXON_LOGGING_DIR if available, otherwise calculate
-if(DEFINED AXON_LOGGING_DIR AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
-    set(CPP_LOGGING_DIR "${AXON_LOGGING_DIR}")
-else()
-    # Calculate from test/ directory
-    set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-    set(CPP_LOGGING_DIR "${PROJECT_ROOT}/../cpp/axon_logging")
-endif()
-
 # Build axon_logging if not already available
 if(NOT TARGET axon_logging)
     add_subdirectory(${CPP_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
@@ -83,14 +84,6 @@ enable_testing()
 
 # Default test timeout
 set(AXON_TEST_TIMEOUT 60 CACHE STRING "Default test timeout in seconds")
-
-# =============================================================================
-# Coverage Support
-# =============================================================================
-# Normalize ENABLE_COVERAGE (ROS) to AXON_ENABLE_COVERAGE (centralized)
-if(DEFINED ENABLE_COVERAGE AND NOT DEFINED AXON_ENABLE_COVERAGE)
-    set(AXON_ENABLE_COVERAGE ${ENABLE_COVERAGE})
-endif()
 
 # =============================================================================
 # Test Macros
@@ -310,7 +303,7 @@ if(AXON_HAS_UPLOADER AND ROS_INTEGRATED_BUILD)
     if(DEFINED AXON_UPLOADER_DIR AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt")
         set(UPLOADER_INCLUDE_DIR "${AXON_UPLOADER_DIR}")
     else()
-        set(UPLOADER_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_uploader")
+        set(UPLOADER_INCLUDE_DIR "${PROJECT_ROOT}/../cpp/axon_uploader")
     endif()
 
     axon_add_test(NAME test_recorder_node_uploader
