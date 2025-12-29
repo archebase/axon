@@ -60,7 +60,10 @@ else()
     set(CPP_LOGGING_DIR "${PROJECT_ROOT}/../cpp/axon_logging")
 endif()
 
-add_subdirectory(${CPP_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
+# Build axon_logging if not already available
+if(NOT TARGET axon_logging)
+    add_subdirectory(${CPP_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
+endif()
 
 enable_testing()
 
