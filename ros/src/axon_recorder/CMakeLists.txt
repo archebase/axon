@@ -150,8 +150,13 @@ configure_file(
 # =============================================================================
 message(STATUS "Building with MCAP backend")
 
+# Normalize ENABLE_COVERAGE (ROS) to AXON_ENABLE_COVERAGE (centralized)
+if(DEFINED ENABLE_COVERAGE AND NOT DEFINED AXON_ENABLE_COVERAGE)
+    set(AXON_ENABLE_COVERAGE ${ENABLE_COVERAGE})
+endif()
+
 # Propagate coverage flag to axon_mcap
-if(ENABLE_COVERAGE OR AXON_ENABLE_COVERAGE)
+if(AXON_ENABLE_COVERAGE)
     set(AXON_MCAP_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_mcap" FORCE)
 endif()
 
@@ -221,10 +226,26 @@ if(AXON_ROS_VERSION EQUAL 1)
         yaml-cpp
         nlohmann_json::nlohmann_json
     )
+
+    # Apply coverage flags if enabled
+    if(AXON_ENABLE_COVERAGE)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(axon_recorder_lib PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(axon_recorder_lib PRIVATE --coverage)
+        endif()
+    endif()
+
     add_dependencies(axon_recorder_lib ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
     # Executable
     add_executable(axon_recorder_node src/main.cpp)
+    # Apply coverage flags if enabled
+    if(AXON_ENABLE_COVERAGE)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(axon_recorder_node PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(axon_recorder_node PRIVATE --coverage)
+        endif()
+    endif()
     target_link_libraries(axon_recorder_node
         axon_recorder_lib
         ${catkin_LIBRARIES}
@@ -301,6 +322,14 @@ elseif(AXON_ROS_VERSION EQUAL 2)
     )
     target_include_directories(axon_recorder_lib PRIVATE ${Boost_INCLUDE_DIRS})
 
+    # Apply coverage flags if enabled
+    if(AXON_ENABLE_COVERAGE)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(axon_recorder_lib PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(axon_recorder_lib PRIVATE --coverage)
+        endif()
+    endif()
+
     rosidl_get_typesupport_target(cpp_typesupport_target_lib ${PROJECT_NAME} "rosidl_typesupport_cpp")
     target_link_libraries(axon_recorder_lib "${cpp_typesupport_target_lib}")
 
@@ -313,6 +342,13 @@ elseif(AXON_ROS_VERSION EQUAL 2)
 
     # Executable
     add_executable(axon_recorder_node src/main.cpp)
+    # Apply coverage flags if enabled
+    if(AXON_ENABLE_COVERAGE)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(axon_recorder_node PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(axon_recorder_node PRIVATE --coverage)
+        endif()
+    endif()
     target_link_libraries(axon_recorder_node
         axon_recorder_lib
         rclcpp::rclcpp

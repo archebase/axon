@@ -5,33 +5,34 @@ cmake_minimum_required(VERSION 3.15)
 # ============================================================================
 
 # =============================================================================
-# Use Axon Root Configuration (if available)
+# Path Configuration
 # =============================================================================
-# Note: ROS builds (colcon/catkin) don't include the root CMakeLists.txt,
-# so we fall back to local configuration for those builds.
-if(DEFINED AXON_CMAKE_MODULES_DIR)
-    list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
-    include(AxonStdlib OPTIONAL)
-    include(AxonCoverage OPTIONAL)
-else()
-    # Fallback for ROS builds
+# Calculate repo root for centralized modules
+if(NOT DEFINED AXON_CMAKE_MODULES_DIR)
+    set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+    set(AXON_CMAKE_MODULES_DIR "${PROJECT_ROOT}/cmake/Modules")
+endif()
+
+# Include centralized CMake modules
+list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
+include(AxonStdlib OPTIONAL)
+include(AxonCoverage OPTIONAL)
+
+# Minimal fallback for ROS builds
+if(NOT COMMAND axon_set_position_independent_code)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     if(POLICY CMP0167)
         cmake_policy(SET CMP0167 NEW)
     endif()
-    # Define fallback helper functions
     function(axon_set_position_independent_code TARGET)
         set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)
     endfunction()
+endif()
+
+if(NOT COMMAND axon_add_boost_log_dyn_link)
     function(axon_add_boost_log_dyn_link TARGET)
         target_compile_definitions(${TARGET} PUBLIC BOOST_LOG_DYN_LINK)
-    endfunction()
-    function(axon_add_coverage TARGET)
-        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(${TARGET} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
-            target_link_options(${TARGET} PRIVATE --coverage)
-        endif()
     endfunction()
 endif()
 
@@ -84,6 +85,14 @@ enable_testing()
 set(AXON_TEST_TIMEOUT 60 CACHE STRING "Default test timeout in seconds")
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+# Normalize ENABLE_COVERAGE (ROS) to AXON_ENABLE_COVERAGE (centralized)
+if(DEFINED ENABLE_COVERAGE AND NOT DEFINED AXON_ENABLE_COVERAGE)
+    set(AXON_ENABLE_COVERAGE ${ENABLE_COVERAGE})
+endif()
+
+# =============================================================================
 # Test Macros
 # =============================================================================
 macro(axon_add_test)
@@ -91,6 +100,7 @@ macro(axon_add_test)
     add_executable(${TEST_NAME} ${TEST_SOURCES})
     axon_add_boost_log_dyn_link(${TEST_NAME})
     target_link_libraries(${TEST_NAME} GTest::gtest GTest::gtest_main Threads::Threads ${TEST_LIBS})
+    axon_add_coverage(${TEST_NAME})
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 endmacro()
@@ -101,6 +111,7 @@ macro(axon_add_ros1_test)
     target_compile_definitions(${TEST_NAME} PRIVATE AXON_ROS1)
     target_include_directories(${TEST_NAME} PRIVATE ${catkin_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/../src)
     target_link_libraries(${TEST_NAME} ${TEST_LIBS})
+    axon_add_coverage(${TEST_NAME})
     add_dependencies(${TEST_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS})
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT} LABELS "integration")
@@ -112,6 +123,7 @@ macro(axon_add_ros2_test)
     target_compile_definitions(${TEST_NAME} PRIVATE AXON_ROS2)
     target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
     target_link_libraries(${TEST_NAME} ${TEST_LIBS})
+    axon_add_coverage(${TEST_NAME})
     rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
     target_link_libraries(${TEST_NAME} "${cpp_typesupport_target}")
     set_tests_properties(${TEST_NAME} PROPERTIES
@@ -132,6 +144,7 @@ macro(axon_discover_unit_tests)
         get_filename_component(_TEST_NAME ${_TEST_SOURCE} NAME_WE)
         add_executable(${_TEST_NAME} ${_TEST_SOURCE})
         axon_add_boost_log_dyn_link(${_TEST_NAME})
+        axon_add_coverage(${_TEST_NAME})
         target_include_directories(${_TEST_NAME} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../src
             ${CMAKE_CURRENT_SOURCE_DIR}/${DISCOVER_DIR}
@@ -156,6 +169,7 @@ add_library(axon_recorder_test_support STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/logging/axon_ros_sink.cpp
 )
 axon_add_boost_log_dyn_link(axon_recorder_test_support)
+axon_add_coverage(axon_recorder_test_support)
 target_include_directories(axon_recorder_test_support PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(axon_recorder_test_support
     axon_logging yaml-cpp OpenSSL::SSL OpenSSL::Crypto Threads::Threads ${Boost_LIBRARIES}
@@ -168,6 +182,7 @@ if(ROS_INTEGRATED_BUILD)
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
     )
     axon_add_boost_log_dyn_link(axon_recorder_test_support_mcap)
+    axon_add_coverage(axon_recorder_test_support_mcap)
     target_include_directories(axon_recorder_test_support_mcap PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${CMAKE_CURRENT_BINARY_DIR}/../generated

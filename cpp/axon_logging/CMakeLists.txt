@@ -64,7 +64,7 @@ axon_set_position_independent_code(axon_logging)
 
 target_include_directories(axon_logging PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALLINTERFACE:include>
+    $<INSTALL_INTERFACE:include>
 )
 
 # Add BOOST_LOG_DYN_LINK definition

@@ -73,7 +73,7 @@ endif()
 add_library(mcap_headers INTERFACE)
 target_include_directories(mcap_headers SYSTEM INTERFACE
     $<BUILD_INTERFACE:${mcap_SOURCE_DIR}/cpp/mcap/include>
-    $<INSTALLINTERFACE:include>
+    $<INSTALL_INTERFACE:include>
 )
 
 # Configure compression support
@@ -133,7 +133,7 @@ axon_set_position_independent_code(axon_mcap)
 
 target_include_directories(axon_mcap PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALLINTERFACE:include>
+    $<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(axon_mcap PUBLIC mcap_headers)
