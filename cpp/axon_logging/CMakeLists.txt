@@ -4,32 +4,37 @@ project(axon_logging)
 # Export compile commands for clangd/IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# =============================================================================
+# Use Axon Root Configuration (if available)
+# =============================================================================
+if(DEFINED AXON_CMAKE_MODULES_DIR)
+    list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
+    include(AxonStdlib OPTIONAL)
+    include(AxonCoverage OPTIONAL)
+else()
+    # Fallback for standalone builds
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    if(POLICY CMP0167)
+        cmake_policy(SET CMP0167 NEW)
+    endif()
+endif()
 
 # =============================================================================
 # Find Boost.Log and dependencies
+# =============================================================================
 # Boost 1.71+ required (Ubuntu 20.04/ROS Noetic minimum)
 # Ubuntu 22.04+ ships Boost 1.74+
-# =============================================================================
 
-# Suppress CMP0167 warning (FindBoost module removed in CMake 3.30+)
-# This tells CMake to use the new BoostConfig.cmake instead of FindBoost.cmake
-if(POLICY CMP0167)
-    cmake_policy(SET CMP0167 NEW)
-endif()
-
-find_package(Boost 1.71 REQUIRED COMPONENTS 
-    log 
-    log_setup 
-    thread 
+find_package(Boost 1.71 REQUIRED COMPONENTS
+    log
+    log_setup
+    thread
     filesystem
 )
 
 if(Boost_FOUND)
     message(STATUS "axon_logging: Found Boost ${Boost_VERSION}")
-    message(STATUS "  Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}")
-    message(STATUS "  Boost_LIBRARY_DIRS: ${Boost_LIBRARY_DIRS}")
 endif()
 
 # =============================================================================
@@ -41,18 +46,16 @@ add_library(axon_logging
     ${CMAKE_CURRENT_SOURCE_DIR}/axon_file_sink.cpp
 )
 
-# Enable position-independent code for linking into shared libraries
-set_target_properties(axon_logging PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Enable position-independent code
+axon_set_position_independent_code(axon_logging)
 
 target_include_directories(axon_logging PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALLINTERFACE:include>
 )
 
-# Define BOOST_LOG_DYN_LINK if using shared Boost libraries
-target_compile_definitions(axon_logging PUBLIC
-    BOOST_LOG_DYN_LINK
-)
+# Add BOOST_LOG_DYN_LINK definition
+axon_add_boost_log_dyn_link(axon_logging)
 
 target_link_libraries(axon_logging PUBLIC
     Boost::log
@@ -64,10 +67,10 @@ target_link_libraries(axon_logging PUBLIC
 # =============================================================================
 # Coverage Support
 # =============================================================================
-
-option(AXON_LOGGING_ENABLE_COVERAGE "Enable code coverage" OFF)
-
-if(AXON_LOGGING_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if(COMMAND axon_enable_coverage_for_directory)
+    axon_enable_coverage_for_directory()
+elseif(AXON_LOGGING_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # Fallback for legacy builds
     message(STATUS "axon_logging: Coverage instrumentation enabled")
     target_compile_options(axon_logging PRIVATE --coverage -fprofile-arcs -ftest-coverage)
     target_link_options(axon_logging PRIVATE --coverage)
@@ -76,11 +79,9 @@ endif()
 # =============================================================================
 # Tests (optional)
 # =============================================================================
-
 option(AXON_LOGGING_BUILD_TESTS "Build logging tests" OFF)
 
-if(AXON_LOGGING_BUILD_TESTS)
+if(AXON_LOGGING_BUILD_TESTS OR AXON_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)
 endif()
-

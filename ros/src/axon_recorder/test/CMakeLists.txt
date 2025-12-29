@@ -3,13 +3,28 @@ cmake_minimum_required(VERSION 3.15)
 # ============================================================================
 # Axon Recorder Tests
 # ============================================================================
-# Fail-fast: If dependencies are missing, build fails immediately.
-# ============================================================================
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# =============================================================================
+# Use Axon Root Configuration (if available)
+# =============================================================================
+# Note: ROS builds (colcon/catkin) don't include the root CMakeLists.txt,
+# so we fall back to local configuration for those builds.
+if(DEFINED AXON_CMAKE_MODULES_DIR)
+    list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
+    include(AxonStdlib OPTIONAL)
+    include(AxonCoverage OPTIONAL)
+else()
+    # Fallback for ROS builds
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    if(POLICY CMP0167)
+        cmake_policy(SET CMP0167 NEW)
+    endif()
+endif()
 
-# Detect ROS build mode (must be explicitly set)
+# =============================================================================
+# Detect ROS Build Mode
+# =============================================================================
 if(DEFINED AXON_ROS1)
     set(ROS_INTEGRATED_BUILD TRUE)
     set(AXON_ROS_VERSION 1)
@@ -23,9 +38,9 @@ else()
     project(axon_recorder_tests)
 endif()
 
-# ============================================================================
+# =============================================================================
 # Dependencies
-# ============================================================================
+# =============================================================================
 find_package(GTest REQUIRED)
 include(GoogleTest)
 find_package(Threads REQUIRED)
@@ -33,11 +48,18 @@ find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system log log_setup thread filesystem)
 find_package(yaml-cpp REQUIRED)
 
-# Project root (from test/ to ros/)
-set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+# =============================================================================
+# Path Configuration
+# =============================================================================
+# Use centralized AXON_LOGGING_DIR if available, otherwise calculate
+if(DEFINED AXON_LOGGING_DIR AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
+    set(CPP_LOGGING_DIR "${AXON_LOGGING_DIR}")
+else()
+    # Calculate from test/ directory
+    set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+    set(CPP_LOGGING_DIR "${PROJECT_ROOT}/../cpp/axon_logging")
+endif()
 
-# Path to axon_logging (fixed location relative to repo root)
-set(CPP_LOGGING_DIR ${PROJECT_ROOT}/../cpp/axon_logging)
 add_subdirectory(${CPP_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
 
 enable_testing()
@@ -45,13 +67,13 @@ enable_testing()
 # Default test timeout
 set(AXON_TEST_TIMEOUT 60 CACHE STRING "Default test timeout in seconds")
 
-# ============================================================================
+# =============================================================================
 # Test Macros
-# ============================================================================
+# =============================================================================
 macro(axon_add_test)
     cmake_parse_arguments(TEST "" "NAME" "SOURCES;LIBS" ${ARGN})
     add_executable(${TEST_NAME} ${TEST_SOURCES})
-    target_compile_definitions(${TEST_NAME} PRIVATE BOOST_LOG_DYN_LINK)
+    axon_add_boost_log_dyn_link(${TEST_NAME})
     target_link_libraries(${TEST_NAME} GTest::gtest GTest::gtest_main Threads::Threads ${TEST_LIBS})
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
@@ -93,7 +115,7 @@ macro(axon_discover_unit_tests)
     foreach(_TEST_SOURCE ${_DISCOVER_TEST_SOURCES})
         get_filename_component(_TEST_NAME ${_TEST_SOURCE} NAME_WE)
         add_executable(${_TEST_NAME} ${_TEST_SOURCE})
-        target_compile_definitions(${_TEST_NAME} PRIVATE BOOST_LOG_DYN_LINK)
+        axon_add_boost_log_dyn_link(${_TEST_NAME})
         target_include_directories(${_TEST_NAME} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../src
             ${CMAKE_CURRENT_SOURCE_DIR}/${DISCOVER_DIR}
@@ -105,9 +127,9 @@ macro(axon_discover_unit_tests)
     message(STATUS "Auto-discovered ${_DISCOVER_COUNT} tests in ${DISCOVER_DIR}/")
 endmacro()
 
-# ============================================================================
+# =============================================================================
 # Test Support Libraries
-# ============================================================================
+# =============================================================================
 add_library(axon_recorder_test_support STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/config_parser.cpp
@@ -117,7 +139,7 @@ add_library(axon_recorder_test_support STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_service_impl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/logging/axon_ros_sink.cpp
 )
-target_compile_definitions(axon_recorder_test_support PRIVATE BOOST_LOG_DYN_LINK)
+axon_add_boost_log_dyn_link(axon_recorder_test_support)
 target_include_directories(axon_recorder_test_support PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(axon_recorder_test_support
     axon_logging yaml-cpp OpenSSL::SSL OpenSSL::Crypto Threads::Threads ${Boost_LIBRARIES}
@@ -129,7 +151,7 @@ if(ROS_INTEGRATED_BUILD)
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
     )
-    target_compile_definitions(axon_recorder_test_support_mcap PRIVATE BOOST_LOG_DYN_LINK)
+    axon_add_boost_log_dyn_link(axon_recorder_test_support_mcap)
     target_include_directories(axon_recorder_test_support_mcap PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${CMAKE_CURRENT_BINARY_DIR}/../generated
@@ -139,9 +161,9 @@ if(ROS_INTEGRATED_BUILD)
     )
 endif()
 
-# ============================================================================
+# =============================================================================
 # Unit Tests (Auto-discovered)
-# ============================================================================
+# =============================================================================
 axon_discover_unit_tests(
     DIR unit
     LIBS axon_recorder_test_support axon_logging
@@ -253,6 +275,13 @@ endif()
 
 # Edge Uploader Integration Tests
 if(AXON_HAS_UPLOADER AND ROS_INTEGRATED_BUILD)
+    # Use centralized AXON_UPLOADER_DIR if available
+    if(DEFINED AXON_UPLOADER_DIR AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt")
+        set(UPLOADER_INCLUDE_DIR "${AXON_UPLOADER_DIR}")
+    else()
+        set(UPLOADER_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_uploader")
+    endif()
+
     axon_add_test(NAME test_recorder_node_uploader
         SOURCES integration/test_recorder_node_uploader.cpp
         LIBS axon_recorder_test_support_mcap axon_uploader axon_logging
@@ -260,7 +289,7 @@ if(AXON_HAS_UPLOADER AND ROS_INTEGRATED_BUILD)
     target_compile_definitions(test_recorder_node_uploader PRIVATE AXON_HAS_UPLOADER)
     target_include_directories(test_recorder_node_uploader PRIVATE
         ${CMAKE_CURRENT_BINARY_DIR}/../generated
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_uploader
+        ${UPLOADER_INCLUDE_DIR}
     )
     set_tests_properties(test_recorder_node_uploader PROPERTIES LABELS "integration" TIMEOUT ${AXON_TEST_TIMEOUT})
 endif()
