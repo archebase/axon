@@ -1,0 +1,52 @@
+#!/bin/bash
+# Pre-commit hook for clang-format
+# Runs clang-format --dry-run --Werror on staged C/C++ files
+
+set -e
+
+# Find clang-format executable
+CLANG_FORMAT=""
+for cmd in clang-format clang-format-17 clang-format-16 clang-format-15 clang-format-14; do
+    if command -v "$cmd" &> /dev/null; then
+        CLANG_FORMAT="$cmd"
+        break
+    fi
+done
+
+if [ -z "$CLANG_FORMAT" ]; then
+    echo "Warning: clang-format not found. Skipping format check."
+    exit 0
+fi
+
+echo "Running clang-format check..."
+
+# Get list of staged C/C++ files (excluding build directories and deps)
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|cc|hh|h|c)$' | grep -v -E '(build|_deps/|\.git/)')
+
+if [ -z "$FILES" ]; then
+    echo "No C/C++ files to check."
+    exit 0
+fi
+
+# Check formatting
+FAILED=0
+for FILE in $FILES; do
+    if [ -f "$FILE" ]; then
+        if ! $CLANG_FORMAT --dry-run --Werror "$FILE" &> /dev/null; then
+            echo "  $FILE needs formatting"
+            FAILED=1
+        fi
+    fi
+done
+
+if [ $FAILED -eq 1 ]; then
+    echo ""
+    echo "clang-format check failed. Please run:"
+    echo "  git clang-format"
+    echo "or format files individually:"
+    echo "  clang-format -i <file>"
+    exit 1
+fi
+
+echo "All files are properly formatted!"
+exit 0
