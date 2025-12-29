@@ -30,14 +30,15 @@ if [ -z "$FILES" ]; then
     exit 0
 fi
 
-# Check formatting
+# Check formatting of STAGED content (not working directory)
+# We extract the staged version with git show :$FILE to ensure
+# we're checking what will actually be committed, not what's on disk.
 FAILED=0
 for FILE in $FILES; do
-    if [ -f "$FILE" ]; then
-        if ! $CLANG_FORMAT --dry-run --Werror "$FILE" &> /dev/null; then
-            echo "  $FILE needs formatting"
-            FAILED=1
-        fi
+    # Check the staged content, not the working directory file
+    if ! git show ":$FILE" 2>/dev/null | $CLANG_FORMAT --dry-run --Werror &> /dev/null; then
+        echo "  $FILE needs formatting"
+        FAILED=1
     fi
 done
 
