@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 // Only compile tests when ROS is available
 #if defined(AXON_ROS1) || defined(AXON_ROS2)
 
@@ -19,6 +21,7 @@
 #include <std_msgs/String.h>
 #elif defined(AXON_ROS2)
 #include <geometry_msgs/msg/twist.hpp>
+#include <rclcpp/serialization.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 #endif
@@ -130,6 +133,28 @@ TEST_F(MessageFactoryTest, DeserializeMessageROS1) {
 }
 #endif
 
+#if defined(AXON_ROS2)
+TEST_F(MessageFactoryTest, DeserializeMessageROS2) {
+  // Create a serialized message
+  auto original = std::make_shared<std_msgs::msg::String>();
+  original->data = "Hello, World!";
+
+  // Serialize using rclcpp serialization
+  rclcpp::SerializedMessage serialized;
+  auto serializer = rclcpp::Serialization<std_msgs::msg::String>();
+  serializer.serialize_message(original.get(), &serialized);
+
+  // Deserialize using factory
+  auto msg = MessageFactory::create_message("std_msgs/msg/String");
+  ASSERT_NE(msg, nullptr);
+
+  EXPECT_TRUE(MessageFactory::deserialize_message("std_msgs/msg/String", serialized, msg.get()));
+
+  auto* deserialized = static_cast<std_msgs::msg::String*>(msg.get());
+  EXPECT_EQ(deserialized->data, "Hello, World!");
+}
+#endif
+
 TEST_F(MessageFactoryTest, DeserializeNonexistentType) {
 #if defined(AXON_ROS1)
   std::vector<uint8_t> buffer = {0x01, 0x02, 0x03};
@@ -137,6 +162,12 @@ TEST_F(MessageFactoryTest, DeserializeNonexistentType) {
   EXPECT_FALSE(
     MessageFactory::deserialize_message("nonexistent/Type", buffer.data(), buffer.size(), &dummy)
   );
+#elif defined(AXON_ROS2)
+  // Create a dummy serialized message for ROS 2
+  rclcpp::SerializedMessage serialized;
+  serialized.reserve(10);
+  int dummy;
+  EXPECT_FALSE(MessageFactory::deserialize_message("nonexistent/Type", serialized, &dummy));
 #endif
 }
 
