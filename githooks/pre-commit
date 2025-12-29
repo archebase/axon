@@ -33,14 +33,15 @@ fi
 # Check formatting of STAGED content (not working directory)
 # We extract the staged version with git show :$FILE to ensure
 # we're checking what will actually be committed, not what's on disk.
+# Use while-read loop to handle filenames with spaces correctly.
 FAILED=0
-for FILE in $FILES; do
+while IFS= read -r FILE; do
     # Check the staged content, not the working directory file
     if ! git show ":$FILE" 2>/dev/null | $CLANG_FORMAT --dry-run --Werror &> /dev/null; then
         echo "  $FILE needs formatting"
         FAILED=1
     fi
-done
+done <<< "$FILES"
 
 if [ $FAILED -eq 1 ]; then
     echo ""
