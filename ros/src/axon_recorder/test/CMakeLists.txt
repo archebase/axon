@@ -33,8 +33,11 @@ find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system log log_setup thread filesystem)
 find_package(yaml-cpp REQUIRED)
 
-# Path to axon_logging (fixed location)
-set(CPP_LOGGING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging)
+# Project root (from test/ to ros/)
+set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+
+# Path to axon_logging (fixed location relative to repo root)
+set(CPP_LOGGING_DIR ${PROJECT_ROOT}/../cpp/axon_logging)
 add_subdirectory(${CPP_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
 
 enable_testing()
