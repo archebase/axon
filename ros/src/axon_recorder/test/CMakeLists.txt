@@ -328,7 +328,14 @@ if(ROS_INTEGRATED_BUILD)
         target_link_libraries(test_message_factory GTest::gtest GTest::gtest_main Threads::Threads ${catkin_LIBRARIES})
     elseif(DEFINED AXON_ROS2)
         target_compile_definitions(test_message_factory PRIVATE AXON_ROS2)
-        target_link_libraries(test_message_factory GTest::gtest GTest::gtest_main Threads::Threads rclcpp::rclcpp)
+        target_link_libraries(test_message_factory
+            GTest::gtest
+            GTest::gtest_main
+            Threads::Threads
+            rclcpp::rclcpp
+            ${std_msgs_TARGETS}
+            ${geometry_msgs_TARGETS}
+        )
     endif()
     add_test(NAME test_message_factory COMMAND test_message_factory)
     set_tests_properties(test_message_factory PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
