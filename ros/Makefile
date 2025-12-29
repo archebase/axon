@@ -61,8 +61,9 @@ help:
 	@printf "%s\n" "  $(BLUE)make release$(NC)        - Build in release mode (default)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Code quality:$(NC)"
-	@printf "%s\n" "  $(BLUE)make format$(NC)         - Format code (requires formatters)"
+	@printf "%s\n" "  $(BLUE)make format$(NC)         - Format code with clang-format"
 	@printf "%s\n" "  $(BLUE)make lint$(NC)           - Lint code (requires linters)"
+	@printf "%s\n" "  $(BLUE)Pre-commit hooks$(NC)    - Auto-check format via githooks/ on commit"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Coverage:$(NC)"
 	@printf "%s\n" "  $(BLUE)make coverage$(NC)       - Build with coverage and run tests"
@@ -282,8 +283,10 @@ dev-setup:
 	@printf "%s\n" "$(GREEN)✓ Development environment ready$(NC)"
 
 # Format code (if formatters are available)
+# Note: Pre-commit hooks also check formatting automatically on git commit
 format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
+	@printf "%s\n" "$(YELLOW)Tip: Pre-commit hooks check formatting automatically on commit$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
 		printf "%s\n" "$(YELLOW)  Formatting cpp/ libraries...$(NC)"; \
 		find $(PROJECT_ROOT)/cpp/axon_mcap $(PROJECT_ROOT)/cpp/axon_uploader $(PROJECT_ROOT)/cpp/axon_logging \

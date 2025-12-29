@@ -121,12 +121,10 @@ if(AXON_UPLOADER_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
     
-    # Auto-discover all test files (excluding integration test which is handled separately)
+    # Auto-discover unit test files in test/ (integration/ tests are built separately)
     file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
     )
-    # Exclude integration test (handled separately below)
-    list(FILTER TEST_SOURCES EXCLUDE REGEX ".*test_edge_uploader\\.cpp$")
     
     foreach(TEST_SOURCE ${TEST_SOURCES})
         get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
@@ -156,7 +154,7 @@ if(AXON_UPLOADER_BUILD_TESTS)
     
     # Integration test (requires MinIO) - not added to CTest by default
     add_executable(test_edge_uploader
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/test_edge_uploader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/integration/test_edge_uploader.cpp
     )
     target_link_libraries(test_edge_uploader
         axon_uploader

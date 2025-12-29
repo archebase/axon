@@ -17,12 +17,6 @@ set(ignored_variables
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# =============================================================================
-# Code Formatting with clang-format
-# =============================================================================
-set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake" ${CMAKE_MODULE_PATH})
-include(ClangFormat OPTIONAL)
-
 # ============================================================================
 # Address Sanitizer (ASAN) Support
 # Enable with: cmake -DENABLE_ASAN=ON or set ENABLE_ASAN=1 environment variable
@@ -79,15 +73,10 @@ endif()
 # Project paths - handle both direct build and colcon build scenarios
 set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 
-# Find axon_mcap directory - check multiple possible locations
-if(EXISTS "${PROJECT_ROOT}/cpp/axon_mcap/CMakeLists.txt")
-    set(CPP_MCAP_DIR ${PROJECT_ROOT}/cpp/axon_mcap)
-elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_mcap/CMakeLists.txt")
-    set(CPP_MCAP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_mcap)
-else()
-    message(FATAL_ERROR "Could not find axon_mcap directory. Searched:\n"
-        "  ${PROJECT_ROOT}/cpp/axon_mcap\n"
-        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_mcap\n"
+# Find axon_mcap directory (fixed location relative to repo root)
+set(CPP_MCAP_DIR ${PROJECT_ROOT}/../cpp/axon_mcap)
+if(NOT EXISTS "${CPP_MCAP_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "Could not find axon_mcap at: ${CPP_MCAP_DIR}\n"
         "Please ensure the cpp/axon_mcap directory exists relative to the project root.")
 endif()
 message(STATUS "Found axon_mcap at: ${CPP_MCAP_DIR}")
@@ -160,15 +149,10 @@ if(Boost_FOUND)
     message(STATUS "Found Boost: ${Boost_VERSION}")
 endif()
 
-# Find axon_logging directory
-if(EXISTS "${PROJECT_ROOT}/cpp/axon_logging/CMakeLists.txt")
-    set(CPP_LOGGING_DIR ${PROJECT_ROOT}/cpp/axon_logging)
-elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging/CMakeLists.txt")
-    set(CPP_LOGGING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging)
-else()
-    message(FATAL_ERROR "Could not find axon_logging directory. Searched:\n"
-        "  ${PROJECT_ROOT}/cpp/axon_logging\n"
-        "  ${CMAKE_CURRENT_SOURCE_DIR}/../../../cpp/axon_logging\n"
+# Find axon_logging directory (fixed location relative to repo root)
+set(CPP_LOGGING_DIR ${PROJECT_ROOT}/../cpp/axon_logging)
+if(NOT EXISTS "${CPP_LOGGING_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "Could not find axon_logging at: ${CPP_LOGGING_DIR}\n"
         "Please ensure the cpp/axon_logging directory exists relative to the project root.")
 endif()
 message(STATUS "Found axon_logging at: ${CPP_LOGGING_DIR}")
