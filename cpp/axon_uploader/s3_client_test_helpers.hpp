@@ -4,6 +4,8 @@
 // This header is for testing only - exposes internal implementations
 // for dependency injection in tests
 
+#include <string>
+
 #include "s3_client.hpp"
 #include "uploader_interfaces.hpp"
 
@@ -22,6 +24,14 @@ namespace uploader {
 uint64_t getFileSizeForUploadImpl(
   const std::string& local_path, IFileStreamFactory& stream_factory
 );
+
+/**
+ * Convert AWS TransferStatus to error code string
+ * Extracted for testability - tests can pass status codes directly
+ * @param status Transfer status enum value as int
+ * @return Error code string
+ */
+std::string transferStatusToErrorCode(int status);
 
 }  // namespace uploader
 }  // namespace axon
