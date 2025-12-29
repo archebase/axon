@@ -64,8 +64,10 @@ public:
    * @param options MCAP writer configuration
    * @return true on success, false on failure
    */
-  bool open(const std::string& path,
-            const mcap_wrapper::McapWriterOptions& options = mcap_wrapper::McapWriterOptions{});
+  bool open(
+    const std::string& path,
+    const mcap_wrapper::McapWriterOptions& options = mcap_wrapper::McapWriterOptions{}
+  );
 
   /**
    * Close the MCAP file.
@@ -91,8 +93,9 @@ public:
    * @param definition Schema definition string
    * @return Schema ID for use with register_channel(), or 0 on failure
    */
-  uint16_t register_schema(const std::string& name, const std::string& encoding,
-                           const std::string& definition);
+  uint16_t register_schema(
+    const std::string& name, const std::string& encoding, const std::string& definition
+  );
 
   /**
    * Register a channel (topic).
@@ -103,9 +106,10 @@ public:
    * @param metadata Optional channel metadata
    * @return Channel ID for use with write(), or 0 on failure
    */
-  uint16_t register_channel(const std::string& topic, const std::string& message_encoding,
-                            uint16_t schema_id,
-                            const std::unordered_map<std::string, std::string>& metadata = {});
+  uint16_t register_channel(
+    const std::string& topic, const std::string& message_encoding, uint16_t schema_id,
+    const std::unordered_map<std::string, std::string>& metadata = {}
+  );
 
   /**
    * Write a message to the MCAP file.
@@ -119,8 +123,10 @@ public:
    * @param data_size Size of serialized message data
    * @return true on success, false on failure
    */
-  bool write(uint16_t channel_id, uint32_t sequence, uint64_t log_time_ns, uint64_t publish_time_ns,
-             const uint8_t* data, size_t data_size);
+  bool write(
+    uint16_t channel_id, uint32_t sequence, uint64_t log_time_ns, uint64_t publish_time_ns,
+    const uint8_t* data, size_t data_size
+  );
 
   /**
    * Get the channel ID for a topic.
@@ -215,4 +221,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_RECORDING_SESSION_HPP
-

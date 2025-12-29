@@ -13,11 +13,17 @@ struct McapValidationResult {
   bool valid;
   std::string error_message;
 
-  explicit operator bool() const { return valid; }
+  explicit operator bool() const {
+    return valid;
+  }
 
-  static McapValidationResult success() { return {true, ""}; }
+  static McapValidationResult success() {
+    return {true, ""};
+  }
 
-  static McapValidationResult failure(const std::string& message) { return {false, message}; }
+  static McapValidationResult failure(const std::string& message) {
+    return {false, message};
+  }
 };
 
 /**
@@ -72,4 +78,3 @@ inline bool isValidMcap(const std::string& path) {
 }  // namespace axon
 
 #endif  // AXON_MCAP_VALIDATOR_HPP
-

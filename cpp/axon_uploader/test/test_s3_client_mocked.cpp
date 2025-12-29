@@ -5,8 +5,8 @@
  * that are difficult to simulate with real files.
  */
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include <memory>
 #include <string>
@@ -17,10 +17,10 @@
 using namespace axon::uploader;
 using namespace axon::uploader::test;
 using ::testing::_;
+using ::testing::ByMove;
+using ::testing::DoAll;
 using ::testing::Return;
 using ::testing::ReturnRef;
-using ::testing::DoAll;
-using ::testing::ByMove;
 
 class S3ClientMockedTest : public ::testing::Test {
 protected:
@@ -39,7 +39,7 @@ protected:
 TEST_F(S3ClientMockedTest, GetFileSizeForUpload_StreamFactoryReturnsNullptr) {
   // Test file size retrieval when stream factory returns nullptr (file open failure)
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_file_path_, _))
-      .WillOnce(Return(ByMove(std::unique_ptr<IFileStream>())));
+    .WillOnce(Return(ByMove(std::unique_ptr<IFileStream>())));
 
   uint64_t size = getFileSizeForUploadImpl(test_file_path_, *mock_stream_factory_);
   EXPECT_EQ(size, 0);  // Indicates failure
@@ -54,7 +54,7 @@ TEST_F(S3ClientMockedTest, GetFileSizeForUpload_StreamGoodButTellgFails) {
   // good() is NOT called due to short-circuit evaluation in: (pos == -1 || !file->good())
 
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_file_path_, _))
-      .WillOnce(Return(ByMove(std::move(mock_stream))));
+    .WillOnce(Return(ByMove(std::move(mock_stream))));
 
   uint64_t size = getFileSizeForUploadImpl(test_file_path_, *mock_stream_factory_);
   // tellg() returns -1 on error, which should be detected and return 0 (failure indicator)
@@ -70,7 +70,7 @@ TEST_F(S3ClientMockedTest, GetFileSizeForUpload_Success) {
   EXPECT_CALL(*mock_stream, good()).WillOnce(Return(true));  // Stream is in good state
 
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_file_path_, _))
-      .WillOnce(Return(ByMove(std::move(mock_stream))));
+    .WillOnce(Return(ByMove(std::move(mock_stream))));
 
   uint64_t size = getFileSizeForUploadImpl(test_file_path_, *mock_stream_factory_);
   EXPECT_EQ(size, expected_size);
@@ -84,7 +84,7 @@ TEST_F(S3ClientMockedTest, GetFileSizeForUpload_EmptyFile) {
   EXPECT_CALL(*mock_stream, good()).WillOnce(Return(true));  // Stream is in good state
 
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_file_path_, _))
-      .WillOnce(Return(ByMove(std::move(mock_stream))));
+    .WillOnce(Return(ByMove(std::move(mock_stream))));
 
   uint64_t size = getFileSizeForUploadImpl(test_file_path_, *mock_stream_factory_);
   EXPECT_EQ(size, 0);
@@ -94,4 +94,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

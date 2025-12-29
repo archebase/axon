@@ -2,7 +2,7 @@
 # Supports ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling)
 # Located in ros/ directory - paths are relative to project root
 
-.PHONY: all build test clean install rust-build rust-test cpp-build cpp-test help
+.PHONY: all build test clean install build-ros1 build-ros2 test-libs help
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -18,12 +18,9 @@ ROS_DISTRO ?= $(shell echo $$ROS_DISTRO)
 # Build directories (relative to this Makefile location)
 BUILD_DIR := build
 TEST_BUILD_DIR := src/axon_recorder/test/build
-C_FFI_DIR := ../c
-RUST_TARGET_DIR := $(C_FFI_DIR)/target
 
 # Build type
 BUILD_TYPE ?= Release
-RUST_BUILD_TYPE ?= debug
 
 # Detect number of CPU cores
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -55,15 +52,9 @@ help:
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Available targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)          - Build the project (ROS1 or ROS2)"
-	@printf "%s\n" "  $(BLUE)make test$(NC)           - Run all tests (Rust + C++)"
+	@printf "%s\n" "  $(BLUE)make test$(NC)           - Run all tests (C++)"
 	@printf "%s\n" "  $(BLUE)make clean$(NC)          - Clean all build artifacts"
 	@printf "%s\n" "  $(BLUE)make install$(NC)        - Install the package"
-	@echo ""
-	@printf "%s\n" "$(YELLOW)Component-specific targets:$(NC)"
-	@printf "%s\n" "  $(BLUE)make rust-build$(NC)     - Build Rust bridge library only"
-	@printf "%s\n" "  $(BLUE)make rust-test$(NC)      - Run Rust tests only"
-	@printf "%s\n" "  $(BLUE)make cpp-build$(NC)      - Build C++ code only"
-	@printf "%s\n" "  $(BLUE)make cpp-test$(NC)       - Run C++ tests only"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Build modes:$(NC)"
 	@printf "%s\n" "  $(BLUE)make debug$(NC)          - Build in debug mode"
@@ -89,88 +80,54 @@ help:
 	@printf "%s\n" "  $(BLUE)ROS_VERSION$(NC)         - Set to 1 or 2 (auto-detected)"
 	@printf "%s\n" "  $(BLUE)ROS_DISTRO$(NC)          - ROS distribution name"
 	@printf "%s\n" "  $(BLUE)BUILD_TYPE$(NC)          - Release or Debug (default: Release)"
-	@printf "%s\n" "  $(BLUE)RUST_BUILD_TYPE$(NC)     - release or debug (default: debug)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Current configuration:$(NC)"
 	@echo "  ROS_VERSION: $(ROS_VERSION)"
 	@echo "  ROS_DISTRO: $(if $(ROS_DISTRO),$(ROS_DISTRO),not set)"
 	@echo "  BUILD_TYPE: $(BUILD_TYPE)"
-	@echo "  RUST_BUILD_TYPE: $(RUST_BUILD_TYPE)"
 	@echo "  CPU cores: $(NPROC)"
 	@echo "  Project root: $(PROJECT_ROOT)"
 
 # Main build target
-all: rust-build cpp-build
+build:
+	@if [ "$(ROS_VERSION)" = "1" ]; then \
+		$(MAKE) build-ros1; \
+	else \
+		$(MAKE) build-ros2; \
+	fi
 	@printf "%s\n" "$(GREEN)✓ Build complete!$(NC)"
 
-build: all
-
-# Rust build (C FFI)
-rust-build:
-	@printf "%s\n" "$(YELLOW)Building C FFI library (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && \
-		if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
-			cargo build --release; \
-		else \
-			cargo build; \
-		fi
-	@printf "%s\n" "$(GREEN)✓ C FFI library built$(NC)"
-
-rust-test:
-	@printf "%s\n" "$(YELLOW)Running C FFI tests (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && \
-		if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
-			cargo test --release; \
-		else \
-			cargo test; \
-		fi
-	@printf "%s\n" "$(GREEN)✓ C FFI tests passed$(NC)"
-
-# C++ build for ROS1
-cpp-build-ros1:
-	@printf "%s\n" "$(YELLOW)Building C++ code for ROS1...$(NC)"
+# Build for ROS1
+build-ros1:
+	@printf "%s\n" "$(YELLOW)Building code for ROS1...$(NC)"
 	@if [ -z "$$ROS_DISTRO" ]; then \
 		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
 		echo "Example: source /opt/ros/noetic/setup.bash"; \
 		exit 1; \
 	fi
-	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && \
-		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi && \
-		cmake ../src/axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
-		cmake --build . -j$(NPROC)
-	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS1$(NC)"
+	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
+		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
+	fi
+	@catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	@printf "%s\n" "$(GREEN)✓ Code built for ROS1$(NC)"
 
-# C++ build for ROS2
-cpp-build-ros2:
-	@printf "%s\n" "$(YELLOW)Building C++ code for ROS2...$(NC)"
+# Build for ROS2
+build-ros2:
+	@printf "%s\n" "$(YELLOW)Building code for ROS2...$(NC)"
 	@if [ -z "$$ROS_DISTRO" ]; then \
 		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
 		echo "Example: source /opt/ros/humble/setup.bash"; \
 		exit 1; \
 	fi
-	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && \
-		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi && \
-		cmake ../src/axon_recorder -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) && \
-		cmake --build . -j$(NPROC)
-	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS2$(NC)"
-
-# C++ build (auto-detect ROS version)
-cpp-build:
-	@if [ "$(ROS_VERSION)" = "1" ]; then \
-		$(MAKE) cpp-build-ros1; \
-	else \
-		$(MAKE) cpp-build-ros2; \
+	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
+		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 	fi
+	@colcon build --base-paths . --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
+	@printf "%s\n" "$(GREEN)✓ Code built for ROS2$(NC)"
 
-# C++ tests
-cpp-test:
-	@printf "%s\n" "$(YELLOW)Running C++ library tests...$(NC)"
+# Library tests
+test:
+	@printf "%s\n" "$(YELLOW)Running library tests...$(NC)"
 	@if [ -d "$(PROJECT_ROOT)/cpp/axon_mcap" ]; then \
 		cd $(PROJECT_ROOT)/cpp/axon_mcap && \
 		mkdir -p build && cd build && \
@@ -178,32 +135,17 @@ cpp-test:
 		cmake --build . && \
 		ctest --output-on-failure; \
 	fi
-	@printf "%s\n" "$(GREEN)✓ C++ tests passed$(NC)"
+	@printf "%s\n" "$(GREEN)✓ Tests passed$(NC)"
 
-# ROS integration tests
-integration-test:
-	@printf "%s\n" "$(YELLOW)Running integration tests...$(NC)"
-	@if [ -f src/axon_recorder/test/integration/test_rust_bridge.sh ]; then \
-		bash src/axon_recorder/test/integration/test_rust_bridge.sh; \
-	fi
-	@printf "%s\n" "$(GREEN)✓ Integration tests passed$(NC)"
-
-# Run all tests
-test: rust-test cpp-test integration-test
-	@printf "%s\n" "$(GREEN)✓ All tests passed!$(NC)"
 
 # Clean targets
-clean-rust:
-	@printf "%s\n" "$(YELLOW)Cleaning C FFI build artifacts...$(NC)"
-	@cd $(C_FFI_DIR) && cargo clean
-	@printf "%s\n" "$(GREEN)✓ C FFI artifacts cleaned$(NC)"
-
-clean-cpp:
-	@printf "%s\n" "$(YELLOW)Cleaning C++ build artifacts...$(NC)"
-	@rm -rf $(BUILD_DIR) $(TEST_BUILD_DIR)
-	@printf "%s\n" "$(GREEN)✓ C++ artifacts cleaned$(NC)"
-
-clean: clean-rust clean-cpp
+clean:
+	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
+	@if [ "$(ROS_VERSION)" = "2" ]; then \
+		rm -rf build install log; \
+	else \
+		catkin clean --yes; \
+	fi
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target
@@ -213,12 +155,22 @@ install: build
 		echo "$(RED)Error: ROS_DISTRO not set$(NC)"; \
 		exit 1; \
 	fi
-	@cd $(BUILD_DIR) && \
+	@if [ "$(ROS_VERSION)" = "2" ]; then \
 		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi && \
-		cmake --install .
-	@printf "%s\n" "$(GREEN)✓ Package installed$(NC)"
+		fi; \
+		colcon build --base-paths . \
+			--cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			--install-base install \
+			--event-handlers console_direct+; \
+		printf "%s\n" "$(GREEN)✓ Package installed to install/ directory$(NC)"; \
+	else \
+		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
+			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
+		fi; \
+		catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE); \
+		printf "%s\n" "$(GREEN)✓ Package installed$(NC)"; \
+	fi
 
 # Docker build targets
 docker-build-ros1:
@@ -230,12 +182,8 @@ docker-build-ros1:
 
 docker-test-ros1: docker-build-ros1
 	@printf "%s\n" "$(YELLOW)Running tests in ROS1 Docker container...$(NC)"
-	@mkdir -p $(PROJECT_ROOT)/$(C_FFI_DIR)/target
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		-v $(PROJECT_ROOT):/workspace/axon \
-		-v $(PROJECT_ROOT)/$(C_FFI_DIR)/target:/workspace/axon/c/target \
-		-v cargo-cache-ros1:/root/.cargo/registry \
-		-v cargo-git-cache-ros1:/root/.cargo/git \
 		-e ROS_DISTRO=noetic \
 		-e ROS_VERSION=1 \
 		axon:ros1 \
@@ -251,12 +199,8 @@ docker-build-ros2-humble:
 
 docker-test-ros2-humble: docker-build-ros2-humble
 	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Humble Docker container...$(NC)"
-	@mkdir -p $(PROJECT_ROOT)/$(C_FFI_DIR)/target
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		-v $(PROJECT_ROOT):/workspace/axon \
-		-v $(PROJECT_ROOT)/$(C_FFI_DIR)/target:/workspace/axon/c/target \
-		-v cargo-cache-ros2-humble:/root/.cargo/registry \
-		-v cargo-git-cache-ros2-humble:/root/.cargo/git \
 		-e ROS_DISTRO=humble \
 		-e ROS_VERSION=2 \
 		axon:ros2-humble \
@@ -272,12 +216,8 @@ docker-build-ros2-jazzy:
 
 docker-test-ros2-jazzy: docker-build-ros2-jazzy
 	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Jazzy Docker container...$(NC)"
-	@mkdir -p $(PROJECT_ROOT)/$(C_FFI_DIR)/target
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		-v $(PROJECT_ROOT):/workspace/axon \
-		-v $(PROJECT_ROOT)/$(C_FFI_DIR)/target:/workspace/axon/c/target \
-		-v cargo-cache-ros2-jazzy:/root/.cargo/registry \
-		-v cargo-git-cache-ros2-jazzy:/root/.cargo/git \
 		-e ROS_DISTRO=jazzy \
 		-e ROS_VERSION=2 \
 		axon:ros2-jazzy \
@@ -293,12 +233,8 @@ docker-build-ros2-rolling:
 
 docker-test-ros2-rolling: docker-build-ros2-rolling
 	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Rolling Docker container...$(NC)"
-	@mkdir -p $(PROJECT_ROOT)/$(C_FFI_DIR)/target
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		-v $(PROJECT_ROOT):/workspace/axon \
-		-v $(PROJECT_ROOT)/$(C_FFI_DIR)/target:/workspace/axon/c/target \
-		-v cargo-cache-ros2-rolling:/root/.cargo/registry \
-		-v cargo-git-cache-ros2-rolling:/root/.cargo/git \
 		-e ROS_DISTRO=rolling \
 		-e ROS_VERSION=2 \
 		axon:ros2-rolling \
@@ -329,12 +265,8 @@ docker-test-compose:
 # Build in Docker
 docker-build-only:
 	@printf "%s\n" "$(YELLOW)Building in Docker container...$(NC)"
-	@mkdir -p $(PROJECT_ROOT)/$(C_FFI_DIR)/target
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		-v $(PROJECT_ROOT):/workspace/axon \
-		-v $(PROJECT_ROOT)/$(C_FFI_DIR)/target:/workspace/axon/c/target \
-		-v cargo-cache-ros$(ROS_VERSION):/root/.cargo/registry \
-		-v cargo-git-cache-ros$(ROS_VERSION):/root/.cargo/git \
 		-e ROS_DISTRO=$(ROS_DISTRO) \
 		-e ROS_VERSION=$(ROS_VERSION) \
 		axon:ros$(ROS_VERSION) \
@@ -345,60 +277,60 @@ docker-build-only:
 dev-setup:
 	@printf "%s\n" "$(YELLOW)Setting up development environment...$(NC)"
 	@echo "Checking dependencies..."
-	@command -v cargo >/dev/null 2>&1 || { echo "$(RED)Error: cargo not found. Install Rust toolchain.$(NC)"; exit 1; }
 	@command -v cmake >/dev/null 2>&1 || { echo "$(RED)Error: cmake not found.$(NC)"; exit 1; }
 	@command -v pkg-config >/dev/null 2>&1 || { echo "$(RED)Error: pkg-config not found.$(NC)"; exit 1; }
 	@printf "%s\n" "$(GREEN)✓ Development environment ready$(NC)"
 
 # Format code (if formatters are available)
-format-rust:
-	@printf "%s\n" "$(YELLOW)Formatting C FFI code (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && cargo fmt
-	@printf "%s\n" "$(GREEN)✓ C FFI code formatted$(NC)"
-
-format-cpp:
-	@printf "%s\n" "$(YELLOW)Formatting C++ code...$(NC)"
+format:
+	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
-		find ../cpp/src . -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i; \
-		echo "$(GREEN)✓ C++ code formatted$(NC)"; \
+		printf "%s\n" "$(YELLOW)  Formatting cpp/ libraries...$(NC)"; \
+		find $(PROJECT_ROOT)/cpp/axon_mcap $(PROJECT_ROOT)/cpp/axon_uploader $(PROJECT_ROOT)/cpp/axon_logging \
+			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
+			xargs -0 clang-format -i; \
+		printf "%s\n" "$(YELLOW)  Formatting ros/src/ code...$(NC)"; \
+		find ./src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" -print0 2>/dev/null | \
+			xargs -0 clang-format -i; \
+		printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"; \
 	else \
-		echo "$(YELLOW)clang-format not found, skipping$(NC)"; \
+		printf "%s\n" "$(YELLOW)⚠ clang-format not found, skipping C/C++ format...$(NC)"; \
+		printf "%s\n" "$(YELLOW)  Install with: sudo apt install clang-format$(NC)"; \
 	fi
-
-format: format-rust format-cpp
 
 # Lint code
-lint-rust:
-	@printf "%s\n" "$(YELLOW)Linting C FFI code (Rust)...$(NC)"
-	@cd $(C_FFI_DIR) && \
-		if [ "$(RUST_BUILD_TYPE)" = "release" ]; then \
-			cargo clippy --release -- -D warnings; \
-		else \
-			cargo clippy -- -D warnings; \
-		fi
-	@printf "%s\n" "$(GREEN)✓ C FFI linting passed$(NC)"
-
-lint-cpp:
+lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --enable=all --suppress=missingIncludeSystem ../cpp/src/ ./; \
-		echo "$(GREEN)✓ C++ linting passed$(NC)"; \
+		find ../cpp ./src \
+			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" \
+			! -path "*/test/*" \
+			! -path "*/install/*" \
+			-print0 2>/dev/null | \
+		xargs -0 cppcheck --enable=all \
+			--suppress=missingInclude \
+			-I../cpp/axon_mcap/include \
+			-I../cpp/axon_uploader/include \
+			-I../cpp/axon_logging/include \
+			-I$(PROJECT_ROOT)/ros/src/axon_recorder/include; \
+		printf "%s\n" "$(GREEN)✓ C++ linting passed$(NC)"; \
 	else \
-		echo "$(YELLOW)cppcheck not found, skipping$(NC)"; \
+		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \
 	fi
-
-lint: lint-rust lint-cpp
 
 # Debug build
 debug:
-	@$(MAKE) BUILD_TYPE=Debug RUST_BUILD_TYPE=debug build
+	@$(MAKE) BUILD_TYPE=Debug build
 
 # Release build (default)
 release:
-	@$(MAKE) BUILD_TYPE=Release RUST_BUILD_TYPE=release build
+	@$(MAKE) BUILD_TYPE=Release build
 
-# Quick test (Rust only, fast)
-quick-test: rust-test
+# Quick test (fast)
+quick-test: test
 	@printf "%s\n" "$(GREEN)✓ Quick test complete$(NC)"
 
 # Full test suite

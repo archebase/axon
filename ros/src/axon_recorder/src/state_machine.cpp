@@ -101,8 +101,8 @@ bool StateManager::transition(RecorderState from, RecorderState to, std::string&
 
     // Verify current state matches expected
     if (current_state_ != from) {
-      error_msg = "ERR_INVALID_STATE: Expected state " + state_to_string(from) + " but current is " +
-                  state_to_string(current_state_);
+      error_msg = "ERR_INVALID_STATE: Expected state " + state_to_string(from) +
+                  " but current is " + state_to_string(current_state_);
       return false;
     }
 
@@ -155,4 +155,3 @@ void StateManager::reset() {
 
 }  // namespace recorder
 }  // namespace axon
-

@@ -1,10 +1,9 @@
 #include "upload_state_manager.hpp"
 
-#include <sqlite3.h>
-
 #include <chrono>
 #include <iomanip>
 #include <mutex>
+#include <sqlite3.h>
 #include <sstream>
 #include <stdexcept>
 
@@ -113,33 +112,33 @@ public:
     // that are standard library implementation details
     record.file_path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
     record.json_path = sqlite3_column_text(stmt, 1)
-                           ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1))
-                           : "";
+                         ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1))
+                         : "";
     record.s3_key = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
     record.task_id = sqlite3_column_text(stmt, 3)
-                         ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3))
-                         : "";
+                       ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3))
+                       : "";
     record.factory_id = sqlite3_column_text(stmt, 4)
-                            ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4))
-                            : "";
+                          ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4))
+                          : "";
     record.device_id = sqlite3_column_text(stmt, 5)
-                           ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5))
-                           : "";
+                         ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5))
+                         : "";
     record.file_size_bytes = static_cast<uint64_t>(sqlite3_column_int64(stmt, 6));
     record.checksum_sha256 = sqlite3_column_text(stmt, 7)
-                                 ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7))
-                                 : "";
+                               ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7))
+                               : "";
     record.status =
-        uploadStatusFromString(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)));
+      uploadStatusFromString(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)));
     record.retry_count = sqlite3_column_int(stmt, 9);
     record.last_error = sqlite3_column_text(stmt, 10)
-                            ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10))
-                            : "";
+                          ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10))
+                          : "";
     record.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11));
     record.updated_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
     record.completed_at = sqlite3_column_text(stmt, 13)
-                              ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13))
-                              : "";
+                            ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13))
+                            : "";
     // LCOV_EXCL_BR_STOP
     return record;
   }
@@ -149,7 +148,7 @@ UploadStateManager::UploadStateManager(const std::string& db_path)
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
     : impl_(std::make_unique<Impl>())
-    // LCOV_EXCL_BR_STOP
+// LCOV_EXCL_BR_STOP
 {
   impl_->db_path = db_path;
   impl_->initDatabase();
@@ -197,7 +196,7 @@ bool UploadStateManager::insert(const UploadRecord& record) {
 }
 
 bool UploadStateManager::updateStatus(
-    const std::string& file_path, UploadStatus status, const std::string& error
+  const std::string& file_path, UploadStatus status, const std::string& error
 ) {
   std::lock_guard<std::mutex> lock(impl_->mutex);
 
@@ -380,7 +379,7 @@ std::vector<UploadRecord> UploadStateManager::getIncomplete() {
   std::lock_guard<std::mutex> lock(impl_->mutex);
 
   const char* sql =
-      "SELECT * FROM upload_state WHERE status IN ('pending', 'uploading') ORDER BY created_at";
+    "SELECT * FROM upload_state WHERE status IN ('pending', 'uploading') ORDER BY created_at";
 
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
@@ -427,8 +426,8 @@ uint64_t UploadStateManager::pendingBytes() {
   std::lock_guard<std::mutex> lock(impl_->mutex);
 
   const char* sql =
-      "SELECT COALESCE(SUM(file_size_bytes), 0) FROM upload_state WHERE status IN ('pending', "
-      "'uploading')";
+    "SELECT COALESCE(SUM(file_size_bytes), 0) FROM upload_state WHERE status IN ('pending', "
+    "'uploading')";
 
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
@@ -498,8 +497,9 @@ int UploadStateManager::deleteCompleted() {
   return sqlite3_changes(impl_->db);
 }
 
-const std::string& UploadStateManager::dbPath() const { return impl_->db_path; }
+const std::string& UploadStateManager::dbPath() const {
+  return impl_->db_path;
+}
 
 }  // namespace uploader
 }  // namespace axon
-

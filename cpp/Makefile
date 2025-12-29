@@ -132,12 +132,16 @@ install: build
 
 # Format code
 format:
-	@printf "%s\n" "$(YELLOW)Formatting C++ code...$(NC)"
+	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
-		find axon_mcap -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i; \
+		find axon_mcap axon_uploader axon_logging \
+			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
+			xargs -0 clang-format -i; \
 		printf "%s\n" "$(GREEN)✓ Code formatted$(NC)"; \
 	else \
 		printf "%s\n" "$(RED)Error: clang-format not found$(NC)"; \
+		printf "%s\n" "$(YELLOW)  Install with: sudo apt install clang-format$(NC)"; \
 		exit 1; \
 	fi
 

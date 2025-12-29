@@ -30,12 +30,18 @@ public:
 
   void shutdown() override {}
 
-  bool ok() const override { return true; }
+  bool ok() const override {
+    return true;
+  }
 
-  void* get_node_handle() override { return nullptr; }
+  void* get_node_handle() override {
+    return nullptr;
+  }
 
-  void* subscribe(const std::string& /* topic */, const std::string& /* message_type */,
-                  std::function<void(const void*)> /* callback */) override {
+  void* subscribe(
+    const std::string& /* topic */, const std::string& /* message_type */,
+    std::function<void(const void*)> /* callback */
+  ) override {
     return nullptr;
   }
 
@@ -72,7 +78,9 @@ public:
 
   void spin_once() override {}
   void spin() override {}
-  int64_t now_nsec() const override { return 0; }
+  int64_t now_nsec() const override {
+    return 0;
+  }
 
   void log_info(const std::string& /* message */) const override {}
   void log_warn(const std::string& /* message */) const override {}
@@ -138,10 +146,10 @@ TEST_F(TopicManagerTest, InitialState) {
 
 TEST_F(TopicManagerTest, SubscribeUnsubscribe) {
   bool callback_invoked = false;
-  auto callback = [&](const std::string& /* topic */, int64_t /* ts */,
-                      std::vector<uint8_t>&& /* data */) {
-    callback_invoked = true;
-  };
+  auto callback =
+    [&](const std::string& /* topic */, int64_t /* ts */, std::vector<uint8_t>&& /* data */) {
+      callback_invoked = true;
+    };
 
   EXPECT_TRUE(topic_manager_->subscribe("/test_topic", "std_msgs/String", callback));
   EXPECT_EQ(topic_manager_->topic_count(), 1);
@@ -269,12 +277,12 @@ TEST_F(TopicManagerTest, DestructorCleansUp) {
 TEST_F(TopicManagerTest, UnsubscribeNonExistentTopic) {
   // Unsubscribe a topic that was never subscribed - should not crash
   EXPECT_NO_THROW(topic_manager_->unsubscribe("/nonexistent"));
-  
+
   // Subscribe then unsubscribe twice
   auto callback = [](const std::string&, int64_t, std::vector<uint8_t>&&) {};
   topic_manager_->subscribe("/test", "std_msgs/String", callback);
   topic_manager_->unsubscribe("/test");
-  
+
   // Second unsubscribe should be a no-op
   EXPECT_NO_THROW(topic_manager_->unsubscribe("/test"));
 }
@@ -299,18 +307,18 @@ TEST_F(TopicManagerTest, IsSubscribedFalseForNonExistent) {
 
 TEST_F(TopicManagerTest, TopicCountAfterOperations) {
   auto callback = [](const std::string&, int64_t, std::vector<uint8_t>&&) {};
-  
+
   EXPECT_EQ(topic_manager_->topic_count(), 0);
-  
+
   topic_manager_->subscribe("/topic1", "Type1", callback);
   EXPECT_EQ(topic_manager_->topic_count(), 1);
-  
+
   topic_manager_->subscribe("/topic2", "Type2", callback);
   EXPECT_EQ(topic_manager_->topic_count(), 2);
-  
+
   topic_manager_->unsubscribe("/topic1");
   EXPECT_EQ(topic_manager_->topic_count(), 1);
-  
+
   topic_manager_->unsubscribe_all();
   EXPECT_EQ(topic_manager_->topic_count(), 0);
 }
@@ -318,25 +326,25 @@ TEST_F(TopicManagerTest, TopicCountAfterOperations) {
 TEST_F(TopicManagerTest, MultipleMessageCallbacks) {
   std::vector<std::string> received_topics;
   std::vector<int64_t> received_timestamps;
-  
+
   auto callback = [&](const std::string& topic, int64_t ts, std::vector<uint8_t>&& /* data */) {
     received_topics.push_back(topic);
     received_timestamps.push_back(ts);
   };
-  
+
   topic_manager_->subscribe("/topic1", "Type1", callback);
   topic_manager_->subscribe("/topic2", "Type2", callback);
-  
+
   // Simulate messages on both topics
   mock_ros_->simulate_message("/topic1", {0x01}, 100);
   mock_ros_->simulate_message("/topic2", {0x02}, 200);
   mock_ros_->simulate_message("/topic1", {0x03}, 300);
-  
+
   ASSERT_EQ(received_topics.size(), 3);
   EXPECT_EQ(received_topics[0], "/topic1");
   EXPECT_EQ(received_topics[1], "/topic2");
   EXPECT_EQ(received_topics[2], "/topic1");
-  
+
   EXPECT_EQ(received_timestamps[0], 100);
   EXPECT_EQ(received_timestamps[1], 200);
   EXPECT_EQ(received_timestamps[2], 300);
@@ -344,14 +352,14 @@ TEST_F(TopicManagerTest, MultipleMessageCallbacks) {
 
 TEST_F(TopicManagerTest, GetTopicInfoMultiple) {
   auto callback = [](const std::string&, int64_t, std::vector<uint8_t>&&) {};
-  
+
   topic_manager_->subscribe("/camera/image", "sensor_msgs/Image", callback);
   topic_manager_->subscribe("/imu/data", "sensor_msgs/Imu", callback);
   topic_manager_->subscribe("/lidar/scan", "sensor_msgs/LaserScan", callback);
-  
+
   auto info_list = topic_manager_->get_topic_info();
   ASSERT_EQ(info_list.size(), 3);
-  
+
   // Check that all topics are present (order may vary)
   std::unordered_set<std::string> topics;
   for (const auto& info : info_list) {
@@ -365,7 +373,7 @@ TEST_F(TopicManagerTest, GetTopicInfoMultiple) {
       EXPECT_EQ(info.message_type, "sensor_msgs/LaserScan");
     }
   }
-  
+
   EXPECT_TRUE(topics.count("/camera/image"));
   EXPECT_TRUE(topics.count("/imu/data"));
   EXPECT_TRUE(topics.count("/lidar/scan"));
@@ -376,57 +384,57 @@ TEST_F(TopicManagerTest, ConcurrentSubscribeUnsubscribe) {
   constexpr int kNumThreads = 4;
   // 50 iterations per thread - lower than state machine test due to heavier operations
   constexpr int kIterations = 50;
-  
+
   std::atomic<int> subscribe_count{0};
   std::atomic<int> unsubscribe_count{0};
-  
+
   std::vector<std::thread> threads;
-  
+
   for (int t = 0; t < kNumThreads; ++t) {
     threads.emplace_back([&, t]() {
       auto callback = [](const std::string&, int64_t, std::vector<uint8_t>&&) {};
-      
+
       for (int i = 0; i < kIterations; ++i) {
         std::string topic = "/topic_" + std::to_string(t) + "_" + std::to_string(i);
-        
+
         if (topic_manager_->subscribe(topic, "std_msgs/String", callback)) {
           subscribe_count.fetch_add(1);
         }
-        
+
         topic_manager_->unsubscribe(topic);
         unsubscribe_count.fetch_add(1);
       }
     });
   }
-  
+
   for (auto& thread : threads) {
     thread.join();
   }
-  
+
   // All subscribes should have succeeded (unique topics)
   EXPECT_EQ(subscribe_count.load(), kNumThreads * kIterations);
   EXPECT_EQ(unsubscribe_count.load(), kNumThreads * kIterations);
-  
+
   // Final count should be 0
   EXPECT_EQ(topic_manager_->topic_count(), 0);
 }
 
 TEST_F(TopicManagerTest, ConcurrentReads) {
   auto callback = [](const std::string&, int64_t, std::vector<uint8_t>&&) {};
-  
+
   // Subscribe to some topics
   topic_manager_->subscribe("/topic1", "Type1", callback);
   topic_manager_->subscribe("/topic2", "Type2", callback);
   topic_manager_->subscribe("/topic3", "Type3", callback);
-  
+
   // 4 threads for concurrent read stress testing
   constexpr int kNumThreads = 4;
   // 100 iterations - reads are lightweight, so more iterations
   constexpr int kIterations = 100;
-  
+
   std::atomic<int> read_count{0};
   std::vector<std::thread> threads;
-  
+
   for (int t = 0; t < kNumThreads; ++t) {
     threads.emplace_back([&]() {
       for (int i = 0; i < kIterations; ++i) {
@@ -445,18 +453,18 @@ TEST_F(TopicManagerTest, ConcurrentReads) {
   }
 
   EXPECT_EQ(read_count.load(), kNumThreads * kIterations * 5);
-  
+
   // Verify state is still consistent after concurrent reads
   EXPECT_EQ(topic_manager_->topic_count(), 3);
 }
 
 TEST_F(TopicManagerTest, SubscribeWithConfig) {
   auto callback = [](const std::string&, int64_t, std::vector<uint8_t>&&) {};
-  
+
   SubscriptionConfig config;
   config.history_depth = 100;
   config.qos = QosProfile::HighThroughput;
-  
+
   EXPECT_TRUE(topic_manager_->subscribe("/configured_topic", "std_msgs/String", callback, config));
   EXPECT_TRUE(topic_manager_->is_subscribed("/configured_topic"));
 }
@@ -469,13 +477,13 @@ TEST_F(TopicManagerTest, UnsubscribeAllWhenEmpty) {
 
 TEST_F(TopicManagerTest, SubscribeAfterUnsubscribeAll) {
   auto callback = [](const std::string&, int64_t, std::vector<uint8_t>&&) {};
-  
+
   topic_manager_->subscribe("/topic1", "Type1", callback);
   topic_manager_->subscribe("/topic2", "Type2", callback);
-  
+
   topic_manager_->unsubscribe_all();
   EXPECT_EQ(topic_manager_->topic_count(), 0);
-  
+
   // Should be able to subscribe again
   EXPECT_TRUE(topic_manager_->subscribe("/topic1", "Type1", callback));
   EXPECT_EQ(topic_manager_->topic_count(), 1);
@@ -489,4 +497,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

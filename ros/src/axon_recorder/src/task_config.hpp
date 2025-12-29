@@ -148,4 +148,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_TASK_CONFIG_HPP
-

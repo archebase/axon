@@ -17,8 +17,8 @@ namespace fs = std::filesystem;
  * Create a temporary directory for testing
  */
 inline std::string createTempDir(const std::string& prefix = "axon_test_") {
-  std::string dir = "/tmp/" + prefix +
-                    std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+  std::string dir =
+    "/tmp/" + prefix + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
   fs::create_directories(dir);
   return dir;
 }
@@ -53,9 +53,8 @@ inline std::string createTestMcapFile(const std::string& path, size_t size = 102
  * Create a test JSON sidecar file
  */
 inline std::string createTestJsonFile(
-    const std::string& path, const std::string& task_id,
-    const std::string& device_id = "test_device",
-    const std::string& factory_id = "test_factory"
+  const std::string& path, const std::string& task_id, const std::string& device_id = "test_device",
+  const std::string& factory_id = "test_factory"
 ) {
   std::ofstream file(path);
   if (!file) {
@@ -63,9 +62,12 @@ inline std::string createTestJsonFile(
   }
 
   file << R"({
-    "task_id": ")" << task_id << R"(",
-    "device_id": ")" << device_id << R"(",
-    "factory_id": ")" << factory_id << R"(",
+    "task_id": ")"
+       << task_id << R"(",
+    "device_id": ")"
+       << device_id << R"(",
+    "factory_id": ")"
+       << factory_id << R"(",
     "checksum_sha256": "abc123",
     "file_size_bytes": 1024
   })";
@@ -111,4 +113,3 @@ inline void cleanupTempDir(const std::string& dir) {
 }  // namespace axon
 
 #endif  // AXON_UPLOADER_TEST_HELPERS_HPP
-

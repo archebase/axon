@@ -233,4 +233,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_METADATA_INJECTOR_HPP
-

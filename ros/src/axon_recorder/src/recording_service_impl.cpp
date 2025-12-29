@@ -21,12 +21,11 @@ RecordingServiceImpl::RecordingServiceImpl(std::shared_ptr<IRecorderContext> con
 
 bool RecordingServiceImpl::handle_cached_recording_config(
   const std::string& task_id, const std::string& device_id, const std::string& data_collector_id,
-  const std::string& order_id, const std::string& operator_name,
-  const std::string& scene, const std::string& subscene, const std::vector<std::string>& skills,
-  const std::string& factory, const std::vector<std::string>& topics,
-  const std::string& start_callback_url, const std::string& finish_callback_url,
-  const std::string& user_token,
-  bool& success, std::string& message
+  const std::string& order_id, const std::string& operator_name, const std::string& scene,
+  const std::string& subscene, const std::vector<std::string>& skills, const std::string& factory,
+  const std::vector<std::string>& topics, const std::string& start_callback_url,
+  const std::string& finish_callback_url, const std::string& user_token, bool& success,
+  std::string& message
 ) {
   success = false;
 
@@ -84,9 +83,8 @@ bool RecordingServiceImpl::handle_cached_recording_config(
 bool RecordingServiceImpl::handle_is_recording_ready(
   bool& success, std::string& message, bool& is_configured, bool& is_recording,
   std::string& task_id, std::string& device_id, std::string& order_id, std::string& operator_name,
-  std::string& scene, std::string& subscene,
-  std::vector<std::string>& skills, std::string& factory, std::string& data_collector_id,
-  std::vector<std::string>& topics
+  std::string& scene, std::string& subscene, std::vector<std::string>& skills, std::string& factory,
+  std::string& data_collector_id, std::vector<std::string>& topics
 ) {
   success = true;
   message = "OK";
@@ -96,10 +94,10 @@ bool RecordingServiceImpl::handle_is_recording_ready(
 
   // Check state
   RecorderState state = state_manager.get_state();
-  is_configured = (state == RecorderState::READY || state == RecorderState::RECORDING ||
-                   state == RecorderState::PAUSED);
-  is_recording =
-    (state == RecorderState::RECORDING || state == RecorderState::PAUSED);
+  is_configured =
+    (state == RecorderState::READY || state == RecorderState::RECORDING ||
+     state == RecorderState::PAUSED);
+  is_recording = (state == RecorderState::RECORDING || state == RecorderState::PAUSED);
 
   // Populate config details if available
   auto config_opt = task_cache.get();
@@ -135,8 +133,8 @@ bool RecordingServiceImpl::handle_is_recording_ready(
 // ============================================================================
 
 bool RecordingServiceImpl::handle_recording_control(
-  const std::string& command, const std::string& task_id_request, bool& success, std::string& message,
-  std::string& task_id_response
+  const std::string& command, const std::string& task_id_request, bool& success,
+  std::string& message, std::string& task_id_response
 ) {
   success = false;
 
@@ -164,12 +162,15 @@ bool RecordingServiceImpl::handle_recording_control(
   return true;
 }
 
-bool RecordingServiceImpl::handle_start_command(std::string& message, std::string& task_id_response) {
+bool RecordingServiceImpl::handle_start_command(
+  std::string& message, std::string& task_id_response
+) {
   auto& state_manager = context_->get_state_manager();
 
   // Must be in READY state
   if (!state_manager.is_state(RecorderState::READY)) {
-    message = "ERR_INVALID_STATE: Cannot start recording in state " + state_manager.get_state_string();
+    message =
+      "ERR_INVALID_STATE: Cannot start recording in state " + state_manager.get_state_string();
     return false;
   }
 
@@ -353,11 +354,11 @@ bool RecordingServiceImpl::handle_clear_command(std::string& message) {
 
 bool RecordingServiceImpl::handle_recording_status(
   const std::string& task_id_request, bool& success, std::string& message, std::string& status,
-  std::string& task_id, std::string& device_id, std::string& data_collector_id, std::string& order_id,
-  std::string& operator_name, std::string& scene,
-  std::string& subscene, std::vector<std::string>& skills, std::string& factory,
-  std::vector<std::string>& active_topics, std::string& output_path, double& disk_usage_gb,
-  double& duration_sec, int64_t& message_count, double& throughput_mb_sec, std::string& last_error
+  std::string& task_id, std::string& device_id, std::string& data_collector_id,
+  std::string& order_id, std::string& operator_name, std::string& scene, std::string& subscene,
+  std::vector<std::string>& skills, std::string& factory, std::vector<std::string>& active_topics,
+  std::string& output_path, double& disk_usage_gb, double& duration_sec, int64_t& message_count,
+  double& throughput_mb_sec, std::string& last_error
 ) {
   success = true;
   message = "OK";
@@ -428,4 +429,3 @@ bool RecordingServiceImpl::validate_task_id(const std::string& task_id, std::str
 
 }  // namespace recorder
 }  // namespace axon
-

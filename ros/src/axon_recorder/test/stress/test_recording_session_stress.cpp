@@ -30,8 +30,8 @@ protected:
   void SetUp() override {
     // Create temp directory for test files
     auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-    test_dir_ = std::filesystem::temp_directory_path() /
-                ("axon_stress_test_" + std::to_string(timestamp));
+    test_dir_ =
+      std::filesystem::temp_directory_path() / ("axon_stress_test_" + std::to_string(timestamp));
     std::filesystem::create_directories(test_dir_);
   }
 
@@ -56,9 +56,8 @@ TEST_F(RecordingSessionStressTest, ConcurrentWriteFrom8Threads) {
   ASSERT_TRUE(session.open(path));
 
   // Register schema and channel
-  uint16_t schema_id = session.register_schema(
-    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
-  );
+  uint16_t schema_id =
+    session.register_schema("sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation");
   uint16_t channel_id = session.register_channel("/imu/data", "cdr", schema_id);
 
   constexpr int NUM_THREADS = 8;
@@ -95,9 +94,8 @@ TEST_F(RecordingSessionStressTest, ConcurrentWriteFrom8Threads) {
   }
 
   auto end_time = std::chrono::steady_clock::now();
-  auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-    end_time - start_time
-  ).count();
+  auto duration_ms =
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 
   // All messages should succeed
   EXPECT_EQ(success_count.load(), NUM_THREADS * MESSAGES_PER_THREAD);
@@ -111,8 +109,8 @@ TEST_F(RecordingSessionStressTest, ConcurrentWriteFrom8Threads) {
   // Output performance info (not a strict requirement)
   int total_messages = NUM_THREADS * MESSAGES_PER_THREAD;
   double msgs_per_sec = (total_messages * 1000.0) / duration_ms;
-  std::cout << "  [INFO] " << total_messages << " messages in " << duration_ms
-            << " ms (" << msgs_per_sec << " msg/s)" << std::endl;
+  std::cout << "  [INFO] " << total_messages << " messages in " << duration_ms << " ms ("
+            << msgs_per_sec << " msg/s)" << std::endl;
 
   // Verify file exists and has reasonable size
   EXPECT_TRUE(std::filesystem::exists(path));
@@ -126,9 +124,7 @@ TEST_F(RecordingSessionStressTest, Write100KMessagesPerSecond) {
   ASSERT_TRUE(session.open(path));
 
   // Register schema and channel
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/high_freq", "cdr", schema_id);
 
   // Small message (typical string message)
@@ -150,9 +146,8 @@ TEST_F(RecordingSessionStressTest, Write100KMessagesPerSecond) {
   }
 
   auto end_time = std::chrono::steady_clock::now();
-  auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-    end_time - start_time
-  ).count();
+  auto duration_ms =
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 
   // All writes should succeed
   EXPECT_EQ(success_count, TARGET_MESSAGES);
@@ -166,14 +161,15 @@ TEST_F(RecordingSessionStressTest, Write100KMessagesPerSecond) {
   double msgs_per_sec = (TARGET_MESSAGES * 1000.0) / std::max(duration_ms, 1L);
   double mb_per_sec = (TARGET_MESSAGES * data.size() * 1000.0) / (duration_ms * 1024.0 * 1024.0);
 
-  std::cout << "  [INFO] " << TARGET_MESSAGES << " messages in " << duration_ms
-            << " ms (" << static_cast<int>(msgs_per_sec) << " msg/s, "
-            << mb_per_sec << " MB/s)" << std::endl;
+  std::cout << "  [INFO] " << TARGET_MESSAGES << " messages in " << duration_ms << " ms ("
+            << static_cast<int>(msgs_per_sec) << " msg/s, " << mb_per_sec << " MB/s)" << std::endl;
 
   // Should complete in reasonable time (not a hard requirement for CI)
   // Just verify file was created
   EXPECT_TRUE(std::filesystem::exists(path));
-  EXPECT_GT(std::filesystem::file_size(path), TARGET_MESSAGES * data.size() / 10);  // At least 10% due to compression
+  EXPECT_GT(
+    std::filesystem::file_size(path), TARGET_MESSAGES * data.size() / 10
+  );  // At least 10% due to compression
 }
 
 TEST_F(RecordingSessionStressTest, LargeMessagesMemoryStable) {
@@ -191,7 +187,7 @@ TEST_F(RecordingSessionStressTest, LargeMessagesMemoryStable) {
   // 2MB message (1920x1080 grayscale image)
   constexpr size_t MESSAGE_SIZE = 2 * 1024 * 1024;
   std::vector<uint8_t> large_data(MESSAGE_SIZE);
-  
+
   // Fill with pseudo-random data (deterministic for reproducibility)
   std::mt19937 rng(42);
   for (size_t i = 0; i < large_data.size(); ++i) {
@@ -208,15 +204,14 @@ TEST_F(RecordingSessionStressTest, LargeMessagesMemoryStable) {
     if (session.write(channel_id, i, ts, ts, large_data.data(), large_data.size())) {
       ++success_count;
     }
-    
+
     // Modify data slightly for each frame
     large_data[0] = static_cast<uint8_t>(i & 0xFF);
   }
 
   auto end_time = std::chrono::steady_clock::now();
-  auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-    end_time - start_time
-  ).count();
+  auto duration_ms =
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 
   EXPECT_EQ(success_count, NUM_MESSAGES);
 
@@ -230,8 +225,7 @@ TEST_F(RecordingSessionStressTest, LargeMessagesMemoryStable) {
   double mb_per_sec = (mb_written * 1000.0) / std::max(duration_ms, 1L);
 
   std::cout << "  [INFO] " << NUM_MESSAGES << " x " << MESSAGE_SIZE / 1024 / 1024
-            << " MB messages in " << duration_ms << " ms ("
-            << mb_per_sec << " MB/s)" << std::endl;
+            << " MB messages in " << duration_ms << " ms (" << mb_per_sec << " MB/s)" << std::endl;
 
   // Verify file was created
   EXPECT_TRUE(std::filesystem::exists(path));
@@ -255,15 +249,11 @@ TEST_F(RecordingSessionStressTest, MixedMessageSizesConcurrent) {
   session.set_task_config(config);
 
   // Register schemas for different message types
-  uint16_t schema_string = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
-  uint16_t schema_image = session.register_schema(
-    "sensor_msgs/msg/Image", "ros2msg", "uint8[] data"
-  );
-  uint16_t schema_imu = session.register_schema(
-    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
-  );
+  uint16_t schema_string = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
+  uint16_t schema_image =
+    session.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint8[] data");
+  uint16_t schema_imu =
+    session.register_schema("sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation");
 
   uint16_t ch_string = session.register_channel("/status", "cdr", schema_string);
   uint16_t ch_image = session.register_channel("/camera/image", "cdr", schema_image);
@@ -336,31 +326,28 @@ TEST_F(RecordingSessionStressTest, SustainedLoadFor5Seconds) {
   std::string path = (test_dir_ / "sustained_load.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/sustained", "cdr", schema_id);
 
   std::vector<uint8_t> data(128);
 
   auto start = std::chrono::steady_clock::now();
   auto deadline = start + std::chrono::seconds(5);
-  
+
   int message_count = 0;
   while (std::chrono::steady_clock::now() < deadline) {
-    uint64_t ts = static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()
-      ).count()
-    );
+    uint64_t ts = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                          std::chrono::steady_clock::now().time_since_epoch()
+    )
+                                          .count());
     if (session.write(channel_id, message_count, ts, ts, data.data(), data.size())) {
       ++message_count;
     }
   }
 
-  auto actual_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::steady_clock::now() - start
-  ).count();
+  auto actual_duration =
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start)
+      .count();
 
   auto stats = session.get_stats();
   EXPECT_EQ(stats.messages_written, message_count);
@@ -368,9 +355,8 @@ TEST_F(RecordingSessionStressTest, SustainedLoadFor5Seconds) {
   session.close();
 
   double msgs_per_sec = (message_count * 1000.0) / actual_duration;
-  std::cout << "  [INFO] Sustained load: " << message_count << " messages in "
-            << actual_duration << " ms (" << static_cast<int>(msgs_per_sec) << " msg/s)"
-            << std::endl;
+  std::cout << "  [INFO] Sustained load: " << message_count << " messages in " << actual_duration
+            << " ms (" << static_cast<int>(msgs_per_sec) << " msg/s)" << std::endl;
 
   // Should have written a reasonable number of messages
   EXPECT_GT(message_count, 10000);  // At least 2000 msg/s average
@@ -384,4 +370,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

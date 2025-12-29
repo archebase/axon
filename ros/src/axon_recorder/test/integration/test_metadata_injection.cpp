@@ -10,14 +10,13 @@
  */
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <thread>
-
-#include <nlohmann/json.hpp>
 
 #include "mcap_writer_wrapper.hpp"
 #include "recording_session.hpp"
@@ -82,7 +81,9 @@ TEST_F(MetadataInjectionIntegrationTest, EndToEndRecordingWithMetadata) {
   session.set_task_config(config);
 
   // Register schema and channel
-  uint16_t schema_id = session.register_schema("test_msgs/msg/TestMessage", "ros2msg", "uint64 timestamp\nstring data");
+  uint16_t schema_id = session.register_schema(
+    "test_msgs/msg/TestMessage", "ros2msg", "uint64 timestamp\nstring data"
+  );
   ASSERT_NE(schema_id, 0);
 
   uint16_t channel_id = session.register_channel("/test/topic1", "cdr", schema_id);
@@ -91,12 +92,14 @@ TEST_F(MetadataInjectionIntegrationTest, EndToEndRecordingWithMetadata) {
   // Write some messages
   auto msg_data = create_sample_message(50);
   auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-    std::chrono::system_clock::now().time_since_epoch()
-  ).count();
+                  std::chrono::system_clock::now().time_since_epoch()
+  )
+                  .count();
 
   for (int i = 0; i < 10; ++i) {
-    EXPECT_TRUE(session.write(channel_id, i, now_ns + i * 1000000, now_ns + i * 1000000,
-                              msg_data.data(), msg_data.size()));
+    EXPECT_TRUE(session.write(
+      channel_id, i, now_ns + i * 1000000, now_ns + i * 1000000, msg_data.data(), msg_data.size()
+    ));
     session.update_topic_stats("/test/topic1", "test_msgs/msg/TestMessage");
   }
 
@@ -187,7 +190,8 @@ TEST_F(MetadataInjectionIntegrationTest, MultiTopicRecording) {
 
   // Register multiple topics
   uint16_t schema1 = session.register_schema("sensor_msgs/Image", "ros2msg", "uint32 height");
-  uint16_t schema2 = session.register_schema("sensor_msgs/JointState", "ros2msg", "float64[] position");
+  uint16_t schema2 =
+    session.register_schema("sensor_msgs/JointState", "ros2msg", "float64[] position");
 
   uint16_t channel1 = session.register_channel("/camera/image", "cdr", schema1);
   uint16_t channel2 = session.register_channel("/joint_states", "cdr", schema2);
@@ -197,12 +201,16 @@ TEST_F(MetadataInjectionIntegrationTest, MultiTopicRecording) {
 
   // Write messages to different topics
   for (int i = 0; i < 30; ++i) {
-    EXPECT_TRUE(session.write(channel1, i, ts + i * 33000000, ts + i * 33000000, msg.data(), msg.size()));
+    EXPECT_TRUE(
+      session.write(channel1, i, ts + i * 33000000, ts + i * 33000000, msg.data(), msg.size())
+    );
     session.update_topic_stats("/camera/image", "sensor_msgs/Image");
   }
 
   for (int i = 0; i < 100; ++i) {
-    EXPECT_TRUE(session.write(channel2, i, ts + i * 10000000, ts + i * 10000000, msg.data(), msg.size()));
+    EXPECT_TRUE(
+      session.write(channel2, i, ts + i * 10000000, ts + i * 10000000, msg.data(), msg.size())
+    );
     session.update_topic_stats("/joint_states", "sensor_msgs/JointState");
   }
 
@@ -306,4 +314,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

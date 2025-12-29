@@ -50,9 +50,8 @@ bool MessageIntrospectorFactory::has_factory() {
 
 class RosIntrospectorImpl : public MessageIntrospector {
 public:
-  bool get_message_descriptor(
-    const std::string& message_type, MessageTypeDescriptor& descriptor
-  ) override {
+  bool get_message_descriptor(const std::string& message_type, MessageTypeDescriptor& descriptor)
+    override {
     descriptor.full_name = message_type;
 
     // Parse package/name - handle both ROS1 (pkg/Msg) and ROS2 (pkg/msg/Msg) styles
@@ -96,9 +95,8 @@ public:
 
 class RosIntrospectorImpl : public MessageIntrospector {
 public:
-  bool get_message_descriptor(
-    const std::string& message_type, MessageTypeDescriptor& descriptor
-  ) override {
+  bool get_message_descriptor(const std::string& message_type, MessageTypeDescriptor& descriptor)
+    override {
     descriptor.full_name = message_type;
 
     // Parse package/name - handle both ROS1 (pkg/Msg) and ROS2 (pkg/msg/Msg) styles

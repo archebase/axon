@@ -41,7 +41,8 @@ public:
   // Non-copyable, movable
   TempDirectory(const TempDirectory&) = delete;
   TempDirectory& operator=(const TempDirectory&) = delete;
-  TempDirectory(TempDirectory&& other) noexcept : path_(std::move(other.path_)) {
+  TempDirectory(TempDirectory&& other) noexcept
+      : path_(std::move(other.path_)) {
     other.path_.clear();
   }
   TempDirectory& operator=(TempDirectory&& other) noexcept {
@@ -55,8 +56,12 @@ public:
     return *this;
   }
 
-  std::filesystem::path path() const { return path_; }
-  std::string string() const { return path_.string(); }
+  std::filesystem::path path() const {
+    return path_;
+  }
+  std::string string() const {
+    return path_.string();
+  }
 
   /**
    * Create a subdirectory within the temp directory.
@@ -157,8 +162,8 @@ inline RecorderConfig make_test_recorder_config(const std::string& output_dir) {
  * @param topic_name Topic name to record
  */
 inline RecorderConfig make_minimal_recorder_config(
-    const std::string& output_dir,
-    const std::string& topic_name = "/test_topic") {
+  const std::string& output_dir, const std::string& topic_name = "/test_topic"
+) {
   RecorderConfig config;
   config.dataset.path = output_dir;
   config.dataset.mode = "create";
@@ -195,10 +200,10 @@ inline std::vector<uint8_t> make_test_message(size_t size) {
  * Get current time in nanoseconds since epoch.
  */
 inline uint64_t now_ns() {
-  return static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
-          .count());
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 std::chrono::system_clock::now().time_since_epoch()
+  )
+                                 .count());
 }
 
 }  // namespace test
@@ -206,4 +211,3 @@ inline uint64_t now_ns() {
 }  // namespace axon
 
 #endif  // AXON_RECORDER_TEST_HELPERS_HPP
-

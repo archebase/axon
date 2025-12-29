@@ -236,7 +236,7 @@ HttpCallbackResult HttpCallbackClient::http_post(
     if (use_ssl) {
       // HTTPS request with SSL/TLS
       ssl::context ctx(ssl::context::tlsv12_client);
-      
+
       // Use system's default CA certificates for verification
       ctx.set_default_verify_paths();
       ctx.set_verify_mode(ssl::verify_peer);
@@ -306,8 +306,8 @@ HttpCallbackResult HttpCallbackClient::http_post(
     if (result.status_code >= 200 && result.status_code < 300) {
       result.success = true;
     } else {
-      result.error_message = "ERR_CALLBACK_FAILED: Server returned status " +
-                             std::to_string(result.status_code);
+      result.error_message =
+        "ERR_CALLBACK_FAILED: Server returned status " + std::to_string(result.status_code);
     }
 
   } catch (const std::exception& e) {
@@ -332,7 +332,8 @@ HttpCallbackResult HttpCallbackClient::post_start_callback(
   }
 
   std::string body = payload.to_json();
-  HttpCallbackResult result = http_post(task_config.start_callback_url, body, task_config.user_token);
+  HttpCallbackResult result =
+    http_post(task_config.start_callback_url, body, task_config.user_token);
 
   if (handler) {
     handler(result);
@@ -355,7 +356,8 @@ HttpCallbackResult HttpCallbackClient::post_finish_callback(
   }
 
   std::string body = payload.to_json();
-  HttpCallbackResult result = http_post(task_config.finish_callback_url, body, task_config.user_token);
+  HttpCallbackResult result =
+    http_post(task_config.finish_callback_url, body, task_config.user_token);
 
   if (handler) {
     handler(result);
@@ -375,7 +377,9 @@ void HttpCallbackClient::post_start_callback_async(
     if (!result.success) {
       AXON_LOG_ERROR("Start callback failed" << axon::logging::kv("error", result.error_message));
     } else {
-      AXON_LOG_INFO("Start callback sent successfully" << axon::logging::kv("task_id", task_config.task_id));
+      AXON_LOG_INFO(
+        "Start callback sent successfully" << axon::logging::kv("task_id", task_config.task_id)
+      );
     }
   }).detach();
 }
@@ -391,11 +395,12 @@ void HttpCallbackClient::post_finish_callback_async(
     if (!result.success) {
       AXON_LOG_ERROR("Finish callback failed" << axon::logging::kv("error", result.error_message));
     } else {
-      AXON_LOG_INFO("Finish callback sent successfully" << axon::logging::kv("task_id", task_config.task_id));
+      AXON_LOG_INFO(
+        "Finish callback sent successfully" << axon::logging::kv("task_id", task_config.task_id)
+      );
     }
   }).detach();
 }
 
 }  // namespace recorder
 }  // namespace axon
-

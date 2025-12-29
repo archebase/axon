@@ -223,7 +223,7 @@ public:
    * @param capacity_per_producer Capacity for each producer slot
    * @param num_producers Maximum number of producer threads
    */
-  MPSCQueue(size_t capacity_per_producer, size_t num_producers = 8)
+  explicit MPSCQueue(size_t capacity_per_producer, size_t num_producers = 8)
       : num_queues_(num_producers)
       , current_push_queue_(0)
       , current_pop_queue_(0) {

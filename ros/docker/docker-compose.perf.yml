@@ -39,8 +39,6 @@ services:
     container_name: axon_perf_ros1
     volumes:
       - ../..:/workspace/axon
-      - perf-cargo-cache-ros1:/root/.cargo/registry
-      - perf-cargo-git-cache-ros1:/root/.cargo/git
       - perf-ros1-build:/workspace/ros_ws
     environment:
       - ROS_DISTRO=noetic
@@ -57,8 +55,6 @@ services:
     privileged: true
     volumes:
       - ../..:/workspace/axon
-      - perf-cargo-cache-ros2-humble:/root/.cargo/registry
-      - perf-cargo-git-cache-ros2-humble:/root/.cargo/git
       - perf-ros2-humble-build:/workspace/ros_ws
       # Persist recordings and flamegraphs
       - ./output:/data/recordings
@@ -76,8 +72,6 @@ services:
     privileged: true
     volumes:
       - ../..:/workspace/axon
-      - perf-cargo-cache-ros2-jazzy:/root/.cargo/registry
-      - perf-cargo-git-cache-ros2-jazzy:/root/.cargo/git
       - perf-ros2-jazzy-build:/workspace/ros_ws
       - ./output:/data/recordings
     environment:
@@ -94,8 +88,6 @@ services:
     privileged: true
     volumes:
       - ../..:/workspace/axon
-      - perf-cargo-cache-ros2-rolling:/root/.cargo/registry
-      - perf-cargo-git-cache-ros2-rolling:/root/.cargo/git
       - perf-ros2-rolling-build:/workspace/ros_ws
       - ./output:/data/recordings
     environment:
@@ -105,15 +97,7 @@ services:
     command: /usr/local/bin/run_perf_tests.sh
 
 volumes:
-  perf-cargo-cache-ros1:
-  perf-cargo-git-cache-ros1:
   perf-ros1-build:
-  perf-cargo-cache-ros2-humble:
-  perf-cargo-git-cache-ros2-humble:
   perf-ros2-humble-build:
-  perf-cargo-cache-ros2-jazzy:
-  perf-cargo-git-cache-ros2-jazzy:
   perf-ros2-jazzy-build:
-  perf-cargo-cache-ros2-rolling:
-  perf-cargo-git-cache-ros2-rolling:
   perf-ros2-rolling-build:

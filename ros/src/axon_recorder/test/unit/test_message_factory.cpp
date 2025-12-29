@@ -14,13 +14,13 @@
 #include "message_factory.hpp"
 
 #if defined(AXON_ROS1)
-#include <std_msgs/String.h>
-#include <std_msgs/Int32.h>
 #include <geometry_msgs/Twist.h>
+#include <std_msgs/Int32.h>
+#include <std_msgs/String.h>
 #elif defined(AXON_ROS2)
-#include <std_msgs/msg/string.hpp>
-#include <std_msgs/msg/int32.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 #endif
 
 using namespace axon::recorder;
@@ -68,14 +68,14 @@ TEST_F(MessageFactoryTest, CreateMessage) {
 #if defined(AXON_ROS1)
   auto msg = MessageFactory::create_message("std_msgs/String");
   ASSERT_NE(msg, nullptr);
-  
+
   // Cast and verify
   auto* typed_msg = static_cast<std_msgs::String*>(msg.get());
   EXPECT_TRUE(typed_msg->data.empty());
 #elif defined(AXON_ROS2)
   auto msg = MessageFactory::create_message("std_msgs/msg/String");
   ASSERT_NE(msg, nullptr);
-  
+
   auto* typed_msg = static_cast<std_msgs::msg::String*>(msg.get());
   EXPECT_TRUE(typed_msg->data.empty());
 #endif
@@ -110,21 +110,21 @@ TEST_F(MessageFactoryTest, DeserializeMessageROS1) {
   // Create a serialized message
   std_msgs::String original;
   original.data = "Hello, World!";
-  
+
   // Serialize
   uint32_t serial_size = ros::serialization::serializationLength(original);
   std::vector<uint8_t> buffer(serial_size);
   ros::serialization::OStream stream(buffer.data(), serial_size);
   ros::serialization::serialize(stream, original);
-  
+
   // Deserialize using factory
   auto msg = MessageFactory::create_message("std_msgs/String");
   ASSERT_NE(msg, nullptr);
-  
-  EXPECT_TRUE(MessageFactory::deserialize_message(
-    "std_msgs/String", buffer.data(), serial_size, msg.get()
-  ));
-  
+
+  EXPECT_TRUE(
+    MessageFactory::deserialize_message("std_msgs/String", buffer.data(), serial_size, msg.get())
+  );
+
   auto* deserialized = static_cast<std_msgs::String*>(msg.get());
   EXPECT_EQ(deserialized->data, "Hello, World!");
 }
@@ -134,9 +134,9 @@ TEST_F(MessageFactoryTest, DeserializeNonexistentType) {
 #if defined(AXON_ROS1)
   std::vector<uint8_t> buffer = {0x01, 0x02, 0x03};
   int dummy;
-  EXPECT_FALSE(MessageFactory::deserialize_message(
-    "nonexistent/Type", buffer.data(), buffer.size(), &dummy
-  ));
+  EXPECT_FALSE(
+    MessageFactory::deserialize_message("nonexistent/Type", buffer.data(), buffer.size(), &dummy)
+  );
 #endif
 }
 
@@ -162,11 +162,11 @@ TEST_F(MessageFactoryTest, CreateDifferentTypes) {
   auto string_msg = MessageFactory::create_message("std_msgs/String");
   auto int_msg = MessageFactory::create_message("std_msgs/Int32");
   auto twist_msg = MessageFactory::create_message("geometry_msgs/Twist");
-  
+
   EXPECT_NE(string_msg, nullptr);
   EXPECT_NE(int_msg, nullptr);
   EXPECT_NE(twist_msg, nullptr);
-  
+
   // Verify types are different (addresses should be different)
   EXPECT_NE(string_msg.get(), int_msg.get());
   EXPECT_NE(int_msg.get(), twist_msg.get());
@@ -174,7 +174,7 @@ TEST_F(MessageFactoryTest, CreateDifferentTypes) {
   auto string_msg = MessageFactory::create_message("std_msgs/msg/String");
   auto int_msg = MessageFactory::create_message("std_msgs/msg/Int32");
   auto twist_msg = MessageFactory::create_message("geometry_msgs/msg/Twist");
-  
+
   EXPECT_NE(string_msg, nullptr);
   EXPECT_NE(int_msg, nullptr);
   EXPECT_NE(twist_msg, nullptr);
@@ -198,4 +198,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

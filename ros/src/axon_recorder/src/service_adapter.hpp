@@ -20,12 +20,14 @@ class RosInterface;
 #include <axon_recorder/IsRecordingReady.h>
 #include <axon_recorder/RecordingControl.h>
 #include <axon_recorder/RecordingStatus.h>
+
 #include <ros/ros.h>
 #elif defined(AXON_ROS2)
 #include <axon_recorder/srv/cached_recording_config.hpp>
 #include <axon_recorder/srv/is_recording_ready.hpp>
 #include <axon_recorder/srv/recording_control.hpp>
 #include <axon_recorder/srv/recording_status.hpp>
+
 #include <rclcpp/rclcpp.hpp>
 #endif
 
@@ -127,4 +129,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_SERVICE_ADAPTER_HPP
-

@@ -54,23 +54,25 @@ inline UploadStatus uploadStatusFromString(const std::string& str) {
  * Record representing an upload's state in the database
  */
 struct UploadRecord {
-  std::string file_path;       // Primary key - local MCAP file path
-  std::string json_path;       // Sidecar JSON path
-  std::string s3_key;          // Target S3 key
-  std::string task_id;         // Task identifier
-  std::string factory_id;      // Factory identifier
-  std::string device_id;       // Device identifier
-  uint64_t file_size_bytes;    // File size
-  std::string checksum_sha256; // SHA-256 checksum
-  UploadStatus status;         // Current status
-  int retry_count;             // Number of retries so far
-  std::string last_error;      // Last error message
-  std::string created_at;      // ISO 8601 timestamp
-  std::string updated_at;      // ISO 8601 timestamp
-  std::string completed_at;    // ISO 8601 timestamp (empty if not completed)
+  std::string file_path;        // Primary key - local MCAP file path
+  std::string json_path;        // Sidecar JSON path
+  std::string s3_key;           // Target S3 key
+  std::string task_id;          // Task identifier
+  std::string factory_id;       // Factory identifier
+  std::string device_id;        // Device identifier
+  uint64_t file_size_bytes;     // File size
+  std::string checksum_sha256;  // SHA-256 checksum
+  UploadStatus status;          // Current status
+  int retry_count;              // Number of retries so far
+  std::string last_error;       // Last error message
+  std::string created_at;       // ISO 8601 timestamp
+  std::string updated_at;       // ISO 8601 timestamp
+  std::string completed_at;     // ISO 8601 timestamp (empty if not completed)
 
   UploadRecord()
-      : file_size_bytes(0), status(UploadStatus::PENDING), retry_count(0) {}
+      : file_size_bytes(0)
+      , status(UploadStatus::PENDING)
+      , retry_count(0) {}
 };
 
 /**
@@ -117,7 +119,9 @@ public:
    * @param error Error message (optional, for FAILED status)
    * @return true if updated, false if record not found
    */
-  bool updateStatus(const std::string& file_path, UploadStatus status, const std::string& error = "");
+  bool updateStatus(
+    const std::string& file_path, UploadStatus status, const std::string& error = ""
+  );
 
   /**
    * Mark an upload as completed
@@ -235,4 +239,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_UPLOAD_STATE_MANAGER_HPP
-

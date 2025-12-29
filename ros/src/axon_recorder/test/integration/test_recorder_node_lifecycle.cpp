@@ -43,7 +43,7 @@ protected:
     // Create temp directory for test outputs
     test_dir_ = std::filesystem::temp_directory_path() / "recorder_node_test";
     std::filesystem::create_directories(test_dir_);
-    
+
     // Create a minimal config file for testing
     config_path_ = test_dir_ / "test_config.yaml";
     create_test_config();
@@ -58,7 +58,8 @@ protected:
     config << R"(
 # Test configuration for RecorderNode
 dataset:
-  path: ")" << test_dir_.string() << R"("
+  path: ")" << test_dir_.string()
+           << R"("
   prefix: "test_recording"
   max_file_size_mb: 100
 
@@ -89,7 +90,7 @@ TEST_F(RecorderNodeLifecycleTest, CreateRecorderNode) {
   // Test factory method
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Node should be in initial state (before initialization)
   EXPECT_FALSE(node->is_recording());
   EXPECT_FALSE(node->is_paused());
@@ -99,7 +100,7 @@ TEST_F(RecorderNodeLifecycleTest, CreateRecorderNode) {
 TEST_F(RecorderNodeLifecycleTest, GetStatsBeforeRecording) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Stats should be zero before recording
   RecordingStats stats = node->get_stats();
   EXPECT_EQ(stats.messages_received, 0u);
@@ -111,7 +112,7 @@ TEST_F(RecorderNodeLifecycleTest, GetStatsBeforeRecording) {
 TEST_F(RecorderNodeLifecycleTest, GetRecordingDurationBeforeRecording) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Duration should be 0 before recording starts
   double duration = node->get_recording_duration_sec();
   EXPECT_DOUBLE_EQ(duration, 0.0);
@@ -120,7 +121,7 @@ TEST_F(RecorderNodeLifecycleTest, GetRecordingDurationBeforeRecording) {
 TEST_F(RecorderNodeLifecycleTest, GetOutputPathBeforeRecording) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Output path may be empty or default before initialization
   std::string path = node->get_output_path();
   // Just verify it doesn't crash
@@ -129,7 +130,7 @@ TEST_F(RecorderNodeLifecycleTest, GetOutputPathBeforeRecording) {
 TEST_F(RecorderNodeLifecycleTest, GetHttpCallbackClient) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   auto http_client = node->get_http_callback_client();
   EXPECT_NE(http_client, nullptr);
 }
@@ -141,7 +142,7 @@ TEST_F(RecorderNodeLifecycleTest, GetHttpCallbackClient) {
 TEST_F(RecorderNodeLifecycleTest, StateManagerInitialState) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   StateManager& state_mgr = node->get_state_manager();
   EXPECT_EQ(state_mgr.get_state(), RecorderState::IDLE);
 }
@@ -149,7 +150,7 @@ TEST_F(RecorderNodeLifecycleTest, StateManagerInitialState) {
 TEST_F(RecorderNodeLifecycleTest, TaskConfigCacheAccess) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   TaskConfigCache& cache = node->get_task_config_cache();
   EXPECT_FALSE(cache.has_config());
 }
@@ -157,16 +158,16 @@ TEST_F(RecorderNodeLifecycleTest, TaskConfigCacheAccess) {
 TEST_F(RecorderNodeLifecycleTest, TaskConfigCacheManualSet) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   TaskConfig config;
   config.task_id = "lifecycle_test";
   config.device_id = "test_robot";
   config.scene = "test_scene";
   config.topics = {"/test_topic"};
-  
+
   // Set config directly via cache (doesn't require ros_interface to be initialized)
   node->get_task_config_cache().cache(config);
-  
+
   // Verify cache was updated
   EXPECT_TRUE(node->get_task_config_cache().has_config());
   EXPECT_EQ(node->get_task_config_cache().get_task_id(), "lifecycle_test");
@@ -179,7 +180,7 @@ TEST_F(RecorderNodeLifecycleTest, TaskConfigCacheManualSet) {
 TEST_F(RecorderNodeLifecycleTest, ShutdownWithoutInitialize) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Shutdown without initialize should not crash
   EXPECT_NO_THROW(node->shutdown());
 }
@@ -187,7 +188,7 @@ TEST_F(RecorderNodeLifecycleTest, ShutdownWithoutInitialize) {
 TEST_F(RecorderNodeLifecycleTest, DoubleShutdown) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Double shutdown should be safe (idempotent)
   EXPECT_NO_THROW(node->shutdown());
   EXPECT_NO_THROW(node->shutdown());
@@ -203,7 +204,7 @@ TEST_F(RecorderNodeLifecycleTest, DoubleShutdown) {
 TEST_F(RecorderNodeLifecycleTest, StopRecordingBeforeStart) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Stop recording before starting should be safe
   EXPECT_NO_THROW(node->stop_recording());
 }
@@ -211,7 +212,7 @@ TEST_F(RecorderNodeLifecycleTest, StopRecordingBeforeStart) {
 TEST_F(RecorderNodeLifecycleTest, PauseResumeBeforeStart) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Pause/resume before starting should be safe
   EXPECT_NO_THROW(node->pause_recording());
   EXPECT_NO_THROW(node->resume_recording());
@@ -220,7 +221,7 @@ TEST_F(RecorderNodeLifecycleTest, PauseResumeBeforeStart) {
 TEST_F(RecorderNodeLifecycleTest, CancelBeforeStart) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Cancel before starting should be safe
   EXPECT_NO_THROW(node->cancel_recording());
 }
@@ -232,21 +233,21 @@ TEST_F(RecorderNodeLifecycleTest, CancelBeforeStart) {
 TEST_F(RecorderNodeLifecycleTest, StateTransitionsViaInterface) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Access via IRecorderContext interface
   IRecorderContext* context = node.get();
-  
+
   // Initial state via StateManager (IRecorderContext provides get_state_manager)
   StateManager& sm = context->get_state_manager();
   EXPECT_EQ(sm.get_state(), RecorderState::IDLE);
   EXPECT_FALSE(sm.is_recording_active());
-  
+
   // Cache a config directly (configure_from_task_config requires initialized ros_interface)
   TaskConfig config;
   config.task_id = "state_test";
   config.device_id = "robot";
   context->get_task_config_cache().cache(config);
-  
+
   // Verify config was cached
   EXPECT_TRUE(context->get_task_config_cache().has_config());
 }
@@ -261,7 +262,7 @@ class RecorderNodeFullTest : public RecorderNodeLifecycleTest {
 protected:
   void SetUp() override {
     RecorderNodeLifecycleTest::SetUp();
-    
+
     // Create more complete config
     create_full_config();
   }
@@ -270,7 +271,8 @@ protected:
     std::ofstream config(config_path_);
     config << R"(
 dataset:
-  path: ")" << test_dir_.string() << R"("
+  path: ")" << test_dir_.string()
+           << R"("
   prefix: "full_test"
   max_file_size_mb: 100
 
@@ -293,17 +295,17 @@ upload:
 TEST_F(RecorderNodeFullTest, InitializeWithValidConfig) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Try initialization - may fail if config path isn't set correctly
   // This exercises the initialize code paths
   int argc = 1;
   const char* argv[] = {"test_recorder_node"};
   char** argv_nc = const_cast<char**>(argv);
-  
+
   // Note: Full initialization requires config file at expected path
   // This test documents the interface; actual success depends on environment
   bool result = node->initialize(argc, argv_nc);
-  
+
   // Whether it succeeds or fails, verify cleanup works
   node->shutdown();
 }
@@ -311,7 +313,7 @@ TEST_F(RecorderNodeFullTest, InitializeWithValidConfig) {
 TEST_F(RecorderNodeFullTest, RecordingWorkflowWithTaskConfig) {
   auto node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Configure task directly via cache (configure_from_task_config requires initialization)
   TaskConfig config;
   config.task_id = "workflow_test_001";
@@ -322,16 +324,16 @@ TEST_F(RecorderNodeFullTest, RecordingWorkflowWithTaskConfig) {
   config.topics = {"/chatter"};
   config.start_callback_url = "";
   config.finish_callback_url = "";
-  
+
   // Cache config directly
   node->get_task_config_cache().cache(config);
-  
+
   // Verify config is cached
   EXPECT_TRUE(node->get_task_config_cache().has_config());
-  
+
   // Note: Starting recording requires full initialization
   // This test just verifies the config flow
-  
+
   node->shutdown();
 }
 
@@ -345,11 +347,11 @@ TEST_F(RecorderNodeLifecycleTest, SharedPtrUsage) {
   // RecorderNode must be created via factory to use shared_from_this
   std::shared_ptr<RecorderNode> node = RecorderNode::create();
   ASSERT_NE(node, nullptr);
-  
+
   // Verify it can be used as IRecorderContext shared_ptr
   std::shared_ptr<IRecorderContext> context = node;
   ASSERT_NE(context, nullptr);
-  
+
   // Access through interface
   StateManager& sm = context->get_state_manager();
   EXPECT_EQ(sm.get_state(), RecorderState::IDLE);
@@ -361,15 +363,15 @@ TEST_F(RecorderNodeLifecycleTest, SharedPtrUsage) {
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
-  
+
 #if defined(AXON_ROS2)
   rclcpp::init(argc, argv);
 #elif defined(AXON_ROS1)
   ros::init(argc, argv, "test_recorder_node_lifecycle", ros::init_options::NoSigintHandler);
 #endif
-  
+
   int result = RUN_ALL_TESTS();
-  
+
 #if defined(AXON_ROS2)
   if (rclcpp::ok()) {
     rclcpp::shutdown();
@@ -379,7 +381,6 @@ int main(int argc, char** argv) {
     ros::shutdown();
   }
 #endif
-  
+
   return result;
 }
-

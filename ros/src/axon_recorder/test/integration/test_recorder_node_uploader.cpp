@@ -40,8 +40,8 @@ protected:
   void SetUp() override {
     // Create temp directories
     auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-    base_dir_ = std::filesystem::temp_directory_path() /
-                ("axon_uploader_test_" + std::to_string(timestamp));
+    base_dir_ =
+      std::filesystem::temp_directory_path() / ("axon_uploader_test_" + std::to_string(timestamp));
     mcap_dir_ = base_dir_ / "mcap";
     state_dir_ = base_dir_ / "state";
     failed_dir_ = base_dir_ / "failed";
@@ -66,9 +66,7 @@ protected:
     RecordingSession session;
     EXPECT_TRUE(session.open(path));
 
-    uint16_t schema_id = session.register_schema(
-      "std_msgs/msg/String", "ros2msg", "string data"
-    );
+    uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
     uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
 
     std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
@@ -127,7 +125,7 @@ protected:
 
     // Backpressure
     config.warn_pending_bytes = 100 * 1024 * 1024;   // 100MB
-    config.alert_pending_bytes = 500 * 1024 * 1024; // 500MB
+    config.alert_pending_bytes = 500 * 1024 * 1024;  // 500MB
 
     return config;
   }
@@ -191,11 +189,7 @@ TEST_F(RecorderNodeUploaderTest, FileQueuedAfterStop) {
 
   // Enqueue the file
   EXPECT_NO_THROW({
-    uploader.enqueue(
-      mcap_path, json_path,
-      "task_001", "factory_001", "device_001",
-      "abc123def456"
-    );
+    uploader.enqueue(mcap_path, json_path, "task_001", "factory_001", "device_001", "abc123def456");
   });
 
   // Check stats - should have pending file
@@ -249,9 +243,7 @@ TEST_F(RecorderNodeUploaderTest, UploaderShutdownClean) {
     std::string json_path = create_test_sidecar(mcap_path);
 
     uploader.enqueue(
-      mcap_path, json_path,
-      "task_" + std::to_string(i), "factory", "device",
-      "checksum"
+      mcap_path, json_path, "task_" + std::to_string(i), "factory", "device", "checksum"
     );
 
     // Stop immediately (don't wait for upload)
@@ -301,8 +293,11 @@ TEST_F(RecorderNodeUploaderTest, MultipleFilesEnqueuedInOrder) {
     std::string json_path = create_test_sidecar(mcap_path);
 
     uploader.enqueue(
-      mcap_path, json_path,
-      "task_" + std::to_string(i), "factory", "device",
+      mcap_path,
+      json_path,
+      "task_" + std::to_string(i),
+      "factory",
+      "device",
       "checksum_" + std::to_string(i)
     );
   }
@@ -379,4 +374,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

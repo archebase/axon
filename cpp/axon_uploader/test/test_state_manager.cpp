@@ -241,7 +241,9 @@ TEST_F(UploadStateManagerTest, DeleteCompleted) {
   EXPECT_FALSE(manager_->get("/tmp/completed2.mcap").has_value());
 }
 
-TEST_F(UploadStateManagerTest, DbPath) { EXPECT_EQ(manager_->dbPath(), db_path_); }
+TEST_F(UploadStateManagerTest, DbPath) {
+  EXPECT_EQ(manager_->dbPath(), db_path_);
+}
 
 TEST_F(UploadStateManagerTest, StatusConversion) {
   EXPECT_EQ(uploadStatusToString(UploadStatus::PENDING), "pending");
@@ -272,14 +274,14 @@ TEST_F(UploadStateManagerTest, DeleteOlderThan) {
   // Use negative age (-1 hour) so cutoff = now - (-1 hour) = now + 1 hour (future)
   // Records created "now" have created_at < (now + 1 hour), so they'll be deleted
   int deleted = manager_->deleteOlderThan(std::chrono::hours(-1));
-  
+
   // Should delete all 2 completed records
   EXPECT_EQ(deleted, 2);
 
   // Completed records should be gone
   EXPECT_FALSE(manager_->get("/tmp/completed1.mcap").has_value());
   EXPECT_FALSE(manager_->get("/tmp/completed2.mcap").has_value());
-  
+
   // Pending record should remain (not deleted because it's not completed)
   EXPECT_TRUE(manager_->get("/tmp/pending.mcap").has_value());
 }
@@ -304,14 +306,14 @@ TEST_F(UploadStateManagerTest, DeleteOlderThanOnlyCompleted) {
   // Use negative age (-1 hour) so cutoff = now + 1 hour (future)
   // All records created before now are "older than" this future cutoff
   int deleted = manager_->deleteOlderThan(std::chrono::hours(-1));
-  
+
   // Should delete all 2 completed records
   EXPECT_EQ(deleted, 2);
-  
+
   // Critical: non-completed records should always remain (only completed records are deleted)
   EXPECT_TRUE(manager_->get("/tmp/failed.mcap").has_value());
   EXPECT_TRUE(manager_->get("/tmp/uploading.mcap").has_value());
-  
+
   // Completed records should be gone
   EXPECT_FALSE(manager_->get("/tmp/completed1.mcap").has_value());
   EXPECT_FALSE(manager_->get("/tmp/completed2.mcap").has_value());
@@ -327,10 +329,10 @@ TEST_F(UploadStateManagerTest, DeleteOlderThanNoMatch) {
   // Records created "now" have created_at ≈ now, and now is NOT < (now - 1 hour)
   // So nothing should be deleted
   int deleted = manager_->deleteOlderThan(std::chrono::hours(1));
-  
+
   // Should delete nothing (records are too new to be older than cutoff)
   EXPECT_EQ(deleted, 0);
-  
+
   // Record should still exist
   EXPECT_TRUE(manager_->get("/tmp/completed1.mcap").has_value());
 }
@@ -344,7 +346,7 @@ TEST_F(UploadStateManagerTest, GetPendingEmpty) {
   auto completed = createTestRecord("/tmp/completed.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(completed));
   ASSERT_TRUE(manager_->markCompleted("/tmp/completed.mcap"));
-  
+
   auto pending = manager_->getPending();
   EXPECT_TRUE(pending.empty());
 }
@@ -353,7 +355,7 @@ TEST_F(UploadStateManagerTest, GetFailedEmpty) {
   // Test getFailed() with no failed records
   auto pending = createTestRecord("/tmp/pending.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(pending));
-  
+
   auto failed = manager_->getFailed();
   EXPECT_TRUE(failed.empty());
 }
@@ -364,16 +366,16 @@ TEST_F(UploadStateManagerTest, CountByStatusAllStatuses) {
   auto uploading = createTestRecord("/tmp/uploading.mcap", "task_002");
   auto completed = createTestRecord("/tmp/completed.mcap", "task_003");
   auto failed = createTestRecord("/tmp/failed.mcap", "task_004");
-  
+
   ASSERT_TRUE(manager_->insert(pending));
   ASSERT_TRUE(manager_->insert(uploading));
   ASSERT_TRUE(manager_->insert(completed));
   ASSERT_TRUE(manager_->insert(failed));
-  
+
   ASSERT_TRUE(manager_->updateStatus("/tmp/uploading.mcap", UploadStatus::UPLOADING));
   ASSERT_TRUE(manager_->markCompleted("/tmp/completed.mcap"));
   ASSERT_TRUE(manager_->markFailed("/tmp/failed.mcap", "error"));
-  
+
   EXPECT_EQ(manager_->countByStatus(UploadStatus::PENDING), 1);
   EXPECT_EQ(manager_->countByStatus(UploadStatus::UPLOADING), 1);
   EXPECT_EQ(manager_->countByStatus(UploadStatus::COMPLETED), 1);
@@ -385,7 +387,7 @@ TEST_F(UploadStateManagerTest, PendingBytesEmpty) {
   auto completed = createTestRecord("/tmp/completed.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(completed));
   ASSERT_TRUE(manager_->markCompleted("/tmp/completed.mcap"));
-  
+
   EXPECT_EQ(manager_->pendingBytes(), 0);
 }
 
@@ -395,11 +397,11 @@ TEST_F(UploadStateManagerTest, PendingBytesWithUploading) {
   pending.file_size_bytes = 1000;
   auto uploading = createTestRecord("/tmp/uploading.mcap", "task_002");
   uploading.file_size_bytes = 2000;
-  
+
   ASSERT_TRUE(manager_->insert(pending));
   ASSERT_TRUE(manager_->insert(uploading));
   ASSERT_TRUE(manager_->updateStatus("/tmp/uploading.mcap", UploadStatus::UPLOADING));
-  
+
   EXPECT_EQ(manager_->pendingBytes(), 3000);
 }
 
@@ -407,7 +409,7 @@ TEST_F(UploadStateManagerTest, DeleteCompletedEmpty) {
   // Test deleteCompleted() with no completed records
   auto pending = createTestRecord("/tmp/pending.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(pending));
-  
+
   int deleted = manager_->deleteCompleted();
   EXPECT_EQ(deleted, 0);
   EXPECT_TRUE(manager_->get("/tmp/pending.mcap").has_value());
@@ -417,9 +419,9 @@ TEST_F(UploadStateManagerTest, UpdateStatusWithError) {
   // Test updateStatus() with error message
   auto record = createTestRecord("/tmp/test.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(record));
-  
+
   ASSERT_TRUE(manager_->updateStatus("/tmp/test.mcap", UploadStatus::FAILED, "Test error"));
-  
+
   auto retrieved = manager_->get("/tmp/test.mcap");
   ASSERT_TRUE(retrieved.has_value());
   EXPECT_EQ(retrieved->status, UploadStatus::FAILED);
@@ -467,9 +469,9 @@ TEST_F(UploadStateManagerTest, RecordWithEmptyFields) {
   record.s3_key = "test-key";
   record.status = UploadStatus::PENDING;
   // Leave other fields empty/default
-  
+
   ASSERT_TRUE(manager_->insert(record));
-  
+
   auto retrieved = manager_->get("/tmp/test.mcap");
   ASSERT_TRUE(retrieved.has_value());
   EXPECT_EQ(retrieved->file_path, "/tmp/test.mcap");
@@ -488,9 +490,9 @@ TEST_F(UploadStateManagerTest, RecordWithSpecialCharacters) {
   record.device_id = "device-01";
   record.file_size_bytes = 1000;
   record.status = UploadStatus::PENDING;
-  
+
   ASSERT_TRUE(manager_->insert(record));
-  
+
   auto retrieved = manager_->get("/tmp/test with spaces/file.mcap");
   ASSERT_TRUE(retrieved.has_value());
   EXPECT_EQ(retrieved->file_path, "/tmp/test with spaces/file.mcap");
@@ -500,11 +502,11 @@ TEST_F(UploadStateManagerTest, MultipleRetries) {
   // Test multiple retry increments
   auto record = createTestRecord("/tmp/test.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(record));
-  
+
   for (int i = 0; i < 5; ++i) {
     ASSERT_TRUE(manager_->incrementRetry("/tmp/test.mcap", "Error " + std::to_string(i)));
   }
-  
+
   auto retrieved = manager_->get("/tmp/test.mcap");
   ASSERT_TRUE(retrieved.has_value());
   EXPECT_EQ(retrieved->retry_count, 5);
@@ -515,12 +517,12 @@ TEST_F(UploadStateManagerTest, GetIncompleteEmpty) {
   // Test getIncomplete() with no incomplete records
   auto completed = createTestRecord("/tmp/completed.mcap", "task_001");
   auto failed = createTestRecord("/tmp/failed.mcap", "task_002");
-  
+
   ASSERT_TRUE(manager_->insert(completed));
   ASSERT_TRUE(manager_->insert(failed));
   ASSERT_TRUE(manager_->markCompleted("/tmp/completed.mcap"));
   ASSERT_TRUE(manager_->markFailed("/tmp/failed.mcap", "error"));
-  
+
   auto incomplete = manager_->getIncomplete();
   EXPECT_TRUE(incomplete.empty());
 }
@@ -533,13 +535,8 @@ TEST_F(UploadStateManagerTest, DatabaseOpenFailure_InvalidPath) {
   // Test database initialization with invalid path
   // This should throw std::runtime_error
   std::string invalid_path = "/nonexistent/path/that/cannot/be/created/state.db";
-  
-  EXPECT_THROW(
-      {
-        UploadStateManager invalid_manager(invalid_path);
-      },
-      std::runtime_error
-  );
+
+  EXPECT_THROW({ UploadStateManager invalid_manager(invalid_path); }, std::runtime_error);
 }
 
 TEST_F(UploadStateManagerTest, InsertWithVeryLongPath) {
@@ -547,11 +544,11 @@ TEST_F(UploadStateManagerTest, InsertWithVeryLongPath) {
   // This tests edge cases in SQLite string handling
   std::string long_path = "/tmp/" + std::string(500, 'a') + ".mcap";
   auto record = createTestRecord(long_path, "task_long_path");
-  
+
   // Should handle long paths (SQLite supports up to 1GB for TEXT, so this should work)
   bool result = manager_->insert(record);
   EXPECT_TRUE(result);
-  
+
   auto retrieved = manager_->get(long_path);
   EXPECT_TRUE(retrieved.has_value());
   EXPECT_EQ(retrieved->file_path, long_path);
@@ -561,11 +558,11 @@ TEST_F(UploadStateManagerTest, InsertWithSpecialCharacters) {
   // Test insert with special characters in paths (SQL injection safety)
   std::string special_path = "/tmp/file'with\"special;chars.mcap";
   auto record = createTestRecord(special_path, "task_special");
-  
+
   // SQLite should handle special characters correctly (parameterized queries)
   bool result = manager_->insert(record);
   EXPECT_TRUE(result);
-  
+
   auto retrieved = manager_->get(special_path);
   EXPECT_TRUE(retrieved.has_value());
   EXPECT_EQ(retrieved->file_path, special_path);
@@ -577,10 +574,10 @@ TEST_F(UploadStateManagerTest, OperationsOnClosedDatabase) {
   // return false for invalid operations
   auto record = createTestRecord("/tmp/test.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(record));
-  
+
   // Remove the record
   ASSERT_TRUE(manager_->remove("/tmp/test.mcap"));
-  
+
   // All subsequent operations on this record should return false
   EXPECT_FALSE(manager_->updateStatus("/tmp/test.mcap", UploadStatus::COMPLETED));
   EXPECT_FALSE(manager_->markCompleted("/tmp/test.mcap"));
@@ -594,17 +591,17 @@ TEST_F(UploadStateManagerTest, ConcurrentOperations) {
   // This doesn't test SQLite errors directly, but tests concurrent access
   auto record1 = createTestRecord("/tmp/test1.mcap", "task_001");
   auto record2 = createTestRecord("/tmp/test2.mcap", "task_002");
-  
+
   ASSERT_TRUE(manager_->insert(record1));
   ASSERT_TRUE(manager_->insert(record2));
-  
+
   // Concurrent updates should work (protected by mutex)
   ASSERT_TRUE(manager_->updateStatus("/tmp/test1.mcap", UploadStatus::UPLOADING));
   ASSERT_TRUE(manager_->updateStatus("/tmp/test2.mcap", UploadStatus::UPLOADING));
-  
+
   auto retrieved1 = manager_->get("/tmp/test1.mcap");
   auto retrieved2 = manager_->get("/tmp/test2.mcap");
-  
+
   EXPECT_TRUE(retrieved1.has_value());
   EXPECT_TRUE(retrieved2.has_value());
   EXPECT_EQ(retrieved1->status, UploadStatus::UPLOADING);
@@ -615,12 +612,12 @@ TEST_F(UploadStateManagerTest, LargeRetryCount) {
   // Test with very large retry count (edge case)
   auto record = createTestRecord("/tmp/test.mcap", "task_001");
   ASSERT_TRUE(manager_->insert(record));
-  
+
   // Increment retry many times
   for (int i = 0; i < 100; ++i) {
     ASSERT_TRUE(manager_->incrementRetry("/tmp/test.mcap", "Error " + std::to_string(i)));
   }
-  
+
   auto retrieved = manager_->get("/tmp/test.mcap");
   ASSERT_TRUE(retrieved.has_value());
   EXPECT_EQ(retrieved->retry_count, 100);
@@ -633,9 +630,9 @@ TEST_F(UploadStateManagerTest, EmptyStringFields) {
   record.s3_key = "test-key";
   record.status = UploadStatus::PENDING;
   // Leave other fields empty/default
-  
+
   ASSERT_TRUE(manager_->insert(record));
-  
+
   auto retrieved = manager_->get("/tmp/test.mcap");
   ASSERT_TRUE(retrieved.has_value());
   EXPECT_TRUE(retrieved->json_path.empty());
@@ -643,4 +640,3 @@ TEST_F(UploadStateManagerTest, EmptyStringFields) {
   EXPECT_TRUE(retrieved->factory_id.empty());
   EXPECT_TRUE(retrieved->device_id.empty());
 }
-

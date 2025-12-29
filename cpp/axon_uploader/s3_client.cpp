@@ -1,7 +1,5 @@
 #include "s3_client.hpp"
 
-#include "uploader_impl.hpp"
-
 #include <aws/core/Aws.h>
 #include <aws/core/auth/AWSCredentials.h>
 #include <aws/core/client/DefaultRetryStrategy.h>
@@ -22,6 +20,7 @@
 #include <thread>
 
 #include "retry_handler.hpp"
+#include "uploader_impl.hpp"
 
 // Logging infrastructure (optional - only if axon_logging is linked)
 #ifdef AXON_HAS_LOGGING
@@ -30,10 +29,10 @@
 #else
 // Fallback to stderr when logging is not available
 #define AXON_LOG_DEBUG(msg) \
-  do {                      \
+  do { \
   } while (0)
 #define AXON_LOG_INFO(msg) \
-  do {                     \
+  do { \
   } while (0)
 #define AXON_LOG_WARN(msg) std::cerr << "[WARN] " << msg << std::endl
 #define AXON_LOG_ERROR(msg) std::cerr << "[ERROR] " << msg << std::endl
@@ -103,7 +102,9 @@ public:
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor;
   std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager;
 
-  Impl() { AwsSdkManager::instance().addRef(); }
+  Impl() {
+    AwsSdkManager::instance().addRef();
+  }
 
   ~Impl() {
     // IMPORTANT: All AWS SDK objects must be destroyed BEFORE calling release(),
@@ -125,7 +126,7 @@ public:
   }
 
   void initClient() {
-    Aws::Client::ClientConfiguration client_config; // LCOV_EXCL_BR_LINE
+    Aws::Client::ClientConfiguration client_config;  // LCOV_EXCL_BR_LINE
 
     // Set region
     client_config.region = config.region;
@@ -159,12 +160,14 @@ public:
     // This controls AWS SDK's internal retries (separate from EdgeUploader's retry logic)
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
-    client_config.retryStrategy = std::make_shared<Aws::Client::DefaultRetryStrategy>(
-        config.max_sdk_retries);
+    client_config.retryStrategy =
+      std::make_shared<Aws::Client::DefaultRetryStrategy>(config.max_sdk_retries);
     // LCOV_EXCL_BR_STOP
 
     // Create credentials
-    Aws::Auth::AWSCredentials credentials(config.access_key, config.secret_key); // LCOV_EXCL_BR_LINE
+    Aws::Auth::AWSCredentials credentials(
+      config.access_key, config.secret_key
+    );  // LCOV_EXCL_BR_LINE
 
     // Configure addressing style for S3 vs S3-compatible storage (MinIO, etc.)
     // The S3Client constructor's 4th parameter is 'useVirtualAddressing':
@@ -179,10 +182,10 @@ public:
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
     client = std::make_shared<Aws::S3::S3Client>(
-        credentials,
-        client_config,
-        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
-        use_virtual_addressing  // false for MinIO (path style), true for AWS S3 (virtual hosted)
+      credentials,
+      client_config,
+      Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+      use_virtual_addressing  // false for MinIO (path style), true for AWS S3 (virtual hosted)
     );
     // LCOV_EXCL_BR_STOP
 
@@ -190,22 +193,28 @@ public:
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
     executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
-        "S3Executor", config.executor_thread_count);
+      "S3Executor", config.executor_thread_count
+    );
     // LCOV_EXCL_BR_STOP
 
     // Configure TransferManager for multipart uploads
-    Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get()); // LCOV_EXCL_BR_LINE
+    Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get()
+    );  // LCOV_EXCL_BR_LINE
     transfer_config.s3Client = client;
 
     // Enforce S3 part size constraints (5MB minimum, 5GB maximum)
-    constexpr uint64_t MIN_PART_SIZE = 5 * 1024 * 1024;           // 5MB
-    constexpr uint64_t MAX_PART_SIZE = 5ULL * 1024 * 1024 * 1024; // 5GB
+    constexpr uint64_t MIN_PART_SIZE = 5 * 1024 * 1024;            // 5MB
+    constexpr uint64_t MAX_PART_SIZE = 5ULL * 1024 * 1024 * 1024;  // 5GB
     uint64_t validated_part_size = config.part_size;
     if (validated_part_size < MIN_PART_SIZE) {
-      AXON_LOG_WARN("part_size " << config.part_size << " is below S3 minimum (5MB), using 5MB"); // LCOV_EXCL_BR_LINE
+      AXON_LOG_WARN(
+        "part_size " << config.part_size << " is below S3 minimum (5MB), using 5MB"
+      );  // LCOV_EXCL_BR_LINE
       validated_part_size = MIN_PART_SIZE;
     } else if (validated_part_size > MAX_PART_SIZE) {
-      AXON_LOG_WARN("part_size " << config.part_size << " exceeds S3 maximum (5GB), using 5GB"); // LCOV_EXCL_BR_LINE
+      AXON_LOG_WARN(
+        "part_size " << config.part_size << " exceeds S3 maximum (5GB), using 5GB"
+      );  // LCOV_EXCL_BR_LINE
       validated_part_size = MAX_PART_SIZE;
     }
     transfer_config.bufferSize = validated_part_size;
@@ -221,17 +230,16 @@ public:
 S3Client::S3Client(const S3Config& config)
     : impl_(std::make_unique<Impl>())  // LCOV_EXCL_BR_LINE
 {
-  impl_->config = config; // LCOV_EXCL_BR_LINE
-
+  impl_->config = config;  // LCOV_EXCL_BR_LINE
   // Load credentials from environment if not provided
   if (impl_->config.access_key.empty()) {
-    if (const char* key = std::getenv("AWS_ACCESS_KEY_ID")) { // LCOV_EXCL_BR_LINE
-      impl_->config.access_key = key; // LCOV_EXCL_BR_LINE
+    if (const char* key = std::getenv("AWS_ACCESS_KEY_ID")) {  // LCOV_EXCL_BR_LINE
+      impl_->config.access_key = key;                          // LCOV_EXCL_BR_LINE
     }
   }
   if (impl_->config.secret_key.empty()) {
-    if (const char* key = std::getenv("AWS_SECRET_ACCESS_KEY")) { // LCOV_EXCL_BR_LINE
-      impl_->config.secret_key = key; // LCOV_EXCL_BR_LINE
+    if (const char* key = std::getenv("AWS_SECRET_ACCESS_KEY")) {  // LCOV_EXCL_BR_LINE
+      impl_->config.secret_key = key;                              // LCOV_EXCL_BR_LINE
     }
   }
 
@@ -243,7 +251,7 @@ S3Client::~S3Client() = default;
 // Internal implementation with dependency injection
 // Exposed for testing via s3_client_test_helpers.hpp
 uint64_t getFileSizeForUploadImpl(
-    const std::string& local_path, IFileStreamFactory& stream_factory
+  const std::string& local_path, IFileStreamFactory& stream_factory
 ) {
   // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
   // that are standard library implementation details
@@ -263,8 +271,8 @@ uint64_t getFileSizeForUploadImpl(
 }
 
 UploadResult S3Client::uploadFile(
-    const std::string& local_path, const std::string& s3_key,
-    const std::map<std::string, std::string>& metadata, ProgressCallback progress_cb
+  const std::string& local_path, const std::string& s3_key,
+  const std::map<std::string, std::string>& metadata, ProgressCallback progress_cb
 ) {
   // Check file exists and get size
   static FileStreamFactoryImpl default_stream_factory;  // LCOV_EXCL_BR_LINE
@@ -275,13 +283,17 @@ UploadResult S3Client::uploadFile(
     // In production, we fall back to direct ifstream check
     std::ifstream test_file(local_path, std::ios::binary | std::ios::ate);
     if (!test_file) {
-      return UploadResult::Failure("Cannot open local file: " + local_path, "FileNotFound", false);  // LCOV_EXCL_BR_LINE
+      return UploadResult::Failure(
+        "Cannot open local file: " + local_path, "FileNotFound", false
+      );  // LCOV_EXCL_BR_LINE
     }
     // File exists - get size (might be 0 for empty file)
     std::streampos pos = test_file.tellg();
     // Check for tellg() error: -1 indicates failure
     if (pos == std::streampos(-1) || !test_file.good()) {
-      return UploadResult::Failure("Cannot determine file size: " + local_path, "FileSizeError", false);  // LCOV_EXCL_BR_LINE
+      return UploadResult::Failure(
+        "Cannot determine file size: " + local_path, "FileSizeError", false
+      );  // LCOV_EXCL_BR_LINE
     }
     file_size = static_cast<uint64_t>(pos);
     test_file.close();
@@ -307,11 +319,11 @@ UploadResult S3Client::uploadFile(
   // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
   // that are standard library implementation details
   auto upload_handle = impl_->transfer_manager->UploadFile(
-      local_path.c_str(),
-      impl_->config.bucket.c_str(),
-      s3_key.c_str(),
-      content_type.c_str(),
-      aws_metadata
+    local_path.c_str(),
+    impl_->config.bucket.c_str(),
+    s3_key.c_str(),
+    content_type.c_str(),
+    aws_metadata
   );
   // LCOV_EXCL_BR_STOP
 
@@ -340,7 +352,7 @@ UploadResult S3Client::uploadFile(
     // Get multipart upload ID as ETag equivalent for multipart uploads
     // For single-part uploads, this will be the actual ETag
     std::string etag;
-    
+
     // For multipart uploads, the ETag is a composite; we need to fetch it from S3
     // TransferHandle doesn't expose the final ETag, so we retrieve it via HeadObject
     auto meta = getObjectMetadata(s3_key);
@@ -380,8 +392,10 @@ UploadResult S3Client::uploadFile(
     }
     bool retryable = isRetryableError(error_code) || error.ShouldRetry();
 
-    AXON_LOG_ERROR("S3 upload failed: " << s3_key << " - " << error_msg << " (code: " << error_code
-                                        << ", retryable: " << (retryable ? "yes" : "no") << ")");
+    AXON_LOG_ERROR(
+      "S3 upload failed: " << s3_key << " - " << error_msg << " (code: " << error_code
+                           << ", retryable: " << (retryable ? "yes" : "no") << ")"
+    );
     return UploadResult::Failure(error_msg, error_code, retryable);
   }
 }
@@ -418,7 +432,8 @@ std::map<std::string, std::string> S3Client::getObjectMetadata(const std::string
     result["size"] = std::to_string(head_result.GetContentLength());
 
     // Get last modified
-    result["last_modified"] = head_result.GetLastModified().ToGmtString(Aws::Utils::DateFormat::ISO_8601);
+    result["last_modified"] =
+      head_result.GetLastModified().ToGmtString(Aws::Utils::DateFormat::ISO_8601);
 
     // Get version ID
     result["version_id"] = head_result.GetVersionId();
@@ -458,9 +473,13 @@ bool S3Client::isRetryableError(const std::string& error_code) {
   return RetryHandler::isRetryableError(error_code);
 }
 
-const std::string& S3Client::bucket() const { return impl_->config.bucket; }
+const std::string& S3Client::bucket() const {
+  return impl_->config.bucket;
+}
 
-const std::string& S3Client::endpoint() const { return impl_->config.endpoint_url; }
+const std::string& S3Client::endpoint() const {
+  return impl_->config.endpoint_url;
+}
 
 }  // namespace uploader
 }  // namespace axon

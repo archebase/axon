@@ -74,15 +74,11 @@ TEST_F(RecordingSessionTest, RegisterSchema) {
   std::string path = (test_dir_ / "test.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   EXPECT_GT(schema_id, 0);
 
   // Same schema should return same ID
-  uint16_t schema_id2 = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id2 = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   EXPECT_EQ(schema_id, schema_id2);
 
   // Get schema ID
@@ -99,21 +95,15 @@ TEST_F(RecordingSessionTest, RegisterChannel) {
   ASSERT_TRUE(session.open(path));
 
   // Register schema first
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   ASSERT_GT(schema_id, 0);
 
   // Register channel
-  uint16_t channel_id = session.register_channel(
-    "/test_topic", "cdr", schema_id
-  );
+  uint16_t channel_id = session.register_channel("/test_topic", "cdr", schema_id);
   EXPECT_GT(channel_id, 0);
 
   // Same channel should return same ID
-  uint16_t channel_id2 = session.register_channel(
-    "/test_topic", "cdr", schema_id
-  );
+  uint16_t channel_id2 = session.register_channel("/test_topic", "cdr", schema_id);
   EXPECT_EQ(channel_id, channel_id2);
 
   // Get channel ID
@@ -130,16 +120,15 @@ TEST_F(RecordingSessionTest, WriteMessage) {
   ASSERT_TRUE(session.open(path));
 
   // Register schema and channel
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test_topic", "cdr", schema_id);
 
   // Write a message
   std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
   uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
-    std::chrono::system_clock::now().time_since_epoch()
-  ).count();
+                         std::chrono::system_clock::now().time_since_epoch()
+  )
+                         .count();
 
   EXPECT_TRUE(session.write(channel_id, 1, timestamp, timestamp, data.data(), data.size()));
 
@@ -182,9 +171,7 @@ TEST_F(RecordingSessionTest, StatsTracking) {
   EXPECT_EQ(stats.messages_written, 0);
 
   // Register and write
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
 
   std::vector<uint8_t> data = {0x01};
@@ -225,9 +212,7 @@ TEST_F(RecordingSessionTest, ConcurrentWritesFromMultipleThreads) {
   ASSERT_TRUE(session.open(path));
 
   // Register schema and channel
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
 
   constexpr int NUM_THREADS = 4;
@@ -241,8 +226,9 @@ TEST_F(RecordingSessionTest, ConcurrentWritesFromMultipleThreads) {
       std::vector<uint8_t> data = {static_cast<uint8_t>(t), 0x02, 0x03, 0x04};
       for (int i = 0; i < MESSAGES_PER_THREAD; ++i) {
         uint64_t ts = 1000000000ULL + t * 1000000ULL + i * 1000ULL;
-        if (session.write(channel_id, t * MESSAGES_PER_THREAD + i, ts, ts,
-                          data.data(), data.size())) {
+        if (session.write(
+              channel_id, t * MESSAGES_PER_THREAD + i, ts, ts, data.data(), data.size()
+            )) {
           ++success_count;
         }
       }
@@ -315,15 +301,11 @@ TEST_F(RecordingSessionTest, MultipleSchemas) {
   ASSERT_TRUE(session.open(path));
 
   // Register different schemas
-  uint16_t schema1 = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
-  uint16_t schema2 = session.register_schema(
-    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
-  );
-  uint16_t schema3 = session.register_schema(
-    "geometry_msgs/msg/Twist", "ros2msg", "geometry_msgs/Vector3 linear"
-  );
+  uint16_t schema1 = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
+  uint16_t schema2 =
+    session.register_schema("sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation");
+  uint16_t schema3 =
+    session.register_schema("geometry_msgs/msg/Twist", "ros2msg", "geometry_msgs/Vector3 linear");
 
   EXPECT_GT(schema1, 0);
   EXPECT_GT(schema2, 0);
@@ -353,19 +335,13 @@ TEST_F(RecordingSessionTest, ChannelWithMetadata) {
   std::string path = (test_dir_ / "metadata.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "sensor_msgs/msg/Image", "ros2msg", "uint32 height"
-  );
+  uint16_t schema_id = session.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint32 height");
 
   // Register channel with metadata
   std::unordered_map<std::string, std::string> metadata = {
-    {"frame_id", "camera_link"},
-    {"offered_qos_profiles", "- history: keep_last\n  depth: 10"}
-  };
+    {"frame_id", "camera_link"}, {"offered_qos_profiles", "- history: keep_last\n  depth: 10"}};
 
-  uint16_t channel_id = session.register_channel(
-    "/camera/image", "cdr", schema_id, metadata
-  );
+  uint16_t channel_id = session.register_channel("/camera/image", "cdr", schema_id, metadata);
   EXPECT_GT(channel_id, 0);
 
   session.close();
@@ -381,9 +357,7 @@ TEST_F(RecordingSessionTest, TopicStatsTracking) {
   std::string path = (test_dir_ / "topic_stats.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
 
   std::vector<uint8_t> data = {0x01, 0x02, 0x03};
@@ -425,11 +399,11 @@ TEST_F(RecordingSessionTest, OpenCreatesFile) {
 
   // Recording session creates the file when opening
   std::string path = (test_dir_ / "new_recording.mcap").string();
-  
+
   EXPECT_TRUE(session.open(path));
   EXPECT_TRUE(session.is_open());
   EXPECT_TRUE(std::filesystem::exists(path));
-  
+
   session.close();
 }
 
@@ -439,9 +413,7 @@ TEST_F(RecordingSessionTest, FlushDuringWrite) {
   std::string path = (test_dir_ / "flush.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
 
   std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
@@ -449,7 +421,7 @@ TEST_F(RecordingSessionTest, FlushDuringWrite) {
   for (int i = 0; i < 10; ++i) {
     uint64_t ts = 1000000000ULL + i * 1000000ULL;
     EXPECT_TRUE(session.write(channel_id, i, ts, ts, data.data(), data.size()));
-    
+
     // Flush periodically
     if (i % 3 == 0) {
       EXPECT_NO_THROW(session.flush());
@@ -464,7 +436,7 @@ TEST_F(RecordingSessionTest, FlushDuringWrite) {
 
 TEST_F(RecordingSessionTest, CloseWithoutOpen) {
   RecordingSession session;
-  
+
   // Close without opening should not crash
   EXPECT_NO_THROW(session.close());
   EXPECT_FALSE(session.is_open());
@@ -477,7 +449,7 @@ TEST_F(RecordingSessionTest, DoubleClose) {
   ASSERT_TRUE(session.open(path));
 
   session.close();
-  
+
   // Second close should not crash
   EXPECT_NO_THROW(session.close());
   EXPECT_FALSE(session.is_open());
@@ -493,9 +465,7 @@ TEST_F(RecordingSessionTest, LargeMessages) {
   std::string path = (test_dir_ / "large.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "sensor_msgs/msg/Image", "ros2msg", "uint8[] data"
-  );
+  uint16_t schema_id = session.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint8[] data");
   uint16_t channel_id = session.register_channel("/camera/image", "cdr", schema_id);
 
   // 1MB message (simulating image data)
@@ -520,9 +490,7 @@ TEST_F(RecordingSessionTest, ManySmallMessages) {
   std::string path = (test_dir_ / "many_small.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/Int32", "ros2msg", "int32 data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/Int32", "ros2msg", "int32 data");
   uint16_t channel_id = session.register_channel("/counter", "cdr", schema_id);
 
   std::vector<uint8_t> data = {0x01, 0x00, 0x00, 0x00};  // int32 = 1
@@ -599,15 +567,15 @@ TEST_F(RecordingSessionTest, DurationAccuracy) {
   ASSERT_TRUE(session.open(path));
 
   auto start = std::chrono::steady_clock::now();
-  
+
   // Sleep for known duration
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   double duration = session.get_duration_sec();
-  
-  auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::steady_clock::now() - start
-  ).count();
+
+  auto elapsed_ms =
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start)
+      .count();
 
   // Duration should be within 50ms of expected
   EXPECT_GE(duration, 0.15);  // At least 150ms
@@ -644,14 +612,12 @@ TEST_F(RecordingSessionTest, SetTaskConfigEnablesMetadata) {
   EXPECT_NO_THROW(session.set_task_config(config));
 
   // Write some data to ensure file has content
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
   std::vector<uint8_t> data = {0x01, 0x02, 0x03};
   uint64_t ts = 1000000000ULL;
   session.write(channel_id, 0, ts, ts, data.data(), data.size());
-  
+
   // Update topic stats as recorder would
   session.update_topic_stats("/test", "std_msgs/msg/String");
 
@@ -678,9 +644,7 @@ TEST_F(RecordingSessionTest, SidecarPathAvailableAfterClose) {
   EXPECT_TRUE(session.get_sidecar_path().empty());
 
   // Write some data
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
   std::vector<uint8_t> data = {0x01};
   session.write(channel_id, 0, 1000000000ULL, 1000000000ULL, data.data(), data.size());
@@ -712,9 +676,7 @@ TEST_F(RecordingSessionTest, ChecksumAvailableAfterClose) {
   EXPECT_TRUE(session.get_checksum().empty());
 
   // Write some data
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
   std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
   for (int i = 0; i < 10; ++i) {
@@ -745,13 +707,12 @@ TEST_F(RecordingSessionTest, UpdateTopicStatsAccumulates) {
   config.device_id = "device_001";
   session.set_task_config(config);
 
-  uint16_t schema_id = session.register_schema(
-    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
-  );
+  uint16_t schema_id =
+    session.register_schema("sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation");
   uint16_t channel_id = session.register_channel("/imu/data", "cdr", schema_id);
 
   std::vector<uint8_t> data = {0x01, 0x02, 0x03};
-  
+
   // Write and update stats for 500 messages
   for (int i = 0; i < 500; ++i) {
     uint64_t ts = 1000000000ULL + i * 1000000ULL;
@@ -779,13 +740,10 @@ TEST_F(RecordingSessionTest, MessageTypeStoredOnFirstUpdate) {
   session.set_task_config(config);
 
   // Register multiple schemas and channels
-  uint16_t schema1 = session.register_schema(
-    "sensor_msgs/msg/Image", "ros2msg", "uint32 height"
-  );
-  uint16_t schema2 = session.register_schema(
-    "sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation"
-  );
-  
+  uint16_t schema1 = session.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint32 height");
+  uint16_t schema2 =
+    session.register_schema("sensor_msgs/msg/Imu", "ros2msg", "float64[9] orientation");
+
   uint16_t ch1 = session.register_channel("/camera/image", "cdr", schema1);
   uint16_t ch2 = session.register_channel("/imu/data", "cdr", schema2);
 
@@ -795,7 +753,7 @@ TEST_F(RecordingSessionTest, MessageTypeStoredOnFirstUpdate) {
   // Write to camera channel
   session.write(ch1, 0, ts, ts, data.data(), data.size());
   session.update_topic_stats("/camera/image", "sensor_msgs/msg/Image");
-  
+
   // Write to IMU channel
   session.write(ch2, 0, ts + 1000, ts + 1000, data.data(), data.size());
   session.update_topic_stats("/imu/data", "sensor_msgs/msg/Imu");
@@ -834,11 +792,9 @@ TEST_F(RecordingSessionTest, SidecarGeneratedOnClose) {
   session.set_task_config(config);
 
   // Write some data
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test_topic", "cdr", schema_id);
-  
+
   std::vector<uint8_t> data = {0x01, 0x02, 0x03};
   for (int i = 0; i < 100; ++i) {
     uint64_t ts = 1000000000ULL + i * 10000000ULL;
@@ -852,16 +808,16 @@ TEST_F(RecordingSessionTest, SidecarGeneratedOnClose) {
   std::string sidecar_path = session.get_sidecar_path();
   if (!sidecar_path.empty()) {
     EXPECT_TRUE(std::filesystem::exists(sidecar_path))
-        << "Sidecar file not found at: " << sidecar_path;
-    
+      << "Sidecar file not found at: " << sidecar_path;
+
     // Verify sidecar is valid JSON
     std::ifstream sidecar_file(sidecar_path);
     ASSERT_TRUE(sidecar_file.is_open());
-    
+
     std::stringstream buffer;
     buffer << sidecar_file.rdbuf();
     std::string json_content = buffer.str();
-    
+
     // Check for required fields
     EXPECT_TRUE(json_content.find("\"task_id\"") != std::string::npos);
     EXPECT_TRUE(json_content.find("sidecar_task_001") != std::string::npos);
@@ -881,25 +837,22 @@ TEST_F(RecordingSessionTest, SidecarContainsTopicStats) {
   session.set_task_config(config);
 
   // Register multiple topics
-  uint16_t schema1 = session.register_schema(
-    "sensor_msgs/msg/Image", "ros2msg", "uint32 height"
-  );
-  uint16_t schema2 = session.register_schema(
-    "sensor_msgs/msg/Imu", "ros2msg", "float64 angular_velocity"
-  );
-  
+  uint16_t schema1 = session.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint32 height");
+  uint16_t schema2 =
+    session.register_schema("sensor_msgs/msg/Imu", "ros2msg", "float64 angular_velocity");
+
   uint16_t ch1 = session.register_channel("/camera/image", "cdr", schema1);
   uint16_t ch2 = session.register_channel("/imu/data", "cdr", schema2);
 
   std::vector<uint8_t> data = {0x01, 0x02};
-  
+
   // Write different amounts to each topic
   for (int i = 0; i < 50; ++i) {
     uint64_t ts = 1000000000ULL + i * 20000000ULL;
     session.write(ch1, i, ts, ts, data.data(), data.size());
     session.update_topic_stats("/camera/image", "sensor_msgs/msg/Image");
   }
-  
+
   for (int i = 0; i < 200; ++i) {
     uint64_t ts = 1000000000ULL + i * 5000000ULL;
     session.write(ch2, i, ts, ts, data.data(), data.size());
@@ -914,12 +867,16 @@ TEST_F(RecordingSessionTest, SidecarContainsTopicStats) {
     std::stringstream buffer;
     buffer << sidecar_file.rdbuf();
     std::string json_content = buffer.str();
-    
+
     // Should contain topic information
-    EXPECT_TRUE(json_content.find("/camera/image") != std::string::npos ||
-                json_content.find("camera") != std::string::npos);
-    EXPECT_TRUE(json_content.find("/imu/data") != std::string::npos ||
-                json_content.find("imu") != std::string::npos);
+    EXPECT_TRUE(
+      json_content.find("/camera/image") != std::string::npos ||
+      json_content.find("camera") != std::string::npos
+    );
+    EXPECT_TRUE(
+      json_content.find("/imu/data") != std::string::npos ||
+      json_content.find("imu") != std::string::npos
+    );
   }
 }
 
@@ -930,11 +887,9 @@ TEST_F(RecordingSessionTest, SidecarNotGeneratedWithoutTaskConfig) {
   ASSERT_TRUE(session.open(mcap_path));
 
   // Don't set task config - sidecar should not be generated
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
-  
+
   std::vector<uint8_t> data = {0x01};
   session.write(channel_id, 0, 1000000000ULL, 1000000000ULL, data.data(), data.size());
 
@@ -960,7 +915,7 @@ TEST_F(RecordingSessionTest, RegisterSchemaWithEmptyName) {
 
   // Empty schema name - should handle gracefully
   uint16_t schema_id = session.register_schema("", "ros2msg", "string data");
-  
+
   // Implementation may return 0 or a valid ID
   // Just verify it doesn't crash
   SUCCEED();
@@ -976,7 +931,7 @@ TEST_F(RecordingSessionTest, RegisterSchemaWithEmptyDefinition) {
 
   // Empty definition - should handle gracefully
   uint16_t schema_id = session.register_schema("std_msgs/msg/Empty", "ros2msg", "");
-  
+
   // Should still get a valid ID
   EXPECT_GT(schema_id, 0);
 
@@ -1010,7 +965,7 @@ TEST_F(RecordingSessionTest, RegisterChannelWithInvalidSchema) {
 
   // Try to register channel with non-existent schema ID
   uint16_t channel_id = session.register_channel("/test", "cdr", 9999);
-  
+
   // Should handle gracefully - may return 0 or create channel anyway
   // Just verify no crash
   SUCCEED();
@@ -1024,13 +979,11 @@ TEST_F(RecordingSessionTest, RegisterChannelWithEmptyTopic) {
   std::string path = (test_dir_ / "empty_topic.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
 
   // Empty topic name
   uint16_t channel_id = session.register_channel("", "cdr", schema_id);
-  
+
   // Should handle gracefully
   SUCCEED();
 
@@ -1047,14 +1000,12 @@ TEST_F(RecordingSessionTest, WriteWithNullData) {
   std::string path = (test_dir_ / "null_data.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
 
   // Write with null data pointer
   bool result = session.write(channel_id, 0, 1000000000ULL, 1000000000ULL, nullptr, 0);
-  
+
   // Should handle gracefully (may succeed with empty message or fail)
   SUCCEED();
 
@@ -1067,16 +1018,14 @@ TEST_F(RecordingSessionTest, WriteWithZeroSize) {
   std::string path = (test_dir_ / "zero_size.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
 
   std::vector<uint8_t> data = {0x01, 0x02};
-  
+
   // Write with zero size
   bool result = session.write(channel_id, 0, 1000000000ULL, 1000000000ULL, data.data(), 0);
-  
+
   // Should handle gracefully
   SUCCEED();
 
@@ -1090,10 +1039,10 @@ TEST_F(RecordingSessionTest, WriteWithInvalidChannel) {
   ASSERT_TRUE(session.open(path));
 
   std::vector<uint8_t> data = {0x01, 0x02, 0x03};
-  
+
   // Write to non-existent channel
   bool result = session.write(9999, 0, 1000000000ULL, 1000000000ULL, data.data(), data.size());
-  
+
   // Should return false or handle gracefully
   SUCCEED();
 
@@ -1106,17 +1055,16 @@ TEST_F(RecordingSessionTest, WriteVeryLargeMessage) {
   std::string path = (test_dir_ / "large_message.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "sensor_msgs/msg/Image", "ros2msg", "uint8[] data"
-  );
+  uint16_t schema_id = session.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint8[] data");
   uint16_t channel_id = session.register_channel("/large_image", "cdr", schema_id);
 
   // Create a large message (10MB)
   std::vector<uint8_t> large_data(10 * 1024 * 1024, 0xAB);
-  
-  bool result = session.write(channel_id, 0, 1000000000ULL, 1000000000ULL, 
-                              large_data.data(), large_data.size());
-  
+
+  bool result = session.write(
+    channel_id, 0, 1000000000ULL, 1000000000ULL, large_data.data(), large_data.size()
+  );
+
   EXPECT_TRUE(result);
 
   auto stats = session.get_stats();
@@ -1136,9 +1084,7 @@ TEST_F(RecordingSessionTest, ConcurrentWrites) {
   std::string path = (test_dir_ / "concurrent.mcap").string();
   ASSERT_TRUE(session.open(path));
 
-  uint16_t schema_id = session.register_schema(
-    "std_msgs/msg/String", "ros2msg", "string data"
-  );
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
   uint16_t channel_id = session.register_channel("/concurrent", "cdr", schema_id);
 
   std::atomic<int> success_count{0};
@@ -1207,4 +1153,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

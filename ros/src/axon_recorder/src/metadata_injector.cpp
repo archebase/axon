@@ -1,5 +1,8 @@
 #include "metadata_injector.hpp"
 
+#include <nlohmann/json.hpp>
+#include <openssl/evp.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -8,9 +11,6 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-
-#include <nlohmann/json.hpp>
-#include <openssl/evp.h>
 #include <unistd.h>
 
 #include "mcap_writer_wrapper.hpp"
@@ -29,9 +29,8 @@ double TopicStats::compute_frequency_hz() const {
   }
 
   // Use microseconds for better precision with high-frequency topics
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(
-    last_message_time - first_message_time
-  );
+  auto duration_us =
+    std::chrono::duration_cast<std::chrono::microseconds>(last_message_time - first_message_time);
 
   if (duration_us.count() <= 0) {
     return 0.0;
@@ -39,7 +38,8 @@ double TopicStats::compute_frequency_hz() const {
 
   // Frequency = (N-1) intervals / duration
   // Using microseconds: freq_hz = (message_count - 1) * 1,000,000 / duration_us
-  return static_cast<double>(message_count - 1) * 1000000.0 / static_cast<double>(duration_us.count());
+  return static_cast<double>(message_count - 1) * 1000000.0 /
+         static_cast<double>(duration_us.count());
 }
 
 // ============================================================================
@@ -207,7 +207,8 @@ bool MetadataInjector::generate_sidecar_json(
 
   // Sort topics_summary by topic name
   std::sort(
-    sidecar["topics_summary"].begin(), sidecar["topics_summary"].end(),
+    sidecar["topics_summary"].begin(),
+    sidecar["topics_summary"].end(),
     [](const nlohmann::json& a, const nlohmann::json& b) {
       return a["topic"].get<std::string>() < b["topic"].get<std::string>();
     }
@@ -475,4 +476,3 @@ std::string MetadataInjector::join(
 
 }  // namespace recorder
 }  // namespace axon
-

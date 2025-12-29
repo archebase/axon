@@ -3,8 +3,8 @@
 #define MCAP_IMPLEMENTATION
 #include "mcap_writer_wrapper.hpp"
 
-#include <mcap/writer.hpp>
 #include <mcap/reader.hpp>  // Also need reader implementation for mcap_validator
+#include <mcap/writer.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -18,18 +18,31 @@
 #include <axon_log_macros.hpp>
 #else
 // No-op macros when logging is not available
-#define AXON_LOG_DEBUG(msg) do {} while(0)
-#define AXON_LOG_INFO(msg) do {} while(0)
-#define AXON_LOG_WARN(msg) do {} while(0)
-#define AXON_LOG_ERROR(msg) do {} while(0)
-#define AXON_LOG_FATAL(msg) do {} while(0)
-namespace axon { namespace logging {
-template<typename T> 
-inline std::string kv(const char* key, const T& value) { 
-    (void)key; (void)value;
-    return ""; 
+#define AXON_LOG_DEBUG(msg) \
+  do { \
+  } while (0)
+#define AXON_LOG_INFO(msg) \
+  do { \
+  } while (0)
+#define AXON_LOG_WARN(msg) \
+  do { \
+  } while (0)
+#define AXON_LOG_ERROR(msg) \
+  do { \
+  } while (0)
+#define AXON_LOG_FATAL(msg) \
+  do { \
+  } while (0)
+namespace axon {
+namespace logging {
+template<typename T>
+inline std::string kv(const char* key, const T& value) {
+  (void)key;
+  (void)value;
+  return "";
 }
-}}
+}  // namespace logging
+}  // namespace axon
 #endif
 
 namespace axon {
@@ -101,18 +114,21 @@ public:
     auto status = writer_.open(path, mcap_opts);
     if (!status.ok()) {
       last_error_ = "Failed to open MCAP file: " + status.message;
-      AXON_LOG_ERROR("Failed to open MCAP file" << axon::logging::kv("path", path) << axon::logging::kv("error", status.message));
+      AXON_LOG_ERROR(
+        "Failed to open MCAP file" << axon::logging::kv("path", path)
+                                   << axon::logging::kv("error", status.message)
+      );
       return false;
     }
 
     is_open_ = true;
-    
+
     // Reset statistics
     messages_written_.store(0, std::memory_order_relaxed);
     bytes_written_.store(0, std::memory_order_relaxed);
     schemas_registered_.store(0, std::memory_order_relaxed);
     channels_registered_.store(0, std::memory_order_relaxed);
-    
+
     AXON_LOG_INFO("MCAP file opened" << axon::logging::kv("path", path));
     return true;
   }
@@ -127,7 +143,10 @@ public:
     AXON_LOG_DEBUG("Closing MCAP file" << axon::logging::kv("path", path_));
     writer_.close();
     is_open_ = false;
-    AXON_LOG_INFO("MCAP file closed" << axon::logging::kv("messages_written", messages_written_.load()) << axon::logging::kv("bytes_written", bytes_written_.load()));
+    AXON_LOG_INFO(
+      "MCAP file closed" << axon::logging::kv("messages_written", messages_written_.load())
+                         << axon::logging::kv("bytes_written", bytes_written_.load())
+    );
   }
 
   bool is_open() const {
@@ -149,7 +168,10 @@ public:
     writer_.addSchema(schema);
 
     schemas_registered_.fetch_add(1, std::memory_order_relaxed);
-    AXON_LOG_DEBUG("Schema registered" << axon::logging::kv("name", name) << axon::logging::kv("schema_id", schema.id));
+    AXON_LOG_DEBUG(
+      "Schema registered" << axon::logging::kv("name", name)
+                          << axon::logging::kv("schema_id", schema.id)
+    );
     return schema.id;
   }
 
@@ -175,7 +197,10 @@ public:
     writer_.addChannel(channel);
 
     channels_registered_.fetch_add(1, std::memory_order_relaxed);
-    AXON_LOG_DEBUG("Channel registered" << axon::logging::kv("topic", topic) << axon::logging::kv("channel_id", channel.id));
+    AXON_LOG_DEBUG(
+      "Channel registered" << axon::logging::kv("topic", topic)
+                           << axon::logging::kv("channel_id", channel.id)
+    );
     return channel.id;
   }
 
@@ -209,7 +234,7 @@ public:
     auto status = writer_.write(msg);
     if (!status.ok()) {
       last_error_ = "Failed to write message: " + status.message;
-      
+
       // Rate-limit error logging to avoid flooding logs on repeated failures
       // (e.g., disk full scenario)
       write_errors_.fetch_add(1, std::memory_order_relaxed);
@@ -219,9 +244,10 @@ public:
         // Atomically update the last log time
         if (last_write_error_log_.compare_exchange_weak(last, now)) {
           auto error_count = write_errors_.exchange(0, std::memory_order_relaxed);
-          AXON_LOG_ERROR("Failed to write message" 
-              << axon::logging::kv("error", status.message)
-              << axon::logging::kv("error_count", error_count));
+          AXON_LOG_ERROR(
+            "Failed to write message" << axon::logging::kv("error", status.message)
+                                      << axon::logging::kv("error_count", error_count)
+          );
         }
       }
       return false;
@@ -282,8 +308,7 @@ public:
       messages_written_.load(std::memory_order_relaxed),
       bytes_written_.load(std::memory_order_relaxed),
       schemas_registered_.load(std::memory_order_relaxed),
-      channels_registered_.load(std::memory_order_relaxed)
-    };
+      channels_registered_.load(std::memory_order_relaxed)};
   }
 
   std::string get_path() const {
@@ -296,8 +321,8 @@ private:
   std::string path_;
   McapWriterOptions options_;
 
-  mutable std::mutex mutex_;       // Protects metadata operations
-  mutable std::mutex write_mutex_; // Protects write operations (separate for performance)
+  mutable std::mutex mutex_;        // Protects metadata operations
+  mutable std::mutex write_mutex_;  // Protects write operations (separate for performance)
 
   std::atomic<bool> is_open_{false};
   std::string last_error_;
@@ -307,11 +332,11 @@ private:
   std::atomic<uint64_t> bytes_written_{0};
   std::atomic<uint64_t> schemas_registered_{0};
   std::atomic<uint64_t> channels_registered_{0};
-  
+
   // Rate limiting for error logging (avoid flooding logs on repeated failures)
   std::atomic<uint64_t> write_errors_{0};
   std::atomic<std::chrono::steady_clock::time_point> last_write_error_log_{
-      std::chrono::steady_clock::time_point{}};
+    std::chrono::steady_clock::time_point{}};
 };
 
 // =============================================================================

@@ -1,16 +1,15 @@
 #ifndef AXON_MCAP_VALIDATOR_MOCKS_HPP
 #define AXON_MCAP_VALIDATOR_MOCKS_HPP
 
-#include "mcap_validator_interfaces.hpp"
-
 #include <gmock/gmock.h>
+#include <mcap/errors.hpp>
+#include <mcap/reader.hpp>
 
 #include <ios>
 #include <memory>
 #include <string>
 
-#include <mcap/reader.hpp>
-#include <mcap/errors.hpp>
+#include "mcap_validator_interfaces.hpp"
 
 namespace axon {
 namespace mcap_wrapper {
@@ -31,7 +30,9 @@ public:
 class MockFileStream : public IFileStream {
 public:
   MOCK_METHOD(IFileStream&, read, (char* buffer, std::streamsize size), (override));
-  MOCK_METHOD(IFileStream&, seekg, (std::streamoff offset, std::ios_base::seekdir origin), (override));
+  MOCK_METHOD(
+    IFileStream&, seekg, (std::streamoff offset, std::ios_base::seekdir origin), (override)
+  );
   MOCK_METHOD(std::streamsize, gcount, (), (const, override));
   MOCK_METHOD(bool, good, (), (const, override));
   MOCK_METHOD(bool, fail, (), (const, override));
@@ -43,8 +44,10 @@ public:
  */
 class MockFileStreamFactory : public IFileStreamFactory {
 public:
-  MOCK_METHOD(std::unique_ptr<IFileStream>, create_file_stream,
-              (const std::string& path, std::ios_base::openmode mode), (override));
+  MOCK_METHOD(
+    std::unique_ptr<IFileStream>, create_file_stream,
+    (const std::string& path, std::ios_base::openmode mode), (override)
+  );
 };
 
 /**
@@ -72,4 +75,3 @@ public:
 }  // namespace axon
 
 #endif  // AXON_MCAP_VALIDATOR_MOCKS_HPP
-

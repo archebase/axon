@@ -56,7 +56,7 @@ public:
       ros::init(argc, argv, node_name, ros::init_options::AnonymousName);
       owns_ros_context_ = true;
     }
-    
+
     if (!ros::ok()) {
       return false;
     }
@@ -107,12 +107,11 @@ public:
 
     try {
       // Use ShapeShifter for generic subscription (type-agnostic)
-      auto shape_callback =
-        [callback](const topic_tools::ShapeShifter::ConstPtr& msg) {
-          if (msg) {
-            callback(static_cast<const void*>(msg.get()));
-          }
-        };
+      auto shape_callback = [callback](const topic_tools::ShapeShifter::ConstPtr& msg) {
+        if (msg) {
+          callback(static_cast<const void*>(msg.get()));
+        }
+      };
 
       sub = new ros::Subscriber(
         node_handle_->subscribe<topic_tools::ShapeShifter>(topic, 10, shape_callback)
@@ -156,8 +155,7 @@ public:
 
   void* subscribe_zero_copy(
     const std::string& topic, const std::string& message_type,
-    std::function<void(SerializedMessageData&&)> callback,
-    const SubscriptionConfig& /* config */
+    std::function<void(SerializedMessageData&&)> callback, const SubscriptionConfig& /* config */
   ) override {
     if (!node_handle_) {
       return nullptr;
@@ -167,27 +165,26 @@ public:
 
     try {
       // Use ShapeShifter for zero-copy access to serialized data
-      auto shape_callback =
-        [callback, this](const topic_tools::ShapeShifter::ConstPtr& msg) {
-          if (!msg) {
-            return;
-          }
+      auto shape_callback = [callback, this](const topic_tools::ShapeShifter::ConstPtr& msg) {
+        if (!msg) {
+          return;
+        }
 
-          // Get receive timestamp
-          int64_t timestamp_ns = now_nsec();
+        // Get receive timestamp
+        int64_t timestamp_ns = now_nsec();
 
-          // Get serialized data size
-          uint32_t serialized_size = msg->size();
+        // Get serialized data size
+        uint32_t serialized_size = msg->size();
 
-          // Allocate buffer and serialize
-          std::vector<uint8_t> buffer(serialized_size);
-          ros::serialization::OStream stream(buffer.data(), serialized_size);
-          msg->write(stream);
+        // Allocate buffer and serialize
+        std::vector<uint8_t> buffer(serialized_size);
+        ros::serialization::OStream stream(buffer.data(), serialized_size);
+        msg->write(stream);
 
-          // Create SerializedMessageData with ownership transfer
-          SerializedMessageData data(std::move(buffer), timestamp_ns);
-          callback(std::move(data));
-        };
+        // Create SerializedMessageData with ownership transfer
+        SerializedMessageData data(std::move(buffer), timestamp_ns);
+        callback(std::move(data));
+      };
 
       sub = new ros::Subscriber(
         node_handle_->subscribe<topic_tools::ShapeShifter>(topic, 100, shape_callback)
@@ -322,7 +319,7 @@ public:
       rclcpp::init(argc, argv);
       owns_ros_context_ = true;
     }
-    
+
     if (!rclcpp::ok()) {
       return false;
     }
@@ -707,7 +704,8 @@ public:
 
     // Return placeholder for unknown types
     // MCAP will still work, but Foxglove may not be able to decode messages
-    return "# Message definition not available for: " + message_type + "\n"
+    return "# Message definition not available for: " + message_type +
+           "\n"
            "# Recording will still work, but schema-based decoding may be limited.";
   }
 

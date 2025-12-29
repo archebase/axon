@@ -73,10 +73,6 @@ to https://docker.m.daocloud.io/...: 403 Forbidden
 - Ensure all apt packages are listed in Dockerfile
 - Check if rosdep needs initialization (already handled)
 
-**Rust build failures:**
-- Check internet connection (Rust toolchain download)
-- Verify Rust installation in Dockerfile
-
 **CMake errors:**
 - Ensure yaml-cpp is installed
 - Check ROS environment is sourced correctly

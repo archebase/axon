@@ -27,8 +27,9 @@ class ErrorRecoveryTest : public ::testing::Test {
 protected:
   void SetUp() override {
     // Create temp directory for test files
-    test_dir_ = fs::temp_directory_path() / ("error_recovery_test_" +
-        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    test_dir_ = fs::temp_directory_path() /
+                ("error_recovery_test_" +
+                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(test_dir_);
   }
 
@@ -264,8 +265,9 @@ TEST_F(ErrorRecoveryTest, ValidationError_EmptyDatasetPath) {
 
   EXPECT_FALSE(valid);
   EXPECT_FALSE(error_msg.empty());
-  EXPECT_TRUE(error_msg.find("dataset") != std::string::npos ||
-              error_msg.find("path") != std::string::npos);
+  EXPECT_TRUE(
+    error_msg.find("dataset") != std::string::npos || error_msg.find("path") != std::string::npos
+  );
 }
 
 TEST_F(ErrorRecoveryTest, ValidationError_EmptyTopics) {
@@ -488,4 +490,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

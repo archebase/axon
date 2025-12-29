@@ -1,14 +1,14 @@
 #ifndef AXON_MCAP_VALIDATOR_IMPL_HPP
 #define AXON_MCAP_VALIDATOR_IMPL_HPP
 
-#include "mcap_validator_interfaces.hpp"
+#include <mcap/errors.hpp>
+#include <mcap/reader.hpp>
 
 #include <filesystem>
 #include <fstream>
 #include <memory>
 
-#include <mcap/reader.hpp>
-#include <mcap/errors.hpp>
+#include "mcap_validator_interfaces.hpp"
 
 namespace axon {
 namespace mcap_wrapper {
@@ -19,11 +19,11 @@ namespace mcap_wrapper {
 class FileSystemImpl : public IFileSystem {
 public:
   bool exists(const std::string& path) const override {
-    return std::filesystem::exists(path); // LCOV_EXCL_BR_LINE
+    return std::filesystem::exists(path);  // LCOV_EXCL_BR_LINE
   }
 
   uint64_t file_size(const std::string& path) const override {
-    return static_cast<uint64_t>(std::filesystem::file_size(path));// LCOV_EXCL_BR_LINE
+    return static_cast<uint64_t>(std::filesystem::file_size(path));  // LCOV_EXCL_BR_LINE
   }
 };
 
@@ -45,13 +45,21 @@ public:
     return *this;
   }
 
-  std::streamsize gcount() const override { return stream_.gcount(); }
+  std::streamsize gcount() const override {
+    return stream_.gcount();
+  }
 
-  bool good() const override { return stream_.good(); }
+  bool good() const override {
+    return stream_.good();
+  }
 
-  bool fail() const override { return stream_.fail(); }
+  bool fail() const override {
+    return stream_.fail();
+  }
 
-  bool bad() const override { return stream_.bad(); }
+  bool bad() const override {
+    return stream_.bad();
+  }
 
 private:
   std::ifstream stream_;
@@ -63,7 +71,7 @@ private:
 class FileStreamFactoryImpl : public IFileStreamFactory {
 public:
   std::unique_ptr<IFileStream> create_file_stream(
-      const std::string& path, std::ios_base::openmode mode
+    const std::string& path, std::ios_base::openmode mode
   ) override {
     // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
     // that are standard library implementation details
@@ -81,13 +89,17 @@ public:
  */
 class McapReaderImpl : public IMcapReader {
 public:
-  mcap::Status open(const std::string& path) override { return reader_.open(path); }
-
-  mcap::Status readSummary(mcap::ReadSummaryMethod method) override {
-    return reader_.readSummary(method); // LCOV_EXCL_BR_LINE
+  mcap::Status open(const std::string& path) override {
+    return reader_.open(path);
   }
 
-  void close() override { reader_.close(); }
+  mcap::Status readSummary(mcap::ReadSummaryMethod method) override {
+    return reader_.readSummary(method);  // LCOV_EXCL_BR_LINE
+  }
+
+  void close() override {
+    reader_.close();
+  }
 
 private:
   mcap::McapReader reader_;
@@ -97,4 +109,3 @@ private:
 }  // namespace axon
 
 #endif  // AXON_MCAP_VALIDATOR_IMPL_HPP
-

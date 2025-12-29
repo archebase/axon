@@ -150,4 +150,3 @@ public:
 }  // namespace axon
 
 #endif  // AXON_RECORDER_CONTEXT_HPP
-
