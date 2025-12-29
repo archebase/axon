@@ -2,7 +2,7 @@
 # Supports ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling)
 # Located in ros/ directory - paths are relative to project root
 
-.PHONY: all build test clean install cpp-build cpp-test help
+.PHONY: all build test clean install build-ros1 build-ros2 test-libs help
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -56,10 +56,6 @@ help:
 	@printf "%s\n" "  $(BLUE)make clean$(NC)          - Clean all build artifacts"
 	@printf "%s\n" "  $(BLUE)make install$(NC)        - Install the package"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Component-specific targets:$(NC)"
-	@printf "%s\n" "  $(BLUE)make cpp-build$(NC)      - Build C++ code only"
-	@printf "%s\n" "  $(BLUE)make cpp-test$(NC)       - Run C++ tests only"
-	@echo ""
 	@printf "%s\n" "$(YELLOW)Build modes:$(NC)"
 	@printf "%s\n" "  $(BLUE)make debug$(NC)          - Build in debug mode"
 	@printf "%s\n" "  $(BLUE)make release$(NC)        - Build in release mode (default)"
@@ -93,14 +89,17 @@ help:
 	@echo "  Project root: $(PROJECT_ROOT)"
 
 # Main build target
-all: cpp-build
+build:
+	@if [ "$(ROS_VERSION)" = "1" ]; then \
+		$(MAKE) build-ros1; \
+	else \
+		$(MAKE) build-ros2; \
+	fi
 	@printf "%s\n" "$(GREEN)✓ Build complete!$(NC)"
 
-build: all
-
-# C++ build for ROS1
-cpp-build-ros1:
-	@printf "%s\n" "$(YELLOW)Building C++ code for ROS1...$(NC)"
+# Build for ROS1
+build-ros1:
+	@printf "%s\n" "$(YELLOW)Building code for ROS1...$(NC)"
 	@if [ -z "$$ROS_DISTRO" ]; then \
 		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
 		echo "Example: source /opt/ros/noetic/setup.bash"; \
@@ -110,11 +109,11 @@ cpp-build-ros1:
 		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 	fi
 	@catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
-	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS1$(NC)"
+	@printf "%s\n" "$(GREEN)✓ Code built for ROS1$(NC)"
 
-# C++ build for ROS2
-cpp-build-ros2:
-	@printf "%s\n" "$(YELLOW)Building C++ code for ROS2...$(NC)"
+# Build for ROS2
+build-ros2:
+	@printf "%s\n" "$(YELLOW)Building code for ROS2...$(NC)"
 	@if [ -z "$$ROS_DISTRO" ]; then \
 		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
 		echo "Example: source /opt/ros/humble/setup.bash"; \
@@ -124,19 +123,11 @@ cpp-build-ros2:
 		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 	fi
 	@colcon build --base-paths . --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
-	@printf "%s\n" "$(GREEN)✓ C++ code built for ROS2$(NC)"
+	@printf "%s\n" "$(GREEN)✓ Code built for ROS2$(NC)"
 
-# C++ build (auto-detect ROS version)
-cpp-build:
-	@if [ "$(ROS_VERSION)" = "1" ]; then \
-		$(MAKE) cpp-build-ros1; \
-	else \
-		$(MAKE) cpp-build-ros2; \
-	fi
-
-# C++ tests
-cpp-test:
-	@printf "%s\n" "$(YELLOW)Running C++ library tests...$(NC)"
+# Library tests
+test:
+	@printf "%s\n" "$(YELLOW)Running library tests...$(NC)"
 	@if [ -d "$(PROJECT_ROOT)/cpp/axon_mcap" ]; then \
 		cd $(PROJECT_ROOT)/cpp/axon_mcap && \
 		mkdir -p build && cd build && \
@@ -144,23 +135,17 @@ cpp-test:
 		cmake --build . && \
 		ctest --output-on-failure; \
 	fi
-	@printf "%s\n" "$(GREEN)✓ C++ tests passed$(NC)"
+	@printf "%s\n" "$(GREEN)✓ Tests passed$(NC)"
 
-# Run all tests
-test: cpp-test
-	@printf "%s\n" "$(GREEN)✓ All tests passed!$(NC)"
 
 # Clean targets
-clean-cpp:
-	@printf "%s\n" "$(YELLOW)Cleaning C++ build artifacts...$(NC)"
+clean:
+	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@if [ "$(ROS_VERSION)" = "2" ]; then \
 		rm -rf build install log; \
 	else \
 		catkin clean --yes; \
 	fi
-	@printf "%s\n" "$(GREEN)✓ C++ artifacts cleaned$(NC)"
-
-clean: clean-cpp
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target
@@ -297,7 +282,7 @@ dev-setup:
 	@printf "%s\n" "$(GREEN)✓ Development environment ready$(NC)"
 
 # Format code (if formatters are available)
-format-cpp:
+format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
 		printf "%s\n" "$(YELLOW)  Formatting cpp/ libraries...$(NC)"; \
@@ -315,10 +300,8 @@ format-cpp:
 		printf "%s\n" "$(YELLOW)  Install with: sudo apt install clang-format$(NC)"; \
 	fi
 
-format: format-cpp
-
 # Lint code
-lint-cpp:
+lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
 		find ../cpp ./src \
@@ -338,8 +321,6 @@ lint-cpp:
 		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \
 	fi
 
-lint: lint-cpp
-
 # Debug build
 debug:
 	@$(MAKE) BUILD_TYPE=Debug build
@@ -348,8 +329,8 @@ debug:
 release:
 	@$(MAKE) BUILD_TYPE=Release build
 
-# Quick test (C++ only, fast)
-quick-test: cpp-test
+# Quick test (fast)
+quick-test: test
 	@printf "%s\n" "$(GREEN)✓ Quick test complete$(NC)"
 
 # Full test suite
