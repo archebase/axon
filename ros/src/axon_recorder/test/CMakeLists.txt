@@ -315,6 +315,23 @@ if(ROS_INTEGRATED_BUILD)
     endif()
     add_test(NAME test_ros_introspection COMMAND test_ros_introspection)
     set_tests_properties(test_ros_introspection PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
+
+    # MessageFactory test - requires ROS message types
+    add_executable(test_message_factory
+        unit/test_message_factory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/message_factory.cpp
+    )
+    target_include_directories(test_message_factory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    if(DEFINED AXON_ROS1)
+        target_compile_definitions(test_message_factory PRIVATE AXON_ROS1)
+        target_include_directories(test_message_factory PRIVATE ${catkin_INCLUDE_DIRS})
+        target_link_libraries(test_message_factory GTest::gtest GTest::gtest_main Threads::Threads ${catkin_LIBRARIES})
+    elseif(DEFINED AXON_ROS2)
+        target_compile_definitions(test_message_factory PRIVATE AXON_ROS2)
+        target_link_libraries(test_message_factory GTest::gtest GTest::gtest_main Threads::Threads rclcpp::rclcpp)
+    endif()
+    add_test(NAME test_message_factory COMMAND test_message_factory)
+    set_tests_properties(test_message_factory PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT})
 endif()
 
 # ============================================================================
