@@ -9,9 +9,6 @@ services:
     container_name: axon_test_ros1
     volumes:
       - ../..:/workspace/axon
-      - ../../c/target:/workspace/axon/c/target
-      - cargo-cache-ros1:/root/.cargo/registry
-      - cargo-git-cache-ros1:/root/.cargo/git
     environment:
       - ROS_DISTRO=noetic
       - ROS_VERSION=1
@@ -25,9 +22,6 @@ services:
     container_name: axon_test_ros2_humble
     volumes:
       - ../..:/workspace/axon
-      - ../../c/target:/workspace/axon/c/target
-      - cargo-cache-ros2-humble:/root/.cargo/registry
-      - cargo-git-cache-ros2-humble:/root/.cargo/git
     environment:
       - ROS_DISTRO=humble
       - ROS_VERSION=2
@@ -41,9 +35,6 @@ services:
     container_name: axon_test_ros2_jazzy
     volumes:
       - ../..:/workspace/axon
-      - ../../c/target:/workspace/axon/c/target
-      - cargo-cache-ros2-jazzy:/root/.cargo/registry
-      - cargo-git-cache-ros2-jazzy:/root/.cargo/git
     environment:
       - ROS_DISTRO=jazzy
       - ROS_VERSION=2
@@ -57,9 +48,6 @@ services:
     container_name: axon_test_ros2_rolling
     volumes:
       - ../..:/workspace/axon
-      - ../../c/target:/workspace/axon/c/target
-      - cargo-cache-ros2-rolling:/root/.cargo/registry
-      - cargo-git-cache-ros2-rolling:/root/.cargo/git
     environment:
       - ROS_DISTRO=rolling
       - ROS_VERSION=2
@@ -67,11 +55,3 @@ services:
     network_mode: host
 
 volumes:
-  cargo-cache-ros1:
-  cargo-git-cache-ros1:
-  cargo-cache-ros2-humble:
-  cargo-git-cache-ros2-humble:
-  cargo-cache-ros2-jazzy:
-  cargo-git-cache-ros2-jazzy:
-  cargo-cache-ros2-rolling:
-  cargo-git-cache-ros2-rolling:
