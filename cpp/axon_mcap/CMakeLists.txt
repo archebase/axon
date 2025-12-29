@@ -86,11 +86,9 @@ endif()
 # axon_logging Library (for structured logging)
 # =============================================================================
 
-# Find axon_logging directory - check multiple possible locations
+# Find axon_logging directory (sibling to axon_mcap)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../axon_logging/CMakeLists.txt")
     set(AXON_LOGGING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../axon_logging")
-elseif(EXISTS "${PROJECT_ROOT}/cpp/axon_logging/CMakeLists.txt")
-    set(AXON_LOGGING_DIR "${PROJECT_ROOT}/cpp/axon_logging")
 else()
     message(STATUS "axon_logging not found - logging support disabled for axon_mcap")
     set(AXON_LOGGING_DIR "")
