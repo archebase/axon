@@ -15,6 +15,16 @@ else()
     # Fallback for standalone builds
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    # Define fallback helper functions
+    function(axon_set_position_independent_code TARGET)
+        set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endfunction()
+    function(axon_add_coverage TARGET)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${TARGET} PRIVATE -O0 -g --coverage -fprofile-arcs -ftest-coverage)
+            target_link_options(${TARGET} PRIVATE --coverage)
+        endif()
+    endfunction()
 endif()
 
 # =============================================================================
