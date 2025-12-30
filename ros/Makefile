@@ -56,13 +56,13 @@ help:
 	@printf "%s\n" "  $(BLUE)make clean$(NC)             - Clean build artifacts"
 	@printf "%s\n" "  $(BLUE)make install$(NC)           - Install package"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Docker tests (recommended):$(NC)"
-	@printf "%s\n" "  $(BLUE)make test-noetic$(NC)       - ROS 1 Noetic tests in Docker"
-	@printf "%s\n" "  $(BLUE)make test-humble$(NC)       - ROS 2 Humble tests in Docker"
-	@printf "%s\n" "  $(BLUE)make test-jazzy$(NC)        - ROS 2 Jazzy tests in Docker"
-	@printf "%s\n" "  $(BLUE)make test-rolling$(NC)      - ROS 2 Rolling tests in Docker"
-	@printf "%s\n" "  $(BLUE)make test-all$(NC)          - Run all Docker tests"
-	@printf "%s\n" "  $(BLUE)make test$(NC)              - Local C++ library tests only"
+	@printf "%s\n" "$(YELLOW)Docker tests:$(NC)"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros1$(NC)         - ROS 1 (Noetic) tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros2-humble$(NC) - ROS 2 Humble tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros2-jazzy$(NC)  - ROS 2 Jazzy tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros2-rolling$(NC) - ROS 2 Rolling tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-all$(NC)          - Run all Docker tests"
+	@printf "%s\n" "  $(BLUE)make test$(NC)                      - Local C++ library tests only"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Coverage (Docker):$(NC)"
 	@printf "%s\n" "  $(BLUE)make cov-humble$(NC)       - Coverage via Docker (ROS2 Humble)"
@@ -435,13 +435,6 @@ verify: build test
 # =============================================================================
 # Convenient Aliases
 # =============================================================================
-
-# Docker test shortcuts
-test-noetic: docker-test-ros1
-test-humble: docker-test-ros2-humble
-test-jazzy: docker-test-ros2-jazzy
-test-rolling: docker-test-ros2-rolling
-test-all: docker-test-all
 
 # Coverage shortcuts
 cov-humble: docker-coverage
