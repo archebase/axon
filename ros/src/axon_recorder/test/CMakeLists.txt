@@ -293,7 +293,7 @@ if(AXON_HAS_UPLOADER AND ROS_INTEGRATED_BUILD)
     if(DEFINED AXON_UPLOADER_DIR AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt")
         set(UPLOADER_INCLUDE_DIR "${AXON_UPLOADER_DIR}")
     else()
-        set(UPLOADER_INCLUDE_DIR "${PROJECT_ROOT}/../cpp/axon_uploader")
+        set(UPLOADER_INCLUDE_DIR "${PROJECT_ROOT}/cpp/axon_uploader")
     endif()
 
     axon_add_test(NAME test_recorder_node_uploader
