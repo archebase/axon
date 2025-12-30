@@ -23,28 +23,18 @@ if(NOT DEFINED AXON_CMAKE_MODULES_DIR)
     set(AXON_CMAKE_MODULES_DIR "${PROJECT_ROOT}/cmake/Modules")
 endif()
 
-# Include centralized CMake modules
+# Verify modules directory exists
+if(NOT EXISTS "${AXON_CMAKE_MODULES_DIR}/AxonStdlib.cmake")
+    message(FATAL_ERROR
+        "Axon CMake modules not found at: ${AXON_CMAKE_MODULES_DIR}\n"
+        "PROJECT_ROOT was: ${PROJECT_ROOT}"
+    )
+endif()
+
+# Include required CMake modules (fail if not found)
 list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
-include(AxonStdlib OPTIONAL)
-include(AxonCoverage OPTIONAL)
-
-# Minimal fallback for ROS builds
-if(NOT COMMAND axon_set_position_independent_code)
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    if(POLICY CMP0167)
-        cmake_policy(SET CMP0167 NEW)
-    endif()
-    function(axon_set_position_independent_code TARGET)
-        set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    endfunction()
-endif()
-
-if(NOT COMMAND axon_add_boost_log_dyn_link)
-    function(axon_add_boost_log_dyn_link TARGET)
-        target_compile_definitions(${TARGET} PUBLIC BOOST_LOG_DYN_LINK)
-    endfunction()
-endif()
+include(AxonStdlib REQUIRED)
+include(AxonCoverage REQUIRED)
 
 # =============================================================================
 # Detect ROS Build Mode

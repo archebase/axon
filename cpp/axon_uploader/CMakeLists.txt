@@ -5,40 +5,29 @@ project(axon_uploader)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # =============================================================================
-# Use Axon Root Configuration (if available)
+# Centralized CMake Modules
 # =============================================================================
-# Try to use centralized modules from the repo root
+# All Axon modules must use the centralized cmake/Modules directory.
+# This ensures consistent configuration across the codebase.
 if(DEFINED AXON_CMAKE_MODULES_DIR)
     list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
-    set(_AXON_USE_CENTRAL_MODULES TRUE)
 else()
     # Compute path to cmake/Modules relative to this directory
     # This file is in: cpp/axon_uploader/CMakeLists.txt
     # cmake/Modules is at: cmake/Modules (from repo root)
     set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules")
-    if(EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonCoverage.cmake")
-        list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
-        set(_AXON_USE_CENTRAL_MODULES TRUE)
-    else()
-        set(_AXON_USE_CENTRAL_MODULES FALSE)
+    if(NOT EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdlib.cmake")
+        message(FATAL_ERROR
+            "Axon CMake modules not found at: ${_AXON_CMAKE_MODULES_DIR}\n"
+            "Please ensure you're building from the Axon repository root."
+        )
     endif()
+    list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
 endif()
 
-if(_AXON_USE_CENTRAL_MODULES)
-    include(AxonStdlib OPTIONAL)
-    include(AxonCoverage OPTIONAL)
-endif()
-
-# Define fallback helper functions only if centralized modules are not available
-if(NOT _AXON_USE_CENTRAL_MODULES OR NOT COMMAND axon_set_position_independent_code)
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    function(axon_set_position_independent_code TARGET)
-        set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    endfunction()
-endif()
-
-# Coverage function is now always provided by AxonCoverage.cmake if available
+# Include required modules (fail if not found)
+include(AxonStdlib REQUIRED)
+include(AxonCoverage REQUIRED)
 
 # =============================================================================
 # Check Dependencies (optional build)

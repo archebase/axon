@@ -14,22 +14,29 @@ set(ignored_variables
 )
 
 # =============================================================================
-# Use Axon Root Configuration (if available)
+# Centralized CMake Modules
 # =============================================================================
-# Note: ROS builds (colcon/catkin) don't include the root CMakeLists.txt,
-# so we fall back to local configuration for those builds.
+# All Axon modules must use the centralized cmake/Modules directory.
+# This ensures consistent configuration across the codebase.
 if(DEFINED AXON_CMAKE_MODULES_DIR)
     list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
-    include(AxonStdlib OPTIONAL)
-    include(AxonCoverage OPTIONAL)
 else()
-    # Fallback for ROS builds
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    if(POLICY CMP0167)
-        cmake_policy(SET CMP0167 NEW)
+    # Compute path to cmake/Modules relative to this directory
+    # This file is in: ros/src/axon_recorder/CMakeLists.txt
+    # cmake/Modules is at: cmake/Modules (from repo root, which is ../../)
+    set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules")
+    if(NOT EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdlib.cmake")
+        message(FATAL_ERROR
+            "Axon CMake modules not found at: ${_AXON_CMAKE_MODULES_DIR}\n"
+            "Please ensure you're building from the Axon repository root."
+        )
     endif()
+    list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
 endif()
+
+# Include required modules (fail if not found)
+include(AxonStdlib REQUIRED)
+include(AxonCoverage REQUIRED)
 
 # =============================================================================
 # Path Configuration
