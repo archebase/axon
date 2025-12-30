@@ -147,7 +147,7 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DAXON_REPO_ROOT=${{ github.workspace }} \
-            -DAXON_UPLOADER_ENABLE_COVERAGE=ON \
+            -DAXON_ENABLE_COVERAGE=ON \
             -DAXON_UPLOADER_BUILD_TESTS=ON \
             -DCMAKE_PREFIX_PATH=~/aws-sdk-cpp-install
 
