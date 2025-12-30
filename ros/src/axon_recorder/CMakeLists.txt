@@ -21,8 +21,12 @@ set(ignored_variables
 if(DEFINED AXON_CMAKE_MODULES_DIR)
     list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
 else()
-    # Use AXON_REPO_ROOT (set by root CMakeLists.txt)
-    set(_AXON_CMAKE_MODULES_DIR "${AXON_REPO_ROOT}/cmake/Modules")
+    # Use AXON_REPO_ROOT if set, otherwise compute relative path
+    if(DEFINED AXON_REPO_ROOT)
+        set(_AXON_CMAKE_MODULES_DIR "${AXON_REPO_ROOT}/cmake/Modules")
+    else()
+        set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/Modules")
+    endif()
     if(NOT EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdlib.cmake")
         message(FATAL_ERROR
             "Axon CMake modules not found at: ${_AXON_CMAKE_MODULES_DIR}\n"
@@ -42,7 +46,12 @@ include(AxonCoverage REQUIRED)
 # Calculate paths relative to repo root.
 # From ros/src/axon_recorder/, the repo root is ../../../
 
-set(PROJECT_ROOT ${AXON_REPO_ROOT})
+# Use AXON_REPO_ROOT if set, otherwise compute relative path
+if(DEFINED AXON_REPO_ROOT)
+    set(PROJECT_ROOT ${AXON_REPO_ROOT})
+else()
+    set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+endif()
 
 # Use centralized AXON_* paths if available (built from root), otherwise calculate
 if(DEFINED AXON_MCAP_DIR AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
