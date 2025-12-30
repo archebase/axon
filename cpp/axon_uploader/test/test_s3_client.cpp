@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "s3_client.hpp"
+#include "s3_client_test_helpers.hpp"
 
 using namespace axon::uploader;
 
@@ -75,6 +76,66 @@ TEST_F(S3ClientTest, IsRetryableError) {
   // Unknown error codes should be non-retryable
   EXPECT_FALSE(S3Client::isRetryableError("UnknownError"));
   EXPECT_FALSE(S3Client::isRetryableError(""));
+}
+
+// AWS TransferStatus enum values for testing
+// These match the Aws::Transfer::TransferStatus enum in aws/transfer/TransferHandle.h
+constexpr int TRANSFER_EXACT_OBJECT_ALREADY_EXISTS = 0;
+constexpr int TRANSFER_NOT_STARTED = 1;
+constexpr int TRANSFER_IN_PROGRESS = 2;
+constexpr int TRANSFER_CANCELED = 3;
+constexpr int TRANSFER_FAILED = 4;
+constexpr int TRANSFER_COMPLETED = 5;
+constexpr int TRANSFER_ABORTED = 6;
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_Canceled) {
+  EXPECT_EQ(transferStatusToErrorCode(TRANSFER_CANCELED), "TransferCanceled");
+}
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_Failed) {
+  EXPECT_EQ(transferStatusToErrorCode(TRANSFER_FAILED), "TransferFailed");
+}
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_Aborted) {
+  EXPECT_EQ(transferStatusToErrorCode(TRANSFER_ABORTED), "TransferAborted");
+}
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_NotStarted) {
+  EXPECT_EQ(transferStatusToErrorCode(TRANSFER_NOT_STARTED), "TransferNotStarted");
+}
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_InProgress) {
+  EXPECT_EQ(transferStatusToErrorCode(TRANSFER_IN_PROGRESS), "TransferInProgress");
+}
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_ExactObjectAlreadyExists) {
+  EXPECT_EQ(transferStatusToErrorCode(TRANSFER_EXACT_OBJECT_ALREADY_EXISTS), "TransferError");
+}
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_Unknown) {
+  // Test with an invalid status value (outside enum range)
+  EXPECT_EQ(transferStatusToErrorCode(999), "TransferError");
+  EXPECT_EQ(transferStatusToErrorCode(-1), "TransferError");
+}
+
+TEST_F(S3ClientTest, TransferStatusToErrorCode_AllStatusesDistinct) {
+  // Ensure all status codes map to distinct error codes
+  std::string canceled = transferStatusToErrorCode(TRANSFER_CANCELED);
+  std::string failed = transferStatusToErrorCode(TRANSFER_FAILED);
+  std::string aborted = transferStatusToErrorCode(TRANSFER_ABORTED);
+  std::string not_started = transferStatusToErrorCode(TRANSFER_NOT_STARTED);
+  std::string in_progress = transferStatusToErrorCode(TRANSFER_IN_PROGRESS);
+
+  EXPECT_NE(canceled, failed);
+  EXPECT_NE(canceled, aborted);
+  EXPECT_NE(canceled, not_started);
+  EXPECT_NE(canceled, in_progress);
+  EXPECT_NE(failed, aborted);
+  EXPECT_NE(failed, not_started);
+  EXPECT_NE(failed, in_progress);
+  EXPECT_NE(aborted, not_started);
+  EXPECT_NE(aborted, in_progress);
+  EXPECT_NE(not_started, in_progress);
 }
 
 TEST_F(S3ClientTest, ConfigurationWithTrailingSlash) {

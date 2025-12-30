@@ -198,7 +198,8 @@ public:
     // LCOV_EXCL_BR_STOP
 
     // Configure TransferManager for multipart uploads
-    Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get()
+    Aws::Transfer::TransferManagerConfiguration transfer_config(
+      executor.get()
     );  // LCOV_EXCL_BR_LINE
     transfer_config.s3Client = client;
 
@@ -247,6 +248,26 @@ S3Client::S3Client(const S3Config& config)
 }
 
 S3Client::~S3Client() = default;
+
+// Convert AWS TransferStatus to error code string
+// Extracted for testability - see test_s3_client.cpp
+std::string transferStatusToErrorCode(int status) {
+  using namespace Aws::Transfer;
+  switch (static_cast<TransferStatus>(status)) {
+    case TransferStatus::CANCELED:
+      return "TransferCanceled";
+    case TransferStatus::FAILED:
+      return "TransferFailed";
+    case TransferStatus::ABORTED:
+      return "TransferAborted";
+    case TransferStatus::NOT_STARTED:
+      return "TransferNotStarted";
+    case TransferStatus::IN_PROGRESS:
+      return "TransferInProgress";
+    default:
+      return "TransferError";
+  }
+}
 
 // Internal implementation with dependency injection
 // Exposed for testing via s3_client_test_helpers.hpp
@@ -368,21 +389,7 @@ UploadResult S3Client::uploadFile(
     auto error = upload_handle->GetLastError();
     std::string error_code = error.GetExceptionName();
     if (error_code.empty()) {
-      // Map transfer status to error code
-      switch (status) {
-        case Aws::Transfer::TransferStatus::CANCELED:
-          error_code = "TransferCanceled";
-          break;
-        case Aws::Transfer::TransferStatus::FAILED:
-          error_code = "TransferFailed";
-          break;
-        case Aws::Transfer::TransferStatus::ABORTED:
-          error_code = "TransferAborted";
-          break;
-        default:
-          error_code = "TransferError";
-          break;
-      }
+      error_code = transferStatusToErrorCode(static_cast<int>(status));
     }
     std::string error_msg = error.GetMessage();
     if (error_msg.empty()) {

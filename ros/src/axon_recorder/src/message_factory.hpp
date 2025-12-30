@@ -8,6 +8,7 @@
 #include <ros/service_traits.h>
 #elif defined(AXON_ROS2)
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/serialization.hpp>
 #include <rclcpp/serialized_message.hpp>
 #endif
 
@@ -160,10 +161,11 @@ void MessageFactory::register_message_type(const std::string& message_type) {
   };
 
   info.deserializer = [](const rclcpp::SerializedMessage& serialized, void* msg) {
-    // ROS 2 deserialization would use rmw_deserialize
-    // This is a placeholder for the actual implementation
-    (void)serialized;
-    (void)msg;
+    MessageType* typed_msg = static_cast<MessageType*>(msg);
+    // Create a Serialization object for this message type
+    rclcpp::Serialization<MessageType> serializer;
+    // Deserialize the serialized message into the typed message
+    serializer.deserialize_message(&serialized, typed_msg);
   };
 
   registry[message_type] = info;

@@ -93,6 +93,36 @@ ros_build_package() {
         if [ "$clean_build" = "true" ]; then
             ros_build_log "INFO" "Cleaning previous build artifacts..."
             rm -rf build devel install log logs
+
+            # Also clean C++ library build artifacts in parent directory
+            # (cpp/axon_mcap, cpp/axon_logging may have stale build artifacts)
+            if [ -d "${workspace_root}/cpp" ]; then
+                ros_build_log "INFO" "Cleaning C++ library build artifacts..."
+                rm -rf "${workspace_root}/cpp/build"*
+                rm -rf "${workspace_root}/cpp/*/build"
+                # Clean any CMake caches in cpp directories
+                find "${workspace_root}/cpp" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
+                find "${workspace_root}/cpp" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
+                # Clean coverage data files
+                find "${workspace_root}/cpp" -type f -name "*.gcda" -delete 2>/dev/null || true
+                find "${workspace_root}/cpp" -type f -name "*.gcno" -delete 2>/dev/null || true
+            fi
+
+            # Also clean the main project build directory if it exists
+            # (may have stale build artifacts from non-ROS builds)
+            if [ -d "${workspace_root}/build" ] && [ "${workspace_root}/build" != "${PWD}/build" ]; then
+                ros_build_log "INFO" "Cleaning main project build artifacts..."
+                rm -rf "${workspace_root}/build"
+            fi
+
+            # Also remove any CMake cache files that might persist
+            find . -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
+            find . -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
+            # Clean coverage data files in ros directory
+            find . -type f -name "*.gcda" -delete 2>/dev/null || true
+            find . -type f -name "*.gcno" -delete 2>/dev/null || true
+            # Force CMake reconfigure by removing colcon's dependency tracking
+            rm -f .colcon_install_layout 2>/dev/null || true
         fi
         
         # Build with catkin
@@ -100,9 +130,11 @@ ros_build_package() {
             --no-notify
             -DCMAKE_BUILD_TYPE="$build_type"
         )
-        
+
         if [ "$enable_coverage" = "true" ]; then
             catkin_args+=(-DENABLE_COVERAGE=ON)
+        else
+            catkin_args+=(-DENABLE_COVERAGE=OFF)
         fi
         
         # Add extra CMake args if provided
@@ -148,6 +180,36 @@ ros_build_package() {
         if [ "$clean_build" = "true" ]; then
             ros_build_log "INFO" "Cleaning previous build artifacts..."
             rm -rf build devel install log logs
+
+            # Also clean C++ library build artifacts in parent directory
+            # (cpp/axon_mcap, cpp/axon_logging may have stale build artifacts)
+            if [ -d "${workspace_root}/cpp" ]; then
+                ros_build_log "INFO" "Cleaning C++ library build artifacts..."
+                rm -rf "${workspace_root}/cpp/build"*
+                rm -rf "${workspace_root}/cpp/*/build"
+                # Clean any CMake caches in cpp directories
+                find "${workspace_root}/cpp" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
+                find "${workspace_root}/cpp" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
+                # Clean coverage data files
+                find "${workspace_root}/cpp" -type f -name "*.gcda" -delete 2>/dev/null || true
+                find "${workspace_root}/cpp" -type f -name "*.gcno" -delete 2>/dev/null || true
+            fi
+
+            # Also clean the main project build directory if it exists
+            # (may have stale build artifacts from non-ROS builds)
+            if [ -d "${workspace_root}/build" ] && [ "${workspace_root}/build" != "${PWD}/build" ]; then
+                ros_build_log "INFO" "Cleaning main project build artifacts..."
+                rm -rf "${workspace_root}/build"
+            fi
+
+            # Also remove any CMake cache files that might persist
+            find . -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
+            find . -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
+            # Clean coverage data files in ros directory
+            find . -type f -name "*.gcda" -delete 2>/dev/null || true
+            find . -type f -name "*.gcno" -delete 2>/dev/null || true
+            # Force CMake reconfigure by removing colcon's dependency tracking
+            rm -f .colcon_install_layout 2>/dev/null || true
         fi
         
         # Build with colcon
@@ -156,9 +218,11 @@ ros_build_package() {
             --cmake-args
             -DCMAKE_BUILD_TYPE="$build_type"
         )
-        
+
         if [ "$enable_coverage" = "true" ]; then
             colcon_args+=(-DENABLE_COVERAGE=ON)
+        else
+            colcon_args+=(-DENABLE_COVERAGE=OFF)
         fi
         
         # Add extra CMake args if provided

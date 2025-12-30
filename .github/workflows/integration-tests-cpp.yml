@@ -139,17 +139,18 @@ jobs:
         run: |
           cd cpp
           mkdir -p build_uploader_integration && cd build_uploader_integration
-          
+
           export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
-          
+
           cmake ../axon_uploader \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DAXON_UPLOADER_ENABLE_COVERAGE=ON \
+            -DAXON_REPO_ROOT=${{ github.workspace }} \
+            -DAXON_ENABLE_COVERAGE=ON \
             -DAXON_UPLOADER_BUILD_TESTS=ON \
             -DCMAKE_PREFIX_PATH=~/aws-sdk-cpp-install
-          
+
           make -j$(nproc)
           ccache -s
 

@@ -50,43 +50,30 @@ help:
 	@printf "%s\n" "$(GREEN)║     Axon by ArcheBase - Build System                     ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Available targets:$(NC)"
-	@printf "%s\n" "  $(BLUE)make build$(NC)          - Build the project (ROS1 or ROS2)"
-	@printf "%s\n" "  $(BLUE)make test$(NC)           - Run all tests (C++)"
-	@printf "%s\n" "  $(BLUE)make clean$(NC)          - Clean all build artifacts"
-	@printf "%s\n" "  $(BLUE)make install$(NC)        - Install the package"
+	@printf "%s\n" "$(YELLOW)Build:$(NC)"
+	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build (auto-detects ROS1/ROS2)"
+	@printf "%s\n" "  $(BLUE)make debug/release$(NC)      - Build with Debug/Release config"
+	@printf "%s\n" "  $(BLUE)make clean$(NC)             - Clean build artifacts"
+	@printf "%s\n" "  $(BLUE)make install$(NC)           - Install package"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Build modes:$(NC)"
-	@printf "%s\n" "  $(BLUE)make debug$(NC)          - Build in debug mode"
-	@printf "%s\n" "  $(BLUE)make release$(NC)        - Build in release mode (default)"
+	@printf "%s\n" "$(YELLOW)Docker tests:$(NC)"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros1$(NC)         - ROS 1 (Noetic) tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros2-humble$(NC) - ROS 2 Humble tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros2-jazzy$(NC)  - ROS 2 Jazzy tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros2-rolling$(NC) - ROS 2 Rolling tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-all$(NC)          - Run all Docker tests"
+	@printf "%s\n" "  $(BLUE)make test$(NC)                      - Local C++ library tests only"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)Coverage (Docker):$(NC)"
+	@printf "%s\n" "  $(BLUE)make cov-humble$(NC)       - Coverage via Docker (ROS2 Humble)"
+	@printf "%s\n" "  $(BLUE)make cov-html$(NC)         - Coverage + HTML report"
+	@printf "%s\n" "  $(BLUE)make clean-cov$(NC)        - Clean coverage data"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Code quality:$(NC)"
-	@printf "%s\n" "  $(BLUE)make format$(NC)         - Format code (requires formatters)"
-	@printf "%s\n" "  $(BLUE)make lint$(NC)           - Lint code (requires linters)"
+	@printf "%s\n" "  $(BLUE)make format$(NC)            - Format with clang-format"
+	@printf "%s\n" "  $(BLUE)make lint$(NC)              - Lint with cppcheck"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Coverage:$(NC)"
-	@printf "%s\n" "  $(BLUE)make coverage$(NC)       - Build with coverage and run tests"
-	@printf "%s\n" "  $(BLUE)make coverage-html$(NC)  - Generate HTML coverage report"
-	@printf "%s\n" "  $(BLUE)make docker-coverage$(NC)- Run coverage in Docker container"
-	@printf "%s\n" "  $(BLUE)make clean-coverage$(NC) - Clean coverage data"
-	@echo ""
-	@printf "%s\n" "$(YELLOW)Docker:$(NC)"
-	@printf "%s\n" "  $(BLUE)make docker-build$(NC)        - Build all Docker images"
-	@printf "%s\n" "  $(BLUE)make docker-test$(NC)         - Run tests in Docker (auto-detect ROS)"
-	@printf "%s\n" "  $(BLUE)make docker-test-all$(NC)     - Run tests in all Docker containers"
-	@printf "%s\n" "  $(BLUE)make docker-test-compose$(NC) - Run tests using docker-compose"
-	@echo ""
-	@printf "%s\n" "$(YELLOW)Environment variables:$(NC)"
-	@printf "%s\n" "  $(BLUE)ROS_VERSION$(NC)         - Set to 1 or 2 (auto-detected)"
-	@printf "%s\n" "  $(BLUE)ROS_DISTRO$(NC)          - ROS distribution name"
-	@printf "%s\n" "  $(BLUE)BUILD_TYPE$(NC)          - Release or Debug (default: Release)"
-	@echo ""
-	@printf "%s\n" "$(YELLOW)Current configuration:$(NC)"
-	@echo "  ROS_VERSION: $(ROS_VERSION)"
-	@echo "  ROS_DISTRO: $(if $(ROS_DISTRO),$(ROS_DISTRO),not set)"
-	@echo "  BUILD_TYPE: $(BUILD_TYPE)"
-	@echo "  CPU cores: $(NPROC)"
-	@echo "  Project root: $(PROJECT_ROOT)"
+	@printf "%s\n" "$(YELLOW)Current:$(NC) ROS=$(ROS_VERSION) DISTRO=$(ROS_DISTRO) TYPE=$(BUILD_TYPE)"
 
 # Main build target
 build:
@@ -282,8 +269,10 @@ dev-setup:
 	@printf "%s\n" "$(GREEN)✓ Development environment ready$(NC)"
 
 # Format code (if formatters are available)
+# Note: Pre-commit hooks also check formatting automatically on git commit
 format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
+	@printf "%s\n" "$(YELLOW)Tip: Pre-commit hooks check formatting automatically on commit$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
 		printf "%s\n" "$(YELLOW)  Formatting cpp/ libraries...$(NC)"; \
 		find $(PROJECT_ROOT)/cpp/axon_mcap $(PROJECT_ROOT)/cpp/axon_uploader $(PROJECT_ROOT)/cpp/axon_logging \
@@ -442,3 +431,16 @@ test-safe: check-ros test
 # Verify build (build + test)
 verify: build test
 	@printf "%s\n" "$(GREEN)✓ Verification complete - build and tests passed!$(NC)"
+
+# =============================================================================
+# Convenient Aliases
+# =============================================================================
+
+# Coverage shortcuts
+cov-humble: docker-coverage
+cov: docker-coverage
+cov-html: docker-coverage
+	@open $(COVERAGE_DIR)/html/index.html 2>/dev/null || true
+
+clean-cov: clean-coverage
+
