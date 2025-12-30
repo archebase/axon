@@ -112,8 +112,11 @@ endif()
 if(LOGGING_BUILD_DIR)
     message(STATUS "Found axon_logging at: ${LOGGING_BUILD_DIR}")
     # Propagate coverage flag to axon_logging subdirectory
+    # Must explicitly set OFF to clear cached values from previous builds
     if(AXON_ENABLE_COVERAGE)
         set(AXON_LOGGING_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_logging" FORCE)
+    else()
+        set(AXON_LOGGING_ENABLE_COVERAGE OFF CACHE BOOL "Enable coverage for axon_logging" FORCE)
     endif()
     add_subdirectory(${LOGGING_BUILD_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
     # Set for later use

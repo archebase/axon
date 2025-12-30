@@ -86,8 +86,11 @@ if(MCAP_BUILD_DIR)
     # Only add subdirectory if not already added
     if(NOT TARGET axon_mcap)
         # Propagate coverage flag
+        # Must explicitly set OFF to clear cached values from previous builds
         if(AXON_ENABLE_COVERAGE)
             set(AXON_MCAP_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_mcap" FORCE)
+        else()
+            set(AXON_MCAP_ENABLE_COVERAGE OFF CACHE BOOL "Enable coverage for axon_mcap" FORCE)
         endif()
         add_subdirectory(${MCAP_BUILD_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
     endif()
