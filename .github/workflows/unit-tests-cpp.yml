@@ -124,6 +124,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug
             -DCMAKE_C_COMPILER_LAUNCHER=ccache
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DAXON_REPO_ROOT=${{ github.workspace }}
             -D${{ matrix.cmake_flag }}_ENABLE_COVERAGE=ON
             -D${{ matrix.cmake_flag }}_BUILD_TESTS=ON
           )
