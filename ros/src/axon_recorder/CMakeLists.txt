@@ -23,8 +23,8 @@ if(DEFINED AXON_CMAKE_MODULES_DIR)
 else()
     # Compute path to cmake/Modules relative to this directory
     # This file is in: ros/src/axon_recorder/CMakeLists.txt
-    # cmake/Modules is at: cmake/Modules (from repo root, which is ../../)
-    set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules")
+    # The repo root is three levels up: ../../../
+    set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/Modules")
     if(NOT EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdlib.cmake")
         message(FATAL_ERROR
             "Axon CMake modules not found at: ${_AXON_CMAKE_MODULES_DIR}\n"
@@ -42,21 +42,21 @@ include(AxonCoverage REQUIRED)
 # Path Configuration
 # =============================================================================
 # Calculate paths relative to repo root.
-# From ros/src/axon_recorder/, the repo root is ../../
+# From ros/src/axon_recorder/, the repo root is ../../../
 
-set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
 
 # Use centralized AXON_* paths if available (built from root), otherwise calculate
 if(DEFINED AXON_MCAP_DIR AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
     set(CPP_MCAP_DIR "${AXON_MCAP_DIR}")
 else()
-    set(CPP_MCAP_DIR "${PROJECT_ROOT}/../cpp/axon_mcap")
+    set(CPP_MCAP_DIR "${PROJECT_ROOT}/cpp/axon_mcap")
 endif()
 
 if(DEFINED AXON_LOGGING_DIR AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
     set(CPP_LOGGING_DIR "${AXON_LOGGING_DIR}")
 else()
-    set(CPP_LOGGING_DIR "${PROJECT_ROOT}/../cpp/axon_logging")
+    set(CPP_LOGGING_DIR "${PROJECT_ROOT}/cpp/axon_logging")
 endif()
 
 # Validate required paths
