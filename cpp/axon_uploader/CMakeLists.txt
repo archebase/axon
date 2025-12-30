@@ -30,10 +30,11 @@ include(AxonStdlib REQUIRED)
 include(AxonCoverage REQUIRED)
 
 # =============================================================================
-# Check Dependencies (optional build)
+# Check Dependencies
 # =============================================================================
 # The uploader requires AWS SDK (S3), OpenSSL, and SQLite3.
-# If these are not available, the module will be skipped.
+# If this CMakeLists.txt is being processed, the uploader build was requested,
+# so missing dependencies should fail fast.
 #
 # AWS SDK must be built from source (no apt packages available):
 #   git clone --recurse-submodules https://github.com/aws/aws-sdk-cpp
@@ -44,24 +45,9 @@ include(AxonCoverage REQUIRED)
 #   Ubuntu/Debian: sudo apt-get install libssl-dev libsqlite3-dev libcurl4-openssl-dev
 #   macOS: brew install openssl sqlite3 curl
 
-find_package(OpenSSL QUIET)
-find_package(SQLite3 QUIET)
-find_package(AWSSDK QUIET COMPONENTS s3 transfer)
-
-if(NOT OPENSSL_FOUND)
-    message(WARNING "axon_uploader: OpenSSL not found - skipping build. Install with: sudo apt-get install libssl-dev")
-    return()
-endif()
-
-if(NOT SQLite3_FOUND)
-    message(WARNING "axon_uploader: SQLite3 not found - skipping build. Install with: sudo apt-get install libsqlite3-dev")
-    return()
-endif()
-
-if(NOT AWSSDK_FOUND)
-    message(WARNING "axon_uploader: AWS SDK not found - skipping build. AWS SDK must be built from source (see CMakeLists.txt comments)")
-    return()
-endif()
+find_package(OpenSSL REQUIRED)
+find_package(SQLite3 REQUIRED)
+find_package(AWSSDK REQUIRED COMPONENTS s3 transfer)
 
 message(STATUS "axon_uploader: All dependencies found, building uploader")
 message(STATUS "axon_uploader: Found SQLite3 ${SQLite3_VERSION}")
