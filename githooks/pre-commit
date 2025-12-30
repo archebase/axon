@@ -34,10 +34,11 @@ fi
 # We extract the staged version with git show :$FILE to ensure
 # we're checking what will actually be committed, not what's on disk.
 # Use while-read loop to handle filenames with spaces correctly.
+# Use --assume-filename so clang-format can detect language and find .clang-format
 FAILED=0
 while IFS= read -r FILE; do
     # Check the staged content, not the working directory file
-    if ! git show ":$FILE" 2>/dev/null | $CLANG_FORMAT --dry-run --Werror &> /dev/null; then
+    if ! git show ":$FILE" 2>/dev/null | $CLANG_FORMAT --dry-run --Werror --assume-filename="$FILE" &> /dev/null; then
         echo "  $FILE needs formatting"
         FAILED=1
     fi
