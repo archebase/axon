@@ -161,11 +161,6 @@ endif()
 # =============================================================================
 if(COMMAND axon_add_coverage)
     axon_add_coverage(axon_mcap)
-elseif(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Fallback for legacy builds
-    message(STATUS "axon_mcap: Coverage instrumentation enabled")
-    target_compile_options(axon_mcap PRIVATE -O0 -g --coverage -fprofile-arcs -ftest-coverage)
-    target_link_options(axon_mcap PRIVATE --coverage)
 endif()
 
 # =============================================================================

@@ -74,13 +74,8 @@ target_link_libraries(axon_logging PUBLIC
 # =============================================================================
 # Coverage Support
 # =============================================================================
-if(COMMAND axon_enable_coverage_for_directory)
-    axon_enable_coverage_for_directory()
-elseif(AXON_LOGGING_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Fallback for legacy builds
-    message(STATUS "axon_logging: Coverage instrumentation enabled")
-    target_compile_options(axon_logging PRIVATE --coverage -fprofile-arcs -ftest-coverage)
-    target_link_options(axon_logging PRIVATE --coverage)
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(axon_logging)
 endif()
 
 # =============================================================================

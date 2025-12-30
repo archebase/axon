@@ -118,11 +118,6 @@ endif()
 # =============================================================================
 if(COMMAND axon_add_coverage)
     axon_add_coverage(axon_uploader)
-elseif(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Fallback for legacy builds
-    message(STATUS "axon_uploader: Coverage instrumentation enabled")
-    target_compile_options(axon_uploader PRIVATE --coverage -fprofile-arcs -ftest-coverage)
-    target_link_options(axon_uploader PRIVATE --coverage)
 endif()
 
 # =============================================================================
