@@ -2,7 +2,7 @@
 # Universal middleware plugin system for ROS1 and ROS2
 # Supports building both ROS1 and ROS2 plugins and unified test programs
 
-.PHONY: all build clean test help build-ros2 build-ros1 build-examples test-ros2 test-ros1 format format-check docker-build docker-build-ros2 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling docker-build-ros1 docker-test docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling docker-test-ros1 docker-clean docker-push docker-images
+.PHONY: all build clean test help build-core build-core-mcap build-core-uploader build-core-logging test-core-mcap test-core-uploader test-core-logging clean-core clean-core-coverage build-ros2 build-ros1 build-examples test-ros2 test-ros1 format format-check docker-build docker-build-ros2 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling docker-build-ros1 docker-test docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling docker-test-ros1 docker-clean docker-push docker-images
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -13,6 +13,19 @@ NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 # Build type
 BUILD_TYPE ?= Release
+CMAKE_OPTIONS ?=
+
+# Unified build directory (all non-middleware builds go here)
+BUILD_DIR := build
+
+# Core library subdirectories
+CORE_BUILD_DIR := $(BUILD_DIR)/core
+CORE_UPLOADER_BUILD_DIR := $(BUILD_DIR)/core_uploader
+CORE_LOGGING_BUILD_DIR := $(BUILD_DIR)/core_logging
+CORE_COVERAGE_DIR := $(BUILD_DIR)/coverage
+
+# Examples build directory
+EXAMPLES_BUILD_DIR := $(BUILD_DIR)/examples
 
 # Colors for output
 ifeq ($(shell test -t 1 && echo yes),yes)
@@ -36,19 +49,27 @@ help:
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Build targets:$(NC)"
-	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build ROS2 plugin and examples"
+	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build core libraries + ROS2 plugin + examples"
+	@printf "%s\n" "  $(BLUE)make build-core$(NC)         - Build core C++ libraries (mcap + logging, excludes uploader)"
+	@printf "%s\n" "  $(BLUE)make build-core-mcap$(NC)    - Build axon_mcap library"
+	@printf "%s\n" "  $(BLUE)make build-core-uploader$(NC) - Build axon_uploader library (optional)"
+	@printf "%s\n" "  $(BLUE)make build-core-logging$(NC)  - Build axon_logging library"
 	@printf "%s\n" "  $(BLUE)make build-ros2$(NC)         - Build ROS2 plugin only"
 	@printf "%s\n" "  $(BLUE)make build-ros1$(NC)         - Build ROS1 plugin only"
 	@printf "%s\n" "  $(BLUE)make build-examples$(NC)     - Build unified test program (no ROS deps)"
-	@printf "%s\n" "  $(BLUE)make build-all$(NC)          - Build everything (ROS1 + ROS2 + examples)"
+	@printf "%s\n" "  $(BLUE)make build-all$(NC)          - Build everything (core + ROS1 + ROS2 + examples)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Test targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make test$(NC)               - Quick test of unified program"
+	@printf "%s\n" "  $(BLUE)make test-core-mcap$(NC)     - Test axon_mcap library"
+	@printf "%s\n" "  $(BLUE)make test-core-uploader$(NC) - Test axon_uploader library"
+	@printf "%s\n" "  $(BLUE)make test-core-logging$(NC)  - Test axon_logging library"
 	@printf "%s\n" "  $(BLUE)make test-ros2$(NC)          - Test ROS2 plugin"
 	@printf "%s\n" "  $(BLUE)make test-ros1$(NC)          - Test ROS1 plugin"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Clean targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make clean$(NC)              - Clean all build artifacts"
+	@printf "%s\n" "  $(BLUE)make clean-core$(NC)         - Clean core libraries build artifacts"
 	@printf "%s\n" "  $(BLUE)make clean-ros2$(NC)         - Clean ROS2 build artifacts"
 	@printf "%s\n" "  $(BLUE)make clean-ros1$(NC)         - Clean ROS1 build artifacts"
 	@printf "%s\n" "  $(BLUE)make clean-examples$(NC)     - Clean examples build artifacts"
@@ -78,14 +99,80 @@ help:
 	@printf "%s\n" "  $(BLUE)make docker-images$(NC)     - Show available Docker images"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Quick start:$(NC)"
-	@printf "%s\n" "  1. $(BLUE)make build$(NC)           # Build ROS2 plugin and examples"
+	@printf "%s\n" "  1. $(BLUE)make build$(NC)           # Build core + ROS2 plugin + examples"
 	@printf "%s\n" "  2. $(BLUE)make run-ros2$(NC)        # Run with ROS2"
 	@echo ""
 
-# Main build target (build ROS2 and examples by default)
-build: build-ros2 build-examples
+# Main build target (build core, ROS2 and examples by default)
+build: build-core build-ros2 build-examples
 	@printf "%s\n" "$(GREEN)✓ Build complete!$(NC)"
 	@printf "%s\n" "$(BLUE)To test: make run-ros2$(NC)"
+
+# Build core C++ libraries (excludes uploader by default)
+build-core: build-core-mcap build-core-logging
+	@printf "%s\n" "$(GREEN)✓ Core libraries built successfully (excluded: axon_uploader)$(NC)"
+	@printf "%s\n" "$(BLUE)To build uploader: make build-core-uploader$(NC)"
+
+# Build axon_mcap library
+build-core-mcap:
+	@printf "%s\n" "$(YELLOW)Building axon_mcap library...$(NC)"
+	@mkdir -p $(CORE_BUILD_DIR)
+	@cd $(CORE_BUILD_DIR) && \
+		cmake $(PWD)/core/axon_mcap \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_BUILD_TESTS=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_mcap built successfully$(NC)"
+
+# Build axon_uploader library
+build-core-uploader:
+	@printf "%s\n" "$(YELLOW)Building axon_uploader library...$(NC)"
+	@mkdir -p $(CORE_UPLOADER_BUILD_DIR)
+	@cd $(CORE_UPLOADER_BUILD_DIR) && \
+		cmake $(PWD)/core/axon_uploader \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_UPLOADER_BUILD_TESTS=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_uploader built successfully$(NC)"
+
+# Build axon_logging library
+build-core-logging:
+	@printf "%s\n" "$(YELLOW)Building axon_logging library...$(NC)"
+	@mkdir -p $(CORE_LOGGING_BUILD_DIR)
+	@cd $(CORE_LOGGING_BUILD_DIR) && \
+		cmake $(PWD)/core/axon_logging \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_LOGGING_BUILD_TESTS=ON \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_logging built successfully$(NC)"
+
+# Test axon_mcap library
+test-core-mcap: build-core-mcap
+	@printf "%s\n" "$(YELLOW)Running axon_mcap tests...$(NC)"
+	@cd $(CORE_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_mcap tests passed$(NC)"
+
+# Test axon_uploader library
+test-core-uploader: build-core-uploader
+	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
+	@cd $(CORE_UPLOADER_BUILD_DIR) && \
+		find . -name "*.gcda" -type f -delete 2>/dev/null || true && \
+		if [ -f CMakeCache.txt ] && grep -q "AXON_UPLOADER_ENABLE_COVERAGE:BOOL=ON" CMakeCache.txt 2>/dev/null; then \
+			printf "%s\n" "$(YELLOW)Coverage enabled - running tests sequentially...$(NC)"; \
+			ctest --output-on-failure -j1; \
+		else \
+			ctest --output-on-failure; \
+		fi
+	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
+
+# Test axon_logging library
+test-core-logging: build-core-logging
+	@printf "%s\n" "$(YELLOW)Running axon_logging tests...$(NC)"
+	@cd $(CORE_LOGGING_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_logging tests passed$(NC)"
 
 # Build ROS2 plugin
 build-ros2:
@@ -120,55 +207,93 @@ build-ros1:
 # Build unified test program (NO ROS dependencies at compile time!)
 build-examples:
 	@printf "%s\n" "$(YELLOW)Building unified test program (no ROS deps)...$(NC)"
-	@cd examples && ./build.sh
+	@mkdir -p $(EXAMPLES_BUILD_DIR)
+	@cd $(EXAMPLES_BUILD_DIR) && \
+		cmake $(PWD)/examples && \
+		make -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ Unified test program built successfully$(NC)"
 	@printf "%s\n" "$(BLUE)The unified test program has ZERO compile-time ROS dependencies!$(NC)"
 
 # Build everything
-build-all: build-ros2 build-ros1 build-examples
+build-all: build-core build-ros2 build-ros1 build-examples
 	@printf "%s\n" "$(GREEN)✓ All components built successfully!$(NC)"
 	@printf "%s\n" "$(BLUE)Unified test program works with both ROS1 and ROS2 plugins$(NC)"
 
 # Quick test
 test: build-examples
 	@printf "%s\n" "$(YELLOW)Testing unified test program...$(NC)"
-	@cd examples/build && ./test_unified.sh || true
+	@cd $(EXAMPLES_BUILD_DIR) && ./test_unified.sh || true
 
 # Test ROS2 plugin
 test-ros2: build-ros2 build-examples
 	@printf "%s\n" "$(YELLOW)Testing ROS2 plugin...$(NC)"
 	@if [ -f middlewares/ros2/install/ros2_plugin/lib/libros2_plugin.so ]; then \
-		cp middlewares/ros2/install/ros2_plugin/lib/libros2_plugin.so examples/build/; \
+		cp middlewares/ros2/install/ros2_plugin/lib/libros2_plugin.so $(EXAMPLES_BUILD_DIR)/; \
 	elif [ -f middlewares/ros2/build/ros2_plugin/libros2_plugin.so ]; then \
-		cp middlewares/ros2/build/ros2_plugin/libros2_plugin.so examples/build/; \
+		cp middlewares/ros2/build/ros2_plugin/libros2_plugin.so $(EXAMPLES_BUILD_DIR)/; \
 	fi
 	@printf "%s\n" "$(GREEN)✓ ROS2 plugin ready for testing$(NC)"
-	@printf "%s\n" "$(BLUE)To run manually: cd examples/build && ./run_ros2.sh$(NC)"
+	@printf "%s\n" "$(BLUE)To run manually: cd $(EXAMPLES_BUILD_DIR) && ./run_ros2.sh$(NC)"
 
 # Test ROS1 plugin
 test-ros1: build-ros1 build-examples
 	@printf "%s\n" "$(YELLOW)Testing ROS1 plugin...$(NC)"
 	@if [ -f middlewares/ros1/devel/lib/libros1_plugin.so ]; then \
-		cp middlewares/ros1/devel/lib/libros1_plugin.so examples/build/; \
+		cp middlewares/ros1/devel/lib/libros1_plugin.so $(EXAMPLES_BUILD_DIR)/; \
 	elif [ -f middlewares/ros1/build/libros1_plugin.so ]; then \
-		cp middlewares/ros1/build/libros1_plugin.so examples/build/; \
+		cp middlewares/ros1/build/libros1_plugin.so $(EXAMPLES_BUILD_DIR)/; \
 	fi
 	@printf "%s\n" "$(GREEN)✓ ROS1 plugin ready for testing$(NC)"
-	@printf "%s\n" "$(BLUE)To run manually: cd examples/build && ./run_ros1.sh$(NC)"
+	@printf "%s\n" "$(BLUE)To run manually: cd $(EXAMPLES_BUILD_DIR) && ./run_ros1.sh$(NC)"
 
 # Run ROS2 test
 run-ros2: build-ros2 build-examples
 	@printf "%s\n" "$(YELLOW)Launching unified test with ROS2 plugin...$(NC)"
-	@cd examples && ./run_ros2.sh
+	@if [ -f /opt/ros/humble/setup.bash ]; then \
+		. /opt/ros/humble/setup.bash; \
+	elif [ -f /opt/ros/iron/setup.bash ]; then \
+		. /opt/ros/iron/setup.bash; \
+	fi
+	@if [ -f middlewares/ros2/install/ros2_plugin/lib/libros2_plugin.so ]; then \
+		cp middlewares/ros2/install/ros2_plugin/lib/libros2_plugin.so $(EXAMPLES_BUILD_DIR)/; \
+	elif [ -f middlewares/ros2/build/ros2_plugin/libros2_plugin.so ]; then \
+		cp middlewares/ros2/build/ros2_plugin/libros2_plugin.so $(EXAMPLES_BUILD_DIR)/; \
+	fi
+	@cd $(EXAMPLES_BUILD_DIR) && ./subscriber_test ros2
 
 # Run ROS1 test
 run-ros1: build-ros1 build-examples
 	@printf "%s\n" "$(YELLOW)Launching unified test with ROS1 plugin...$(NC)"
-	@cd examples && ./run_ros1.sh
+	@if [ -f /opt/ros/noetic/setup.bash ]; then \
+		. /opt/ros/noetic/setup.bash; \
+	elif [ -f /opt/ros/melodic/setup.bash ]; then \
+		. /opt/ros/melodic/setup.bash; \
+	fi
+	@if [ -f middlewares/ros1/devel/lib/libros1_plugin.so ]; then \
+		cp middlewares/ros1/devel/lib/libros1_plugin.so $(EXAMPLES_BUILD_DIR)/; \
+	elif [ -f middlewares/ros1/build/libros1_plugin.so ]; then \
+		cp middlewares/ros1/build/libros1_plugin.so $(EXAMPLES_BUILD_DIR)/; \
+	fi
+	@cd $(EXAMPLES_BUILD_DIR) && ./subscriber_test ros1
 
 # Clean all
-clean: clean-ros2 clean-ros1 clean-examples
+clean: clean-core clean-ros2 clean-ros1 clean-examples
+	@printf "%s\n" "$(YELLOW)Cleaning root build directory...$(NC)"
+	@rm -rf $(BUILD_DIR) || true
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
+
+# Clean core libraries
+clean-core:
+	@printf "%s\n" "$(YELLOW)Cleaning core libraries build artifacts...$(NC)"
+	@rm -rf $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) $(CORE_COVERAGE_DIR) || true
+	@printf "%s\n" "$(GREEN)✓ Core libraries cleaned$(NC)"
+
+# Clean core coverage data files
+clean-core-coverage:
+	@printf "%s\n" "$(YELLOW)Cleaning core coverage data files...$(NC)"
+	@find $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) -name "*.gcda" -type f -delete 2>/dev/null || true
+	@find $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) -name "*.gcno" -type f -delete 2>/dev/null || true
+	@printf "%s\n" "$(GREEN)✓ Core coverage data files cleaned$(NC)"
 
 # Clean ROS2
 clean-ros2:
@@ -185,7 +310,7 @@ clean-ros1:
 # Clean examples
 clean-examples:
 	@printf "%s\n" "$(YELLOW)Cleaning examples build artifacts...$(NC)"
-	@cd examples && rm -rf build || true
+	@rm -rf $(EXAMPLES_BUILD_DIR) || true
 	@printf "%s\n" "$(GREEN)✓ Examples cleaned$(NC)"
 
 # Debug build
