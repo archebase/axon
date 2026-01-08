@@ -70,7 +70,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /workspace
 
 # Copy test scripts first (for better Docker layer caching)
-COPY docker/scripts/ /usr/local/bin/
+COPY scripts/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
 
 # Build GTest (required for some systems)

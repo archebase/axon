@@ -2,7 +2,7 @@
 # Universal middleware plugin system for ROS1 and ROS2
 # Supports building both ROS1 and ROS2 plugins and unified test programs
 
-.PHONY: all build clean test help build-ros2 build-ros1 build-examples test-ros2 test-ros1 format format-check docker-build docker-build-ros2 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling docker-build-ros1 docker-test docker-clean docker-push docker-images
+.PHONY: all build clean test help build-ros2 build-ros1 build-examples test-ros2 test-ros1 format format-check docker-build docker-build-ros2 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling docker-build-ros1 docker-test docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling docker-test-ros1 docker-clean docker-push docker-images
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -68,7 +68,11 @@ help:
 	@printf "%s\n" "  $(BLUE)make docker-build-jazzy$(NC)  - Build ROS2 Jazzy Docker image"
 	@printf "%s\n" "  $(BLUE)make docker-build-rolling$(NC) - Build ROS2 Rolling Docker image"
 	@printf "%s\n" "  $(BLUE)make docker-build-ros1$(NC)  - Build ROS1 Noetic Docker image"
-	@printf "%s\n" "  $(BLUE)make docker-test$(NC)       - Run tests in Docker containers"
+	@printf "%s\n" "  $(BLUE)make docker-test$(NC)       - Run tests in all Docker containers"
+	@printf "%s\n" "  $(BLUE)make docker-test-humble$(NC) - Run tests in ROS2 Humble container"
+	@printf "%s\n" "  $(BLUE)make docker-test-jazzy$(NC)  - Run tests in ROS2 Jazzy container"
+	@printf "%s\n" "  $(BLUE)make docker-test-rolling$(NC) - Run tests in ROS2 Rolling container"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros1$(NC)   - Run tests in ROS1 Noetic container"
 	@printf "%s\n" "  $(BLUE)make docker-clean$(NC)      - Remove Docker images and containers"
 	@printf "%s\n" "  $(BLUE)make docker-push$(NC)       - Push Docker images to registry"
 	@printf "%s\n" "  $(BLUE)make docker-images$(NC)     - Show available Docker images"
@@ -346,30 +350,45 @@ docker-build-ros1:
 		exit 1; \
 	fi
 
-# Run tests in Docker
-docker-test:
-	@printf "%s\n" "$(YELLOW)Running tests in Docker...$(NC)"
-	@printf "%s\n" "Testing ROS2 Humble..."; \
-	docker run --rm \
+# Run tests in Docker (all versions)
+docker-test: docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling docker-test-ros1
+	@printf "%s\n" "$(GREEN)✓ All Docker tests completed$(NC)"
+
+# Run tests in ROS2 Humble Docker container
+docker-test-ros2-humble:
+	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Humble container...$(NC)"
+	@docker run --rm \
 		-v $(PWD):/workspace/axon \
 		$(DOCKER_REPO)/axon:ros2-humble \
-		/workspace/axon/docker/scripts/run_integration.sh || true; \
-	printf "%s\n" "Testing ROS2 Jazzy..."; \
-	docker run --rm \
+		/workspace/axon/docker/scripts/run_integration.sh
+	@printf "%s\n" "$(GREEN)✓ ROS2 Humble tests completed$(NC)"
+
+# Run tests in ROS2 Jazzy Docker container
+docker-test-ros2-jazzy:
+	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Jazzy container...$(NC)"
+	@docker run --rm \
 		-v $(PWD):/workspace/axon \
 		$(DOCKER_REPO)/axon:ros2-jazzy \
-		/workspace/axon/docker/scripts/run_integration.sh || true; \
-	printf "%s\n" "Testing ROS2 Rolling..."; \
-	docker run --rm \
+		/workspace/axon/docker/scripts/run_integration.sh
+	@printf "%s\n" "$(GREEN)✓ ROS2 Jazzy tests completed$(NC)"
+
+# Run tests in ROS2 Rolling Docker container
+docker-test-ros2-rolling:
+	@printf "%s\n" "$(YELLOW)Running tests in ROS2 Rolling container...$(NC)"
+	@docker run --rm \
 		-v $(PWD):/workspace/axon \
 		$(DOCKER_REPO)/axon:ros2-rolling \
-		/workspace/axon/docker/scripts/run_integration.sh || true; \
-	printf "%s\n" "Testing ROS1 Noetic..."; \
-	docker run --rm \
+		/workspace/axon/docker/scripts/run_integration.sh
+	@printf "%s\n" "$(GREEN)✓ ROS2 Rolling tests completed$(NC)"
+
+# Run tests in ROS1 Noetic Docker container
+docker-test-ros1:
+	@printf "%s\n" "$(YELLOW)Running tests in ROS1 Noetic container...$(NC)"
+	@docker run --rm \
 		-v $(PWD):/workspace/axon \
 		$(DOCKER_REPO)/axon:ros1-noetic \
-		/workspace/axon/docker/scripts/run_integration.sh || true
-	@printf "%s\n" "$(GREEN)✓ Docker tests completed$(NC)"
+		/workspace/axon/docker/scripts/run_integration.sh
+	@printf "%s\n" "$(GREEN)✓ ROS1 Noetic tests completed$(NC)"
 
 # Clean Docker images and containers
 docker-clean:
@@ -378,31 +397,6 @@ docker-clean:
 	@-docker ps -aq | xargs -r docker rm 2>/dev/null || true
 	@-docker images "$(DOCKER_REPO)/axon*" -q | xargs -r docker rmi -f 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ Docker artifacts cleaned$(NC)"
-
-# Push Docker images to registry
-docker-push:
-	@printf "%s\n" "$(YELLOW)Pushing Docker images to registry...$(NC)"
-	@if docker images | grep -q "$(DOCKER_REPO)/axon:ros2-humble"; then \
-		printf "%s\n" "Pushing ROS2 Humble..."; \
-		docker tag $(DOCKER_REPO)/axon:ros2-humble $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros2-humble; \
-		docker push $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros2-humble || true; \
-	fi
-	@if docker images | grep -q "$(DOCKER_REPO)/axon:ros2-jazzy"; then \
-		printf "%s\n" "Pushing ROS2 Jazzy..."; \
-		docker tag $(DOCKER_REPO)/axon:ros2-jazzy $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros2-jazzy; \
-		docker push $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros2-jazzy || true; \
-	fi
-	@if docker images | grep -q "$(DOCKER_REPO)/axon:ros2-rolling"; then \
-		printf "%s\n" "Pushing ROS2 Rolling..."; \
-		docker tag $(DOCKER_REPO)/axon:ros2-rolling $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros2-rolling; \
-		docker push $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros2-rolling || true; \
-	fi
-	@if docker images | grep -q "$(DOCKER_REPO)/axon:ros1-noetic"; then \
-		printf "%s\n" "Pushing ROS1 Noetic..."; \
-		docker tag $(DOCKER_REPO)/axon:ros1-noetic $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros1-noetic; \
-		docker push $(DOCKER_REGISTRY)/$(DOCKER_REPO)/axon:ros1-noetic || true; \
-	fi
-	@printf "%s\n" "$(GREEN)✓ Docker images pushed successfully$(NC)"
 
 # Show Docker images
 docker-images:

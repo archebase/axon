@@ -756,7 +756,7 @@ ctest --output-on-failure --verbose
 The project provides Docker configurations for all supported ROS distributions:
 
 ```
-ros/docker/
+docker/
 ├── Dockerfile.ros1          # ROS1 Noetic
 ├── Dockerfile.ros2.humble   # ROS2 Humble LTS
 ├── Dockerfile.ros2.jazzy    # ROS2 Jazzy
