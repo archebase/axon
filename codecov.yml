@@ -13,9 +13,10 @@
 #
 # Architecture:
 #   - cpp/ contains common libraries (axon_logging, axon_mcap, axon_uploader)
-#   - ros/axon_recorder uses cpp/ libraries as dependencies
-#   - ROS tests run on 4 distros: ROS1 Noetic, ROS2 Humble/Jazzy/Rolling
-#   - ROS tests cover BOTH ros/ code AND cpp/ code (via library usage)
+#   - middlewares/ contains ROS1 and ROS2 plugins
+#   - examples/ contains unified test programs (no compile-time ROS deps)
+#   - ROS tests run on multiple distros: ROS1 Noetic, ROS2 Humble/Jazzy/Rolling
+#   - Tests cover middlewares/ code AND cpp/ code (via library usage)
 # =============================================================================
 
 coverage:
@@ -60,28 +61,44 @@ component_management:
       name: axon_logging
       paths:
         - cpp/axon_logging/**
-    
+
     - component_id: cpp_axon_mcap
       name: axon_mcap
       paths:
         - cpp/axon_mcap/**
-    
+
     - component_id: cpp_axon_uploader
       name: axon_uploader
       paths:
         - cpp/axon_uploader/**
-    
-    - component_id: ros_axon_recorder
-      name: axon_recorder
+
+    - component_id: middlewares_ros2_plugin
+      name: ros2_plugin
       paths:
-        - ros/src/axon_recorder/**
-    
+        - middlewares/ros2/src/ros2_plugin/**
+
+    - component_id: middlewares_ros1_plugin
+      name: ros1_plugin
+      paths:
+        - middlewares/ros1/src/ros1_plugin/**
+
+    - component_id: examples_unified
+      name: examples_unified
+      paths:
+        - examples/**
+
     - component_id: cpp_all
       name: All C++ Libraries
       paths:
         - cpp/axon_logging/**
         - cpp/axon_mcap/**
         - cpp/axon_uploader/**
+
+    - component_id: middlewares_all
+      name: All Middleware Plugins
+      paths:
+        - middlewares/ros2/src/ros2_plugin/**
+        - middlewares/ros1/src/ros1_plugin/**
 
 # Comment configuration for PR feedback
 comment:

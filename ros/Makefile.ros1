@@ -1,7 +1,0 @@
-# ROS1-specific Makefile wrapper
-# Usage: make -f Makefile.ros1 <target>
-
-include Makefile
-
-# Override ROS version detection for ROS1
-ROS_VERSION := 1
