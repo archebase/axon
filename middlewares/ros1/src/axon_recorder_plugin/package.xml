@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>axon_recorder_plugin</name>
+  <version>1.0.0</version>
+  <description>ROS1 service adapter plugin for Axon Recorder</description>
+  <maintainer email="info@axon.ai">Axon Team</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>roscpp</depend>
+  <depend>roslib</depend>
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
+  <depend>std_msgs</depend>
+
+  <build_depend>rosserial_server</build_depend>
+  <build_depend>topic_tools</build_depend>
+
+  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>rosserial_server</exec_depend>
+  <exec_depend>topic_tools</exec_depend>
+
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+  </export>
+</package>

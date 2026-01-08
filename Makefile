@@ -20,12 +20,16 @@ BUILD_DIR := build
 
 # Core library subdirectories
 CORE_BUILD_DIR := $(BUILD_DIR)/core
+CORE_UTILS_BUILD_DIR := $(BUILD_DIR)/core_utils
 CORE_UPLOADER_BUILD_DIR := $(BUILD_DIR)/core_uploader
 CORE_LOGGING_BUILD_DIR := $(BUILD_DIR)/core_logging
 CORE_COVERAGE_DIR := $(BUILD_DIR)/coverage
 
 # Examples build directory
 EXAMPLES_BUILD_DIR := $(BUILD_DIR)/examples
+
+# Axon recorder build directory
+RECORDER_BUILD_DIR := $(BUILD_DIR)/axon_recorder
 
 # Colors for output
 ifeq ($(shell test -t 1 && echo yes),yes)
@@ -50,8 +54,9 @@ help:
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Build targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build core libraries + ROS2 plugin + examples"
-	@printf "%s\n" "  $(BLUE)make build-core$(NC)         - Build core C++ libraries (mcap + logging, excludes uploader)"
+	@printf "%s\n" "  $(BLUE)make build-core$(NC)         - Build core C++ libraries (mcap + logging + utils, excludes uploader)"
 	@printf "%s\n" "  $(BLUE)make build-core-mcap$(NC)    - Build axon_mcap library"
+	@printf "%s\n" "  $(BLUE)make build-core-utils$(NC)   - Build axon_utils library"
 	@printf "%s\n" "  $(BLUE)make build-core-uploader$(NC) - Build axon_uploader library (optional)"
 	@printf "%s\n" "  $(BLUE)make build-core-logging$(NC)  - Build axon_logging library"
 	@printf "%s\n" "  $(BLUE)make build-ros2$(NC)         - Build ROS2 plugin only"
@@ -62,6 +67,7 @@ help:
 	@printf "%s\n" "$(YELLOW)Test targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make test$(NC)               - Quick test of unified program"
 	@printf "%s\n" "  $(BLUE)make test-core-mcap$(NC)     - Test axon_mcap library"
+	@printf "%s\n" "  $(BLUE)make test-core-utils$(NC)   - Test axon_utils library"
 	@printf "%s\n" "  $(BLUE)make test-core-uploader$(NC) - Test axon_uploader library"
 	@printf "%s\n" "  $(BLUE)make test-core-logging$(NC)  - Test axon_logging library"
 	@printf "%s\n" "  $(BLUE)make test-ros2$(NC)          - Test ROS2 plugin"
@@ -109,7 +115,7 @@ build: build-core build-ros2 build-examples
 	@printf "%s\n" "$(BLUE)To test: make run-ros2$(NC)"
 
 # Build core C++ libraries (excludes uploader by default)
-build-core: build-core-mcap build-core-logging
+build-core: build-core-mcap build-core-logging build-core-utils
 	@printf "%s\n" "$(GREEN)✓ Core libraries built successfully (excluded: axon_uploader)$(NC)"
 	@printf "%s\n" "$(BLUE)To build uploader: make build-core-uploader$(NC)"
 
@@ -149,6 +155,17 @@ build-core-logging:
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ axon_logging built successfully$(NC)"
 
+# Build axon_utils library
+build-core-utils:
+	@printf "%s\n" "$(YELLOW)Building axon_utils library...$(NC)"
+	@mkdir -p $(CORE_UTILS_BUILD_DIR)
+	@cd $(CORE_UTILS_BUILD_DIR) && \
+		cmake $(PWD)/core/axon_utils \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_utils built successfully$(NC)"
+
 # Test axon_mcap library
 test-core-mcap: build-core-mcap
 	@printf "%s\n" "$(YELLOW)Running axon_mcap tests...$(NC)"
@@ -173,6 +190,12 @@ test-core-logging: build-core-logging
 	@printf "%s\n" "$(YELLOW)Running axon_logging tests...$(NC)"
 	@cd $(CORE_LOGGING_BUILD_DIR) && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_logging tests passed$(NC)"
+
+# Test axon_utils library
+test-core-utils: build-core-utils
+	@printf "%s\n" "$(YELLOW)Running axon_utils tests...$(NC)"
+	@cd $(CORE_UTILS_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_utils tests passed$(NC)"
 
 # Build ROS2 plugin
 build-ros2:
@@ -285,7 +308,7 @@ clean: clean-core clean-ros2 clean-ros1 clean-examples
 # Clean core libraries
 clean-core:
 	@printf "%s\n" "$(YELLOW)Cleaning core libraries build artifacts...$(NC)"
-	@rm -rf $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) $(CORE_COVERAGE_DIR) || true
+	@rm -rf $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) $(CORE_UTILS_BUILD_DIR) $(CORE_COVERAGE_DIR) || true
 	@printf "%s\n" "$(GREEN)✓ Core libraries cleaned$(NC)"
 
 # Clean core coverage data files

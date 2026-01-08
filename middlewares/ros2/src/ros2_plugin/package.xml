@@ -2,14 +2,19 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>ros2_plugin</name>
-  <version>0.0.0</version>
-  <description>ROS2 plugin library</description>
-  <maintainer email="xlw@example.com">xlw</maintainer>
-  <license>Apache-2.0</license>
+  <version>1.0.0</version>
+  <description>ROS2 plugin library for universal subscription and recorder services</description>
+  <maintainer email="info@axon.ai">Axon Team</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <depend>rosidl_default_generators</depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>
