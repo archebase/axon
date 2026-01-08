@@ -23,7 +23,7 @@ echo "Running clang-format check..."
 # Get list of staged C/C++ files (excluding build directories and deps)
 # || true prevents grep from returning exit code 1 when no files match
 # Pattern matches build/, install/, log/, devel/, _deps/, .git/ only as directory components (not in filenames)
-FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|h|cc)$' | grep -v -E '(^|/)(build|install|log|devel|_deps|\.git)(/|$)' || true)
+FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(cpp|hpp|h|cc)$' | grep -v -E '(^|/)(build|install|log|devel|_deps|\.git)(/|$)' || true)
 
 if [ -z "$FILES" ]; then
     echo "No C/C++ files to check."

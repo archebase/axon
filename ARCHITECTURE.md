@@ -147,13 +147,13 @@ The Axon recorder is organized into separate middleware implementations under th
 - JWT Bearer token authentication
 - SSL/TLS support for HTTPS
 
-### 2. MCAP Writer (`cpp/axon_mcap/`)
+### 2. MCAP Writer (`core/axon_mcap/`)
 
 - Thread-safe MCAP file operations
 - Zstd/LZ4 compression support
 - MCAP validator for file integrity
 
-### 3. Logging Infrastructure (`cpp/axon_logging/`)
+### 3. Logging Infrastructure (`core/axon_logging/`)
 
 - Boost.Log based with async sinks
 - Console sink (colors, severity filtering)
@@ -161,7 +161,7 @@ The Axon recorder is organized into separate middleware implementations under th
 - ROS sink adapter for RCLCPP/ROSCPP integration
 - Environment variable configuration
 
-### 4. Edge Uploader (`cpp/axon_uploader/`)
+### 4. Edge Uploader (`core/axon_uploader/`)
 
 - S3 multipart upload for large files
 - SQLite state persistence for crash recovery
@@ -207,7 +207,7 @@ ROS Topics (ROS1 or ROS2)
     │
     ▼ (thread-safe write)
 ┌─────────────────────────────────────────┐
-│ MCAP Writer (cpp/axon_mcap/)            │
+│ MCAP Writer (core/axon_mcap/)            │
 │ - Schema/channel registration           │
 │ - Compression (Zstd/LZ4)                │
 └─────────────────────────────────────────┘
@@ -222,7 +222,7 @@ ROS Topics (ROS1 or ROS2)
     │
     ▼ (async)
 ┌─────────────────────────────────────────┐
-│ Edge Uploader (cpp/axon_uploader/) → S3 │
+│ Edge Uploader (core/axon_uploader/) → S3 │
 └─────────────────────────────────────────┘
 ```
 
@@ -264,7 +264,7 @@ axon/
 │       ├── devel/            # Catkin devel space (gitignored)
 │       ├── build.sh          # ROS1 build script
 │       └── clean.sh          # ROS1 clean script
-├── cpp/                      # Core C++ libraries
+├── core/                     # Core C++ libraries
 │   ├── axon_mcap/            # MCAP writer wrapper
 │   ├── axon_uploader/        # Edge upload functionality
 │   ├── axon_logging/         # Logging utilities
@@ -341,7 +341,7 @@ The unified test program in `examples/` demonstrates the power of this architect
 
 ### 3. Core Library Separation
 
-The `cpp/` directory contains reusable C++ libraries that are middleware-agnostic:
+The `core/` directory contains reusable C++ libraries that are middleware-agnostic:
 
 - **axon_mcap**: MCAP file operations with compression
 - **axon_logging**: Boost.Log-based logging with async sinks

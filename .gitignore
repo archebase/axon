@@ -91,8 +91,8 @@ CMakeFiles/
 cmake_install.cmake
 
 # C++ library build directories (not ROS packages)
-cpp/build*/
-cpp/*/build/
+core/build*/
+core/*/build/
 
 # Coverage
 *.gcda
@@ -123,4 +123,4 @@ log
 coverage
 
 .cursor/plans
-cpp/build_uploader/
+core/build_uploader/

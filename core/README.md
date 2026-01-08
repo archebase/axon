@@ -91,7 +91,7 @@ sudo apt-get install -y \
 ### Using Make (Recommended)
 
 ```bash
-cd cpp
+cd core
 
 # Show available targets
 make help
@@ -110,7 +110,7 @@ make clean
 
 ```bash
 # Build MCAP library
-cd cpp/axon_mcap
+cd core/axon_mcap
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DAXON_MCAP_BUILD_TESTS=ON
 cmake --build . -j$(nproc)
@@ -237,7 +237,7 @@ if (result.success) {
 
 Run MCAP writer tests:
 ```bash
-cd cpp/axon_mcap/build
+cd core/axon_mcap/build
 ./test_mcap_writer
 ```
 
@@ -252,7 +252,7 @@ The C++ SDK is used by:
 The recorder CMakeLists.txt includes axon_mcap as a subdirectory:
 
 ```cmake
-add_subdirectory(${PROJECT_ROOT}/cpp/axon_mcap ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
+add_subdirectory(${PROJECT_ROOT}/core/axon_mcap ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
 target_link_libraries(your_target axon_mcap)
 ```
 
