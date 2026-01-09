@@ -7,7 +7,7 @@
 #
 # This test is run automatically by:
 #   - CI: .github/workflows/ci.yml (e2e-tests job)
-#   - Docker: ros/docker/scripts/run_e2e_tests.sh (Part 3)
+#   - Docker: docker/scripts/run_e2e_tests.sh (Part 3)
 #
 # Supports: ROS 1 (Noetic) and ROS 2 (Humble/Jazzy/Rolling)
 # ============================================================================
@@ -17,7 +17,7 @@ set -eo pipefail
 # ============================================================================
 # Source Library Functions
 # ============================================================================
-# Libraries are in ros/docker/scripts/lib/ relative to repo root
+# Libraries are in docker/scripts/lib/ relative to repo root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="${SCRIPT_DIR}/../../../../docker/scripts/lib"
 

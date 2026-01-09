@@ -5,7 +5,7 @@ Docker configurations for building and testing Axon across different ROS version
 ## Quick Start
 
 ```bash
-cd ros/docker
+cd docker
 
 # Run tests
 docker-compose -f docker-compose.test.yml up test-ros2-humble --build --abort-on-container-exit
@@ -63,17 +63,17 @@ Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructu
 Generate coverage reports to identify untested code:
 
 ```bash
-cd ros/docker
+cd docker
 
 # Run coverage tests (builds with instrumentation + generates lcov report)
 docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
-  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
+  /workspace/axon/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # Coverage output is saved to /workspace/coverage inside container
 # Mount a local directory to extract it:
 docker compose -f docker-compose.test.yml run --rm \
   -v $(pwd)/coverage-output:/workspace/coverage \
-  test-ros2-humble /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
+  test-ros2-humble /workspace/axon/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # View HTML report
 open coverage-output/html/index.html
@@ -84,15 +84,15 @@ open coverage-output/html/index.html
 ```bash
 # ROS 2 Humble
 docker compose -f docker-compose.test.yml run --rm test-ros2-humble \
-  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
+  /workspace/axon/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # ROS 2 Jazzy
 docker compose -f docker-compose.test.yml run --rm test-ros2-jazzy \
-  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
+  /workspace/axon/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 
 # ROS 1 Noetic
 docker compose -f docker-compose.test.yml run --rm test-ros1 \
-  /workspace/axon/ros/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
+  /workspace/axon/docker/scripts/run_integration.sh --coverage --coverage-output /workspace/coverage
 ```
 
 ### Interactive Coverage Debugging

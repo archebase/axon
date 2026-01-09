@@ -5,7 +5,7 @@ ROS packages for high-performance data recording.
 ## Quick Start
 
 ```bash
-cd ros/docker
+cd docker
 
 # Run with Docker (recommended)
 docker-compose -f docker-compose.yml up ros2-humble --build

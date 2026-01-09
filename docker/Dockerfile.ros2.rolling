@@ -1,4 +1,4 @@
-FROM ros:jazzy-ros-base
+FROM ros:rolling-ros-base
 
 # =============================================================================
 # IMPORTANT: When adding new dependencies here, also update:
@@ -50,11 +50,31 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ROS CLI tools (required for integration tests)
+# Install FastDDS/FastRTPS libraries and RMW implementation (required for ROS2 service discovery)
+# FastDDS is the default DDS implementation for ROS2 Rolling
+RUN apt-get update && \
+    apt-get install -y --upgrade \
+    ros-rolling-fastdds \
+    ros-rolling-fastcdr \
+    ros-rolling-foonathan-memory-vendor \
+    ros-rolling-rmw-dds-common \
+    ros-rolling-rmw-fastrtps-shared-cpp \
+    ros-rolling-rmw-fastrtps-cpp \
+    && ldconfig && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install ROS CLI tools and core libraries (required for integration tests)
+# Note: rcl and rclpy must be from the same version to avoid symbol mismatches
+# The undefined symbol error indicates rclpy was compiled against a different rcl version
 RUN apt-get update && apt-get install -y \
-    ros-jazzy-ros2cli \
-    ros-jazzy-ros2service \
-    ros-jazzy-ros2run \
+    ros-rolling-rcl \
+    ros-rolling-rclpy \
+    ros-rolling-rmw \
+    ros-rolling-rmw-implementation \
+    ros-rolling-ros2cli \
+    ros-rolling-ros2service \
+    ros-rolling-ros2run \
+    ros-rolling-ros2node \
     && rm -rf /var/lib/apt/lists/*
 
 # Install profiling tools for flamegraph generation
@@ -70,7 +90,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /workspace
 
 # Copy test scripts first (for better Docker layer caching)
-COPY ros/docker/scripts/ /usr/local/bin/
+COPY docker/scripts/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
 
 # Build GTest (required for some systems)
@@ -89,7 +109,7 @@ RUN if [ -d /usr/src/googletest ]; then \
     fi
 
 # Source setup script
-RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc
+RUN echo "source /opt/ros/rolling/setup.bash" >> /root/.bashrc
 
 # Note: Source code is mounted as volume at runtime
 # Note: Build happens at runtime, not during image build, for better caching

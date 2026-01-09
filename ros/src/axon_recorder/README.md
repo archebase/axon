@@ -14,7 +14,7 @@ High-performance ROS data recorder that captures topic data and writes to MCAP f
 ## Quick Start with Docker
 
 ```bash
-cd ros/docker
+cd docker
 
 # Build and run (ROS 2 Humble)
 docker-compose -f docker-compose.yml up ros2-humble --build

@@ -112,7 +112,7 @@ jobs:
             -e ROS_VERSION=${{ matrix.ros_version }} \
             --network host \
             axon-test-${{ matrix.ros_distro }}:latest \
-            /workspace/axon/ros/docker/scripts/${{ matrix.script }} --coverage --coverage-output /coverage_output
+            /workspace/axon/docker/scripts/${{ matrix.script }} --coverage --coverage-output /coverage_output
 
       - name: Debug coverage output
         run: |

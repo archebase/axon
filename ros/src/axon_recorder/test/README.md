@@ -13,9 +13,9 @@ Tests are built as part of the ROS package via `colcon` (ROS 2) or `catkin` (ROS
 Ensures consistent environment and library versions. Clean local build artifacts first if you have existing builds:
 
 ```bash
-cd ros/docker
-rm -rf ../../ros/build ../../ros/devel ../../ros/install ../../ros/log
-rm -rf ../../install ../../build ../../log
+cd docker
+rm -rf ../ros/build ../ros/devel ../ros/install ../ros/log
+rm -rf ../install ../build ../log
 ```
 
 **With coverage:**
@@ -23,20 +23,20 @@ rm -rf ../../install ../../build ../../log
 # ROS 1
 docker compose -f docker-compose.test.yml build test-ros1
 docker compose -f docker-compose.test.yml run --rm \
-  -v $(pwd)/../../coverage_output:/coverage_output \
-  test-ros1 /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
+  -v $(pwd)/../coverage_output:/coverage_output \
+  test-ros1 /workspace/axon/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
 
 # ROS 2 (Humble/Jazzy/Rolling)
 docker compose -f docker-compose.test.yml build test-ros2-humble  # or -jazzy, -rolling
 docker compose -f docker-compose.test.yml run --rm \
-  -v $(pwd)/../../coverage_output:/coverage_output \
-  test-ros2-humble /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
+  -v $(pwd)/../coverage_output:/coverage_output \
+  test-ros2-humble /workspace/axon/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
 ```
 
 **Without coverage:**
 ```bash
 docker compose -f docker-compose.test.yml run --rm \
-  test-ros2-humble /workspace/axon/ros/docker/scripts/run_e2e_tests.sh
+  test-ros2-humble /workspace/axon/docker/scripts/run_e2e_tests.sh
 ```
 
 ### Local ROS Workspace
@@ -76,6 +76,6 @@ colcon test-result --verbose
 ## Performance Tests
 
 ```bash
-cd ros/docker
+cd docker
 docker compose -f docker-compose.perf.yml up perf-ros2-humble --build
 ```
