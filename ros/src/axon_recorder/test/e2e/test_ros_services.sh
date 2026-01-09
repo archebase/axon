@@ -19,7 +19,7 @@ set -eo pipefail
 # ============================================================================
 # Libraries are in docker/scripts/lib/ relative to repo root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="${SCRIPT_DIR}/../../../../docker/scripts/lib"
+LIB_DIR="${SCRIPT_DIR}/../../../../../docker/scripts/lib"
 
 # Source workspace library for ROS version detection
 source "${LIB_DIR}/ros_workspace_lib.sh"
