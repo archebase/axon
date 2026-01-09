@@ -1,10 +1,13 @@
 #include "config_parser.hpp"
 
+#include <axon_log_init.hpp>
+#include <axon_log_severity.hpp>
+
 #include <fstream>
 #include <sstream>
 
 namespace axon {
-namespace utils {
+namespace recorder {
 
 bool ConfigParser::load_from_file(const std::string& path, RecorderConfig& config) {
   try {
@@ -358,5 +361,56 @@ bool ConfigParser::validate_upload_config(const UploadConfig& upload, std::strin
   return true;
 }
 
-}  // namespace utils
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+RecorderConfig from_yaml(const std::string& yaml_path) {
+  ConfigParser parser;
+  RecorderConfig config;
+  if (!parser.load_from_file(yaml_path, config)) {
+    // Return default config on failure
+  }
+  return config;
+}
+
+RecorderConfig from_yaml_string(const std::string& yaml_content) {
+  ConfigParser parser;
+  RecorderConfig config;
+  if (!parser.load_from_string(yaml_content, config)) {
+    // Return default config on failure
+  }
+  return config;
+}
+
+void convert_logging_config(
+  const LoggingConfig& recorder_config, ::axon::logging::LoggingConfig& log_config
+) {
+  // Console settings
+  log_config.console_enabled = recorder_config.console_enabled;
+  log_config.console_colors = recorder_config.console_colors;
+
+  // Parse console level
+  if (auto level = ::axon::logging::parse_severity_level(recorder_config.console_level)) {
+    log_config.console_level = *level;
+  }
+
+  // File settings
+  log_config.file_enabled = recorder_config.file_enabled;
+
+  // Parse file level
+  if (auto level = ::axon::logging::parse_severity_level(recorder_config.file_level)) {
+    log_config.file_level = *level;
+  }
+
+  // File sink config
+  log_config.file_config.directory = recorder_config.file_directory;
+  log_config.file_config.file_pattern = recorder_config.file_pattern;
+  log_config.file_config.format_json = (recorder_config.file_format == "json");
+  log_config.file_config.rotation_size_mb = recorder_config.rotation_size_mb;
+  log_config.file_config.max_files = recorder_config.max_files;
+  log_config.file_config.rotate_at_midnight = recorder_config.rotate_at_midnight;
+}
+
+}  // namespace recorder
 }  // namespace axon

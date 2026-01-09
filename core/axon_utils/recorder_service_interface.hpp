@@ -3,10 +3,16 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "common_types.hpp"
+// Forward declarations - types are now in axon::recorder namespace
+namespace axon {
+namespace recorder {
+struct TaskConfig;
+}  // namespace recorder
+}  // namespace axon
 
 namespace axon {
 namespace utils {
@@ -176,7 +182,7 @@ public:
   /**
    * Get the cached task configuration.
    */
-  virtual std::optional<TaskConfig> get_cached_config() const = 0;
+  virtual std::optional<recorder::TaskConfig> get_cached_config() const = 0;
 
   /**
    * Get recording metrics.
@@ -189,7 +195,7 @@ public:
   /**
    * Cache a new task configuration.
    */
-  virtual bool cache_task_config(const TaskConfig& config, std::string& error_msg) = 0;
+  virtual bool cache_task_config(const recorder::TaskConfig& config, std::string& error_msg) = 0;
 
   /**
    * Start recording.

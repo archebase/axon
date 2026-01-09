@@ -1,6 +1,5 @@
 /**
- * @file test_common_types.cpp
- * @brief Unit tests for TaskConfig and TaskConfigCache
+ * Unit tests for TaskConfig and TaskConfigCache
  */
 
 #include <gtest/gtest.h>
@@ -10,9 +9,9 @@
 #include <thread>
 #include <vector>
 
-#include "common_types.hpp"
+#include "../src/recorder_adapter.hpp"
 
-using namespace axon::utils;
+using namespace axon::recorder;
 
 // ============================================================================
 // TaskConfig Tests

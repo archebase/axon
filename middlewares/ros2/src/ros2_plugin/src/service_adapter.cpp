@@ -1,5 +1,9 @@
 #include "ros2_plugin/service_adapter.hpp"
 
+// Include TaskConfig definition from apps/axon_recorder
+// This is needed because we use TaskConfig in the implementation
+#include "../../../../apps/axon_recorder/src/common_types.hpp"
+
 namespace ros2_plugin {
 
 ServiceAdapter::ServiceAdapter(
@@ -86,7 +90,7 @@ bool ServiceAdapter::handle_cached_recording_config(
   std::string& message
 ) {
   // Create task config
-  axon::utils::TaskConfig config;
+  axon::recorder::TaskConfig config;
   config.task_id = task_id;
   config.device_id = device_id;
   config.data_collector_id = data_collector_id;

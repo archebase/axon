@@ -2,7 +2,7 @@
 # Universal middleware plugin system for ROS1 and ROS2
 # Supports building both ROS1 and ROS2 plugins and unified test programs
 
-.PHONY: all build clean test help build-core build-core-mcap build-core-uploader build-core-logging test-core-mcap test-core-uploader test-core-logging clean-core clean-core-coverage build-ros2 build-ros1 build-examples test-ros2 test-ros1 format format-check docker-build docker-build-ros2 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling docker-build-ros1 docker-test docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling docker-test-ros1 docker-clean docker-push docker-images
+.PHONY: all build clean test help build-core build-core-mcap build-core-uploader build-core-logging test-core-mcap test-core-uploader test-core-logging clean-core clean-core-coverage build-ros2 build-ros1 build-examples build-app build-app-ros1 build-app-ros2 test-ros2 test-ros1 test-app test-app-ros1 test-app-ros2 format format-check docker-build docker-build-ros2 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling docker-build-ros1 docker-test docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling docker-test-ros1 docker-clean docker-push docker-images
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -20,6 +20,7 @@ BUILD_DIR := build
 
 # Core library subdirectories
 CORE_BUILD_DIR := $(BUILD_DIR)/core
+CORE_MCAP_BUILD_DIR := $(BUILD_DIR)/core_mcap
 CORE_UTILS_BUILD_DIR := $(BUILD_DIR)/core_utils
 CORE_UPLOADER_BUILD_DIR := $(BUILD_DIR)/core_uploader
 CORE_LOGGING_BUILD_DIR := $(BUILD_DIR)/core_logging
@@ -62,7 +63,10 @@ help:
 	@printf "%s\n" "  $(BLUE)make build-ros2$(NC)         - Build ROS2 plugin only"
 	@printf "%s\n" "  $(BLUE)make build-ros1$(NC)         - Build ROS1 plugin only"
 	@printf "%s\n" "  $(BLUE)make build-examples$(NC)     - Build unified test program (no ROS deps)"
-	@printf "%s\n" "  $(BLUE)make build-all$(NC)          - Build everything (core + ROS1 + ROS2 + examples)"
+	@printf "%s\n" "  $(BLUE)make build-app$(NC)          - Build axon_recorder app (auto-detect ROS version)"
+	@printf "%s\n" "  $(BLUE)make build-app-ros2$(NC)    - Build axon_recorder app with ROS2"
+	@printf "%s\n" "  $(BLUE)make build-app-ros1$(NC)    - Build axon_recorder app with ROS1"
+	@printf "%s\n" "  $(BLUE)make build-all$(NC)          - Build everything (core + ROS1 + ROS2 + examples + app)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Test targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make test$(NC)               - Quick test of unified program"
@@ -72,6 +76,9 @@ help:
 	@printf "%s\n" "  $(BLUE)make test-core-logging$(NC)  - Test axon_logging library"
 	@printf "%s\n" "  $(BLUE)make test-ros2$(NC)          - Test ROS2 plugin"
 	@printf "%s\n" "  $(BLUE)make test-ros1$(NC)          - Test ROS1 plugin"
+	@printf "%s\n" "  $(BLUE)make test-app$(NC)           - Test axon_recorder app (auto-detect ROS version)"
+	@printf "%s\n" "  $(BLUE)make test-app-ros2$(NC)      - Test axon_recorder app with ROS2"
+	@printf "%s\n" "  $(BLUE)make test-app-ros1$(NC)      - Test axon_recorder app with ROS1"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Clean targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make clean$(NC)              - Clean all build artifacts"
@@ -79,6 +86,7 @@ help:
 	@printf "%s\n" "  $(BLUE)make clean-ros2$(NC)         - Clean ROS2 build artifacts"
 	@printf "%s\n" "  $(BLUE)make clean-ros1$(NC)         - Clean ROS1 build artifacts"
 	@printf "%s\n" "  $(BLUE)make clean-examples$(NC)     - Clean examples build artifacts"
+	@printf "%s\n" "  $(BLUE)make clean-app$(NC)         - Clean axon_recorder app build artifacts"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Run targets:$(NC)"
 	@printf "%s\n" "  $(BLUE)make run-ros2$(NC)           - Run unified test with ROS2 plugin"
@@ -122,8 +130,8 @@ build-core: build-core-mcap build-core-logging build-core-utils
 # Build axon_mcap library
 build-core-mcap:
 	@printf "%s\n" "$(YELLOW)Building axon_mcap library...$(NC)"
-	@mkdir -p $(CORE_BUILD_DIR)
-	@cd $(CORE_BUILD_DIR) && \
+	@mkdir -p $(CORE_MCAP_BUILD_DIR)
+	@cd $(CORE_MCAP_BUILD_DIR) && \
 		cmake $(PWD)/core/axon_mcap \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_MCAP_BUILD_TESTS=ON \
@@ -169,7 +177,7 @@ build-core-utils:
 # Test axon_mcap library
 test-core-mcap: build-core-mcap
 	@printf "%s\n" "$(YELLOW)Running axon_mcap tests...$(NC)"
-	@cd $(CORE_BUILD_DIR) && ctest --output-on-failure
+	@cd $(CORE_MCAP_BUILD_DIR) && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_mcap tests passed$(NC)"
 
 # Test axon_uploader library
@@ -237,8 +245,122 @@ build-examples:
 	@printf "%s\n" "$(GREEN)✓ Unified test program built successfully$(NC)"
 	@printf "%s\n" "$(BLUE)The unified test program has ZERO compile-time ROS dependencies!$(NC)"
 
+# Build axon_recorder app (auto-detect ROS version)
+build-app: build-core
+	@printf "%s\n" "$(YELLOW)Building axon_recorder app (auto-detecting ROS version)...$(NC)"
+	@if [ -f /opt/ros/humble/setup.bash ] || [ -f /opt/ros/iron/setup.bash ] || [ -f /opt/ros/jazzy/setup.bash ] || [ -f /opt/ros/rolling/setup.bash ]; then \
+		$(MAKE) build-app-ros2; \
+	elif [ -f /opt/ros/noetic/setup.bash ] || [ -f /opt/ros/melodic/setup.bash ]; then \
+		$(MAKE) build-app-ros1; \
+	else \
+		echo "$(RED)Error: No ROS installation found. Please install ROS1 or ROS2$(NC)"; \
+		exit 1; \
+	fi
+
+# Build axon_recorder app with ROS2
+build-app-ros2: build-core
+	@printf "%s\n" "$(YELLOW)Building axon_recorder app with ROS2 using cmake...$(NC)"
+	@if [ -f /opt/ros/humble/setup.bash ]; then \
+		. /opt/ros/humble/setup.bash; \
+		export ROS_VERSION=2; \
+		mkdir -p $(RECORDER_BUILD_DIR); \
+		cd $(RECORDER_BUILD_DIR) && \
+		cmake $(PWD)/apps/axon_recorder \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_DIR=$(PWD)/core/axon_mcap \
+			-DAXON_LOGGING_DIR=$(PWD)/core/axon_logging \
+			-DAXON_UTILS_DIR=$(PWD)/core/axon_utils \
+			-DAXON_CMAKE_MODULES_DIR=$(PWD)/cmake/Modules \
+			-DCMAKE_PREFIX_PATH="$(CORE_MCAP_BUILD_DIR);$(CORE_LOGGING_BUILD_DIR);$(CORE_UTILS_BUILD_DIR)" \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC); \
+	elif [ -f /opt/ros/iron/setup.bash ]; then \
+		. /opt/ros/iron/setup.bash; \
+		export ROS_VERSION=2; \
+		mkdir -p $(RECORDER_BUILD_DIR); \
+		cd $(RECORDER_BUILD_DIR) && \
+		cmake $(PWD)/apps/axon_recorder \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_DIR=$(PWD)/core/axon_mcap \
+			-DAXON_LOGGING_DIR=$(PWD)/core/axon_logging \
+			-DAXON_UTILS_DIR=$(PWD)/core/axon_utils \
+			-DAXON_CMAKE_MODULES_DIR=$(PWD)/cmake/Modules \
+			-DCMAKE_PREFIX_PATH="$(CORE_MCAP_BUILD_DIR);$(CORE_LOGGING_BUILD_DIR);$(CORE_UTILS_BUILD_DIR)" \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC); \
+	elif [ -f /opt/ros/jazzy/setup.bash ]; then \
+		. /opt/ros/jazzy/setup.bash; \
+		export ROS_VERSION=2; \
+		mkdir -p $(RECORDER_BUILD_DIR); \
+		cd $(RECORDER_BUILD_DIR) && \
+		cmake $(PWD)/apps/axon_recorder \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_DIR=$(PWD)/core/axon_mcap \
+			-DAXON_LOGGING_DIR=$(PWD)/core/axon_logging \
+			-DAXON_UTILS_DIR=$(PWD)/core/axon_utils \
+			-DAXON_CMAKE_MODULES_DIR=$(PWD)/cmake/Modules \
+			-DCMAKE_PREFIX_PATH="$(CORE_MCAP_BUILD_DIR);$(CORE_LOGGING_BUILD_DIR);$(CORE_UTILS_BUILD_DIR)" \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC); \
+	elif [ -f /opt/ros/rolling/setup.bash ]; then \
+		. /opt/ros/rolling/setup.bash; \
+		export ROS_VERSION=2; \
+		mkdir -p $(RECORDER_BUILD_DIR); \
+		cd $(RECORDER_BUILD_DIR) && \
+		cmake $(PWD)/apps/axon_recorder \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_DIR=$(PWD)/core/axon_mcap \
+			-DAXON_LOGGING_DIR=$(PWD)/core/axon_logging \
+			-DAXON_UTILS_DIR=$(PWD)/core/axon_utils \
+			-DAXON_CMAKE_MODULES_DIR=$(PWD)/cmake/Modules \
+			-DCMAKE_PREFIX_PATH="$(CORE_MCAP_BUILD_DIR);$(CORE_LOGGING_BUILD_DIR);$(CORE_UTILS_BUILD_DIR)" \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC); \
+	else \
+		echo "$(RED)Error: ROS2 not found. Please install ROS2 (Humble/Iron/Jazzy/Rolling)$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(GREEN)✓ axon_recorder app (ROS2) built successfully$(NC)"
+
+# Build axon_recorder app with ROS1
+build-app-ros1: build-core
+	@printf "%s\n" "$(YELLOW)Building axon_recorder app with ROS1 using cmake...$(NC)"
+	@if [ -f /opt/ros/noetic/setup.bash ]; then \
+		. /opt/ros/noetic/setup.bash; \
+		export ROS_VERSION=1; \
+		mkdir -p $(RECORDER_BUILD_DIR); \
+		cd $(RECORDER_BUILD_DIR) && \
+		cmake $(PWD)/apps/axon_recorder \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_DIR=$(PWD)/core/axon_mcap \
+			-DAXON_LOGGING_DIR=$(PWD)/core/axon_logging \
+			-DAXON_UTILS_DIR=$(PWD)/core/axon_utils \
+			-DAXON_CMAKE_MODULES_DIR=$(PWD)/cmake/Modules \
+			-DCMAKE_PREFIX_PATH="$(CORE_MCAP_BUILD_DIR);$(CORE_LOGGING_BUILD_DIR);$(CORE_UTILS_BUILD_DIR)" \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC); \
+	elif [ -f /opt/ros/melodic/setup.bash ]; then \
+		. /opt/ros/melodic/setup.bash; \
+		export ROS_VERSION=1; \
+		mkdir -p $(RECORDER_BUILD_DIR); \
+		cd $(RECORDER_BUILD_DIR) && \
+		cmake $(PWD)/apps/axon_recorder \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_DIR=$(PWD)/core/axon_mcap \
+			-DAXON_LOGGING_DIR=$(PWD)/core/axon_logging \
+			-DAXON_UTILS_DIR=$(PWD)/core/axon_utils \
+			-DAXON_CMAKE_MODULES_DIR=$(PWD)/cmake/Modules \
+			-DCMAKE_PREFIX_PATH="$(CORE_MCAP_BUILD_DIR);$(CORE_LOGGING_BUILD_DIR);$(CORE_UTILS_BUILD_DIR)" \
+			$(CMAKE_OPTIONS) && \
+		cmake --build . -j$(NPROC); \
+	else \
+		echo "$(RED)Error: ROS1 not found. Please install ROS1 (Noetic/Melodic)$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(GREEN)✓ axon_recorder app (ROS1) built successfully$(NC)"
+
 # Build everything
-build-all: build-core build-ros2 build-ros1 build-examples
+build-all: build-core build-ros2 build-ros1 build-examples build-app
 	@printf "%s\n" "$(GREEN)✓ All components built successfully!$(NC)"
 	@printf "%s\n" "$(BLUE)Unified test program works with both ROS1 and ROS2 plugins$(NC)"
 
@@ -268,6 +390,54 @@ test-ros1: build-ros1 build-examples
 	fi
 	@printf "%s\n" "$(GREEN)✓ ROS1 plugin ready for testing$(NC)"
 	@printf "%s\n" "$(BLUE)To run manually: cd $(EXAMPLES_BUILD_DIR) && ./run_ros1.sh$(NC)"
+
+# Test axon_recorder app (auto-detect ROS version)
+test-app: build-app
+	@printf "%s\n" "$(YELLOW)Testing axon_recorder app (auto-detecting ROS version)...$(NC)"
+	@if [ -f /opt/ros/humble/setup.bash ] || [ -f /opt/ros/iron/setup.bash ] || [ -f /opt/ros/jazzy/setup.bash ] || [ -f /opt/ros/rolling/setup.bash ]; then \
+		$(MAKE) test-app-ros2; \
+	elif [ -f /opt/ros/noetic/setup.bash ] || [ -f /opt/ros/melodic/setup.bash ]; then \
+		$(MAKE) test-app-ros1; \
+	else \
+		echo "$(RED)Error: No ROS installation found$(NC)"; \
+		exit 1; \
+	fi
+
+# Test axon_recorder app with ROS2
+test-app-ros2: build-app-ros2
+	@printf "%s\n" "$(YELLOW)Testing axon_recorder app with ROS2...$(NC)"
+	@if [ -f /opt/ros/humble/setup.bash ]; then \
+		. /opt/ros/humble/setup.bash; \
+		export ROS_VERSION=2; \
+		cd $(RECORDER_BUILD_DIR) && ctest --output-on-failure; \
+	elif [ -f /opt/ros/iron/setup.bash ]; then \
+		. /opt/ros/iron/setup.bash; \
+		export ROS_VERSION=2; \
+		cd $(RECORDER_BUILD_DIR) && ctest --output-on-failure; \
+	elif [ -f /opt/ros/jazzy/setup.bash ]; then \
+		. /opt/ros/jazzy/setup.bash; \
+		export ROS_VERSION=2; \
+		cd $(RECORDER_BUILD_DIR) && ctest --output-on-failure; \
+	elif [ -f /opt/ros/rolling/setup.bash ]; then \
+		. /opt/ros/rolling/setup.bash; \
+		export ROS_VERSION=2; \
+		cd $(RECORDER_BUILD_DIR) && ctest --output-on-failure; \
+	fi
+	@printf "%s\n" "$(GREEN)✓ axon_recorder app (ROS2) tests completed$(NC)"
+
+# Test axon_recorder app with ROS1
+test-app-ros1: build-app-ros1
+	@printf "%s\n" "$(YELLOW)Testing axon_recorder app with ROS1...$(NC)"
+	@if [ -f /opt/ros/noetic/setup.bash ]; then \
+		. /opt/ros/noetic/setup.bash; \
+		export ROS_VERSION=1; \
+		cd $(RECORDER_BUILD_DIR) && ctest --output-on-failure; \
+	elif [ -f /opt/ros/melodic/setup.bash ]; then \
+		. /opt/ros/melodic/setup.bash; \
+		export ROS_VERSION=1; \
+		cd $(RECORDER_BUILD_DIR) && ctest --output-on-failure; \
+	fi
+	@printf "%s\n" "$(GREEN)✓ axon_recorder app (ROS1) tests completed$(NC)"
 
 # Run ROS2 test
 run-ros2: build-ros2 build-examples
@@ -300,7 +470,7 @@ run-ros1: build-ros1 build-examples
 	@cd $(EXAMPLES_BUILD_DIR) && ./subscriber_test ros1
 
 # Clean all
-clean: clean-core clean-ros2 clean-ros1 clean-examples
+clean: clean-core clean-ros2 clean-ros1 clean-examples clean-app
 	@printf "%s\n" "$(YELLOW)Cleaning root build directory...$(NC)"
 	@rm -rf $(BUILD_DIR) || true
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
@@ -308,14 +478,14 @@ clean: clean-core clean-ros2 clean-ros1 clean-examples
 # Clean core libraries
 clean-core:
 	@printf "%s\n" "$(YELLOW)Cleaning core libraries build artifacts...$(NC)"
-	@rm -rf $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) $(CORE_UTILS_BUILD_DIR) $(CORE_COVERAGE_DIR) || true
+	@rm -rf $(CORE_BUILD_DIR) $(CORE_MCAP_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) $(CORE_UTILS_BUILD_DIR) $(CORE_COVERAGE_DIR) || true
 	@printf "%s\n" "$(GREEN)✓ Core libraries cleaned$(NC)"
 
 # Clean core coverage data files
 clean-core-coverage:
 	@printf "%s\n" "$(YELLOW)Cleaning core coverage data files...$(NC)"
-	@find $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) -name "*.gcda" -type f -delete 2>/dev/null || true
-	@find $(CORE_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) -name "*.gcno" -type f -delete 2>/dev/null || true
+	@find $(CORE_BUILD_DIR) $(CORE_MCAP_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) -name "*.gcda" -type f -delete 2>/dev/null || true
+	@find $(CORE_BUILD_DIR) $(CORE_MCAP_BUILD_DIR) $(CORE_UPLOADER_BUILD_DIR) $(CORE_LOGGING_BUILD_DIR) -name "*.gcno" -type f -delete 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ Core coverage data files cleaned$(NC)"
 
 # Clean ROS2
@@ -335,6 +505,13 @@ clean-examples:
 	@printf "%s\n" "$(YELLOW)Cleaning examples build artifacts...$(NC)"
 	@rm -rf $(EXAMPLES_BUILD_DIR) || true
 	@printf "%s\n" "$(GREEN)✓ Examples cleaned$(NC)"
+
+# Clean axon_recorder app
+clean-app:
+	@printf "%s\n" "$(YELLOW)Cleaning axon_recorder app build artifacts...$(NC)"
+	@rm -rf $(RECORDER_BUILD_DIR) || true
+	@cd apps && rm -rf build install log devel || true
+	@printf "%s\n" "$(GREEN)✓ axon_recorder app cleaned$(NC)"
 
 # Debug build
 debug:

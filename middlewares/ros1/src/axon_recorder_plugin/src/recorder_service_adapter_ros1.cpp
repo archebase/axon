@@ -71,7 +71,7 @@ bool RecorderServiceAdapterROS1::handle_cached_recording_config(
   std::string& message
 ) {
   // Create task config
-  axon::utils::TaskConfig config;
+  axon::recorder::TaskConfig config;
   config.task_id = task_id;
   config.device_id = device_id;
   config.data_collector_id = data_collector_id;

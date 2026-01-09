@@ -23,7 +23,7 @@ namespace ssl = net::ssl;
 using tcp = net::ip::tcp;
 
 namespace axon {
-namespace utils {
+namespace recorder {
 
 namespace {
 
@@ -395,5 +395,5 @@ void HttpClient::post_finish_callback_async(
   }).detach();
 }
 
-}  // namespace utils
+}  // namespace recorder
 }  // namespace axon

@@ -3,7 +3,7 @@
 #include <sstream>
 
 namespace axon {
-namespace utils {
+namespace recorder {
 
 bool RecorderConfig::validate() const {
   // Check if dataset path is set
@@ -61,5 +61,5 @@ std::string RecorderConfig::to_string() const {
   return oss.str();
 }
 
-}  // namespace utils
+}  // namespace recorder
 }  // namespace axon

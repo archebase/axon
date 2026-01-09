@@ -1,258 +1,123 @@
 /**
- * Axon Recorder - Main Entry Point
+ * @file main.cpp
+ * @brief Main entry point for the axon_recorder node
  *
- * This example shows how to load the ROS service adapter plugin dynamically
- * and use it to provide recording services.
- *
- * The core recorder has NO compile-time dependencies on ROS1 or ROS2.
- * Everything is loaded at runtime via plugins.
+ * This file contains only the main() function. The RecorderNode implementation
+ * is in recorder_node.cpp.
  */
 
-#include <axon_utils/common_types.hpp>
-#include <axon_utils/recorder_service_interface.hpp>
-#include <axon_utils/state_machine.hpp>
+#include <csignal>
 
-#include <dlfcn.h>
-#include <iostream>
-#include <memory>
-#include <stdexcept>
-#include <string>
+#include "recorder_node.hpp"
+#include "version.hpp"
 
-// Example: Simple recorder context implementation
-// In the full implementation, this would interface with RecordingSession, TopicManager, etc.
-class ExampleRecorderContext : public axon::utils::IRecorderContext {
-public:
-  ExampleRecorderContext() {
-    // Initialize state machine with recorder states
-    std::unordered_map<RecorderState, std::vector<RecorderState>> transitions = {
-      {RecorderState::IDLE, {RecorderState::READY}},
-      {RecorderState::READY, {RecorderState::IDLE, RecorderState::RECORDING}},
-      {RecorderState::RECORDING, {RecorderState::PAUSED, RecorderState::IDLE}},
-      {RecorderState::PAUSED, {RecorderState::RECORDING, RecorderState::IDLE}}};
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "main"
+#include <axon_log_init.hpp>
+#include <axon_log_macros.hpp>
 
-    state_machine_ = std::make_unique<StateMachineType>(RecorderState::IDLE, transitions);
+#include "logging/axon_ros_sink.hpp"
+
+#if defined(AXON_ROS1)
+#include <ros/ros.h>
+#elif defined(AXON_ROS2)
+#include <rclcpp/rclcpp.hpp>
+#endif
+
+namespace {
+// Global flag for signal handling
+volatile std::sig_atomic_t g_shutdown_requested = 0;
+volatile std::sig_atomic_t g_received_signal = 0;
+
+void signal_handler(int signum) {
+  // IMPORTANT: Signal handlers must only use async-signal-safe functions.
+  // Do NOT call AXON_LOG_* here - Boost.Log uses mutexes and memory allocation
+  // which can deadlock if a signal arrives while logging is in progress.
+  // Simply set flags and return. Logging happens after main loop exits.
+  g_received_signal = signum;
+  g_shutdown_requested = 1;
+
+  // Note: ros::shutdown() and rclcpp::shutdown() are not strictly async-signal-safe,
+  // but they're designed to be callable from signal handlers in practice.
+#if defined(AXON_ROS1)
+  ros::shutdown();
+#elif defined(AXON_ROS2)
+  if (rclcpp::ok()) {
+    rclcpp::shutdown();
   }
-
-  std::string get_state_string() const override {
-    switch (state_machine_->get_state()) {
-      case RecorderState::IDLE:
-        return "idle";
-      case RecorderState::READY:
-        return "ready";
-      case RecorderState::RECORDING:
-        return "recording";
-      case RecorderState::PAUSED:
-        return "paused";
-      default:
-        return "unknown";
-    }
-  }
-
-  bool is_recording_active() const override {
-    return state_machine_->is_state_in({RecorderState::RECORDING, RecorderState::PAUSED});
-  }
-
-  std::optional<axon::utils::TaskConfig> get_cached_config() const override {
-    return task_cache_.get();
-  }
-
-  bool get_recording_metrics(
-    std::string& output_path, double& disk_usage_gb, double& duration_sec, int64_t& message_count,
-    double& throughput_mb_sec, std::string& last_error
-  ) const override {
-    // TODO: Implement actual metrics gathering
-    output_path = "/tmp/example.mcap";
-    disk_usage_gb = 0.5;
-    duration_sec = 10.0;
-    message_count = 1000;
-    throughput_mb_sec = 1.5;
-    last_error.clear();
-    return true;
-  }
-
-  bool cache_task_config(const axon::utils::TaskConfig& config, std::string& error_msg) override {
-    std::string error;
-    if (!state_machine_->transition(RecorderState::IDLE, RecorderState::READY, error)) {
-      error_msg = "State transition failed: " + error;
-      return false;
-    }
-
-    task_cache_.cache(config);
-    return true;
-  }
-
-  bool start_recording(std::string& error_msg) override {
-    std::string error;
-    return state_machine_->transition(RecorderState::READY, RecorderState::RECORDING, error);
-  }
-
-  bool pause_recording(std::string& error_msg) override {
-    std::string error;
-    return state_machine_->transition(RecorderState::RECORDING, RecorderState::PAUSED, error);
-  }
-
-  bool resume_recording(std::string& error_msg) override {
-    std::string error;
-    return state_machine_->transition(RecorderState::PAUSED, RecorderState::RECORDING, error);
-  }
-
-  bool cancel_recording(std::string& error_msg) override {
-    std::string error;
-    if (state_machine_->transition(RecorderState::RECORDING, RecorderState::IDLE, error) ||
-        state_machine_->transition(RecorderState::PAUSED, RecorderState::IDLE, error)) {
-      task_cache_.clear();
-      return true;
-    }
-    error_msg = error;
-    return false;
-  }
-
-  bool finish_recording(std::string& error_msg) override {
-    std::string error;
-    if (state_machine_->transition(RecorderState::RECORDING, RecorderState::IDLE, error) ||
-        state_machine_->transition(RecorderState::PAUSED, RecorderState::IDLE, error)) {
-      task_cache_.clear();
-      return true;
-    }
-    error_msg = error;
-    return false;
-  }
-
-  bool clear_config(std::string& error_msg) override {
-    std::string error;
-    if (state_machine_->transition(RecorderState::READY, RecorderState::IDLE, error)) {
-      task_cache_.clear();
-      return true;
-    }
-    error_msg = error;
-    return false;
-  }
-
-private:
-  enum class RecorderState { IDLE, READY, RECORDING, PAUSED };
-
-  using StateMachineType = axon::utils::StateMachine<RecorderState>;
-
-  std::unique_ptr<StateMachineType> state_machine_;
-  axon::utils::TaskConfigCache task_cache_;
-};
-
-/**
- * Load ROS2 service adapter plugin
- */
-std::unique_ptr<axon::utils::IRecorderServiceAdapter> load_ros2_plugin(
-  std::shared_ptr<axon::utils::IRecorderContext> context, void* ros_node
-) {
-  // Path to the plugin library (adjust as needed)
-  const char* plugin_path = "middlewares/ros2/install/ros2_plugin/lib/libros2_plugin_lib.so";
-
-  // Load the plugin
-  void* handle = dlopen(plugin_path, RTLD_LAZY);
-  if (!handle) {
-    std::cerr << "Failed to load plugin: " << dlerror() << std::endl;
-    return nullptr;
-  }
-
-  // Get the factory function
-  using CreateFunc =
-    ros2_plugin::ServiceAdapter* (*)(std::shared_ptr<axon::utils::IRecorderContext>, void*);
-
-  auto create_func =
-    reinterpret_cast<CreateFunc>(dlsym(handle, "create_recorder_service_adapter_ros2"));
-  if (!create_func) {
-    std::cerr << "Failed to find factory function: " << dlerror() << std::endl;
-    dlclose(handle);
-    return nullptr;
-  }
-
-  // Create the adapter
-  auto* adapter_ptr = create_func(context, ros_node);
-  if (!adapter_ptr) {
-    std::cerr << "Failed to create adapter instance" << std::endl;
-    dlclose(handle);
-    return nullptr;
-  }
-
-  // Wrap in unique_ptr with custom deleter
-  return std::unique_ptr<axon::utils::IRecorderServiceAdapter>(adapter_ptr);
+#endif
 }
-
-/**
- * Load ROS1 service adapter plugin
- */
-std::unique_ptr<axon::utils::IRecorderServiceAdapter> load_ros1_plugin(
-  std::shared_ptr<axon::utils::IRecorderContext> context, void* ros_node_handle
-) {
-  // Path to the plugin library (adjust as needed)
-  const char* plugin_path =
-    "middlewares/ros1/build/libaxon_recorder_plugin/libaxon_recorder_plugin.so";
-
-  // Load the plugin
-  void* handle = dlopen(plugin_path, RTLD_LAZY);
-  if (!handle) {
-    std::cerr << "Failed to load plugin: " << dlerror() << std::endl;
-    return nullptr;
-  }
-
-  // Get the factory function
-  using CreateFunc = axon_recorder_plugin::
-    RecorderServiceAdapterROS1* (*)(std::shared_ptr<axon::utils::IRecorderContext>, void*);
-
-  auto create_func =
-    reinterpret_cast<CreateFunc>(dlsym(handle, "create_recorder_service_adapter_ros1"));
-  if (!create_func) {
-    std::cerr << "Failed to find factory function: " << dlerror() << std::endl;
-    dlclose(handle);
-    return nullptr;
-  }
-
-  // Create the adapter
-  auto* adapter_ptr = create_func(context, ros_node_handle);
-  if (!adapter_ptr) {
-    std::cerr << "Failed to create adapter instance" << std::endl;
-    dlclose(handle);
-    return nullptr;
-  }
-
-  // Wrap in unique_ptr with custom deleter
-  return std::unique_ptr<axon::utils::IRecorderServiceAdapter>(adapter_ptr);
-}
+}  // namespace
 
 int main(int argc, char** argv) {
-  std::cout << "Axon Recorder Example" << std::endl;
-  std::cout << "=====================" << std::endl;
+  // Initialize logging first (console only initially, file sink added via config)
+  axon::logging::LoggingConfig log_config;
+  log_config.console_enabled = true;
+  log_config.console_colors = true;
+  log_config.console_level = axon::logging::severity_level::info;
+  log_config.file_enabled = false;  // Can be enabled via config file later
 
-  // Create the recorder context (implements IRecorderContext)
-  auto context = std::make_shared<ExampleRecorderContext>();
+  axon::logging::init_logging(log_config);
 
-  // TODO: Initialize ROS node
-  // For ROS2:
-  //   rclcpp::init(argc, argv);
-  //   auto node = std::make_shared<rclcpp::Node>("axon_recorder");
-  //
-  // For ROS1:
-  //   ros::init(argc, argv, "axon_recorder");
-  //   ros::NodeHandle nh;
+  AXON_LOG_INFO(
+    "axon_recorder starting (MCAP backend)" << axon::logging::kv("version", AXON_RECORDER_VERSION)
+  );
 
-  // Load appropriate plugin based on ROS version
-  std::unique_ptr<axon::utils::IRecorderServiceAdapter> service_adapter;
+  // Use a block scope to ensure RecorderNode is fully destroyed before main() returns
+  int exit_code = 0;
+  {
+    // Use factory method to create RecorderNode as shared_ptr
+    // This enables shared_from_this() for dependency injection
+    auto node = axon::recorder::RecorderNode::create();
 
-  // TODO: Detect ROS version and load appropriate plugin
-  // For now, this is just a skeleton
+    if (!node->initialize(argc, argv)) {
+      AXON_LOG_FATAL("Initialization failed");
+      axon::logging::shutdown_logging();
+      return 1;
+    }
 
-  std::cout << "NOTE: This is a skeleton example." << std::endl;
-  std::cout << "The full implementation would:" << std::endl;
-  std::cout << "  1. Initialize ROS node (ROS1 or ROS2)" << std::endl;
-  std::cout << "  2. Load the appropriate plugin" << std::endl;
-  std::cout << "  3. Register services" << std::endl;
-  std::cout << "  4. Spin until shutdown" << std::endl;
-  std::cout << std::endl;
-  std::cout << "See MIGRATION_SUMMARY.md for details." << std::endl;
+    // Add ROS sink now that ROS is initialized
+    // This bridges AXON_LOG_* to rqt_console, rosout, etc.
+    auto ros_sink = axon::logging::create_ros_sink(
+      node->get_ros_interface(), axon::logging::severity_level::info
+    );
+    axon::logging::add_sink(ros_sink);
+    AXON_LOG_DEBUG("ROS logging sink added");
 
-  // In the full implementation:
-  // service_adapter->register_services();
-  // ... spin ...
-  // service_adapter->shutdown();
+    // Install custom signal handlers AFTER rclcpp::init() to override ROS defaults
+    AXON_LOG_DEBUG("Installing signal handlers...");
+    std::signal(SIGTERM, signal_handler);
+    std::signal(SIGINT, signal_handler);
 
-  return 0;
+    AXON_LOG_INFO("Initialization complete, starting main loop");
+
+    // run() blocks until rclcpp::shutdown() is called (by signal or otherwise)
+    node->run();
+
+    // Log the signal that triggered shutdown (safe to log here, outside signal handler)
+    if (g_received_signal != 0) {
+      AXON_LOG_INFO(
+        "Received signal, shutting down"
+        << ::axon::logging::kv("signal", static_cast<int>(g_received_signal))
+      );
+    }
+    AXON_LOG_INFO("Main loop exited, calling shutdown()");
+
+    // Ensure shutdown is called - this writes the stats file
+    // This runs AFTER spin() returns due to SIGTERM/SIGINT
+    node->shutdown();
+
+    // Remove ROS sink BEFORE destroying RosInterface (lifetime requirement)
+    axon::logging::remove_sink(ros_sink);
+    ros_sink.reset();
+
+    AXON_LOG_INFO("Node shutdown complete");
+  }  // RecorderNode shared_ptr released here, destructor runs before main() exits
+
+  AXON_LOG_INFO("Exiting normally");
+
+  // Shutdown logging (flushes all pending log messages)
+  axon::logging::shutdown_logging();
+
+  return exit_code;
 }

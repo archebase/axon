@@ -1,5 +1,5 @@
-#ifndef AXON_UTILS_COMMON_TYPES_HPP
-#define AXON_UTILS_COMMON_TYPES_HPP
+#ifndef AXON_RECORDER_COMMON_TYPES_HPP
+#define AXON_RECORDER_COMMON_TYPES_HPP
 
 #include <chrono>
 #include <mutex>
@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace axon {
-namespace utils {
+namespace recorder {
 
 /**
  * TaskConfig holds all metadata for a recording task pushed from the server.
@@ -248,7 +248,7 @@ struct RecorderConfig {
   std::string to_string() const;
 };
 
-}  // namespace utils
+}  // namespace recorder
 }  // namespace axon
 
-#endif  // AXON_UTILS_COMMON_TYPES_HPP
+#endif  // AXON_RECORDER_COMMON_TYPES_HPP

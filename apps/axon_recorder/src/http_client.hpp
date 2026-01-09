@@ -1,16 +1,17 @@
-#ifndef AXON_UTILS_HTTP_CLIENT_HPP
-#define AXON_UTILS_HTTP_CLIENT_HPP
+#ifndef AXON_RECORDER_HTTP_CLIENT_HPP
+#define AXON_RECORDER_HTTP_CLIENT_HPP
 
 #include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "common_types.hpp"
 
 namespace axon {
-namespace utils {
+namespace recorder {
 
 /**
  * Payload for the start recording callback.
@@ -171,7 +172,7 @@ private:
   Config config_;
 };
 
-}  // namespace utils
+}  // namespace recorder
 }  // namespace axon
 
-#endif  // AXON_UTILS_HTTP_CLIENT_HPP
+#endif  // AXON_RECORDER_HTTP_CLIENT_HPP

@@ -11,8 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "common_types.hpp"
-#include "config_parser.hpp"
+// Note: common_types has been moved to apps/axon_recorder
+// These helper functions are no longer available in core/axon_utils
+// They should be moved to apps/axon_recorder/test if needed
 
 namespace axon {
 namespace utils {
@@ -83,105 +84,8 @@ private:
   std::filesystem::path path_;
 };
 
-/**
- * Create a standard TaskConfig for testing.
- */
-inline TaskConfig make_test_task_config() {
-  TaskConfig config;
-  config.task_id = "test_task_123";
-  config.device_id = "test_device_001";
-  config.data_collector_id = "test_collector_001";
-  config.order_id = "test_order_001";
-  config.operator_name = "test.operator";
-  config.scene = "indoor";
-  config.subscene = "kitchen";
-  config.skills = {"cooking", "navigation"};
-  config.factory = "test_factory";
-  config.topics = {"/camera/image", "/imu/data", "/odom"};
-  config.start_callback_url = "http://localhost:8080/api/recording/start";
-  config.finish_callback_url = "http://localhost:8080/api/recording/finish";
-  config.user_token = "test_jwt_token";
-  config.cached_at = std::chrono::system_clock::now();
-  return config;
-}
-
-/**
- * Create a minimal TaskConfig with only required fields.
- */
-inline TaskConfig make_minimal_task_config(const std::string& task_id = "minimal_task") {
-  TaskConfig config;
-  config.task_id = task_id;
-  config.device_id = "device_001";
-  config.topics = {"/test_topic"};
-  config.cached_at = std::chrono::system_clock::now();
-  return config;
-}
-
-/**
- * Create a standard RecorderConfig for testing.
- * @param output_dir Directory for MCAP output files
- */
-inline RecorderConfig make_test_recorder_config(const std::string& output_dir) {
-  RecorderConfig config;
-
-  // Dataset config
-  config.dataset.path = output_dir;
-  config.dataset.mode = "create";
-
-  // Recording config
-  config.recording.max_disk_usage_gb = 10.0;
-
-  // Topic config
-  TopicConfig topic1;
-  topic1.name = "/camera/image";
-  topic1.message_type = "sensor_msgs/msg/Image";
-  topic1.batch_size = 10;
-  topic1.flush_interval_ms = 100;
-  config.topics.push_back(topic1);
-
-  TopicConfig topic2;
-  topic2.name = "/imu/data";
-  topic2.message_type = "sensor_msgs/msg/Imu";
-  topic2.batch_size = 100;
-  topic2.flush_interval_ms = 50;
-  config.topics.push_back(topic2);
-
-  // Logging config
-  config.logging.console_enabled = false;
-  config.logging.file_enabled = false;
-
-  // Upload config (disabled for tests)
-  config.upload.enabled = false;
-
-  return config;
-}
-
-/**
- * Create a minimal RecorderConfig with just one topic.
- * @param output_dir Directory for MCAP output files
- * @param topic_name Topic name to record
- */
-inline RecorderConfig make_minimal_recorder_config(
-  const std::string& output_dir, const std::string& topic_name = "/test_topic"
-) {
-  RecorderConfig config;
-  config.dataset.path = output_dir;
-  config.dataset.mode = "create";
-  config.recording.max_disk_usage_gb = 1.0;
-
-  TopicConfig topic;
-  topic.name = topic_name;
-  topic.message_type = "std_msgs/msg/String";
-  topic.batch_size = 10;
-  topic.flush_interval_ms = 100;
-  config.topics.push_back(topic);
-
-  config.logging.console_enabled = false;
-  config.logging.file_enabled = false;
-  config.upload.enabled = false;
-
-  return config;
-}
+// Note: TaskConfig and RecorderConfig helper functions have been moved to
+// apps/axon_recorder/test/test_helpers.hpp along with common_types
 
 /**
  * Generate a test message payload of specified size.
