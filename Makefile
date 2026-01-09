@@ -1,6 +1,6 @@
 # Makefile for Axon by ArcheBase
 # Supports ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling)
-# Located in ros/ directory - paths are relative to project root
+# Located at project root - all ROS commands run in ros/ directory
 
 .PHONY: all build test clean install build-ros1 build-ros2 test-libs help
 .DEFAULT_GOAL := help
@@ -8,8 +8,8 @@
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
 SHELL := /bin/bash
 
-# Project root (parent directory)
-PROJECT_ROOT := $(shell cd .. && pwd)
+# Project root (current directory)
+PROJECT_ROOT := $(shell pwd)
 
 # Detect ROS version
 ROS_VERSION ?= $(shell if [ -n "$$ROS_VERSION" ]; then echo $$ROS_VERSION; elif [ -n "$$ROS_DISTRO" ]; then echo 1; else echo 2; fi)
@@ -95,7 +95,7 @@ build-ros1:
 	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 	fi
-	@catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	@cd ros && catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 	@printf "%s\n" "$(GREEN)✓ Code built for ROS1$(NC)"
 
 # Build for ROS2
@@ -109,7 +109,7 @@ build-ros2:
 	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 	fi
-	@colcon build --base-paths . --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
+	@cd ros && colcon build --base-paths . --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
 	@printf "%s\n" "$(GREEN)✓ Code built for ROS2$(NC)"
 
 # Library tests
@@ -129,9 +129,9 @@ test:
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@if [ "$(ROS_VERSION)" = "2" ]; then \
-		rm -rf build install log; \
+		cd ros && rm -rf build install log; \
 	else \
-		catkin clean --yes; \
+		cd ros && catkin clean --yes; \
 	fi
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
@@ -146,16 +146,16 @@ install: build
 		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 		fi; \
-		colcon build --base-paths . \
+		cd ros && colcon build --base-paths . \
 			--cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			--install-base install \
 			--event-handlers console_direct+; \
-		printf "%s\n" "$(GREEN)✓ Package installed to install/ directory$(NC)"; \
+		printf "%s\n" "$(GREEN)✓ Package installed to ros/install/ directory$(NC)"; \
 	else \
 		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 		fi; \
-		catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE); \
+		cd ros && catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE); \
 		printf "%s\n" "$(GREEN)✓ Package installed$(NC)"; \
 	fi
 
@@ -163,7 +163,7 @@ install: build
 docker-build-ros1:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS1...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros1 -t axon:ros1 . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros1 -t axon:ros1 . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -180,7 +180,7 @@ docker-test-ros1: docker-build-ros1
 docker-build-ros2-humble:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Humble...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.humble -t axon:ros2-humble . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.humble -t axon:ros2-humble . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -197,7 +197,7 @@ docker-test-ros2-humble: docker-build-ros2-humble
 docker-build-ros2-jazzy:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Jazzy...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.jazzy -t axon:ros2-jazzy . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.jazzy -t axon:ros2-jazzy . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -214,7 +214,7 @@ docker-test-ros2-jazzy: docker-build-ros2-jazzy
 docker-build-ros2-rolling:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS2 Rolling...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
-	@cd $(PROJECT_ROOT) && DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.rolling -t axon:ros2-rolling . || \
+	@DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.ros2.rolling -t axon:ros2-rolling . || \
 		(echo "$(RED)Build failed. See docker/TROUBLESHOOTING.md$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ Docker image built$(NC)"
 
@@ -246,7 +246,7 @@ docker-test:
 # Run tests using docker-compose (all versions in parallel)
 docker-test-compose:
 	@printf "%s\n" "$(YELLOW)Running tests in all Docker containers (docker-compose)...$(NC)"
-	@cd $(PROJECT_ROOT)/docker && docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+	@cd docker && docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
 	@printf "%s\n" "$(GREEN)✓ All Docker tests passed!$(NC)"
 
 # Build in Docker
@@ -275,12 +275,12 @@ format:
 	@printf "%s\n" "$(YELLOW)Tip: Pre-commit hooks check formatting automatically on commit$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
 		printf "%s\n" "$(YELLOW)  Formatting cpp/ libraries...$(NC)"; \
-		find $(PROJECT_ROOT)/cpp/axon_mcap $(PROJECT_ROOT)/cpp/axon_uploader $(PROJECT_ROOT)/cpp/axon_logging \
+		find cpp/axon_mcap cpp/axon_uploader cpp/axon_logging \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 			xargs -0 clang-format -i; \
 		printf "%s\n" "$(YELLOW)  Formatting ros/src/ code...$(NC)"; \
-		find ./src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+		find ros/src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" -print0 2>/dev/null | \
 			xargs -0 clang-format -i; \
 		printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"; \
@@ -293,7 +293,7 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find ../cpp ./src \
+		find cpp ros/src \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \
@@ -301,10 +301,10 @@ lint:
 			-print0 2>/dev/null | \
 		xargs -0 cppcheck --enable=all \
 			--suppress=missingInclude \
-			-I../cpp/axon_mcap/include \
-			-I../cpp/axon_uploader/include \
-			-I../cpp/axon_logging/include \
-			-I$(PROJECT_ROOT)/ros/src/axon_recorder/include; \
+			-Icpp/axon_mcap/include \
+			-Icpp/axon_uploader/include \
+			-Icpp/axon_logging/include \
+			-Iros/src/axon_recorder/include; \
 		printf "%s\n" "$(GREEN)✓ C++ linting passed$(NC)"; \
 	else \
 		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \
@@ -331,7 +331,7 @@ full-test: test lint
 # =============================================================================
 
 # Coverage output directory
-COVERAGE_DIR := $(PROJECT_ROOT)/coverage
+COVERAGE_DIR := coverage
 
 # Build with coverage and run tests (ROS 2)
 coverage-ros2:
@@ -340,10 +340,10 @@ coverage-ros2:
 		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
 		exit 1; \
 	fi
-	@rm -rf $(PROJECT_ROOT)/build $(PROJECT_ROOT)/install $(PROJECT_ROOT)/log
+	@rm -rf ros/build ros/install ros/log
 	@mkdir -p $(COVERAGE_DIR)
-	@cd $(PROJECT_ROOT) && \
-		source /opt/ros/$${ROS_DISTRO}/setup.bash && \
+	@source /opt/ros/$${ROS_DISTRO}/setup.bash && \
+		cd ros && \
 		colcon build \
 			--packages-select axon_recorder \
 			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON && \
@@ -356,7 +356,7 @@ coverage-ros2:
 	IGNORE_FLAGS=""; \
 	if [ "$$LCOV_MAJOR" -ge 2 ]; then IGNORE_FLAGS="--ignore-errors mismatch,unused"; fi; \
 	lcov --capture \
-		--directory $(PROJECT_ROOT)/build \
+		--directory ros/build \
 		--output-file $(COVERAGE_DIR)/coverage_raw.info \
 		--rc lcov_branch_coverage=1 \
 		$$IGNORE_FLAGS || true; \
@@ -391,7 +391,7 @@ coverage-html: coverage-ros2
 # Run coverage in Docker (ROS 2 Humble)
 docker-coverage: docker-build-ros2-humble
 	@printf "%s\n" "$(YELLOW)Running coverage in ROS2 Humble Docker container...$(NC)"
-	@mkdir -p $(PROJECT_ROOT)/coverage
+	@mkdir -p $(COVERAGE_DIR)
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		-v $(PROJECT_ROOT):/workspace/axon \
 		-v $(PROJECT_ROOT)/coverage:/workspace/coverage \
@@ -399,14 +399,14 @@ docker-coverage: docker-build-ros2-humble
 		-e ROS_VERSION=2 \
 		axon:ros2-humble \
 		/usr/local/bin/run_integration.sh --coverage --coverage-output /workspace/coverage
-	@printf "%s\n" "$(GREEN)✓ Coverage report: $(PROJECT_ROOT)/coverage/coverage.info$(NC)"
+	@printf "%s\n" "$(GREEN)✓ Coverage report: $(COVERAGE_DIR)/coverage.info$(NC)"
 
 # Clean coverage data
 clean-coverage:
 	@printf "%s\n" "$(YELLOW)Cleaning coverage data...$(NC)"
 	@rm -rf $(COVERAGE_DIR)
-	@find $(PROJECT_ROOT)/build -name "*.gcda" -delete 2>/dev/null || true
-	@find $(PROJECT_ROOT)/build -name "*.gcno" -delete 2>/dev/null || true
+	@find ros/build -name "*.gcda" -delete 2>/dev/null || true
+	@find ros/build -name "*.gcno" -delete 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ Coverage data cleaned$(NC)"
 
 # Default coverage target
