@@ -127,12 +127,18 @@ configure_file(
 # =============================================================================
 message(STATUS "Building with MCAP backend")
 
-if(DEFINED ENABLE_COVERAGE)
-    set(AXON_ENABLE_COVERAGE ${ENABLE_COVERAGE} CACHE BOOL "Coverage enabled" FORCE)
-else()
-    set(AXON_ENABLE_COVERAGE OFF CACHE BOOL "Coverage enabled" FORCE)
+# Check for coverage flag (supports both AXON_ENABLE_COVERAGE and ENABLE_COVERAGE for compatibility)
+if(NOT DEFINED AXON_ENABLE_COVERAGE)
+    if(DEFINED ENABLE_COVERAGE)
+        # Legacy ENABLE_COVERAGE variable - map to AXON_ENABLE_COVERAGE
+        set(AXON_ENABLE_COVERAGE ${ENABLE_COVERAGE} CACHE BOOL "Enable coverage" FORCE)
+    else()
+        # Default to OFF
+        set(AXON_ENABLE_COVERAGE OFF CACHE BOOL "Enable coverage" FORCE)
+    endif()
 endif()
 
+# Configure axon_mcap coverage based on AXON_ENABLE_COVERAGE
 if(AXON_ENABLE_COVERAGE)
     set(AXON_MCAP_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_mcap" FORCE)
 else()
@@ -248,7 +254,7 @@ target_link_libraries(axon_recorder_node "${cpp_typesupport_target}")
 # =============================================================================
 # Install
 # =============================================================================
-install(TARGETS axon_recorder_lib axon_recorder_node axon_mcap
+install(TARGETS axon_recorder_lib axon_recorder_node axon_mcap axon_logging
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION lib/${PROJECT_NAME}

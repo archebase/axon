@@ -11,6 +11,7 @@
 # Options:
 #   --coverage              Build with coverage instrumentation and generate coverage report
 #   --coverage-output DIR   Coverage output directory (default: /workspace/coverage)
+#   --clean                 Clean build directory before building (useful for testing multiple ROS versions)
 #
 # Environment:
 #   ROS_VERSION             ROS version "1" or "2" (auto-detected from ROS_DISTRO if not set)
@@ -32,12 +33,17 @@ set -eo pipefail
 # =============================================================================
 
 ENABLE_COVERAGE=false
+CLEAN_BUILD=false
 COVERAGE_OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --coverage)
             ENABLE_COVERAGE=true
+            shift
+            ;;
+        --clean)
+            CLEAN_BUILD=true
             shift
             ;;
         --coverage-output)
@@ -50,7 +56,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "ERROR: Unexpected argument: $1" >&2
-            echo "Usage: ./run_integration.sh [--coverage] [--coverage-output DIR]"
+            echo "Usage: ./run_integration.sh [--coverage] [--coverage-output DIR] [--clean]"
             exit 1
             ;;
     esac
@@ -151,6 +157,20 @@ else
     echo "Part 1: Building package..."
 fi
 echo "============================================"
+
+# Clean build directory if requested (useful for testing multiple ROS versions)
+if [ "$CLEAN_BUILD" = true ]; then
+    echo "Cleaning build directory..."
+    if [ "$ROS_VERSION" = "1" ]; then
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/build"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/devel"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/logs"
+    else
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/build"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/install"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/log"
+    fi
+fi
 
 # Build package (with or without coverage)
 if [ "$ENABLE_COVERAGE" = true ]; then

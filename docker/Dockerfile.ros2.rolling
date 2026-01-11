@@ -9,6 +9,8 @@ FROM ros:rolling-ros-base
 # Install system dependencies and ROS build tools
 RUN apt-get update && apt-get install -y \
     build-essential \
+    gcc \
+    g++ \
     cmake \
     pkg-config \
     curl \
@@ -88,6 +90,11 @@ RUN apt-get update && apt-get install -y \
 
 # Set working directory
 WORKDIR /workspace
+
+# Set compiler environment variables for CMake
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
+
 
 # Copy test scripts first (for better Docker layer caching)
 COPY docker/scripts/ /usr/local/bin/

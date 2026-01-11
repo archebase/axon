@@ -84,6 +84,29 @@ help:
 	@printf "%s\n" "  $(BLUE)make format$(NC)            - Format with clang-format"
 	@printf "%s\n" "  $(BLUE)make lint$(NC)              - Lint with cppcheck"
 	@echo ""
+	@printf "%s\n" "$(YELLOW)CI Testing (All Docker-based):$(NC)"
+	@printf "%s\n" "  $(BLUE)make ci$(NC)                - Quick CI (format + lint + C++ tests)"
+	@printf "%s\n" "  $(BLUE)make ci-quick$(NC)          - Fastest check (format + lint only)"
+	@printf "%s\n" "  $(BLUE)make ci-all$(NC)            - Full CI validation (all tests)"
+	@printf "%s\n" "  $(BLUE)make ci-cpp$(NC)            - C++ library tests (unit + integration)"
+	@printf "%s\n" "  $(BLUE)make ci-cpp-unit$(NC)       - C++ unit tests only"
+	@printf "%s\n" "  $(BLUE)make ci-cpp-integration$(NC) - C++ integration tests (with MinIO)"
+	@printf "%s\n" "  $(BLUE)make ci-ros$(NC)            - ROS tests (all distros)"
+	@printf "%s\n" "  $(BLUE)make ci-ros1$(NC)           - ROS1 Noetic tests"
+	@printf "%s\n" "  $(BLUE)make ci-ros2$(NC)           - ROS2 (Humble + Jazzy + Rolling) tests"
+	@printf "%s\n" "  $(BLUE)make ci-coverage$(NC)       - Coverage tests (C++ + ROS2)"
+	@printf "%s\n" "  $(BLUE)make ci-e2e$(NC)            - End-to-end tests"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)Docker Testing:$(NC)"
+	@printf "%s\n" "  $(BLUE)make docker-test-cpp$(NC)   - C++ tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-all$(NC)   - All ROS distros in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-coverage$(NC)   - ROS2 coverage in Docker"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)Utility:$(NC)"
+	@printf "%s\n" "  $(BLUE)make coverage-merge$(NC)    - Merge all coverage reports"
+	@printf "%s\n" "  $(BLUE)make coverage-html-cpp$(NC) - Generate C++ coverage HTML"
+	@printf "%s\n" "  $(BLUE)make format-ci$(NC)         - Check code formatting (CI style)"
+	@echo ""
 	@printf "%s\n" "$(YELLOW)Current:$(NC) ROS=$(ROS_VERSION) DISTRO=$(ROS_DISTRO) TYPE=$(BUILD_TYPE)"
 
 # =============================================================================
@@ -340,7 +363,7 @@ docker-test-ros1: docker-build-ros1
 		-e ROS_DISTRO=noetic \
 		-e ROS_VERSION=1 \
 		axon:ros1 \
-		/usr/local/bin/run_integration.sh
+		/usr/local/bin/run_integration.sh --clean
 	@printf "%s\n" "$(GREEN)✓ ROS1 tests passed$(NC)"
 
 docker-build-ros2-humble:
@@ -357,7 +380,7 @@ docker-test-ros2-humble: docker-build-ros2-humble
 		-e ROS_DISTRO=humble \
 		-e ROS_VERSION=2 \
 		axon:ros2-humble \
-		/usr/local/bin/run_integration.sh
+		/usr/local/bin/run_integration.sh --clean
 	@printf "%s\n" "$(GREEN)✓ ROS2 Humble tests passed$(NC)"
 
 docker-build-ros2-jazzy:
@@ -374,7 +397,7 @@ docker-test-ros2-jazzy: docker-build-ros2-jazzy
 		-e ROS_DISTRO=jazzy \
 		-e ROS_VERSION=2 \
 		axon:ros2-jazzy \
-		/usr/local/bin/run_integration.sh
+		/usr/local/bin/run_integration.sh --clean
 	@printf "%s\n" "$(GREEN)✓ ROS2 Jazzy tests passed$(NC)"
 
 docker-build-ros2-rolling:
@@ -391,7 +414,7 @@ docker-test-ros2-rolling: docker-build-ros2-rolling
 		-e ROS_DISTRO=rolling \
 		-e ROS_VERSION=2 \
 		axon:ros2-rolling \
-		/usr/local/bin/run_integration.sh
+		/usr/local/bin/run_integration.sh --clean
 	@printf "%s\n" "$(GREEN)✓ ROS2 Rolling tests passed$(NC)"
 
 docker-build: docker-build-ros1 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling
@@ -409,10 +432,10 @@ docker-test:
 		$(MAKE) docker-test-ros2-humble; \
 	fi
 
-# Run tests using docker-compose (all versions in parallel)
+# Run tests using docker compose (all versions in parallel)
 docker-test-compose:
-	@printf "%s\n" "$(YELLOW)Running tests in all Docker containers (docker-compose)...$(NC)"
-	@cd docker && docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+	@printf "%s\n" "$(YELLOW)Running tests in all Docker containers (docker compose)...$(NC)"
+	@cd docker && docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 	@printf "%s\n" "$(GREEN)✓ All Docker tests passed!$(NC)"
 
 # =============================================================================
@@ -580,3 +603,218 @@ cov-html: docker-coverage
 	@open $(COVERAGE_DIR)/html/index.html 2>/dev/null || true
 
 clean-cov: clean-coverage
+
+# =============================================================================
+# CI Testing Targets (All Docker-based for Consistency)
+# =============================================================================
+# These targets mirror what CI runs, allowing developers to test locally
+# before pushing. All tests run in Docker to match CI environment exactly.
+# See .github/workflows/ for CI workflow definitions.
+
+# ci: Quick CI check (format + lint + C++ tests in Docker)
+ci: format-ci lint docker-test-cpp
+	@printf "%s\n" "$(GREEN)✓ Quick CI checks passed!$(NC)"
+	@printf "%s\n" "$(YELLOW)Run 'make ci-all' for full CI validation (including ROS and E2E)$(NC)"
+
+# ci-quick: Fastest CI check (format + lint only, no tests)
+ci-quick: format-ci lint
+	@printf "%s\n" "$(GREEN)✓ Format and lint checks passed$(NC)"
+	@printf "%s\n" "$(YELLOW)Run 'make ci' for quick tests or 'make ci-all' for full validation$(NC)"
+
+# ci-all: Run complete CI test suite (all checks in Docker)
+ci-all: format-ci lint docker-test-all docker-test-ros docker-e2e
+	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
+	@printf "%s\n" "$(GREEN)║     ✓ ALL CI CHECKS PASSED!                               ║$(NC)"
+	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
+
+# ci-cpp: C++ library tests in Docker (unit + integration)
+ci-cpp: docker-test-cpp
+	@printf "%s\n" "$(GREEN)✓ C++ library tests passed$(NC)"
+	@printf "%s\n" "$(YELLOW)For coverage: make ci-coverage-cpp$(NC)"
+
+# ci-cpp-unit: C++ unit tests only in Docker
+ci-cpp-unit: docker-build-cpp
+	@printf "%s\n" "$(YELLOW)Running C++ unit tests in Docker...$(NC)"
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-e AXON_ENABLE_COVERAGE=OFF \
+		axon:cpp-test \
+		/bin/bash -c "cd /workspace/axon/core && \
+			for lib in axon_mcap axon_logging; do \
+				echo \"Testing \$\$lib...\" && \
+				cd build_\$$\$lib && \
+				ctest --output-on-failure -L unit || exit 1; \
+			done"
+	@printf "%s\n" "$(GREEN)✓ C++ unit tests passed$(NC)"
+
+# ci-cpp-integration: C++ integration tests in Docker (with MinIO)
+ci-cpp-integration: docker-build-cpp
+	@printf "%s\n" "$(YELLOW)Running C++ integration tests in Docker with MinIO...$(NC)"
+	@docker run -d --name minio-ci \
+		--network host \
+		-e MINIO_ROOT_USER=minioadmin \
+		-e MINIO_ROOT_PASSWORD=minioadmin \
+		quay.io/minio/minio server /data --console-address ":9001" || true
+	@sleep 3
+	@docker run --rm --network host \
+		-e MC_HOST_local=http://minioadmin:minioadmin@localhost:9000 \
+		quay.io/minio/mc mb local/axon-raw-data --ignore-existing || true
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		--network host \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-e MINIO_ENDPOINT=localhost:9000 \
+		-e MINIO_ACCESS_KEY=minioadmin \
+		-e MINIO_SECRET_KEY=minioadmin \
+		axon:cpp-test \
+		/bin/bash -c "cd /workspace/axon/core/build_uploader && \
+			ctest --output-on-failure -L integration" || \
+		(docker stop minio-ci 2>/dev/null || true && \
+		 docker rm minio-ci 2>/dev/null || true && \
+		 exit 1)
+	@docker stop minio-ci 2>/dev/null || true
+	@docker rm minio-ci 2>/dev/null || true
+	@printf "%s\n" "$(GREEN)✓ C++ integration tests passed$(NC)"
+
+# ci-ros: ROS tests in Docker (all distros)
+ci-ros: docker-test-ros
+	@printf "%s\n" "$(GREEN)✓ ROS tests passed$(NC)"
+
+# ci-ros1: ROS1 tests in Docker
+ci-ros1: docker-test-ros1
+	@printf "%s\n" "$(GREEN)✓ ROS1 tests passed$(NC)"
+
+# ci-ros2: ROS2 tests in Docker (all distros)
+ci-ros2: docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling
+	@printf "%s\n" "$(GREEN)✓ ROS2 tests passed$(NC)"
+
+# ci-docker: Alias for docker-test-all
+ci-docker: docker-test-all
+	@printf "%s\n" "$(GREEN)✓ All Docker tests passed$(NC)"
+
+# ci-coverage-cpp: C++ coverage in Docker
+ci-coverage-cpp: docker-build-cpp
+	@printf "%s\n" "$(YELLOW)Running C++ coverage in Docker...$(NC)"
+	@mkdir -p $(COVERAGE_DIR)
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-v $(PROJECT_ROOT)/coverage:/workspace/coverage \
+		-e AXON_ENABLE_COVERAGE=ON \
+		axon:cpp-test \
+		/bin/bash -c "cd /workspace/axon/core && \
+			for lib in axon_mcap axon_uploader axon_logging; do \
+				echo \"Building \$\$lib with coverage...\" && \
+				mkdir -p build_\$$\$lib && \
+				cd build_\$$\$lib && \
+				cmake ../\$$\$lib \
+					-DCMAKE_BUILD_TYPE=Debug \
+					-DAXON_ENABLE_COVERAGE=ON \
+					-DAXON_REPO_ROOT=/workspace/axon && \
+				make -j\$$(nproc) && \
+				ctest --output-on-failure && \
+				lcov --capture --directory . \
+					--output-file /workspace/coverage/\$${lib}_coverage.info \
+					--rc lcov_branch_coverage=1 || true && \
+				cd /workspace/axon/core; \
+			done" || \
+		(printf "%s\n" "$(RED)✗ Coverage tests failed$(NC)" && exit 1)
+	@printf "%s\n" "$(GREEN)✓ C++ coverage complete: $(COVERAGE_DIR)/*.info$(NC)"
+	@printf "%s\n" "$(YELLOW)View HTML report: make coverage-html-cpp$(NC)"
+
+# ci-coverage-ros: ROS2 coverage in Docker (Humble only for speed)
+ci-coverage-ros: docker-coverage
+	@printf "%s\n" "$(GREEN)✓ ROS2 coverage complete$(NC)"
+
+# ci-coverage: All coverage tests (C++ + ROS2)
+ci-coverage: ci-coverage-cpp ci-coverage-ros
+	@printf "%s\n" "$(YELLOW)Merging coverage reports...$(NC)"
+	@lcov -o $(COVERAGE_DIR)/coverage_merged.info \
+		-a $(COVERAGE_DIR)/axon_mcap_coverage.info 2>/dev/null || true \
+		-a $(COVERAGE_DIR)/axon_uploader_coverage.info 2>/dev/null || true \
+		-a $(COVERAGE_DIR)/axon_logging_coverage.info 2>/dev/null || true \
+		-a $(COVERAGE_DIR)/coverage.info 2>/dev/null || true
+	@printf "%s\n" "$(GREEN)✓ All coverage complete: $(COVERAGE_DIR)/coverage_merged.info$(NC)"
+	@printf "%s\n" "$(YELLOW)View HTML report: make coverage-html$(NC)"
+
+# ci-e2e: E2E tests in Docker
+ci-e2e: docker-e2e
+	@printf "%s\n" "$(GREEN)✓ E2E tests passed$(NC)"
+
+# =============================================================================
+# Docker Test Targets (Mirroring CI)
+# =============================================================================
+
+# docker-test-cpp: C++ library tests in Docker
+docker-test-cpp: docker-build-cpp
+	@printf "%s\n" "$(YELLOW)Running C++ tests in Docker...$(NC)"
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		axon:cpp-test \
+		/bin/bash -c "cd /workspace/axon/core && \
+			for lib in axon_mcap axon_uploader axon_logging; do \
+				echo \"Testing \$\$lib...\" && \
+				cd build_\$$\$lib && \
+				ctest --output-on-failure || exit 1; \
+			done"
+	@printf "%s\n" "$(GREEN)✓ C++ tests passed$(NC)"
+
+# docker-build-cpp: Build C++ test Docker image
+docker-build-cpp:
+	@printf "%s\n" "$(YELLOW)Building C++ test Docker image...$(NC)"
+	@DOCKER_BUILDKIT=1 docker build \
+		-f docker/Dockerfile.cpp-test \
+		-t axon:cpp-test \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		.
+	@printf "%s\n" "$(GREEN)✓ C++ test image built$(NC)"
+
+# docker-test-ros: Run all ROS tests in Docker
+docker-test-ros: docker-test-ros1 docker-test-ros2-humble
+	@printf "%s\n" "$(GREEN)✓ All ROS tests passed$(NC)"
+
+# docker-e2e: Run E2E tests sequentially for all ROS versions
+docker-e2e:
+	@printf "%s\n" "$(YELLOW)Running E2E tests sequentially...$(NC)"
+	@$(MAKE) docker-test-ros1
+	@$(MAKE) docker-test-ros2-humble
+	@$(MAKE) docker-test-ros2-jazzy
+	@$(MAKE) docker-test-ros2-rolling
+	@printf "%s\n" "$(GREEN)✓ All E2E tests passed$(NC)"
+
+# =============================================================================
+# Utility Targets for CI Testing
+# =============================================================================
+
+# coverage-html-cpp: Generate HTML coverage report for C++
+coverage-html-cpp:
+	@printf "%s\n" "$(YELLOW)Generating C++ coverage HTML report...$(NC)"
+	@genhtml $(COVERAGE_DIR)/axon_mcap_coverage.info \
+		$(COVERAGE_DIR)/axon_uploader_coverage.info \
+		$(COVERAGE_DIR)/axon_logging_coverage.info \
+		-o $(COVERAGE_DIR)/html --rc lcov_branch_coverage=1 2>/dev/null || \
+		genhtml $(COVERAGE_DIR)/coverage_merged.info \
+		-o $(COVERAGE_DIR)/html --rc lcov_branch_coverage=1
+	@printf "%s\n" "$(GREEN)✓ Coverage report: $(COVERAGE_DIR)/html/index.html$(NC)"
+
+# format-ci: Check code formatting (CI style check, no modifications)
+format-ci:
+	@printf "%s\n" "$(YELLOW)Checking code formatting...$(NC)"
+	@find core middlewares/ros1 middlewares/ros2 \
+		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+		! -path "*/build/*" ! -path "*/build_*/*" ! -path "*/install/*" ! -path "*/devel/*" \
+		-print0 2>/dev/null | \
+		xargs -0 clang-format --dry-run --Werror > /dev/null 2>&1 || \
+		(printf "%s\n" "$(RED)✗ Code formatting check failed$(NC)" && \
+		 printf "%s\n" "$(YELLOW)Run 'make format' to fix formatting issues$(NC)" && \
+		 exit 1)
+	@printf "%s\n" "$(GREEN)✓ Code formatting check passed$(NC)"
+
+# coverage-merge: Merge coverage from all libraries into one report
+coverage-merge:
+	@printf "%s\n" "$(YELLOW)Merging coverage reports...$(NC)"
+	@mkdir -p $(COVERAGE_DIR)
+	@lcov -o $(COVERAGE_DIR)/coverage_merged.info \
+		-a $(COVERAGE_DIR)/axon_mcap_coverage.info 2>/dev/null || true \
+		-a $(COVERAGE_DIR)/axon_uploader_coverage.info 2>/dev/null || true \
+		-a $(COVERAGE_DIR)/axon_logging_coverage.info 2>/dev/null || true \
+		-a $(COVERAGE_DIR)/coverage.info 2>/dev/null || true
+	@printf "%s\n" "$(GREEN)✓ Coverage merged: $(COVERAGE_DIR)/coverage_merged.info$(NC)"

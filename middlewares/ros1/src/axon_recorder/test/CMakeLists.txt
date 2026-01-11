@@ -34,6 +34,18 @@ enable_testing()
 set(AXON_TEST_TIMEOUT 60 CACHE STRING "Default test timeout in seconds")
 
 # =============================================================================
+# Helper: Set RPATH for test executables
+# =============================================================================
+# This ensures tests can find shared libraries (like axon_logging) in the build tree
+macro(axon_set_test_rpath TARGET)
+    # Add build directory to RPATH so tests find libraries before install
+    set_target_properties(${TARGET} PROPERTIES
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/axon_mcap:${CMAKE_BINARY_DIR}/axon_logging"
+        INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib"
+    )
+endmacro()
+
+# =============================================================================
 # ROS 1 Test Support
 # =============================================================================
 macro(axon_add_ros1_test)
@@ -43,6 +55,7 @@ macro(axon_add_ros1_test)
     target_include_directories(${TEST_NAME} PRIVATE ${catkin_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/../src)
     target_link_libraries(${TEST_NAME} GTest::gtest GTest::gtest_main ${TEST_LIBS})
     axon_add_coverage(${TEST_NAME})
+    axon_set_test_rpath(${TEST_NAME})
     add_dependencies(${TEST_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS})
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT} LABELS "integration")
@@ -73,6 +86,7 @@ foreach(_TEST_SOURCE ${_UNIT_TEST_SOURCES})
     axon_add_coverage(${_TEST_NAME})
     target_include_directories(${_TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
     target_link_libraries(${_TEST_NAME} GTest::gtest GTest::gtest_main Threads::Threads axon_logging axon_recorder_test_support)
+    axon_set_test_rpath(${_TEST_NAME})
     gtest_discover_tests(${_TEST_NAME} PROPERTIES LABELS "unit" TIMEOUT ${AXON_TEST_TIMEOUT})
 endforeach()
 

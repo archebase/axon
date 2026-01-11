@@ -83,6 +83,30 @@ if(COMMAND axon_add_coverage)
 endif()
 
 # =============================================================================
+# Install
+# =============================================================================
+include(GNUInstallDirs)
+install(TARGETS axon_logging
+    EXPORT axon_logging_targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/axon_logging
+    FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
+)
+
+# Export the library for use by other packages
+install(EXPORT axon_logging_targets
+    FILE axon_logging_targets.cmake
+    NAMESPACE axon::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/axon_logging
+)
+
+# =============================================================================
 # Tests (optional)
 # =============================================================================
 option(AXON_LOGGING_BUILD_TESTS "Build logging tests" OFF)

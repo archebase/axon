@@ -22,7 +22,8 @@ set(AXON_ROS2 TRUE)
 set(AXON_ROS_VERSION 2)
 message(STATUS "Building tests with ROS 2 integration")
 
-find_package(GTest REQUIRED)
+# Note: ament_add_gtest handles GTest discovery automatically
+# We don't call find_package(GTest) here to avoid conflicts
 find_package(ament_cmake_gtest REQUIRED)
 
 if(NOT TARGET axon_logging)
@@ -31,6 +32,18 @@ endif()
 
 enable_testing()
 set(AXON_TEST_TIMEOUT 60 CACHE STRING "Default test timeout in seconds")
+
+# =============================================================================
+# Helper: Set RPATH for test executables
+# =============================================================================
+# This ensures tests can find shared libraries (like axon_logging) in the build tree
+macro(axon_set_test_rpath TARGET)
+    # Add build directory to RPATH so tests find libraries before install
+    set_target_properties(${TARGET} PROPERTIES
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/axon_mcap:${CMAKE_BINARY_DIR}/axon_logging"
+        INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib"
+    )
+endmacro()
 
 # =============================================================================
 # ROS 2 Test Support
@@ -69,17 +82,19 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unit")
     file(GLOB _UNIT_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/unit/test_*.cpp")
     foreach(_TEST_SOURCE ${_UNIT_TEST_SOURCES})
         get_filename_component(_TEST_NAME ${_TEST_SOURCE} NAME_WE)
-        ament_add_gtest(${_TEST_NAME} ${_TEST_SOURCE} SKIP_TEST)
+        ament_add_gtest(${_TEST_NAME} ${_TEST_SOURCE})
         target_compile_definitions(${_TEST_NAME} PRIVATE AXON_ROS2)
         target_include_directories(${_TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-        target_link_libraries(${_TEST_NAME} GTest::gtest GTest::gtest_main Threads::Threads axon_logging axon_recorder_test_support)
+        target_link_libraries(${_TEST_NAME} Threads::Threads axon_logging axon_recorder_test_support)
+        axon_add_coverage(${_TEST_NAME})
+        axon_set_test_rpath(${_TEST_NAME})
     endforeach()
 endif()
 
 # =============================================================================
 # Integration Tests
 # =============================================================================
-set(ROS2_TEST_LIBS GTest::gtest GTest::gtest_main Threads::Threads rclcpp::rclcpp ${std_msgs_TARGETS} ${geometry_msgs_TARGETS})
+set(ROS2_TEST_LIBS Threads::Threads rclcpp::rclcpp ${std_msgs_TARGETS} ${geometry_msgs_TARGETS})
 
 # MCAP test support library
 add_library(axon_recorder_test_support_mcap STATIC
@@ -95,56 +110,66 @@ target_compile_definitions(test_recording_workflow PRIVATE AXON_ROS2)
 target_include_directories(test_recording_workflow PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(test_recording_workflow axon_recorder_test_support)
 axon_add_coverage(test_recording_workflow)
+axon_set_test_rpath(test_recording_workflow)
 
 ament_add_gtest(test_recording_session integration/test_recording_session.cpp)
 target_compile_definitions(test_recording_session PRIVATE AXON_ROS2)
 target_include_directories(test_recording_session PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(test_recording_session axon_recorder_test_support_mcap)
 axon_add_coverage(test_recording_session)
+axon_set_test_rpath(test_recording_session)
 
 ament_add_gtest(test_metadata_injector integration/test_metadata_injector.cpp)
 target_compile_definitions(test_metadata_injector PRIVATE AXON_ROS2)
 target_include_directories(test_metadata_injector PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(test_metadata_injector axon_recorder_test_support_mcap)
 axon_add_coverage(test_metadata_injector)
+axon_set_test_rpath(test_metadata_injector)
 
 # ROS 2 specific tests
-set(ROS2_INT_LIBS axon_recorder_lib Threads::Threads ${Boost_LIBRARIES} rclcpp::rclcpp ${std_msgs_TARGETS} GTest::gtest GTest::gtest_main)
+set(ROS2_INT_LIBS axon_recorder_lib Threads::Threads ${Boost_LIBRARIES} rclcpp::rclcpp ${std_msgs_TARGETS})
 
 ament_add_gtest(test_ros_introspection_ros2 integration/test_ros_introspection.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../src/ros_introspection.cpp)
 target_compile_definitions(test_ros_introspection_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_ros_introspection_ros2 ${ROS2_TEST_LIBS})
 axon_add_coverage(test_ros_introspection_ros2)
+axon_set_test_rpath(test_ros_introspection_ros2)
 
 ament_add_gtest(test_message_factory_ros2 integration/test_message_factory.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../src/message_factory.cpp)
 target_compile_definitions(test_message_factory_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_message_factory_ros2 ${ROS2_TEST_LIBS})
 axon_add_coverage(test_message_factory_ros2)
+axon_set_test_rpath(test_message_factory_ros2)
 
 ament_add_gtest(test_service_adapter_ros2 integration/test_service_adapter.cpp)
 target_compile_definitions(test_service_adapter_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_service_adapter_ros2 ${ROS2_INT_LIBS})
 axon_add_coverage(test_service_adapter_ros2)
+axon_set_test_rpath(test_service_adapter_ros2)
 
 ament_add_gtest(test_ros_interface_ros2 integration/test_ros_interface.cpp)
 target_compile_definitions(test_ros_interface_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_ros_interface_ros2 ${ROS2_INT_LIBS} ${geometry_msgs_TARGETS} ${sensor_msgs_TARGETS})
 axon_add_coverage(test_ros_interface_ros2)
+axon_set_test_rpath(test_ros_interface_ros2)
 
 ament_add_gtest(test_recorder_node_lifecycle_ros2 integration/test_recorder_node_lifecycle.cpp)
 target_compile_definitions(test_recorder_node_lifecycle_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_recorder_node_lifecycle_ros2 ${ROS2_INT_LIBS})
 axon_add_coverage(test_recorder_node_lifecycle_ros2)
+axon_set_test_rpath(test_recorder_node_lifecycle_ros2)
 
 ament_add_gtest(test_recorder_node_recording_ros2 integration/test_recorder_node_recording.cpp)
 target_compile_definitions(test_recorder_node_recording_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_recorder_node_recording_ros2 ${ROS2_INT_LIBS})
 axon_add_coverage(test_recorder_node_recording_ros2)
+axon_set_test_rpath(test_recorder_node_recording_ros2)
 
 ament_add_gtest(test_recording_services_ros2 integration/test_recording_services.cpp)
 target_compile_definitions(test_recording_services_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_recording_services_ros2 ${ROS2_INT_LIBS})
 axon_add_coverage(test_recording_services_ros2)
+axon_set_test_rpath(test_recording_services_ros2)
 
 # Performance tests (optional)
 add_subdirectory(perf EXCLUDE_FROM_ALL)
