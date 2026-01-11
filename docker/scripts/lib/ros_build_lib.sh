@@ -82,7 +82,7 @@ ros_build_package() {
         # ROS 1 - Use catkin build
         ros_build_log "INFO" "Building with catkin (ROS 1)..."
         
-        local catkin_ws="${workspace_root}/ros"
+        local catkin_ws="${workspace_root}/middlewares"
         if [ ! -d "$catkin_ws" ]; then
             ros_build_error "Catkin workspace not found at $catkin_ws"
         fi
@@ -167,11 +167,11 @@ ros_build_package() {
             ros_build_error "Workspace root not found at $workspace_root"
         fi
         
-        # For ROS 2, build from the ros subdirectory if it exists (matches original behavior)
+        # For ROS 2, build from the middlewares subdirectory if it exists (matches original behavior)
         # This ensures build artifacts are in the same location as before
         local build_dir="$workspace_root"
-        if [ -d "${workspace_root}/ros" ]; then
-            build_dir="${workspace_root}/ros"
+        if [ -d "${workspace_root}/middlewares" ]; then
+            build_dir="${workspace_root}/middlewares"
         fi
         
         cd "$build_dir"
@@ -205,7 +205,7 @@ ros_build_package() {
             # Also remove any CMake cache files that might persist
             find . -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
             find . -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
-            # Clean coverage data files in ros directory
+            # Clean coverage data files in middlewares directory
             find . -type f -name "*.gcda" -delete 2>/dev/null || true
             find . -type f -name "*.gcno" -delete 2>/dev/null || true
             # Force CMake reconfigure by removing colcon's dependency tracking

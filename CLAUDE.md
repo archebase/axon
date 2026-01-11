@@ -115,7 +115,7 @@ IDLE → READY → RECORDING ↔ PAUSED
 
 ### Core Components
 
-**1. ROS Recorder Node** ([ros/src/axon_recorder/](ros/src/axon_recorder/))
+**1. ROS Recorder Node** ([middlewares/src/axon_recorder/](middlewares/src/axon_recorder/))
    - Service-based API for server integration
    - State machine with thread-safe transitions
    - Worker thread pool with per-topic SPSC queues
@@ -220,8 +220,8 @@ Keep descriptions under 72 characters. Use imperative mood ("add" not "added").
 ## Testing Strategy
 
 - **Unit Tests**: Core library components ([core/axon_mcap/test/](core/axon_mcap/test/), [core/axon_logging/test/](core/axon_logging/test/), etc.)
-- **Integration Tests**: ROS service API, state machine transitions ([ros/src/axon_recorder/test/integration/](ros/src/axon_recorder/test/integration/))
-- **E2E Tests**: Full recording workflow with Docker ([ros/src/axon_recorder/test/e2e/](ros/src/axon_recorder/test/e2e/))
+- **Integration Tests**: ROS service API, state machine transitions ([middlewares/src/axon_recorder/test/integration/](middlewares/src/axon_recorder/test/integration/))
+- **E2E Tests**: Full recording workflow with Docker ([middlewares/src/axon_recorder/test/e2e/](middlewares/src/axon_recorder/test/e2e/))
 
 **Running Tests:**
 ```bash
@@ -283,7 +283,7 @@ When generating PR descriptions, use the following structure:
 - YAML-based configuration files for recording tasks
 - Environment variable support for all settings
 - Cascading config resolution: env → config → ROS params
-- Default configurations in [ros/src/axon_recorder/config/](ros/src/axon_recorder/config/)
+- Default configurations in [middlewares/src/axon_recorder/config/](middlewares/src/axon_recorder/config/)
 
 ## Key Technologies
 

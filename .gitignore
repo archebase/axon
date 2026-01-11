@@ -108,7 +108,7 @@ src/bridge/target/
 target
 
 # log files
-ros/log
+middlewares/log
 
 # Performance test output (flamegraphs, recordings)
 docker/output/*

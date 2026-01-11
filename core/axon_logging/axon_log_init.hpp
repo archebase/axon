@@ -16,7 +16,7 @@ namespace logging {
 /**
  * Logging configuration for axon applications.
  * This covers console and file sinks (core logging).
- * ROS sink is configured separately in ros/axon_recorder/.
+ * ROS sink is configured separately in middlewares/axon_recorder/.
  */
 struct LoggingConfig {
   // Console sink

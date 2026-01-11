@@ -631,7 +631,7 @@ Configuration priority (highest to lowest):
 ## Appendix: Service File Locations
 
 ```
-ros/axon_recorder/srv/
+middlewares/axon_recorder/srv/
 ├── CachedRecordingConfig.srv   # Configuration caching
 ├── IsRecordingReady.srv        # Recording readiness query
 ├── RecordingControl.srv   # Unified control

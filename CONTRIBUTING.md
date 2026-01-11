@@ -107,7 +107,6 @@ git clang-format
 
 **Option 2: Format all files**
 ```bash
-cd ros
 make format
 ```
 
@@ -218,13 +217,11 @@ docs: update contributing guide
 
 **Quick test (C++ libraries only):**
 ```bash
-cd ros
 make test
 ```
 
 **Full test suite with Docker:**
 ```bash
-cd ros
 make docker-test-all
 ```
 
@@ -239,7 +236,6 @@ make docker-test-ros2-rolling  # ROS 2 Rolling
 ### Coverage Reports
 
 ```bash
-cd ros
 make coverage-html
 open ../coverage/html/index.html
 ```
@@ -258,7 +254,6 @@ open ../coverage/html/index.html
 ### Quick Build
 
 ```bash
-cd ros
 make build
 ```
 
@@ -279,7 +274,6 @@ make build
 ### Docker Build
 
 ```bash
-cd ros
 make docker-build
 ```
 
@@ -292,14 +286,14 @@ Axon/
 ├── .clang-format          # Code formatting rules
 ├── .github/               # GitHub Actions CI workflows
 ├── cmake/                 # CMake modules (ClangFormat.cmake, etc.)
-├── core/                   # C++ shared libraries
+├── core/                  # C++ shared libraries
 │   ├── axon_logging/      # Logging infrastructure
 │   ├── axon_mcap/         # MCAP writer wrapper
 │   └── axon_uploader/     # S3 edge uploader
 ├── docs/                  # Design documents
 ├── docker/                # Docker build files
 ├── githooks/              # Shared git hooks
-├── ros/                   # ROS packages
+├── middlewares/           # ROS packages
 │   └── src/axon_recorder/ # Main ROS recorder package
 └── scripts/               # Utility scripts
 ```

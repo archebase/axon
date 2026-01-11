@@ -139,7 +139,7 @@ ros_workspace_source_workspace() {
         # ROS 1 - Check catkin devel directories
         workspace_paths=(
             "/root/target_ws/devel"
-            "${workspace_root}/ros/devel"
+            "${workspace_root}/middlewares/devel"
             "${workspace_root}/devel"
             "/workspace/catkin_ws/devel"
         )
@@ -147,7 +147,7 @@ ros_workspace_source_workspace() {
         # ROS 2 - Check colcon install directories
         workspace_paths=(
             "/root/target_ws/install"
-            "${workspace_root}/ros/install"
+            "${workspace_root}/middlewares/install"
             "${workspace_root}/install"
         )
     fi

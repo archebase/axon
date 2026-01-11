@@ -41,22 +41,22 @@ sed -i 's|^SF:/workspace/axon/|SF:|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./core/|SF:core/|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/core/|SF:core/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
+sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:middlewares/src/axon_recorder/|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/build/|SF:build/|' "$COVERAGE_FILE"
 
 # -----------------------------------------------------------------------------
 # Step 4: Cleanup remaining relative paths
 # -----------------------------------------------------------------------------
 sed -i 's|^SF:catkin_ws/core/|SF:core/|' "$COVERAGE_FILE"
-sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
+sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:middlewares/src/axon_recorder/|' "$COVERAGE_FILE"
 sed -i 's|^SF:Axon/|SF:|' "$COVERAGE_FILE"
 
 # -----------------------------------------------------------------------------
-# Step 5: Fix incorrect normalizations (ros/axon_recorder/ → ros/src/axon_recorder/)
+# Step 5: Fix incorrect normalizations (middlewares/axon_recorder/ → middlewares/src/axon_recorder/)
 # -----------------------------------------------------------------------------
-# Some paths may have been normalized incorrectly to ros/axon_recorder/ (missing src/)
-# This step fixes them to match the actual repo structure: ros/src/axon_recorder/
-sed -i 's|^SF:ros/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
+# Some paths may have been normalized incorrectly to middlewares/axon_recorder/ (missing src/)
+# This step fixes them to match the actual repo structure: middlewares/src/axon_recorder/
+sed -i 's|^SF:middlewares/axon_recorder/|SF:middlewares/src/axon_recorder/|' "$COVERAGE_FILE"
 
 # Note: Build directory paths (SF:build/...) are kept as-is so that
 # Codecov's ignore rule "build/**/*" in codecov.yml can properly filter them.

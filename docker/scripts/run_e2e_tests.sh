@@ -133,8 +133,8 @@ fi
 # Determine source path for test script
 if [ -z "$SOURCE_PATH" ]; then
     # Try to find test directory relative to workspace
-    if [ -d "${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e" ]; then
-        SOURCE_PATH="${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e"
+    if [ -d "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e" ]; then
+        SOURCE_PATH="${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e"
     else
         # Fallback to script directory (for backward compatibility)
         SOURCE_PATH="${SCRIPT_DIR}"
@@ -215,12 +215,12 @@ ros_workspace_verify_package || {
 TEST_SCRIPT="${SOURCE_PATH}/test_ros_services.sh"
 if [ ! -f "$TEST_SCRIPT" ]; then
     # Try alternative locations
-    if [ -f "${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
-        TEST_SCRIPT="${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e/test_ros_services.sh"
+    if [ -f "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
+        TEST_SCRIPT="${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh"
     else
         echo "ERROR: test_ros_services.sh not found"
         echo "Searched: ${SOURCE_PATH}/test_ros_services.sh"
-        echo "Searched: ${WORKSPACE_ROOT}/ros/src/axon_recorder/test/e2e/test_ros_services.sh"
+        echo "Searched: ${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh"
         exit 1
     fi
 fi

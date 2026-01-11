@@ -24,7 +24,7 @@ Current logging in `axon_recorder` and `axon_mcap` suffers from several issues:
 
 | Component | Location | ROS Dependency | Current Logging |
 |-----------|----------|----------------|-----------------|
-| `axon_recorder` | `ros/axon_recorder/` | Yes (ROS1/ROS2) | `std::cerr`, ROS macros |
+| `axon_recorder` | `middlewares/axon_recorder/` | Yes (ROS1/ROS2) | `std::cerr`, ROS macros |
 | `axon_mcap` | `core/axon_mcap/` | No (but only used by axon_recorder) | `last_error_` only, no logging |
 
 **Current State Analysis**:
@@ -94,7 +94,7 @@ After evaluating custom implementation vs Boost.Log, we chose **Boost.Log** for 
 │                   Logging Infrastructure Architecture (Boost.Log)                 │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                   │
-│   ros/axon_recorder/                                                             │
+│   middlewares/axon_recorder/                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────────┐    │
 │   │  RecorderNode         RecordingSession        WorkerThreadPool          │    │
 │   │       │                     │                       │                    │    │
@@ -1143,7 +1143,7 @@ AXON_LOG_ERROR("Failed to write") << kv("error", error);
 
 ### Integrated YAML Configuration
 
-Logging configuration is integrated into the recorder's main config file (`ros/axon_recorder/config/default_config.yaml`):
+Logging configuration is integrated into the recorder's main config file (`middlewares/axon_recorder/config/default_config.yaml`):
 
 ```yaml
 # Axon Recorder Configuration
@@ -1591,7 +1591,7 @@ target_link_libraries(axon_mcap PUBLIC
 ### CMakeLists.txt for axon_recorder (Boost.Log)
 
 ```cmake
-# In ros/axon_recorder/CMakeLists.txt - Boost.Log integration
+# In middlewares/axon_recorder/CMakeLists.txt - Boost.Log integration
 
 # Find Boost.Log and dependencies
 find_package(Boost 1.74 REQUIRED COMPONENTS 
@@ -1653,7 +1653,7 @@ core/
     ├── mcap_writer_wrapper.hpp
     └── mcap_writer_wrapper.cpp         # Uses AXON_LOG_* macros
 
-ros/
+middlewares/
 └── axon_recorder/
     ├── CMakeLists.txt                  # Links axon_logging + axon_mcap
     ├── config/
@@ -1670,7 +1670,7 @@ ros/
 **Key Points**:
 - `core/axon_logging/` is a standalone library with no ROS dependencies
 - `core/axon_mcap/` links to `axon_logging` and uses the same macros
-- `ros/axon_recorder/` links both and adds ROS-specific sink
+- `middlewares/axon_recorder/` links both and adds ROS-specific sink
 - Logging config is integrated into `default_config.yaml`, not a separate file
 
 ### Docker Integration

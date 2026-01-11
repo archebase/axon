@@ -1,6 +1,6 @@
 ---
 description: Ensure code supports both ROS1 and ROS2
-globs: ["ros/**/*.cpp", "ros/**/*.hpp", "ros/**/*.h", "ros/**/CMakeLists.txt"]
+globs: ["middlewares/**/*.cpp", "middlewares/**/*.hpp", "middlewares/**/*.h", "middlewares/**/CMakeLists.txt"]
 alwaysApply: true
 ---
 

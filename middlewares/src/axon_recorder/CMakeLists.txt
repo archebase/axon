@@ -44,7 +44,7 @@ include(AxonCoverage REQUIRED)
 # Path Configuration
 # =============================================================================
 # Calculate paths relative to repo root.
-# From ros/src/axon_recorder/, the repo root is ../../../
+# From middlewares/src/axon_recorder/, the repo root is ../../../
 
 # Use AXON_REPO_ROOT if set, otherwise compute relative path
 if(DEFINED AXON_REPO_ROOT)

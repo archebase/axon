@@ -14,7 +14,7 @@ Ensures consistent environment and library versions. Clean local build artifacts
 
 ```bash
 cd docker
-rm -rf ../ros/build ../ros/devel ../ros/install ../ros/log
+rm -rf ../middlewares/build ../middlewares/devel ../middlewares/install ../middlewares/log
 rm -rf ../install ../build ../log
 ```
 
@@ -44,7 +44,7 @@ docker compose -f docker-compose.test.yml run --rm \
 For developers with ROS installed locally:
 
 ```bash
-cd ros
+cd middlewares
 
 # ROS 1
 source /opt/ros/noetic/setup.bash
