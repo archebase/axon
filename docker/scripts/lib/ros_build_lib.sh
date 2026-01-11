@@ -81,12 +81,12 @@ ros_build_package() {
     if [ "$ros_version" = "1" ]; then
         # ROS 1 - Use catkin build
         ros_build_log "INFO" "Building with catkin (ROS 1)..."
-        
-        local catkin_ws="${workspace_root}/middlewares"
+
+        local catkin_ws="${workspace_root}/middlewares/ros1"
         if [ ! -d "$catkin_ws" ]; then
             ros_build_error "Catkin workspace not found at $catkin_ws"
         fi
-        
+
         cd "$catkin_ws"
         
         # Clean if requested
@@ -162,18 +162,18 @@ ros_build_package() {
     else
         # ROS 2 - Use colcon
         ros_build_log "INFO" "Building with colcon (ROS 2)..."
-        
+
         if [ ! -d "$workspace_root" ]; then
             ros_build_error "Workspace root not found at $workspace_root"
         fi
-        
-        # For ROS 2, build from the middlewares subdirectory if it exists (matches original behavior)
-        # This ensures build artifacts are in the same location as before
-        local build_dir="$workspace_root"
-        if [ -d "${workspace_root}/middlewares" ]; then
-            build_dir="${workspace_root}/middlewares"
+
+        # For ROS 2, build from the middlewares/ros2 subdirectory
+        local build_dir="${workspace_root}/middlewares/ros2"
+
+        if [ ! -d "$build_dir" ]; then
+            ros_build_error "ROS 2 workspace not found at $build_dir"
         fi
-        
+
         cd "$build_dir"
         
         # Clean if requested

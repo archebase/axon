@@ -258,7 +258,7 @@ build-ros1:
 	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 	fi
-	@cd middlewares && catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	@cd middlewares/ros1 && catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 	@printf "%s\n" "$(GREEN)✓ Code built for ROS1$(NC)"
 
 # Build for ROS2
@@ -272,7 +272,7 @@ build-ros2:
 	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
 	fi
-	@cd middlewares && colcon build --base-paths . --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
+	@cd middlewares/ros2 && colcon build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
 	@printf "%s\n" "$(GREEN)✓ Code built for ROS2$(NC)"
 
 # =============================================================================
@@ -286,11 +286,8 @@ test: test-core
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@rm -rf $(BUILD_DIR) $(UPLOADER_BUILD_DIR) $(LOGGING_BUILD_DIR) $(COVERAGE_DIR)
-	@if [ "$(ROS_VERSION)" = "2" ]; then \
-		cd middlewares && rm -rf build install log; \
-	else \
-		cd middlewares && catkin clean --yes; \
-	fi
+	@cd middlewares/ros2 && rm -rf build install log 2>/dev/null || true
+	@cd middlewares/ros1 && catkin clean --yes 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target
@@ -431,9 +428,10 @@ format:
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 			xargs -0 clang-format -i; \
-		printf "%s\n" "$(YELLOW)  Formatting middlewares/src/ code...$(NC)"; \
-		find middlewares/src \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
-			! -path "*/build/*" -print0 2>/dev/null | \
+		printf "%s\n" "$(YELLOW)  Formatting middlewares/ros1/ and ros2/ code...$(NC)"; \
+		find middlewares/ros1 middlewares/ros2 \
+			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" -print0 2>/dev/null | \
 			xargs -0 clang-format -i; \
 		printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"; \
 	else \
@@ -445,18 +443,18 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find core middlewares/src \
+		find core middlewares/ros1 middlewares/ros2 \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \
 			! -path "*/install/*" \
+			! -path "*/devel/*" \
 			-print0 2>/dev/null | \
 		xargs -0 cppcheck --enable=all \
 			--suppress=missingInclude \
 			-Icore/axon_mcap/include \
 			-Icore/axon_uploader/include \
 			-Icore/axon_logging/include \
-			-Imiddlewares/src/axon_recorder/include; \
 		printf "%s\n" "$(GREEN)✓ C++ linting passed$(NC)"; \
 	else \
 		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \
@@ -473,10 +471,10 @@ coverage-ros2:
 		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
 		exit 1; \
 	fi
-	@rm -rf middlewares/build middlewares/install middlewares/log
+	@rm -rf middlewares/ros2/build middlewares/ros2/install middlewares/ros2/log
 	@mkdir -p $(COVERAGE_DIR)
 	@source /opt/ros/$${ROS_DISTRO}/setup.bash && \
-		cd middlewares && \
+		cd middlewares/ros2 && \
 		colcon build \
 			--packages-select axon_recorder \
 			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON && \
@@ -489,7 +487,7 @@ coverage-ros2:
 	IGNORE_FLAGS=""; \
 	if [ "$$LCOV_MAJOR" -ge 2 ]; then IGNORE_FLAGS="--ignore-errors mismatch,unused"; fi; \
 	lcov --capture \
-		--directory middlewares/build \
+		--directory middlewares/ros2/build \
 		--output-file $(COVERAGE_DIR)/coverage_raw.info \
 		--rc lcov_branch_coverage=1 \
 		$$IGNORE_FLAGS || true; \
@@ -538,8 +536,10 @@ docker-coverage: docker-build-ros2-humble
 clean-coverage:
 	@printf "%s\n" "$(YELLOW)Cleaning coverage data...$(NC)"
 	@rm -rf $(COVERAGE_DIR)
-	@find middlewares/build -name "*.gcda" -delete 2>/dev/null || true
-	@find middlewares/build -name "*.gcno" -delete 2>/dev/null || true
+	@find middlewares/ros2/build -name "*.gcda" -delete 2>/dev/null || true
+	@find middlewares/ros2/build -name "*.gcno" -delete 2>/dev/null || true
+	@find middlewares/ros1/build -name "*.gcda" -delete 2>/dev/null || true
+	@find middlewares/ros1/build -name "*.gcno" -delete 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ Coverage data cleaned$(NC)"
 
 # Default coverage target

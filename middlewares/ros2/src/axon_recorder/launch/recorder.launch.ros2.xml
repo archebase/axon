@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!-- Axon Recorder Launch File for ROS 2 (Humble/Jazzy/Rolling) -->
+<!-- Recording is controlled via service calls (~/recording_control) -->
+<launch>
+  <!-- Launch arguments -->
+  <arg name="config_path" default="config/default_config.yaml" description="Path to YAML configuration file"/>
+  <arg name="dataset_path" default="/data/recordings/dataset.mcap" description="Path to MCAP file"/>
+
+  <!-- Recorder node -->
+  <node pkg="axon_recorder" exec="axon_recorder_node" name="axon_recorder" output="screen">
+    <param name="config_path" value="$(var config_path)"/>
+    <param name="dataset_path" value="$(var dataset_path)"/>
+  </node>
+</launch>
+

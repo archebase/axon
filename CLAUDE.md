@@ -148,7 +148,63 @@ IDLE → READY → RECORDING ↔ PAUSED
 | HTTP Client | Async callbacks to server |
 | Uploader Workers | S3 upload with retry |
 
+## Running Individual Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific library tests
+make test-mcap       # MCAP writer tests
+make test-uploader   # Edge uploader tests
+make test-logging    # Logging infrastructure tests
+
+# Run a single test from the build directory
+cd core/build
+ctest -R test_mcap_writer -V          # Run with verbose output
+ctest -R test_mcap_validator --output-on-failure
+
+# Run tests with specific labels (ROS tests)
+cd middlewares/build/axon_recorder
+ctest -L integration --output-on-failure  # Run only integration tests
+```
+
 ## Critical Rules and Conventions
+
+### CMake Test Auto-Discovery
+
+**Use auto-discovery patterns instead of manually listing each test file.** Tests are automatically discovered by pattern matching:
+
+```bash
+# Just create a new test file - CMake will find it
+touch core/axon_mcap/test/test_my_new_feature.cpp
+```
+
+The CMake files use `GLOB CONFIGURE_DEPENDS` to auto-discover `test_*.cpp` files, so new tests are automatically registered without modifying CMakeLists.txt.
+
+### Header Include Requirements
+
+**Always include all necessary standard library headers explicitly.** Do not rely on transitive includes:
+
+```cpp
+// Required headers (include what you use)
+#include <atomic>      // for std::atomic
+#include <memory>      // for std::unique_ptr, std::shared_ptr
+#include <mutex>       // for std::mutex, std::lock_guard
+#include <string>      // for std::string
+#include <vector>      // for std::vector
+#include <cstdint>     // for std::uint8_t, std::int64_t
+#include <cstring>     // for std::memcpy, std::memset
+```
+
+### Minimal, Cautious Code Changes
+
+**Make the smallest change that solves the problem.** Avoid refactoring unrelated code or adding infrastructure unless explicitly needed:
+
+1. **Investigate root cause first** - Understand why the problem exists before fixing
+2. **Minimal scope** - Fix only the specific issue, don't rewrite surrounding code
+3. **No over-engineering** - Don't add patterns or abstractions for simple bugs
+4. **Test incrementally** - Make one change, verify it works, then proceed
 
 ### ROS1 and ROS2 Dual Support
 
@@ -300,4 +356,4 @@ When generating PR descriptions, use the following structure:
 - [README.md](README.md) - User-facing documentation
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed system architecture
 - [docs/](docs/) - Design documents for individual components
-- [.cursor/rules/](.cursor/rules/) - Development rules (conventional commits, ROS dual support, no unsolicited docs)
+- [.cursor/rules/](.cursor/rules/) - Additional development rules (refactoring guidelines, C++ best practices)

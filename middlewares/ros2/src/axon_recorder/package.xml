@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>axon_recorder</name>
+  <version>0.1.0</version>
+  <description>
+    Axon data recorder for ROS 2 (Humble/Jazzy/Rolling).
+    Records ROS topic data to MCAP format for efficient storage and playback.
+  </description>
+
+  <maintainer email="axon_maintainer@archebase.ai">ArcheBase</maintainer>
+  <license>Apache-2.0</license>
+
+  <url type="website">https://github.com/archebase/axon</url>
+  <url type="repository">https://github.com/archebase/axon</url>
+  <url type="bugtracker">https://github.com/archebase/axon/issues</url>
+
+  <author email="axon_maintainer@archebase.ai">ArcheBase</author>
+
+  <!-- Build tool dependency -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ROS 2 dependencies -->
+  <depend>rclcpp</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <!-- Test dependencies -->
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <!-- Member of group - Required for packages that generate ROS 2 service/message interfaces -->
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

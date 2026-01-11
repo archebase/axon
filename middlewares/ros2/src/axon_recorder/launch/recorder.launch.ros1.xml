@@ -1,0 +1,15 @@
+<launch>
+  <!-- Axon Recorder Node -->
+  <!-- This launch file works for ROS 1 (Noetic) -->
+  <!-- Recording is controlled via service calls (~/recording_control) -->
+  
+  <arg name="config_path" default="$(find axon_recorder)/config/default_config.yaml" />
+  <arg name="dataset_path" default="/data/recordings/dataset.mcap" />
+  
+  <node name="axon_recorder" pkg="axon_recorder" type="axon_recorder_node" output="screen">
+    <param name="config_path" value="$(arg config_path)" />
+    <param name="dataset_path" value="$(arg dataset_path)" />
+  </node>
+  
+</launch>
+

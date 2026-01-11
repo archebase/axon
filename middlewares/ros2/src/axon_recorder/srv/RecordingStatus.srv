@@ -1,0 +1,38 @@
+# Request - Query recording status
+# ============================================================================
+string task_id                # Optional: query specific task
+                              # Empty = query current active task
+
+---
+# Response
+# ============================================================================
+bool success                  # True if status retrieved successfully
+string message                # Human-readable status message
+
+# State Machine
+string status                 # "idle", "ready", "recording", "paused"
+
+# Task Identification
+string task_id                # Server-assigned task identifier
+string device_id              # Robot/device identifier
+string data_collector_id      # Data collector identifier
+string order_id               # Parent order/job identifier
+string operator_name          # Human operator name
+
+# Recording Context
+string scene                  # Recording scene/context label
+string subscene               # Recording subscene/sub-context label
+string[] skills               # Associated skills
+string factory                # Factory identifier (which factory produced this data)
+
+# Runtime Metrics
+string[] active_topics        # Currently subscribed topics
+string output_path            # Path to output file/directory
+float64 disk_usage_gb         # Current disk usage in GB
+float64 duration_sec          # Recording duration in seconds
+int64 message_count           # Total messages recorded
+float64 throughput_mb_sec     # Current throughput in MB/s
+
+# Error Information
+string last_error             # Most recent error message (empty if none)
+

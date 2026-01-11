@@ -1,0 +1,111 @@
+# Axon Recorder Configuration for Performance Tests
+# This configuration matches the topics published by synthetic_publisher
+# Optimized batch sizes to reduce write frequency and improve throughput
+
+dataset:
+  path: /data/recordings
+  mode: append
+  stats_file_path: /data/recordings/recorder_stats.json
+
+topics:
+  # IMU data - high frequency (5 seconds of data per batch)
+  - name: /imu/data
+    message_type: sensor_msgs/Imu
+    batch_size: 5000
+    flush_interval_ms: 5000
+  
+  # Camera 0 - RGB and Depth (10 seconds of data per batch at 30fps)
+  - name: /camera0/rgb
+    message_type: sensor_msgs/Image
+    batch_size: 300
+    flush_interval_ms: 10000
+  
+  - name: /camera0/depth
+    message_type: sensor_msgs/Image
+    batch_size: 300
+    flush_interval_ms: 10000
+  
+  # Camera 1 - RGB and Depth
+  - name: /camera1/rgb
+    message_type: sensor_msgs/Image
+    batch_size: 300
+    flush_interval_ms: 10000
+  
+  - name: /camera1/depth
+    message_type: sensor_msgs/Image
+    batch_size: 300
+    flush_interval_ms: 10000
+  
+  # Camera 2 - RGB and Depth
+  - name: /camera2/rgb
+    message_type: sensor_msgs/Image
+    batch_size: 300
+    flush_interval_ms: 10000
+  
+  - name: /camera2/depth
+    message_type: sensor_msgs/Image
+    batch_size: 300
+    flush_interval_ms: 10000
+
+recording:
+  max_disk_usage_gb: 100
+
+# Logging configuration
+# Can be overridden by environment variables:
+#   AXON_LOG_LEVEL          - Global level (overrides both console and file)
+#   AXON_LOG_CONSOLE_LEVEL  - Console sink level
+#   AXON_LOG_FILE_LEVEL     - File sink level
+#   AXON_LOG_FILE_DIR       - Log file directory
+#   AXON_LOG_FORMAT         - File format ("json" or "text")
+#   AXON_LOG_FILE_ENABLED   - Enable file logging ("true" or "false")
+#   AXON_LOG_CONSOLE_ENABLED - Enable console logging ("true" or "false")
+logging:
+  console:
+    enabled: true
+    level: info      # debug, info, warn, error, fatal
+    colors: true
+  file:
+    enabled: false   # Set to true to enable file logging
+    level: debug
+    directory: /var/log/axon
+    pattern: "axon_%Y%m%d_%H%M%S.log"
+    format: json     # json or text
+    rotation_size_mb: 100
+    max_files: 10
+    rotate_at_midnight: true
+
+# Edge Upload Configuration
+# Uploads MCAP and sidecar JSON to S3-compatible storage after recording
+upload:
+  enabled: false           # Set to true to enable automatic uploads
+  
+  # S3 Configuration
+  s3:
+    endpoint_url: ""       # S3-compatible endpoint (empty for AWS S3)
+    bucket: "axon-raw-data"
+    region: "us-east-1"
+    use_ssl: true
+    verify_ssl: true
+    
+  # Worker configuration
+  num_workers: 2
+  
+  # Retry configuration
+  retry:
+    max_retries: 5
+    initial_delay_ms: 1000
+    max_delay_ms: 300000
+    exponential_base: 2.0
+    jitter: true
+    
+  # State persistence for crash recovery
+  state_db_path: "/var/lib/axon/uploader_state.db"
+  
+  # Cleanup policy
+  delete_after_upload: true               # Delete device copy after successful upload
+  failed_uploads_dir: "/data/failed_uploads/"
+  
+  # Backpressure thresholds (GB)
+  warn_pending_gb: 8      # ~2 files - emit warning
+  alert_pending_gb: 20    # ~5 files - alert operator
+
