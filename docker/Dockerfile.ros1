@@ -59,6 +59,11 @@ RUN apt-get update && apt-get install -y \
     ros-noetic-rosservice \
     && rm -rf /var/lib/apt/lists/*
 
+# Install lcov for coverage reporting
+RUN apt-get update && apt-get install -y \
+    lcov \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /workspace
 

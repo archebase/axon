@@ -13,6 +13,7 @@
 #   --coverage              Build with coverage instrumentation and generate coverage report
 #   --coverage-output DIR   Coverage output directory (default: /coverage_output)
 #   --source-path PATH      Path to test source directory (default: auto-detect)
+#   --clean                 Clean build directory before building
 #
 # Arguments:
 #   source_path             Optional path to the source directory (legacy positional arg)
@@ -38,6 +39,7 @@ set -eo pipefail
 # =============================================================================
 
 ENABLE_COVERAGE=false
+CLEAN_BUILD=false
 COVERAGE_OUTPUT_DIR=""
 SOURCE_PATH=""
 
@@ -54,6 +56,10 @@ while [[ $# -gt 0 ]]; do
         --source-path)
             SOURCE_PATH="$2"
             shift 2
+            ;;
+        --clean)
+            CLEAN_BUILD=true
+            shift
             ;;
         -*)
             echo "ERROR: Unknown option: $1" >&2
@@ -109,7 +115,7 @@ fi
 
 # Set defaults
 ROS_DISTRO="${ROS_DISTRO:-humble}"
-WORKSPACE_ROOT="/workspace/axon"
+WORKSPACE_ROOT="/home/xlw/src/Axon"
 
 # Set coverage output directory if coverage is enabled
 if [ "$ENABLE_COVERAGE" = true ]; then
@@ -188,6 +194,21 @@ else
     echo "Part 1: Building package..."
 fi
 echo "============================================"
+
+# Clean build directory if requested or if coverage is enabled
+# (coverage requires clean build to ensure flags are applied)
+if [ "$CLEAN_BUILD" = true ] || [ "$ENABLE_COVERAGE" = true ]; then
+    echo "Cleaning build directory..."
+    if [ "$ROS_VERSION" = "1" ]; then
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/build"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/devel"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/logs"
+    else
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/build"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/install"
+        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/log"
+    fi
+fi
 
 # Build package (with or without coverage)
 if [ "$ENABLE_COVERAGE" = true ]; then
@@ -294,20 +315,58 @@ if ! "$TEST_SCRIPT"; then
 fi
 
 # =============================================================================
-# Part 5: Cleanup
+# Part 5: Cleanup (Graceful Shutdown for Coverage)
 # =============================================================================
+# IMPORTANT: Coverage data (.gcda files) is only written when processes exit
+# cleanly (via exit() or returning from main()). We need to ensure graceful shutdown.
 
 echo ""
 echo "Cleaning up..."
-kill $NODE_PID 2>/dev/null || true
 
+# Try graceful shutdown first (SIGINT)
+echo "Sending SIGINT to node (PID: $NODE_PID) for graceful shutdown..."
+kill -INT $NODE_PID 2>/dev/null || true
+
+# Wait up to 10 seconds for graceful shutdown
+# The modified spin() method checks rclcpp::ok() every 100ms
+WAIT_COUNT=0
+MAX_WAIT=100  # 100 × 0.1s = 10 seconds
+while kill -0 $NODE_PID 2>/dev/null && [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+    sleep 0.1
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+    # Print progress every second
+    if [ $((WAIT_COUNT % 10)) -eq 0 ]; then
+        echo "  Waiting for shutdown... ($WAIT_COUNT/$MAX_WAIT)"
+    fi
+done
+
+# Check if process exited gracefully
+if ! kill -0 $NODE_PID 2>/dev/null; then
+    echo "✓ Node shut down gracefully via SIGINT"
+else
+    echo "✗ Node still running after SIGINT"
+    echo "  Using SIGTERM..."
+    kill -TERM $NODE_PID 2>/dev/null || true
+    sleep 5
+
+    if ! kill -0 $NODE_PID 2>/dev/null; then
+        echo "✓ Node shut down via SIGTERM"
+    else
+        echo "✗ Node still running, using SIGKILL..."
+        echo "  WARNING: Coverage data may not be written properly!"
+        kill -KILL $NODE_PID 2>/dev/null || true
+    fi
+fi
+
+# Cleanup ROS1 master
 if [ "$ROS_VERSION" = "1" ]; then
     kill $ROSCORE_PID 2>/dev/null || true
     killall roscore 2>/dev/null || true
 fi
 
-# Wait for processes to terminate
-sleep 1
+# Wait for coverage data to be written
+echo "Waiting for coverage data to be written..."
+sleep 2
 
 # =============================================================================
 # Part 6: Generate Coverage Report (if enabled and tests passed)
