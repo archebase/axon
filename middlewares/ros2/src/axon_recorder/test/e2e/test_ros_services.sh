@@ -19,7 +19,22 @@ set -eo pipefail
 # ============================================================================
 # Libraries are in docker/scripts/lib/ relative to repo root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="${SCRIPT_DIR}/../../../../../docker/scripts/lib"
+
+# Find workspace root by searching for marker files
+# Try common workspace root indicators
+if [ -f "${SCRIPT_DIR}/../../../../../workspace_root" ]; then
+    WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../../../.." && pwd)"
+elif [ -f "${SCRIPT_DIR}/../../../../../../.git" ]; then
+    WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../../../../.." && pwd)"
+elif [ -d "${SCRIPT_DIR}/../../../../../docker" ]; then
+    # Count directory levels to repo root
+    WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../../../.." && pwd)"
+else
+    # Fallback: assume 7 levels up (middlewares/ros2/src/axon_recorder/test/e2e → repo root)
+    WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../../../.." && pwd)"
+fi
+
+LIB_DIR="${WORKSPACE_ROOT}/docker/scripts/lib"
 
 # Source workspace library for ROS version detection
 source "${LIB_DIR}/ros_workspace_lib.sh"

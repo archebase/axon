@@ -132,8 +132,17 @@ fi
 
 # Determine source path for test script
 if [ -z "$SOURCE_PATH" ]; then
-    # Try to find test directory relative to workspace
-    if [ -d "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e" ]; then
+    # Try to find test directory based on ROS version
+    if [ "$ROS_VERSION" = "1" ]; then
+        TEST_DIR="${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e"
+    else
+        TEST_DIR="${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e"
+    fi
+
+    if [ -d "$TEST_DIR" ]; then
+        SOURCE_PATH="$TEST_DIR"
+    elif [ -d "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e" ]; then
+        # Fallback to old directory structure (for backward compatibility)
         SOURCE_PATH="${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e"
     else
         # Fallback to script directory (for backward compatibility)
@@ -214,13 +223,20 @@ ros_workspace_verify_package || {
 # Find test script
 TEST_SCRIPT="${SOURCE_PATH}/test_ros_services.sh"
 if [ ! -f "$TEST_SCRIPT" ]; then
-    # Try alternative locations
-    if [ -f "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
+    # Try alternative locations based on ROS version
+    if [ "$ROS_VERSION" = "1" ] && [ -f "${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
+        TEST_SCRIPT="${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e/test_ros_services.sh"
+    elif [ "$ROS_VERSION" = "2" ] && [ -f "${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
+        TEST_SCRIPT="${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e/test_ros_services.sh"
+    elif [ -f "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
+        # Fallback to old directory structure
         TEST_SCRIPT="${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh"
     else
         echo "ERROR: test_ros_services.sh not found"
         echo "Searched: ${SOURCE_PATH}/test_ros_services.sh"
-        echo "Searched: ${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh"
+        echo "Searched: ${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e/test_ros_services.sh (ROS1)"
+        echo "Searched: ${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e/test_ros_services.sh (ROS2)"
+        echo "Searched: ${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh (legacy)"
         exit 1
     fi
 fi
