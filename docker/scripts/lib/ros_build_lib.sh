@@ -132,9 +132,9 @@ ros_build_package() {
         )
 
         if [ "$enable_coverage" = "true" ]; then
-            catkin_args+=(-DENABLE_COVERAGE=ON)
+            catkin_args+=(-DAXON_ENABLE_COVERAGE=ON)
         else
-            catkin_args+=(-DENABLE_COVERAGE=OFF)
+            catkin_args+=(-DAXON_ENABLE_COVERAGE=OFF)
         fi
         
         # Add extra CMake args if provided
@@ -220,9 +220,9 @@ ros_build_package() {
         )
 
         if [ "$enable_coverage" = "true" ]; then
-            colcon_args+=(-DENABLE_COVERAGE=ON)
+            colcon_args+=(-DAXON_ENABLE_COVERAGE=ON)
         else
-            colcon_args+=(-DENABLE_COVERAGE=OFF)
+            colcon_args+=(-DAXON_ENABLE_COVERAGE=OFF)
         fi
         
         # Add extra CMake args if provided

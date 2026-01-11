@@ -477,7 +477,7 @@ coverage-ros2:
 		cd middlewares/ros2 && \
 		colcon build \
 			--packages-select axon_recorder \
-			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON && \
+			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DAXON_ENABLE_COVERAGE=ON && \
 		source install/setup.bash && \
 		colcon test \
 			--packages-select axon_recorder \

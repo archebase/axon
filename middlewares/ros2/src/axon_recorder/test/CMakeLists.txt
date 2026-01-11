@@ -94,16 +94,19 @@ ament_add_gtest(test_recording_workflow integration/test_recording_workflow.cpp)
 target_compile_definitions(test_recording_workflow PRIVATE AXON_ROS2)
 target_include_directories(test_recording_workflow PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(test_recording_workflow axon_recorder_test_support)
+axon_add_coverage(test_recording_workflow)
 
 ament_add_gtest(test_recording_session integration/test_recording_session.cpp)
 target_compile_definitions(test_recording_session PRIVATE AXON_ROS2)
 target_include_directories(test_recording_session PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(test_recording_session axon_recorder_test_support_mcap)
+axon_add_coverage(test_recording_session)
 
 ament_add_gtest(test_metadata_injector integration/test_metadata_injector.cpp)
 target_compile_definitions(test_metadata_injector PRIVATE AXON_ROS2)
 target_include_directories(test_metadata_injector PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(test_metadata_injector axon_recorder_test_support_mcap)
+axon_add_coverage(test_metadata_injector)
 
 # ROS 2 specific tests
 set(ROS2_INT_LIBS axon_recorder_lib Threads::Threads ${Boost_LIBRARIES} rclcpp::rclcpp ${std_msgs_TARGETS} GTest::gtest GTest::gtest_main)
@@ -111,30 +114,37 @@ set(ROS2_INT_LIBS axon_recorder_lib Threads::Threads ${Boost_LIBRARIES} rclcpp::
 ament_add_gtest(test_ros_introspection_ros2 integration/test_ros_introspection.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../src/ros_introspection.cpp)
 target_compile_definitions(test_ros_introspection_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_ros_introspection_ros2 ${ROS2_TEST_LIBS})
+axon_add_coverage(test_ros_introspection_ros2)
 
 ament_add_gtest(test_message_factory_ros2 integration/test_message_factory.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../src/message_factory.cpp)
 target_compile_definitions(test_message_factory_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_message_factory_ros2 ${ROS2_TEST_LIBS})
+axon_add_coverage(test_message_factory_ros2)
 
 ament_add_gtest(test_service_adapter_ros2 integration/test_service_adapter.cpp)
 target_compile_definitions(test_service_adapter_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_service_adapter_ros2 ${ROS2_INT_LIBS})
+axon_add_coverage(test_service_adapter_ros2)
 
 ament_add_gtest(test_ros_interface_ros2 integration/test_ros_interface.cpp)
 target_compile_definitions(test_ros_interface_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_ros_interface_ros2 ${ROS2_INT_LIBS} ${geometry_msgs_TARGETS} ${sensor_msgs_TARGETS})
+axon_add_coverage(test_ros_interface_ros2)
 
 ament_add_gtest(test_recorder_node_lifecycle_ros2 integration/test_recorder_node_lifecycle.cpp)
 target_compile_definitions(test_recorder_node_lifecycle_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_recorder_node_lifecycle_ros2 ${ROS2_INT_LIBS})
+axon_add_coverage(test_recorder_node_lifecycle_ros2)
 
 ament_add_gtest(test_recorder_node_recording_ros2 integration/test_recorder_node_recording.cpp)
 target_compile_definitions(test_recorder_node_recording_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_recorder_node_recording_ros2 ${ROS2_INT_LIBS})
+axon_add_coverage(test_recorder_node_recording_ros2)
 
 ament_add_gtest(test_recording_services_ros2 integration/test_recording_services.cpp)
 target_compile_definitions(test_recording_services_ros2 PRIVATE AXON_ROS2)
 target_link_libraries(test_recording_services_ros2 ${ROS2_INT_LIBS})
+axon_add_coverage(test_recording_services_ros2)
 
 # Performance tests (optional)
 add_subdirectory(perf EXCLUDE_FROM_ALL)
