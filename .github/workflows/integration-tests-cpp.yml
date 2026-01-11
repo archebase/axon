@@ -137,7 +137,7 @@ jobs:
 
       - name: Build axon_uploader with coverage
         run: |
-          cd cpp
+          cd core
           mkdir -p build_uploader_integration && cd build_uploader_integration
 
           export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH

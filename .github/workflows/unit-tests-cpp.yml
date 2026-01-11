@@ -116,7 +116,7 @@ jobs:
 
       - name: Build and test with coverage
         run: |
-          cd cpp
+          cd core
           mkdir -p build_${{ matrix.library }} && cd build_${{ matrix.library }}
           
           # Build CMake command with optional AWS SDK path
