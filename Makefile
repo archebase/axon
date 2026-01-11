@@ -1,6 +1,5 @@
 # Makefile for Axon by ArcheBase
-# Supports ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling)
-# Located at project root - all ROS commands run in middwares/ directory
+# Supports both C++ core libraries and ROS (1/2) middlewares
 
 .PHONY: all build test clean install build-ros1 build-ros2 test-libs help
 .DEFAULT_GOAL := help
@@ -16,8 +15,11 @@ ROS_VERSION ?= $(shell if [ -n "$$ROS_VERSION" ]; then echo $$ROS_VERSION; elif 
 ROS_DISTRO ?= $(shell echo $$ROS_DISTRO)
 
 # Build directories (relative to this Makefile location)
-BUILD_DIR := build
-TEST_BUILD_DIR := src/axon_recorder/test/build
+BUILD_DIR := core/build
+UPLOADER_BUILD_DIR := core/build_uploader
+LOGGING_BUILD_DIR := core/build_logging
+TEST_BUILD_DIR := core/build
+COVERAGE_DIR := coverage
 
 # Build type
 BUILD_TYPE ?= Release
@@ -44,17 +46,27 @@ endif
 # Helper to print colored output (printf interprets escape sequences)
 PRINTF := printf "%s\n"
 
-# Help target
+# =============================================================================
+# Help Target
+# =============================================================================
+
 help:
 	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
 	@printf "%s\n" "$(GREEN)║     Axon by ArcheBase - Build System                     ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Build:$(NC)"
+	@printf "%s\n" "$(YELLOW)Core C++ Libraries:$(NC)"
+	@printf "%s\n" "  $(BLUE)make build-core$(NC)       - Build all C++ libraries"
+	@printf "%s\n" "  $(BLUE)make test-mcap$(NC)       - Build and run axon_mcap tests"
+	@printf "%s\n" "  $(BLUE)make test-uploader$(NC)   - Build and run axon_uploader tests"
+	@printf "%s\n" "  $(BLUE)make test-logging$(NC)    - Build and run axon_logging tests"
+	@printf "%s\n" "  $(BLUE)make test-core$(NC)       - Run all C++ library tests"
+	@printf "%s\n" "  $(BLUE)make coverage-core$(NC)   - Run all C++ tests with coverage"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)ROS Middlewares:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build (auto-detects ROS1/ROS2)"
-	@printf "%s\n" "  $(BLUE)make debug/release$(NC)      - Build with Debug/Release config"
-	@printf "%s\n" "  $(BLUE)make clean$(NC)             - Clean build artifacts"
-	@printf "%s\n" "  $(BLUE)make install$(NC)           - Install package"
+	@printf "%s\n" "  $(BLUE)make build-ros1$(NC)        - Build ROS1 (Noetic)"
+	@printf "%s\n" "  $(BLUE)make build-ros2$(NC)        - Build ROS2 (Humble/Jazzy/Rolling)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Docker tests:$(NC)"
 	@printf "%s\n" "  $(BLUE)make docker-test-ros1$(NC)         - ROS 1 (Noetic) tests in Docker"
@@ -62,12 +74,11 @@ help:
 	@printf "%s\n" "  $(BLUE)make docker-test-ros2-jazzy$(NC)  - ROS 2 Jazzy tests in Docker"
 	@printf "%s\n" "  $(BLUE)make docker-test-ros2-rolling$(NC) - ROS 2 Rolling tests in Docker"
 	@printf "%s\n" "  $(BLUE)make docker-test-all$(NC)          - Run all Docker tests"
-	@printf "%s\n" "  $(BLUE)make test$(NC)                      - Local C++ library tests only"
 	@echo ""
-	@printf "%s\n" "$(YELLOW)Coverage (Docker):$(NC)"
-	@printf "%s\n" "  $(BLUE)make cov-humble$(NC)       - Coverage via Docker (ROS2 Humble)"
-	@printf "%s\n" "  $(BLUE)make cov-html$(NC)         - Coverage + HTML report"
-	@printf "%s\n" "  $(BLUE)make clean-cov$(NC)        - Clean coverage data"
+	@printf "%s\n" "$(YELLOW)General:$(NC)"
+	@printf "%s\n" "  $(BLUE)make clean$(NC)             - Clean all build artifacts"
+	@printf "%s\n" "  $(BLUE)make install$(NC)           - Install package"
+	@printf "%s\n" "  $(BLUE)make debug/release$(NC)      - Build with Debug/Release config"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Code quality:$(NC)"
 	@printf "%s\n" "  $(BLUE)make format$(NC)            - Format with clang-format"
@@ -75,7 +86,159 @@ help:
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Current:$(NC) ROS=$(ROS_VERSION) DISTRO=$(ROS_DISTRO) TYPE=$(BUILD_TYPE)"
 
-# Main build target
+# =============================================================================
+# Core C++ Library Targets
+# =============================================================================
+
+# Build all C++ libraries
+build-core: build-mcap build-uploader build-logging
+	@printf "%s\n" "$(GREEN)✓ All C++ libraries built$(NC)"
+
+# Main axon_mcap library
+build-mcap:
+	@printf "%s\n" "$(YELLOW)Building axon_mcap library...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake ../axon_mcap \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_MCAP_BUILD_TESTS=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_mcap build complete$(NC)"
+
+# axon_uploader library
+build-uploader:
+	@printf "%s\n" "$(YELLOW)Building axon_uploader library...$(NC)"
+	@mkdir -p $(UPLOADER_BUILD_DIR)
+	@cd $(UPLOADER_BUILD_DIR) && \
+		cmake ../axon_uploader \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_UPLOADER_BUILD_TESTS=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_uploader build complete$(NC)"
+
+# axon_logging library
+build-logging:
+	@printf "%s\n" "$(YELLOW)Building axon_logging library...$(NC)"
+	@mkdir -p $(LOGGING_BUILD_DIR)
+	@cd $(LOGGING_BUILD_DIR) && \
+		cmake ../axon_logging \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_LOGGING_BUILD_TESTS=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_logging build complete$(NC)"
+
+# Test axon_mcap
+test-mcap: build-mcap
+	@printf "%s\n" "$(YELLOW)Running axon_mcap tests...$(NC)"
+	@cd $(BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_mcap tests passed$(NC)"
+
+# Test axon_uploader
+test-uploader: build-uploader
+	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
+	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
+
+# Test axon_logging
+test-logging: build-logging
+	@printf "%s\n" "$(YELLOW)Running axon_logging tests...$(NC)"
+	@cd $(LOGGING_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_logging tests passed$(NC)"
+
+# Test all C++ libraries
+test-core: test-mcap test-uploader test-logging
+	@printf "%s\n" "$(GREEN)✓ All C++ library tests passed$(NC)"
+
+# Coverage for axon_mcap
+coverage-mcap:
+	@printf "%s\n" "$(YELLOW)Building axon_mcap with coverage...$(NC)"
+	@rm -rf $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake ../axon_mcap \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_MCAP_BUILD_TESTS=ON \
+			-DAXON_MCAP_ENABLE_COVERAGE=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
+	@cd $(BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
+	@if command -v lcov >/dev/null 2>&1; then \
+		cd $(BUILD_DIR) && \
+		lcov --capture --directory . --output-file coverage_raw.info && \
+		lcov --remove coverage_raw.info \
+			'/usr/*' '/opt/*' '*/test/*' '*/_deps/*' '*/c++/*' \
+			--output-file coverage.info && \
+		lcov --list coverage.info; \
+		printf "%s\n" "$(GREEN)✓ Coverage report: $(BUILD_DIR)/coverage.info$(NC)"; \
+	else \
+		printf "%s\n" "$(RED)Error: lcov not found$(NC)"; \
+		exit 1; \
+	fi
+
+# Coverage for axon_uploader
+coverage-uploader:
+	@printf "%s\n" "$(YELLOW)Building axon_uploader with coverage...$(NC)"
+	@rm -rf $(UPLOADER_BUILD_DIR)
+	@mkdir -p $(UPLOADER_BUILD_DIR)
+	@cd $(UPLOADER_BUILD_DIR) && \
+		cmake ../axon_uploader \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_UPLOADER_BUILD_TESTS=ON \
+			-DAXON_UPLOADER_ENABLE_COVERAGE=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
+	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure -j1
+	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
+	@if command -v lcov >/dev/null 2>&1; then \
+		cd $(UPLOADER_BUILD_DIR) && \
+		lcov --capture --directory . --output-file coverage_raw.info && \
+		lcov --remove coverage_raw.info \
+			'/usr/*' '/opt/*' '*/test/*' '*/_deps/*' '*/c++/*' \
+			--output-file coverage.info && \
+		lcov --list coverage.info; \
+		printf "%s\n" "$(GREEN)✓ Coverage report: $(UPLOADER_BUILD_DIR)/coverage.info$(NC)"; \
+	else \
+		printf "%s\n" "$(RED)Error: lcov not found$(NC)"; \
+		exit 1; \
+	fi
+
+# Coverage for axon_logging
+coverage-logging:
+	@printf "%s\n" "$(YELLOW)Building axon_logging with coverage...$(NC)"
+	@rm -rf $(LOGGING_BUILD_DIR)
+	@mkdir -p $(LOGGING_BUILD_DIR)
+	@cd $(LOGGING_BUILD_DIR) && \
+		cmake ../axon_logging \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_LOGGING_BUILD_TESTS=ON \
+			-DAXON_LOGGING_ENABLE_COVERAGE=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
+	@cd $(LOGGING_BUILD_DIR) && ctest --output-on-failure
+	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
+	@if command -v lcov >/dev/null 2>&1; then \
+		cd $(LOGGING_BUILD_DIR) && \
+		lcov --capture --directory . --output-file coverage_raw.info && \
+		lcov --remove coverage_raw.info \
+			'/usr/*' '/opt/*' '*/test/*' '*/_deps/*' '*/c++/*' \
+			--output-file coverage.info && \
+		lcov --list coverage.info; \
+		printf "%s\n" "$(GREEN)✓ Coverage report: $(LOGGING_BUILD_DIR)/coverage.info$(NC)"; \
+	else \
+		printf "%s\n" "$(RED)Error: lcov not found$(NC)"; \
+		exit 1; \
+	fi
+
+# Coverage for all C++ libraries
+coverage-core: coverage-mcap coverage-uploader coverage-logging
+	@printf "%s\n" "$(GREEN)✓ All C++ library coverage reports generated$(NC)"
+
+# =============================================================================
+# ROS Middleware Targets
+# =============================================================================
+
+# Main build target (ROS)
 build:
 	@if [ "$(ROS_VERSION)" = "1" ]; then \
 		$(MAKE) build-ros1; \
@@ -112,22 +275,17 @@ build-ros2:
 	@cd middlewares && colcon build --base-paths . --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
 	@printf "%s\n" "$(GREEN)✓ Code built for ROS2$(NC)"
 
-# Library tests
-test:
-	@printf "%s\n" "$(YELLOW)Running library tests...$(NC)"
-	@if [ -d "$(PROJECT_ROOT)/core/axon_mcap" ]; then \
-		cd $(PROJECT_ROOT)/core/axon_mcap && \
-		mkdir -p build && cd build && \
-		cmake .. -DAXON_MCAP_BUILD_TESTS=ON && \
-		cmake --build . && \
-		ctest --output-on-failure; \
-	fi
-	@printf "%s\n" "$(GREEN)✓ Tests passed$(NC)"
+# =============================================================================
+# General Targets
+# =============================================================================
 
+# Library tests (legacy target - defaults to C++ tests)
+test: test-core
 
-# Clean targets
+# Clean all build artifacts
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
+	@rm -rf $(BUILD_DIR) $(UPLOADER_BUILD_DIR) $(LOGGING_BUILD_DIR) $(COVERAGE_DIR)
 	@if [ "$(ROS_VERSION)" = "2" ]; then \
 		cd middlewares && rm -rf build install log; \
 	else \
@@ -150,7 +308,7 @@ install: build
 			--cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			--install-base install \
 			--event-handlers console_direct+; \
-		printf "%s\n" "$(GREEN)✓ Package installed to ros/install/ directory$(NC)"; \
+		printf "%s\n" "$(GREEN)✓ Package installed to middlewares/install/ directory$(NC)"; \
 	else \
 		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
 			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
@@ -159,7 +317,18 @@ install: build
 		printf "%s\n" "$(GREEN)✓ Package installed$(NC)"; \
 	fi
 
-# Docker build targets
+# Debug build
+debug:
+	@$(MAKE) BUILD_TYPE=Debug build
+
+# Release build (default)
+release:
+	@$(MAKE) BUILD_TYPE=Release build
+
+# =============================================================================
+# Docker Build & Test Targets
+# =============================================================================
+
 docker-build-ros1:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS1...$(NC)"
 	@printf "%s\n" "$(YELLOW)Using ros-base image (smaller, faster)$(NC)"
@@ -249,30 +418,13 @@ docker-test-compose:
 	@cd docker && docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
 	@printf "%s\n" "$(GREEN)✓ All Docker tests passed!$(NC)"
 
-# Build in Docker
-docker-build-only:
-	@printf "%s\n" "$(YELLOW)Building in Docker container...$(NC)"
-	@DOCKER_BUILDKIT=1 docker run --rm \
-		-v $(PROJECT_ROOT):/workspace/axon \
-		-e ROS_DISTRO=$(ROS_DISTRO) \
-		-e ROS_VERSION=$(ROS_VERSION) \
-		axon:ros$(ROS_VERSION) \
-		/usr/local/bin/run_build.sh
-	@printf "%s\n" "$(GREEN)✓ Docker build complete$(NC)"
+# =============================================================================
+# Code Quality Targets
+# =============================================================================
 
-# Development targets
-dev-setup:
-	@printf "%s\n" "$(YELLOW)Setting up development environment...$(NC)"
-	@echo "Checking dependencies..."
-	@command -v cmake >/dev/null 2>&1 || { echo "$(RED)Error: cmake not found.$(NC)"; exit 1; }
-	@command -v pkg-config >/dev/null 2>&1 || { echo "$(RED)Error: pkg-config not found.$(NC)"; exit 1; }
-	@printf "%s\n" "$(GREEN)✓ Development environment ready$(NC)"
-
-# Format code (if formatters are available)
-# Note: Pre-commit hooks also check formatting automatically on git commit
+# Format code
 format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
-	@printf "%s\n" "$(YELLOW)Tip: Pre-commit hooks check formatting automatically on commit$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
 		printf "%s\n" "$(YELLOW)  Formatting core/ libraries...$(NC)"; \
 		find core/axon_mcap core/axon_uploader core/axon_logging \
@@ -310,28 +462,9 @@ lint:
 		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \
 	fi
 
-# Debug build
-debug:
-	@$(MAKE) BUILD_TYPE=Debug build
-
-# Release build (default)
-release:
-	@$(MAKE) BUILD_TYPE=Release build
-
-# Quick test (fast)
-quick-test: test
-	@printf "%s\n" "$(GREEN)✓ Quick test complete$(NC)"
-
-# Full test suite
-full-test: test lint
-	@printf "%s\n" "$(GREEN)✓ Full test suite complete$(NC)"
-
 # =============================================================================
-# Coverage Targets
+# Coverage Targets (ROS)
 # =============================================================================
-
-# Coverage output directory
-COVERAGE_DIR := coverage
 
 # Build with coverage and run tests (ROS 2)
 coverage-ros2:
@@ -413,6 +546,10 @@ clean-coverage:
 coverage: coverage-ros2
 	@printf "%s\n" "$(GREEN)✓ Coverage complete$(NC)"
 
+# =============================================================================
+# Utility Targets
+# =============================================================================
+
 # Check if ROS is sourced
 check-ros:
 	@if [ -z "$$ROS_DISTRO" ] && [ -z "$$ROS_VERSION" ]; then \
@@ -443,4 +580,3 @@ cov-html: docker-coverage
 	@open $(COVERAGE_DIR)/html/index.html 2>/dev/null || true
 
 clean-cov: clean-coverage
-
