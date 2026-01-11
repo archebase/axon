@@ -25,7 +25,7 @@ Current logging in `axon_recorder` and `axon_mcap` suffers from several issues:
 | Component | Location | ROS Dependency | Current Logging |
 |-----------|----------|----------------|-----------------|
 | `axon_recorder` | `ros/axon_recorder/` | Yes (ROS1/ROS2) | `std::cerr`, ROS macros |
-| `axon_mcap` | `cpp/axon_mcap/` | No (but only used by axon_recorder) | `last_error_` only, no logging |
+| `axon_mcap` | `core/axon_mcap/` | No (but only used by axon_recorder) | `last_error_` only, no logging |
 
 **Current State Analysis**:
 
@@ -44,7 +44,7 @@ std::cerr << "[RecordingSession] Failed to open: " << writer_->get_last_error() 
 // Tests - Uses std::cout
 std::cout << "=== Publishing Statistics ===\n";
 
-// cpp/axon_mcap/mcap_writer_wrapper.cpp - No logging, errors stored in string
+// core/axon_mcap/mcap_writer_wrapper.cpp - No logging, errors stored in string
 if (!status.ok()) {
     last_error_ = "Failed to write message: " + status.message;
     return false;  // Error not logged!
@@ -103,7 +103,7 @@ After evaluating custom implementation vs Boost.Log, we chose **Boost.Log** for 
 │   │       └─────────────────────┴───────────────────────┘                    │    │
 │   └─────────────────────────────┬────────────────────────────────────────────┘    │
 │                                 │                                                 │
-│   cpp/axon_mcap/ (wrapper for Foxglove MCAP)                                     │
+│   core/axon_mcap/ (wrapper for Foxglove MCAP)                                     │
 │   ┌─────────────────────────────┼───────────────────────────────────────────┐    │
 │   │  McapWriterWrapper          │                                            │    │
 │   │       │                     │                                            │    │
@@ -817,7 +817,7 @@ boost::shared_ptr<ros_sink_t> create_ros_sink(
 Since `axon_mcap` is exclusively used by `axon_recorder`, it uses the **same Boost.Log infrastructure**. No separate logging system needed.
 
 ```cpp
-// In cpp/axon_mcap/mcap_writer_wrapper.cpp
+// In core/axon_mcap/mcap_writer_wrapper.cpp
 #define AXON_LOG_COMPONENT "axon_mcap"
 #include <axon_recorder/logging/axon_log_macros.hpp>
 
@@ -1577,7 +1577,7 @@ sudo apt-get install libboost-all-dev
 Since `axon_mcap` is only used by `axon_recorder`, it links to the shared `axon_logging` library.
 
 ```cmake
-# In cpp/axon_mcap/CMakeLists.txt
+# In core/axon_mcap/CMakeLists.txt
 
 # axon_mcap uses the same logging as axon_recorder
 target_link_libraries(axon_mcap PUBLIC
@@ -1636,7 +1636,7 @@ target_link_libraries(axon_recorder_lib
 ### File Structure
 
 ```
-cpp/
+core/
 ├── axon_logging/                       # Standalone logging library (no ROS deps)
 │   ├── CMakeLists.txt
 │   ├── axon_log_severity.hpp           # Severity enum + keywords
@@ -1668,8 +1668,8 @@ ros/
 ```
 
 **Key Points**:
-- `cpp/axon_logging/` is a standalone library with no ROS dependencies
-- `cpp/axon_mcap/` links to `axon_logging` and uses the same macros
+- `core/axon_logging/` is a standalone library with no ROS dependencies
+- `core/axon_mcap/` links to `axon_logging` and uses the same macros
 - `ros/axon_recorder/` links both and adds ROS-specific sink
 - Logging config is integrated into `default_config.yaml`, not a separate file
 
@@ -1749,7 +1749,7 @@ volumes:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-12-22 | - | Initial design |
-| 1.1 | 2025-12-22 | - | Added `cpp/axon_mcap/` logging support with callback-based approach for ROS-independent operation |
+| 1.1 | 2025-12-22 | - | Added `core/axon_mcap/` logging support with callback-based approach for ROS-independent operation |
 | 1.2 | 2025-12-22 | - | Replaced custom logging with Boost.Log for all components. Since `axon_mcap` is only a wrapper for Foxglove MCAP and exclusively used by `axon_recorder`, it uses the same Boost.Log infrastructure (no separate callback-based system needed). |
-| 1.3 | 2025-12-22 | - | Added log sampling macros (`AXON_LOG_*_EVERY_N`, `AXON_LOG_*_THROTTLE`) for high-frequency events. Integrated logging config into recorder's `default_config.yaml`. Added environment variable overrides with priority system. Reorganized file structure with standalone `cpp/axon_logging/` library. |
+| 1.3 | 2025-12-22 | - | Added log sampling macros (`AXON_LOG_*_EVERY_N`, `AXON_LOG_*_THROTTLE`) for high-frequency events. Integrated logging config into recorder's `default_config.yaml`. Added environment variable overrides with priority system. Reorganized file structure with standalone `core/axon_logging/` library. |
 

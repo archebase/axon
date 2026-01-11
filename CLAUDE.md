@@ -14,13 +14,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build and Test Commands
 
-**All commands should be run from the `ros/` directory unless specified otherwise.**
+**All commands should be run from the project root directory.**
 
 ### Primary Development Commands
 
 ```bash
-# From ros/ directory
-cd ros
+# From project root
 
 # Build everything (auto-detects ROS version)
 make build
@@ -33,22 +32,6 @@ make clean
 
 # Show all available targets
 make help
-```
-
-### Component-Specific Commands
-
-```bash
-# Build only C++ code
-make cpp-build
-
-# Build only Rust bridge (C FFI)
-make rust-build
-
-# Run only C++ tests
-make cpp-test
-
-# Run only Rust tests
-make rust-test
 ```
 
 ### Build Modes
@@ -139,19 +122,19 @@ IDLE → READY → RECORDING ↔ PAUSED
    - HTTP callback client for server notifications
    - Metadata injector (MCAP metadata + sidecar JSON)
 
-**2. MCAP Writer Library** ([cpp/axon_mcap/](cpp/axon_mcap/))
+**2. MCAP Writer Library** ([core/axon_mcap/](core/axon_mcap/))
    - Thread-safe MCAP file operations
    - Zstd/LZ4 compression support
    - Schema/channel registration
    - File integrity validation
 
-**3. Edge Uploader** ([cpp/axon_uploader/](cpp/axon_uploader/))
+**3. Edge Uploader** ([core/axon_uploader/](core/axon_uploader/))
    - S3 multipart upload for large files
    - SQLite state persistence for crash recovery
    - Exponential backoff retry with jitter
    - MCAP-first, JSON-last upload order
 
-**4. Logging Infrastructure** ([cpp/axon_logging/](cpp/axon_logging/))
+**4. Logging Infrastructure** ([core/axon_logging/](core/axon_logging/))
    - Boost.Log with async sinks
    - Console, file, and ROS sinks
    - Severity filtering and rotation
@@ -236,7 +219,7 @@ Keep descriptions under 72 characters. Use imperative mood ("add" not "added").
 
 ## Testing Strategy
 
-- **Unit Tests**: Core library components ([cpp/axon_mcap/test/](cpp/axon_mcap/test/), [cpp/axon_logging/test/](cpp/axon_logging/test/), etc.)
+- **Unit Tests**: Core library components ([core/axon_mcap/test/](core/axon_mcap/test/), [core/axon_logging/test/](core/axon_logging/test/), etc.)
 - **Integration Tests**: ROS service API, state machine transitions ([ros/src/axon_recorder/test/integration/](ros/src/axon_recorder/test/integration/))
 - **E2E Tests**: Full recording workflow with Docker ([ros/src/axon_recorder/test/e2e/](ros/src/axon_recorder/test/e2e/))
 

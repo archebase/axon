@@ -292,7 +292,7 @@ Axon/
 ├── .clang-format          # Code formatting rules
 ├── .github/               # GitHub Actions CI workflows
 ├── cmake/                 # CMake modules (ClangFormat.cmake, etc.)
-├── cpp/                   # C++ shared libraries
+├── core/                   # C++ shared libraries
 │   ├── axon_logging/      # Logging infrastructure
 │   ├── axon_mcap/         # MCAP writer wrapper
 │   └── axon_uploader/     # S3 edge uploader

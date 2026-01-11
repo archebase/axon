@@ -114,7 +114,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-integration-axon_uploader-${{ runner.os }}-${{ hashFiles('cpp/**/*.cpp', 'cpp/**/*.hpp') }}
+          key: ccache-integration-axon_uploader-${{ runner.os }}-${{ hashFiles('core/**/*.cpp', 'core/**/*.hpp') }}
           restore-keys: |
             ccache-integration-axon_uploader-${{ runner.os }}-
             ccache-coverage-axon_uploader-${{ runner.os }}-
@@ -163,7 +163,7 @@ jobs:
           # (GitHub Actions env: block doesn't perform tilde expansion)
           export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
           
-          cd cpp/build_uploader_integration
+          cd core/build_uploader_integration
           
           # Run the integration test that's not registered with CTest
           ./test_edge_uploader --gtest_output=xml:test_results.xml
@@ -172,7 +172,7 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          cd cpp/build_uploader_integration
+          cd core/build_uploader_integration
           
           # Detect lcov version for compatibility flags
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
@@ -212,7 +212,7 @@ jobs:
 
       - name: Normalize coverage paths
         run: |
-          cd cpp/build_uploader_integration
+          cd core/build_uploader_integration
           chmod +x ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh
           ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh coverage.info
           echo "Sample paths after normalization:"
@@ -232,7 +232,7 @@ jobs:
           lcov --list coverage.info ${LCOV_IGNORE_FLAGS} || true
 
       - name: Copy coverage to root for artifact upload
-        run: cp cpp/build_uploader_integration/coverage.info coverage.info
+        run: cp core/build_uploader_integration/coverage.info coverage.info
 
       - name: Upload coverage to Codecov with flag
         uses: codecov/codecov-action@v5
@@ -262,7 +262,7 @@ jobs:
         if: always()
         with:
           name: integration-test-results
-          path: cpp/build_uploader_integration/test_results.xml
+          path: core/build_uploader_integration/test_results.xml
           retention-days: 7
 
       - name: Cleanup MinIO

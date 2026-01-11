@@ -12,10 +12,10 @@
 #   - Path normalization is done in each workflow before upload
 #
 # Architecture:
-#   - cpp/ contains common libraries (axon_logging, axon_mcap, axon_uploader)
-#   - ros/axon_recorder uses cpp/ libraries as dependencies
+#   - core/ contains common libraries (axon_logging, axon_mcap, axon_uploader)
+#   - ros/axon_recorder uses core/ libraries as dependencies
 #   - ROS tests run on 4 distros: ROS1 Noetic, ROS2 Humble/Jazzy/Rolling
-#   - ROS tests cover BOTH ros/ code AND cpp/ code (via library usage)
+#   - ROS tests cover BOTH ros/ code AND core/ code (via library usage)
 # =============================================================================
 
 coverage:
@@ -59,17 +59,17 @@ component_management:
     - component_id: cpp_axon_logging
       name: axon_logging
       paths:
-        - cpp/axon_logging/**
+        - core/axon_logging/**
     
     - component_id: cpp_axon_mcap
       name: axon_mcap
       paths:
-        - cpp/axon_mcap/**
+        - core/axon_mcap/**
     
     - component_id: cpp_axon_uploader
       name: axon_uploader
       paths:
-        - cpp/axon_uploader/**
+        - core/axon_uploader/**
     
     - component_id: ros_axon_recorder
       name: axon_recorder
@@ -79,9 +79,9 @@ component_management:
     - component_id: cpp_all
       name: All C++ Libraries
       paths:
-        - cpp/axon_logging/**
-        - cpp/axon_mcap/**
-        - cpp/axon_uploader/**
+        - core/axon_logging/**
+        - core/axon_mcap/**
+        - core/axon_uploader/**
 
 # Comment configuration for PR feedback
 comment:

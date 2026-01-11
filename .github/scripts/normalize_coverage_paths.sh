@@ -24,36 +24,36 @@ fi
 
 echo "=== Normalizing paths in: $COVERAGE_FILE ==="
 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Step 1: GitHub Actions workspace prefix
-# -----------------------------------------------------------------
-# Path: /home/runner/work/Axon/Axon/cpp/... → cpp/...
+# -----------------------------------------------------------------------------
+# Path: /home/runner/work/Axon/Axon/core/... → core/...
 sed -i 's|^SF:/home/runner/work/Axon/Axon/|SF:|' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Step 2: Docker ROS2 workspace (/workspace/axon/...)
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 sed -i 's|^SF:/workspace/axon/|SF:|' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Step 3: Docker ROS1 catkin workspace
-# -----------------------------------------------------------------
-sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$COVERAGE_FILE"
+# -----------------------------------------------------------------------------
+sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./core/|SF:core/|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$COVERAGE_FILE"
-sed -i 's|^SF:/workspace/catkin_ws/cpp/|SF:cpp/|' "$COVERAGE_FILE"
+sed -i 's|^SF:/workspace/catkin_ws/core/|SF:core/|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
 sed -i 's|^SF:/workspace/catkin_ws/build/|SF:build/|' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Step 4: Cleanup remaining relative paths
-# -----------------------------------------------------------------
-sed -i 's|^SF:catkin_ws/cpp/|SF:cpp/|' "$COVERAGE_FILE"
+# -----------------------------------------------------------------------------
+sed -i 's|^SF:catkin_ws/core/|SF:core/|' "$COVERAGE_FILE"
 sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
 sed -i 's|^SF:Axon/|SF:|' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Step 5: Fix incorrect normalizations (ros/axon_recorder/ → ros/src/axon_recorder/)
-# -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Some paths may have been normalized incorrectly to ros/axon_recorder/ (missing src/)
 # This step fixes them to match the actual repo structure: ros/src/axon_recorder/
 sed -i 's|^SF:ros/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"

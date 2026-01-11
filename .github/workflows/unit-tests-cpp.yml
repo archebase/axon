@@ -94,7 +94,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-coverage-${{ matrix.library }}-${{ runner.os }}-${{ hashFiles('cpp/**/*.cpp', 'cpp/**/*.hpp') }}
+          key: ccache-coverage-${{ matrix.library }}-${{ runner.os }}-${{ hashFiles('core/**/*.cpp', 'core/**/*.hpp') }}
           restore-keys: |
             ccache-coverage-${{ matrix.library }}-${{ runner.os }}-
             ccache-cpp-${{ runner.os }}-
@@ -148,7 +148,7 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          cd cpp/build_${{ matrix.library }}
+          cd core/build_${{ matrix.library }}
           
           # Detect lcov version for compatibility flags
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
@@ -190,14 +190,14 @@ jobs:
 
       - name: Normalize coverage paths
         run: |
-          cd cpp/build_${{ matrix.library }}
+          cd core/build_${{ matrix.library }}
           chmod +x ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh
           ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh coverage.info
           echo "Sample paths after normalization:"
           grep "^SF:" coverage.info | head -5 || true
 
       - name: Copy coverage to root for artifact upload
-        run: cp cpp/build_${{ matrix.library }}/coverage.info coverage.info
+        run: cp core/build_${{ matrix.library }}/coverage.info coverage.info
 
       - name: Upload coverage to Codecov with flag
         uses: codecov/codecov-action@v5

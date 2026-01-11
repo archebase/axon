@@ -116,13 +116,13 @@ The recorder uses a task-centric state machine where each task corresponds to on
 - JWT Bearer token authentication
 - SSL/TLS support for HTTPS
 
-### 2. MCAP Writer (`cpp/axon_mcap/`)
+### 2. MCAP Writer (`core/axon_mcap/`)
 
 - Thread-safe MCAP file operations
 - Zstd/LZ4 compression support
 - MCAP validator for file integrity
 
-### 3. Logging Infrastructure (`cpp/axon_logging/`)
+### 3. Logging Infrastructure (`core/axon_logging/`)
 
 - Boost.Log based with async sinks
 - Console sink (colors, severity filtering)
@@ -130,7 +130,7 @@ The recorder uses a task-centric state machine where each task corresponds to on
 - ROS sink adapter for RCLCPP/ROSCPP integration
 - Environment variable configuration
 
-### 4. Edge Uploader (`cpp/axon_uploader/`)
+### 4. Edge Uploader (`core/axon_uploader/`)
 
 - S3 multipart upload for large files
 - SQLite state persistence for crash recovery

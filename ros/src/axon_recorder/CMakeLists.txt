@@ -57,25 +57,25 @@ endif()
 if(DEFINED AXON_MCAP_DIR AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
     set(CPP_MCAP_DIR "${AXON_MCAP_DIR}")
 else()
-    set(CPP_MCAP_DIR "${PROJECT_ROOT}/cpp/axon_mcap")
+    set(CPP_MCAP_DIR "${PROJECT_ROOT}/core/axon_mcap")
 endif()
 
 if(DEFINED AXON_LOGGING_DIR AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
     set(CPP_LOGGING_DIR "${AXON_LOGGING_DIR}")
 else()
-    set(CPP_LOGGING_DIR "${PROJECT_ROOT}/cpp/axon_logging")
+    set(CPP_LOGGING_DIR "${PROJECT_ROOT}/core/axon_logging")
 endif()
 
 # Validate required paths
 if(NOT EXISTS "${CPP_MCAP_DIR}/CMakeLists.txt")
     message(FATAL_ERROR "Could not find axon_mcap at: ${CPP_MCAP_DIR}\n"
-        "Please ensure the cpp/axon_mcap directory exists.")
+        "Please ensure the core/axon_mcap directory exists.")
 endif()
 message(STATUS "Found axon_mcap at: ${CPP_MCAP_DIR}")
 
 if(NOT EXISTS "${CPP_LOGGING_DIR}/CMakeLists.txt")
     message(FATAL_ERROR "Could not find axon_logging at: ${CPP_LOGGING_DIR}\n"
-        "Please ensure the cpp/axon_logging directory exists.")
+        "Please ensure the core/axon_logging directory exists.")
 endif()
 message(STATUS "Found axon_logging at: ${CPP_LOGGING_DIR}")
 

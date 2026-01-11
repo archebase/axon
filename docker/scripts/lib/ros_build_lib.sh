@@ -95,17 +95,17 @@ ros_build_package() {
             rm -rf build devel install log logs
 
             # Also clean C++ library build artifacts in parent directory
-            # (cpp/axon_mcap, cpp/axon_logging may have stale build artifacts)
-            if [ -d "${workspace_root}/cpp" ]; then
+            # (core/axon_mcap, core/axon_logging may have stale build artifacts)
+            if [ -d "${workspace_root}/core" ]; then
                 ros_build_log "INFO" "Cleaning C++ library build artifacts..."
-                rm -rf "${workspace_root}/cpp/build"*
-                rm -rf "${workspace_root}/cpp/*/build"
-                # Clean any CMake caches in cpp directories
-                find "${workspace_root}/cpp" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
-                find "${workspace_root}/cpp" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
+                rm -rf "${workspace_root}/core/build"*
+                rm -rf "${workspace_root}/core/*/build"
+                # Clean any CMake caches in core directories
+                find "${workspace_root}/core" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
+                find "${workspace_root}/core" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
                 # Clean coverage data files
-                find "${workspace_root}/cpp" -type f -name "*.gcda" -delete 2>/dev/null || true
-                find "${workspace_root}/cpp" -type f -name "*.gcno" -delete 2>/dev/null || true
+                find "${workspace_root}/core" -type f -name "*.gcda" -delete 2>/dev/null || true
+                find "${workspace_root}/core" -type f -name "*.gcno" -delete 2>/dev/null || true
             fi
 
             # Also clean the main project build directory if it exists
@@ -182,17 +182,17 @@ ros_build_package() {
             rm -rf build devel install log logs
 
             # Also clean C++ library build artifacts in parent directory
-            # (cpp/axon_mcap, cpp/axon_logging may have stale build artifacts)
-            if [ -d "${workspace_root}/cpp" ]; then
+            # (core/axon_mcap, core/axon_logging may have stale build artifacts)
+            if [ -d "${workspace_root}/core" ]; then
                 ros_build_log "INFO" "Cleaning C++ library build artifacts..."
-                rm -rf "${workspace_root}/cpp/build"*
-                rm -rf "${workspace_root}/cpp/*/build"
-                # Clean any CMake caches in cpp directories
-                find "${workspace_root}/cpp" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
-                find "${workspace_root}/cpp" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
+                rm -rf "${workspace_root}/core/build"*
+                rm -rf "${workspace_root}/core/*/build"
+                # Clean any CMake caches in core directories
+                find "${workspace_root}/core" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
+                find "${workspace_root}/core" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
                 # Clean coverage data files
-                find "${workspace_root}/cpp" -type f -name "*.gcda" -delete 2>/dev/null || true
-                find "${workspace_root}/cpp" -type f -name "*.gcno" -delete 2>/dev/null || true
+                find "${workspace_root}/core" -type f -name "*.gcda" -delete 2>/dev/null || true
+                find "${workspace_root}/core" -type f -name "*.gcno" -delete 2>/dev/null || true
             fi
 
             # Also clean the main project build directory if it exists

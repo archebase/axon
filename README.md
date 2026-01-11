@@ -320,7 +320,7 @@ make test  # Builds and runs all tests
 
 **C++ Library Tests:**
 ```bash
-cd cpp/axon_mcap
+cd core/axon_mcap
 mkdir -p build && cd build
 cmake .. -DAXON_MCAP_BUILD_TESTS=ON
 cmake --build .
@@ -369,7 +369,7 @@ Coverage reports are automatically generated on every push to `main` and uploade
 Ensure the MCAP library is built before compiling ROS packages:
 
 ```bash
-cd cpp/axon_mcap
+cd core/axon_mcap
 mkdir -p build && cd build
 cmake ..
 cmake --build .

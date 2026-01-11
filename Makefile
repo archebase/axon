@@ -115,8 +115,8 @@ build-ros2:
 # Library tests
 test:
 	@printf "%s\n" "$(YELLOW)Running library tests...$(NC)"
-	@if [ -d "$(PROJECT_ROOT)/cpp/axon_mcap" ]; then \
-		cd $(PROJECT_ROOT)/cpp/axon_mcap && \
+	@if [ -d "$(PROJECT_ROOT)/core/axon_mcap" ]; then \
+		cd $(PROJECT_ROOT)/core/axon_mcap && \
 		mkdir -p build && cd build && \
 		cmake .. -DAXON_MCAP_BUILD_TESTS=ON && \
 		cmake --build . && \
@@ -274,8 +274,8 @@ format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@printf "%s\n" "$(YELLOW)Tip: Pre-commit hooks check formatting automatically on commit$(NC)"
 	@if command -v clang-format >/dev/null 2>&1; then \
-		printf "%s\n" "$(YELLOW)  Formatting cpp/ libraries...$(NC)"; \
-		find cpp/axon_mcap cpp/axon_uploader cpp/axon_logging \
+		printf "%s\n" "$(YELLOW)  Formatting core/ libraries...$(NC)"; \
+		find core/axon_mcap core/axon_uploader core/axon_logging \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 			xargs -0 clang-format -i; \
@@ -293,7 +293,7 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find cpp ros/src \
+		find core ros/src \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \
@@ -301,9 +301,9 @@ lint:
 			-print0 2>/dev/null | \
 		xargs -0 cppcheck --enable=all \
 			--suppress=missingInclude \
-			-Icpp/axon_mcap/include \
-			-Icpp/axon_uploader/include \
-			-Icpp/axon_logging/include \
+			-Icore/axon_mcap/include \
+			-Icore/axon_uploader/include \
+			-Icore/axon_logging/include \
 			-Iros/src/axon_recorder/include; \
 		printf "%s\n" "$(GREEN)✓ C++ linting passed$(NC)"; \
 	else \
