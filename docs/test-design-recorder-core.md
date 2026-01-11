@@ -1,9 +1,8 @@
 # Test Design Document: Axon Recorder Core Components
 
+**Date:** 2025-12-25
 **Document Version:** 2.0  
-**Date:** 2025-12-25  
-**Author:** Axon Robotics Team  
-**Reviewers:** Staff/Principal Engineers  
+
 
 ## Executive Summary
 

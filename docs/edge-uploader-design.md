@@ -1,5 +1,7 @@
 # Edge Uploader Design
 
+**Date:** 2025-12-21
+
 ## Overview
 
 This document defines the **Edge Uploader** capability for `axon_recorder`, a device-side C++ component responsible for automatically uploading recorded MCAP files and their sidecar JSON metadata to an S3-compatible edge storage layer (e.g., MinIO, Ceph, AWS S3). The Edge Uploader operates as a tightly integrated module within the recorder or as a lightweight companion daemon, ensuring reliable data transfer from device to edge with data integrity guarantees.

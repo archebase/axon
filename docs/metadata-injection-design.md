@@ -1,5 +1,6 @@
 # Metadata Injection Capability Design
 
+**Date:** 2025-12-20
 ## Overview
 
 This document defines the metadata injection capability for `axon_recorder`, enabling self-describing MCAP files for embodied robotics data recording. The design ensures that recorded data remains traceable and queryable even after file renaming or migration across storage systems.
@@ -440,7 +441,7 @@ void McapWriter::finalize() {
         {"data_collector_id", config_.data_collector_id}
     };
     writer_.write(task_meta);
-    
+
     // 2. Write device metadata
     mcap::Metadata device_meta;
     device_meta.name = "axon.device";
@@ -452,7 +453,7 @@ void McapWriter::finalize() {
         {"ros_distro", getRosDistro()}
     };
     writer_.write(device_meta);
-    
+
     // 3. Write recording metadata (with final statistics)
     mcap::Metadata recording_meta;
     recording_meta.name = "axon.recording";
@@ -466,13 +467,13 @@ void McapWriter::finalize() {
         {"topics_recorded", join(recorded_topics_, ",")}
     };
     writer_.write(recording_meta);
-    
+
     // 4. Close MCAP file
     writer_.close();
-    
+
     // 5. Compute checksum (always enabled)
     std::string checksum = computeSHA256(output_path_);
-    
+
     // 6. Generate sidecar JSON (always enabled)
     generateSidecarJson(checksum);
 }
@@ -483,10 +484,10 @@ void McapWriter::finalize() {
 ```cpp
 void McapWriter::generateSidecarJson(const std::string& checksum) {
     nlohmann::json sidecar;
-    
+
     sidecar["version"] = "1.0";
     sidecar["mcap_file"] = getBasename(output_path_);
-    
+
     // Task metadata
     sidecar["task"] = {
         {"task_id", config_.task_id},
@@ -498,7 +499,7 @@ void McapWriter::generateSidecarJson(const std::string& checksum) {
         {"data_collector_id", config_.data_collector_id},
         {"operator_name", config_.operator_name}
     };
-    
+
     // Device metadata
     sidecar["device"] = {
         {"device_id", config_.device_id},
@@ -507,7 +508,7 @@ void McapWriter::generateSidecarJson(const std::string& checksum) {
         {"hostname", getHostname()},
         {"ros_distro", getRosDistro()}
     };
-    
+
     // Recording metadata (checksum always included)
     sidecar["recording"] = {
         {"recorder_version", AXON_RECORDER_VERSION},
@@ -519,7 +520,7 @@ void McapWriter::generateSidecarJson(const std::string& checksum) {
         {"checksum_sha256", checksum},
         {"topics_recorded", recorded_topics_}
     };
-    
+
     // Topics summary
     sidecar["topics_summary"] = nlohmann::json::array();
     for (const auto& [topic, stats] : topic_statistics_) {
@@ -530,7 +531,7 @@ void McapWriter::generateSidecarJson(const std::string& checksum) {
             {"frequency_hz", stats.computeFrequency()}
         });
     }
-    
+
     // Atomic write: write to temp file, then rename
     std::string json_path = replaceExtension(output_path_, ".json");
     std::string tmp_path = json_path + ".tmp";
@@ -563,7 +564,7 @@ def read_metadata_from_mcap(mcap_path: str) -> dict:
     """Read metadata directly from MCAP file."""
     with open(mcap_path, "rb") as f:
         reader = make_reader(f)
-        
+
         metadata = {}
         for name, records in reader.iter_metadata():
             if name == "axon.task":
@@ -572,7 +573,7 @@ def read_metadata_from_mcap(mcap_path: str) -> dict:
                 metadata["device"] = dict(records)
             elif name == "axon.recording":
                 metadata["recording"] = dict(records)
-        
+
         return metadata
 
 # Usage with Daft for batch processing
@@ -718,27 +719,27 @@ TEST(MetadataInjectionTest, WriteAndReadTaskMetadata) {
     config.task_id = "test_task_001";
     config.scene = "test_scene";
     config.skills = {"skill_a", "skill_b"};
-    
+
     // Record
     McapWriter writer(config);
     writer.open("/tmp/test.mcap");
     writer.writeMessage(...);
     writer.finalize();
-    
+
     // Verify MCAP metadata
     mcap::McapReader reader;
     reader.open("/tmp/test.mcap");
     auto metadata = reader.metadata();
-    
+
     ASSERT_TRUE(metadata.contains("axon.task"));
     EXPECT_EQ(metadata["axon.task"]["task_id"], "test_task_001");
     EXPECT_EQ(metadata["axon.task"]["scene"], "test_scene");
     EXPECT_EQ(metadata["axon.task"]["skills"], "skill_a,skill_b");
-    
+
     // Verify JSON sidecar
     std::ifstream ifs("/tmp/test.json");
     auto json = nlohmann::json::parse(ifs);
-    
+
     EXPECT_EQ(json["version"], "1.0");
     EXPECT_EQ(json["task"]["task_id"], "test_task_001");
     EXPECT_EQ(json["task"]["scene"], "test_scene");
@@ -748,10 +749,10 @@ TEST(MetadataInjectionTest, WriteAndReadTaskMetadata) {
 
 ## Revision History
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2025-12-20 | - | Initial design |
-| 1.1 | 2025-12-21 | - | Final design: removed `session_id`, `episode_number`, and `tags` fields; renamed `organization` to `factory`; sidecar JSON and SHA-256 checksum are always-on (not configurable) |
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2025-12-20 | Initial design |
+| 1.1 | 2025-12-21 | Final design: removed `session_id`, `episode_number`, and `tags` fields; renamed `organization` to `factory`; sidecar JSON and SHA-256 checksum are always-on (not configurable) |
 
 ## Appendix: MCAP Metadata Record Format
 

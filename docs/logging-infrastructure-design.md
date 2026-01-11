@@ -1,5 +1,7 @@
 # Logging Infrastructure Design
 
+**Date:** 2025-12-22
+
 ## Overview
 
 This document defines a unified logging infrastructure for `axon_recorder`, replacing the current ad-hoc mix of `std::cerr`, `std::cout`, and ROS logging with a structured, configurable, and observable logging system. The design leverages **Boost.Log** for production-grade async logging across all components.

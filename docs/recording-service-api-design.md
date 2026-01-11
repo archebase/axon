@@ -1,5 +1,7 @@
 # Recording Service API Design
 
+**Date:** 2025-12-20
+
 ## Overview
 
 This document defines the ROS service API for `axon_recorder`, designed for:
