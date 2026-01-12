@@ -203,7 +203,8 @@ if [ "$ENABLE_COVERAGE" = true ]; then
     ros_build_package "${WORKSPACE_ROOT}" "true" "true" "Debug" || {
         ros_build_error "Failed to build ROS plugin with coverage"
     }
-    COVERAGE_DIR="${WORKSPACE_BUILD_DIR}"
+    # Note: We don't use WORKSPACE_BUILD_DIR for E2E coverage
+    # E2E tests collect coverage from axon_recorder and core libraries, not the plugin
 else
     ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" || {
         ros_build_error "Failed to build ROS plugin"
@@ -323,23 +324,96 @@ if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
     echo "Part 3: Generating coverage report..."
     echo "============================================"
 
-    # Generate coverage report using library function (COVERAGE_DIR is always set when coverage enabled)
-    ros_coverage_generate "${COVERAGE_DIR}" "${COVERAGE_OUTPUT_DIR}" || {
-        ros_coverage_error "Failed to generate coverage report"
-    }
+    # E2E tests collect coverage from axon_recorder and core libraries
+    # NOT from the ROS plugin (plugin is used as a library but not tested in E2E)
 
-    # Display final summary
-    echo ""
-    echo "============================================"
-    echo "E2E Test Coverage Summary"
-    echo "============================================"
-    lcov --list "${COVERAGE_OUTPUT_DIR}/coverage.info" || true
+    # Check lcov availability
+    if ! command -v lcov &> /dev/null; then
+        ros_coverage_log "WARN" "lcov not available, skipping coverage generation"
+    else
+        # Collect coverage data from multiple directories
+        # Using a temporary file to collect from each directory
+        raw_file="${COVERAGE_OUTPUT_DIR}/coverage_raw.info"
+        filtered_file="${COVERAGE_OUTPUT_DIR}/coverage.info"
 
-    echo ""
-    echo "============================================"
-    echo "E2E test coverage collection complete!"
-    echo "============================================"
-    echo "Coverage data: ${COVERAGE_OUTPUT_DIR}/coverage.info"
+        # Find all gcda files in the target directories
+        gcda_files=()
+        while IFS= read -r -d '' file; do
+            gcda_files+=("$file")
+        done < <(find "${WORKSPACE_ROOT}/build/axon_mcap" \
+                      "${WORKSPACE_ROOT}/build/axon_logging" \
+                      "${WORKSPACE_ROOT}/build/apps/axon_recorder" \
+                      -name "*.gcda" -type f -print0 2>/dev/null)
+
+        if [ ${#gcda_files[@]} -eq 0 ]; then
+            ros_coverage_log "WARN" "No .gcda files found in E2E test directories"
+        else
+            ros_coverage_log "INFO" "Found ${#gcda_files[@]} .gcda files"
+
+            # Get the directory containing the gcda files for lcov
+            gcda_dirs=()
+            for file in "${gcda_files[@]}"; do
+                dir=$(dirname "$file")
+                # Add unique directories
+                if [[ ! " ${gcda_dirs[*]} " =~ " ${dir} " ]]; then
+                    gcda_dirs+=("$dir")
+                fi
+            done
+
+            echo "Collecting coverage from directories:"
+            printf '  - %s\n' "${gcda_dirs[@]}"
+
+            # Capture coverage (using first directory as base)
+            base_dir="${gcda_dirs[0]}"
+            lcov_major=$(lcov --version 2>&1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 | cut -d. -f1)
+
+            lcov --capture \
+                --directory "$base_dir" \
+                --output-file "$raw_file" \
+                --rc branch_coverage=1 \
+                2>/dev/null || {
+                ros_coverage_log "WARN" "lcov capture failed, trying alternative method..."
+                # Fallback: collect from each directory separately
+                for dir in "${gcda_dirs[@]}"; do
+                    lcov --capture \
+                        --directory "$dir" \
+                        --output-file "$raw_file" \
+                        --rc branch_coverage=1 2>/dev/null || true
+                done
+            }
+
+            # Filter coverage data to remove external dependencies
+            lcov --remove "$raw_file" \
+                '/usr/*' \
+                '/opt/*' \
+                '*/_deps/*' \
+                '*/generated/*' \
+                '*/googletest/*' \
+                '*/gtest/*' \
+                '*/mcap-*/*' \
+                '*/mcap/include/*' \
+                '*/minio-cpp/*' \
+                '*/test/*' \
+                '*/rosidl_typesupport_cpp/*' \
+                '*/rosidl_typesupport_introspection_cpp/*' \
+                '*/rosidl_generator_cpp/*' \
+                --output-file "$filtered_file" \
+                2>/dev/null || cp "$raw_file" "$filtered_file"
+
+            # Display final summary
+            echo ""
+            echo "============================================"
+            echo "E2E Test Coverage Summary"
+            echo "============================================"
+            lcov --list "$filtered_file" || true
+
+            echo ""
+            echo "============================================"
+            echo "E2E test coverage collection complete!"
+            echo "============================================"
+            echo "Coverage data: ${filtered_file}"
+        fi
+    fi
 fi
 
 # =============================================================================
