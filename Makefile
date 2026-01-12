@@ -797,13 +797,14 @@ coverage-html-cpp:
 # format-ci: Check code formatting (CI style check, no modifications)
 format-ci:
 	@printf "%s\n" "$(YELLOW)Checking code formatting...$(NC)"
-	@find core middlewares/ros1 middlewares/ros2 \
+	@find core middlewares/ros1 middlewares/ros2 apps \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/build_*/*" ! -path "*/install/*" ! -path "*/devel/*" \
 		-print0 2>/dev/null | \
 		xargs -0 clang-format --dry-run --Werror > /dev/null 2>&1 || \
 		(printf "%s\n" "$(RED)✗ Code formatting check failed$(NC)" && \
 		 printf "%s\n" "$(YELLOW)Run 'make format' to fix formatting issues$(NC)" && \
+		 printf "%s\n" "$(YELLOW)Or format files individually: clang-format -i <file>$(NC)" && \
 		 exit 1)
 	@printf "%s\n" "$(GREEN)✓ Code formatting check passed$(NC)"
 

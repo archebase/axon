@@ -137,6 +137,7 @@ if(TARGET axon_mcap)
         worker_thread_pool.cpp
         plugin_loader.cpp
         config_parser.cpp
+        http_server.cpp
     )
 
     target_include_directories(axon_recorder PRIVATE
@@ -151,6 +152,8 @@ if(TARGET axon_mcap)
         yaml-cpp
         OpenSSL::Crypto
         OpenSSL::SSL
+        Boost::system
+        Boost::thread
         dl
         pthread
     )

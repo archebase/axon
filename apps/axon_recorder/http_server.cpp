@@ -1,0 +1,654 @@
+#include "http_server.hpp"
+
+#include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/version.hpp>
+
+#include <chrono>
+#include <cstring>
+#include <iostream>
+#include <sstream>
+#include <unordered_map>
+
+#include "recorder.hpp"
+#include "state_machine.hpp"
+
+namespace beast = boost::beast;
+namespace http = beast::http;
+namespace asio = boost::asio;
+using tcp = asio::ip::tcp;
+
+namespace axon {
+namespace recorder {
+
+// Simple logging macros for HTTP server
+#define HTTP_LOG_INFO(msg) std::cout << "[HTTP_SERVER] [INFO] " << msg << std::endl
+#define HTTP_LOG_ERROR(msg) std::cerr << "[HTTP_SERVER] [ERROR] " << msg << std::endl
+#define HTTP_LOG_DEBUG(msg) std::cout << "[HTTP_SERVER] [DEBUG] " << msg << std::endl
+
+HttpServer::HttpServer(AxonRecorder& recorder, const std::string& host, uint16_t port)
+    : recorder_(recorder)
+    , host_(host)
+    , port_(port)
+    , running_(false)
+    , stop_requested_(false) {}
+
+HttpServer::~HttpServer() {
+  stop();
+}
+
+bool HttpServer::start() {
+  if (running_.load()) {
+    set_error_helper("Server already running");
+    return false;
+  }
+
+  try {
+    stop_requested_.store(false);
+    server_thread_ = std::make_unique<std::thread>(&HttpServer::server_thread_func, this);
+    running_.store(true);
+    return true;
+  } catch (const std::exception& e) {
+    set_error_helper(std::string("Failed to start server: ") + e.what());
+    return false;
+  }
+}
+
+void HttpServer::stop() {
+  if (!running_.load()) {
+    return;
+  }
+
+  stop_requested_.store(true);
+
+  if (server_thread_ && server_thread_->joinable()) {
+    server_thread_->join();
+    server_thread_.reset();
+  }
+
+  running_.store(false);
+}
+
+bool HttpServer::is_running() const {
+  return running_.load();
+}
+
+std::string HttpServer::get_url() const {
+  return "http://" + host_ + ":" + std::to_string(port_);
+}
+
+std::string HttpServer::get_last_error() const {
+  std::lock_guard<std::mutex> lock(error_mutex_);
+  return last_error_;
+}
+
+void HttpServer::server_thread_func() {
+  try {
+    asio::io_context io_context(1);
+
+    tcp::acceptor acceptor(io_context);
+    tcp::endpoint endpoint{asio::ip::make_address(host_), port_};
+
+    acceptor.open(endpoint.protocol());
+    acceptor.set_option(asio::socket_base::reuse_address(true));
+    acceptor.bind(endpoint);
+    acceptor.listen(asio::socket_base::max_listen_connections);
+
+    HTTP_LOG_INFO("HTTP RPC server listening on " << get_url());
+
+    while (!stop_requested_.load()) {
+      tcp::socket socket(io_context);
+
+      // Set a timeout for accept to allow checking stop_requested_
+      acceptor.set_option(tcp::acceptor::reuse_address(true));
+
+      // Wait for connection (with timeout check)
+      bool timeout = false;
+      std::chrono::seconds timeout_sec(1);
+
+      // Use async accept with timeout
+      asio::steady_timer timer(io_context);
+      timer.expires_after(timeout_sec);
+
+      bool accept_complete = false;
+      boost::system::error_code accept_ec;
+
+      acceptor.async_accept(socket, [&](const boost::system::error_code& ec) {
+        accept_ec = ec;
+        if (!ec) {
+          accept_complete = true;
+        }
+      });
+
+      timer.async_wait([&](const boost::system::error_code&) {
+        if (!accept_complete) {
+          acceptor.cancel();
+        }
+      });
+
+      io_context.restart();
+      io_context.run();
+
+      if (stop_requested_.load()) {
+        break;
+      }
+
+      if (!accept_complete && accept_ec != asio::error::operation_aborted) {
+        // Actual error (not timeout)
+        HTTP_LOG_ERROR("Accept failed: " << accept_ec.message());
+        continue;
+      }
+
+      if (!accept_complete) {
+        // Timeout, continue loop
+        continue;
+      }
+
+      // Process the connection
+      try {
+        beast::flat_buffer buffer;
+
+        http::request<http::string_body> request;
+        http::read(socket, buffer, request);
+
+        std::string response_body;
+        std::string content_type = "application/json";
+        int status_code = 200;
+
+        handle_request(
+          request.method_string(),
+          request.target(),
+          request.body(),
+          response_body,
+          content_type,
+          status_code
+        );
+
+        http::response<http::string_body> response{
+          static_cast<http::status>(status_code), request.version()};
+        response.set(http::field::server, "AxonRecorder/0.1.0");
+        response.set(http::field::content_type, content_type);
+        response.keep_alive(request.keep_alive());
+        response.body() = response_body;
+        response.prepare_payload();
+
+        http::write(socket, response);
+
+        // Gracefully close the connection
+        beast::error_code ec;
+        socket.shutdown(tcp::socket::shutdown_send, ec);
+
+      } catch (const beast::system_error& se) {
+        // Don't report on normal shutdown
+        if (se.code() != beast::errc::connection_reset && se.code() != beast::errc::operation_canceled && se.code() != asio::error::eof) {
+          HTTP_LOG_ERROR("Connection error: " << se.what());
+        }
+      } catch (const std::exception& e) {
+        HTTP_LOG_ERROR("Request processing error: " << e.what());
+      }
+    }
+
+    HTTP_LOG_INFO("HTTP RPC server stopped");
+
+  } catch (const std::exception& e) {
+    set_error_helper(std::string("Server error: ") + e.what());
+    HTTP_LOG_ERROR("HTTP server error: " << e.what());
+  }
+}
+
+void HttpServer::handle_request(
+  const boost::beast::string_view& method, const boost::beast::string_view& target,
+  const std::string& body, std::string& response_body, std::string& content_type, int& status_code
+) {
+  HTTP_LOG_DEBUG("Received request: " << method << " " << target);
+
+  // Convert string_view to string for easier handling
+  std::string method_str(method);
+  std::string target_str(target);
+
+  HTTP_LOG_DEBUG("Method: [" << method_str << "], Target: [" << target_str << "]");
+
+  // Check if it's an RPC call
+  if (target_str.find("/rpc/") == 0) {
+    std::string rpc_method = target_str.substr(5);  // Remove "/rpc/"
+    HTTP_LOG_DEBUG("RPC method: [" << rpc_method << "]");
+
+    try {
+      // Parse request body if present
+      nlohmann::json params;
+      if (!body.empty()) {
+        params = nlohmann::json::parse(body);
+      }
+
+      RpcResponse rpc_response;
+
+      HTTP_LOG_DEBUG(
+        "Routing: rpc_method=[" << rpc_method << "], method_str=[" << method_str << "]"
+      );
+      HTTP_LOG_DEBUG(
+        "Comparison: begin=" << (rpc_method == "begin") << ", finish=" << (rpc_method == "finish")
+                             << ", quit=" << (rpc_method == "quit")
+                             << ", POST=" << (method_str == "POST")
+      );
+
+      // Route to appropriate RPC handler
+      if (rpc_method == "begin" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_begin");
+        rpc_response = handle_rpc_begin(params);
+      } else if (rpc_method == "finish" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_finish");
+        rpc_response = handle_rpc_finish(params);
+      } else if (rpc_method == "quit" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_quit");
+        rpc_response = handle_rpc_quit(params);
+      } else if (rpc_method == "pause" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_pause");
+        rpc_response = handle_rpc_pause(params);
+      } else if (rpc_method == "resume" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_resume");
+        rpc_response = handle_rpc_resume(params);
+      } else if (rpc_method == "cancel" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_cancel");
+        rpc_response = handle_rpc_cancel(params);
+      } else if (rpc_method == "clear" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_clear");
+        rpc_response = handle_rpc_clear(params);
+      } else if (rpc_method == "state" && method_str == "GET") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_get_state");
+        rpc_response = handle_rpc_get_state(params);
+      } else if (rpc_method == "stats" && method_str == "GET") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_get_stats");
+        rpc_response = handle_rpc_get_stats(params);
+      } else if (rpc_method == "config" && method_str == "POST") {
+        HTTP_LOG_DEBUG("Routing to handle_rpc_set_config");
+        rpc_response = handle_rpc_set_config(params);
+      } else {
+        HTTP_LOG_DEBUG("No match found, returning 404");
+        rpc_response.success = false;
+        rpc_response.message = "Unknown RPC method or invalid HTTP method: " + rpc_method;
+        status_code = 404;
+      }
+
+      response_body = rpc_response.to_json().dump();
+      content_type = "application/json";
+
+    } catch (const nlohmann::json::exception& e) {
+      nlohmann::json error_json;
+      error_json["success"] = false;
+      error_json["message"] = std::string("JSON parse error: ") + e.what();
+      response_body = error_json.dump();
+      content_type = "application/json";
+      status_code = 400;
+    }
+
+  } else if (target_str == "/" || target_str == "/health") {
+    // Health check endpoint
+    nlohmann::json health;
+    health["status"] = "ok";
+    health["service"] = "AxonRecorder";
+    health["version"] = "0.1.0";
+    health["running"] = recorder_.is_running();
+    health["state"] = recorder_.get_state_string();
+    response_body = health.dump();
+    content_type = "application/json";
+  } else {
+    // Unknown endpoint
+    nlohmann::json error;
+    error["success"] = false;
+    error["message"] = "Not found";
+    response_body = error.dump();
+    content_type = "application/json";
+    status_code = 404;
+  }
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_begin(const nlohmann::json& params) {
+  RpcResponse response;
+
+  auto current_state = recorder_.get_state();
+
+  // Check if recorder is in READY state (config has been set)
+  if (current_state != RecorderState::READY) {
+    response.success = false;
+    response.message = "Cannot start recording from state: " + recorder_.get_state_string() +
+                       ". Must be in READY state (call /rpc/config first).";
+    response.data["state"] = recorder_.get_state_string();
+    return response;
+  }
+
+  if (!recorder_.is_running()) {
+    if (recorder_.start()) {
+      response.success = true;
+      response.message = "Recording started successfully";
+      response.data["state"] = recorder_.get_state_string();
+      response.data["task_id"] = params.value("task_id", "");
+    } else {
+      response.success = false;
+      response.message = "Failed to start recording: " + recorder_.get_last_error();
+      response.data["state"] = recorder_.get_state_string();
+    }
+  } else {
+    response.success = false;
+    response.message = "Recorder is already running";
+    response.data["state"] = recorder_.get_state_string();
+  }
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_pause(const nlohmann::json& params) {
+  RpcResponse response;
+
+  auto current_state = recorder_.get_state();
+
+  if (current_state != RecorderState::RECORDING) {
+    response.success = false;
+    response.message = "Cannot pause recording from state: " + recorder_.get_state_string() +
+                       ". Must be in RECORDING state.";
+    response.data["state"] = recorder_.get_state_string();
+    return response;
+  }
+
+  // TODO: Implement pause functionality in AxonRecorder
+  response.success = false;
+  response.message = "Pause functionality not yet implemented";
+  response.data["state"] = recorder_.get_state_string();
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_resume(const nlohmann::json& params) {
+  RpcResponse response;
+
+  auto current_state = recorder_.get_state();
+
+  if (current_state != RecorderState::PAUSED) {
+    response.success = false;
+    response.message = "Cannot resume recording from state: " + recorder_.get_state_string() +
+                       ". Must be in PAUSED state.";
+    response.data["state"] = recorder_.get_state_string();
+    return response;
+  }
+
+  // TODO: Implement resume functionality in AxonRecorder
+  response.success = false;
+  response.message = "Resume functionality not yet implemented";
+  response.data["state"] = recorder_.get_state_string();
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_finish(const nlohmann::json& params) {
+  RpcResponse response;
+
+  auto current_state = recorder_.get_state();
+
+  if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
+    response.success = false;
+    response.message = "Cannot finish recording from state: " + recorder_.get_state_string() +
+                       ". Must be in RECORDING or PAUSED state.";
+    response.data["state"] = recorder_.get_state_string();
+    return response;
+  }
+
+  if (recorder_.is_running()) {
+    recorder_.stop();
+    response.success = true;
+    response.message = "Recording finished successfully";
+    response.data["state"] = recorder_.get_state_string();
+
+    // Include task_id if provided
+    if (params.contains("task_id")) {
+      response.data["task_id"] = params["task_id"];
+    }
+  } else {
+    response.success = false;
+    response.message = "Recorder is not running";
+    response.data["state"] = recorder_.get_state_string();
+  }
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_quit(const nlohmann::json& params) {
+  RpcResponse response;
+
+  // First, finish recording if running
+  if (recorder_.is_running()) {
+    HTTP_LOG_INFO("Stopping recording before quit...");
+    recorder_.stop();
+  }
+
+  // Then stop the HTTP server
+  HTTP_LOG_INFO("Stopping HTTP server and quitting program...");
+  stop_requested_.store(true);
+
+  response.success = true;
+  response.message = "Program quitting. Recording stopped and data saved.";
+  response.data["state"] = recorder_.get_state_string();
+
+  if (params.contains("task_id")) {
+    response.data["task_id"] = params["task_id"];
+  }
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_cancel(const nlohmann::json& params) {
+  RpcResponse response;
+
+  auto current_state = recorder_.get_state();
+
+  if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
+    response.success = false;
+    response.message = "Cannot cancel recording from state: " + recorder_.get_state_string() +
+                       ". Must be in RECORDING or PAUSED state.";
+    response.data["state"] = recorder_.get_state_string();
+    return response;
+  }
+
+  // TODO: Implement cancel with cleanup (discard partial recording)
+  // For now, just stop like finish
+  if (recorder_.is_running()) {
+    recorder_.stop();
+    response.success = true;
+    response.message = "Recording cancelled successfully";
+    response.data["state"] = recorder_.get_state_string();
+
+    if (params.contains("task_id")) {
+      response.data["task_id"] = params["task_id"];
+    }
+  } else {
+    response.success = false;
+    response.message = "Recorder is not running";
+    response.data["state"] = recorder_.get_state_string();
+  }
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_clear(const nlohmann::json& params) {
+  RpcResponse response;
+
+  auto current_state = recorder_.get_state();
+
+  if (current_state != RecorderState::READY) {
+    response.success = false;
+    response.message = "Cannot clear configuration from state: " + recorder_.get_state_string() +
+                       ". Must be in READY state.";
+    response.data["state"] = recorder_.get_state_string();
+    return response;
+  }
+
+  // TODO: Implement clear to reset task config and return to IDLE
+  response.success = false;
+  response.message = "Clear functionality not yet implemented";
+  response.data["state"] = recorder_.get_state_string();
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_get_state(const nlohmann::json& params) {
+  RpcResponse response;
+
+  response.success = true;
+  response.message = "State retrieved successfully";
+  response.data["state"] = state_to_string(recorder_.get_state());
+  response.data["running"] = recorder_.is_running();
+
+  // Include task_config for READY, RECORDING, and PAUSED states
+  auto current_state = recorder_.get_state();
+  if (current_state != RecorderState::IDLE) {
+    const TaskConfig* config = recorder_.get_task_config();
+    if (config) {
+      nlohmann::json config_json;
+
+      // Only include business fields, exclude sensitive fields
+      if (!config->task_id.empty()) {
+        config_json["task_id"] = config->task_id;
+      }
+      if (!config->device_id.empty()) {
+        config_json["device_id"] = config->device_id;
+      }
+      if (!config->data_collector_id.empty()) {
+        config_json["data_collector_id"] = config->data_collector_id;
+      }
+      if (!config->order_id.empty()) {
+        config_json["order_id"] = config->order_id;
+      }
+      if (!config->operator_name.empty()) {
+        config_json["operator_name"] = config->operator_name;
+      }
+      if (!config->scene.empty()) {
+        config_json["scene"] = config->scene;
+      }
+      if (!config->subscene.empty()) {
+        config_json["subscene"] = config->subscene;
+      }
+      if (!config->skills.empty()) {
+        config_json["skills"] = config->skills;
+      }
+      if (!config->factory.empty()) {
+        config_json["factory"] = config->factory;
+      }
+      if (!config->topics.empty()) {
+        config_json["topics"] = config->topics;
+      }
+
+      // Exclude sensitive fields: start_callback_url, finish_callback_url, user_token
+
+      response.data["task_config"] = config_json;
+    }
+  }
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_get_stats(const nlohmann::json& params) {
+  RpcResponse response;
+
+  auto stats = recorder_.get_statistics();
+
+  response.success = true;
+  response.message = "Statistics retrieved successfully";
+  response.data["messages_received"] = stats.messages_received;
+  response.data["messages_written"] = stats.messages_written;
+  response.data["messages_dropped"] = stats.messages_dropped;
+  response.data["bytes_written"] = stats.bytes_written;
+
+  return response;
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_set_config(const nlohmann::json& params) {
+  RpcResponse response;
+
+  // Check if task_config is present in params
+  if (!params.contains("task_config")) {
+    response.success = false;
+    response.message = "Missing 'task_config' in request parameters";
+    return response;
+  }
+
+  try {
+    TaskConfig config;
+    const auto& config_json = params["task_config"];
+
+    if (config_json.contains("task_id")) {
+      config.task_id = config_json["task_id"];
+    }
+    if (config_json.contains("device_id")) {
+      config.device_id = config_json["device_id"];
+    }
+    if (config_json.contains("scene")) {
+      config.scene = config_json["scene"];
+    }
+    if (config_json.contains("topics")) {
+      for (const auto& topic : config_json["topics"]) {
+        config.topics.push_back(topic);
+      }
+    }
+    if (config_json.contains("callback_url")) {
+      config.start_callback_url = config_json["callback_url"];
+    }
+    if (config_json.contains("finish_callback_url")) {
+      config.finish_callback_url = config_json["finish_callback_url"];
+    }
+    if (config_json.contains("user_token")) {
+      config.user_token = config_json["user_token"];
+    }
+
+    recorder_.set_task_config(config);
+
+    response.success = true;
+    response.message = "Task configuration set successfully";
+
+  } catch (const std::exception& e) {
+    response.success = false;
+    response.message = std::string("Failed to parse task config: ") + e.what();
+  }
+
+  return response;
+}
+
+std::string HttpServer::format_response(
+  int status_code, const std::string& content_type, const std::string& body
+) {
+  std::ostringstream oss;
+  oss << "HTTP/1.1 " << status_code << " ";
+
+  // Add status reason
+  switch (status_code) {
+    case 200:
+      oss << "OK";
+      break;
+    case 400:
+      oss << "Bad Request";
+      break;
+    case 404:
+      oss << "Not Found";
+      break;
+    case 500:
+      oss << "Internal Server Error";
+      break;
+    default:
+      oss << "Unknown";
+      break;
+  }
+
+  oss << "\r\n"
+      << "Content-Type: " << content_type << "\r\n"
+      << "Content-Length: " << body.length() << "\r\n"
+      << "Connection: close\r\n"
+      << "\r\n"
+      << body;
+  return oss.str();
+}
+
+void HttpServer::set_error_helper(const std::string& error) {
+  std::lock_guard<std::mutex> lock(error_mutex_);
+  last_error_ = error;
+}
+
+}  // namespace recorder
+}  // namespace axon

@@ -58,10 +58,36 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
 bool AxonRecorder::start() {
   std::string error_msg;
 
-  // Transition from IDLE to RECORDING
-  if (!state_manager_.transition(RecorderState::IDLE, RecorderState::RECORDING, error_msg)) {
-    set_error_helper("State transition failed: " + error_msg);
+  // Transition from IDLE to READY
+  if (!state_manager_.transition(RecorderState::IDLE, RecorderState::READY, error_msg)) {
+    set_error_helper("State transition to READY failed: " + error_msg);
     return false;
+  }
+
+  // Load plugin
+  auto plugin_name = plugin_loader_.load(config_.plugin_path);
+  if (!plugin_name.has_value()) {
+    set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    return false;
+  }
+
+  // Get plugin descriptor
+  const auto* descriptor = plugin_loader_.get_descriptor(plugin_name.value());
+  if (!descriptor || !descriptor->vtable) {
+    set_error_helper("Invalid plugin descriptor");
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    return false;
+  }
+
+  // Initialize plugin
+  if (descriptor->vtable->init) {
+    AxonStatus status = descriptor->vtable->init("");
+    if (status != AXON_SUCCESS) {
+      set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
+      state_manager_.transition_to(RecorderState::IDLE, error_msg);
+      return false;
+    }
   }
 
   // Create recording session
@@ -97,35 +123,6 @@ bool AxonRecorder::start() {
     recording_session_->set_task_config(task_config_.value());
   }
 
-  // Load plugin
-  auto plugin_name = plugin_loader_.load(config_.plugin_path);
-  if (!plugin_name.has_value()) {
-    set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
-    state_manager_.transition_to(RecorderState::IDLE, error_msg);
-    recording_session_.reset();
-    return false;
-  }
-
-  // Get plugin descriptor
-  const auto* descriptor = plugin_loader_.get_descriptor(plugin_name.value());
-  if (!descriptor || !descriptor->vtable) {
-    set_error_helper("Invalid plugin descriptor");
-    state_manager_.transition_to(RecorderState::IDLE, error_msg);
-    recording_session_.reset();
-    return false;
-  }
-
-  // Initialize plugin
-  if (descriptor->vtable->init) {
-    AxonStatus status = descriptor->vtable->init("");
-    if (status != AXON_SUCCESS) {
-      set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
-      state_manager_.transition_to(RecorderState::IDLE, error_msg);
-      recording_session_.reset();
-      return false;
-    }
-  }
-
   // Register topics with MCAP and create topic workers
   if (!register_topics()) {
     set_error_helper("Failed to register topics");
@@ -137,6 +134,14 @@ bool AxonRecorder::start() {
   // Setup subscriptions via plugin
   if (!setup_subscriptions()) {
     set_error_helper("Failed to setup subscriptions");
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
+    return false;
+  }
+
+  // Transition from READY to RECORDING
+  if (!state_manager_.transition(RecorderState::READY, RecorderState::RECORDING, error_msg)) {
+    set_error_helper("State transition to RECORDING failed: " + error_msg);
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     recording_session_.reset();
     return false;
@@ -208,8 +213,40 @@ std::string AxonRecorder::get_state_string() const {
   return state_manager_.get_state_string();
 }
 
+bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
+  if (http_server_) {
+    set_error_helper("HTTP server already running");
+    return false;
+  }
+
+  http_server_ = std::make_unique<HttpServer>(*this, host, port);
+
+  if (!http_server_->start()) {
+    set_error_helper("Failed to start HTTP server: " + http_server_->get_last_error());
+    http_server_.reset();
+    return false;
+  }
+
+  return true;
+}
+
+void AxonRecorder::stop_http_server() {
+  if (http_server_) {
+    http_server_->stop();
+    http_server_.reset();
+  }
+}
+
+bool AxonRecorder::is_http_server_running() const {
+  return http_server_ && http_server_->is_running();
+}
+
 void AxonRecorder::set_task_config(const TaskConfig& config) {
   task_config_ = config;
+}
+
+const TaskConfig* AxonRecorder::get_task_config() const {
+  return task_config_.has_value() ? &task_config_.value() : nullptr;
 }
 
 RecordingSession* AxonRecorder::get_recording_session() {

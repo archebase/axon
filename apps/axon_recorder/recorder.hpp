@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "http_server.hpp"
 #include "plugin_loader.hpp"
 #include "recording_session.hpp"
 #include "state_machine.hpp"
@@ -227,6 +228,12 @@ public:
   void set_task_config(const TaskConfig& config);
 
   /**
+   * Get task configuration (if set)
+   * @return Pointer to task config, or nullptr if not set
+   */
+  const TaskConfig* get_task_config() const;
+
+  /**
    * Get the current recording session (for testing/monitoring)
    */
   RecordingSession* get_recording_session();
@@ -235,6 +242,25 @@ public:
    * Get last error message
    */
   std::string get_last_error() const;
+
+  /**
+   * Start HTTP RPC server
+   *
+   * @param host Host address to bind to (default: "0.0.0.0")
+   * @param port Port number to listen on (default: 8080)
+   * @return true on success, false on failure
+   */
+  bool start_http_server(const std::string& host = "0.0.0.0", uint16_t port = 8080);
+
+  /**
+   * Stop HTTP RPC server
+   */
+  void stop_http_server();
+
+  /**
+   * Check if HTTP server is running
+   */
+  bool is_http_server_running() const;
 
   /**
    * Get statistics
@@ -313,6 +339,9 @@ private:
   std::unique_ptr<WorkerThreadPool> worker_pool_;
 
   std::atomic<bool> running_;
+
+  // HTTP RPC server
+  std::unique_ptr<HttpServer> http_server_;
 
   // Error handling
   mutable std::mutex error_mutex_;

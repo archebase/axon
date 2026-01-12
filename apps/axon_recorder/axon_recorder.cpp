@@ -21,54 +21,77 @@ void signal_handler(int signal) {
     std::cout << "\nReceived signal " << signal << ", stopping recorder..." << std::endl;
     g_should_exit.store(true);
 
-    if (g_recorder && g_recorder->is_running()) {
-      g_recorder->stop();
+    if (g_recorder) {
+      // Stop HTTP server if running
+      if (g_recorder->is_http_server_running()) {
+        g_recorder->stop_http_server();
+      }
+      // Stop recording if running
+      if (g_recorder->is_running()) {
+        g_recorder->stop();
+      }
     }
   }
 }
 
 void print_usage(const char* program_name) {
-  std::cout << "Usage: " << program_name << " [OPTIONS]\n"
-            << "\n"
-            << "Axon Recorder - Plugin-based ROS message recorder\n"
-            << "\n"
-            << "Options:\n"
-            << "  --config PATH          Path to YAML configuration file\n"
-            << "  --plugin PATH         Path to ROS plugin shared library (.so)\n"
-            << "  --output FILE         Output MCAP file path (default: output.mcap)\n"
-            << "  --topic NAME          Subscribe to topic (can be used multiple times)\n"
-            << "  --type TYPE           Message type for last --topic (e.g., "
-               "sensor_msgs/msg/Image)\n"
-            << "  --profile PROFILE     ROS profile: ros1 or ros2 (default: ros2)\n"
-            << "  --compression ALG     Compression: none, zstd, lz4 (default: zstd)\n"
-            << "  --level LEVEL         Compression level (default: 3)\n"
-            << "  --queue-size SIZE     Message queue capacity (default: 1024)\n"
-            << "  --help                Show this help message\n"
-            << "\n"
-            << "Configuration File:\n"
-            << "  If --config is provided, most options can be specified in a YAML file:\n"
-            << "  dataset:\n"
-            << "    path: /data/recordings\n"
-            << "    output_file: recording.mcap\n"
-            << "    queue_size: 8192\n"
-            << "  topics:\n"
-            << "    - name: /camera/image\n"
-            << "      message_type: sensor_msgs/msg/Image\n"
-            << "      batch_size: 300\n"
-            << "      flush_interval_ms: 10000\n"
-            << "  recording:\n"
-            << "    profile: ros2\n"
-            << "    compression: zstd\n"
-            << "    compression_level: 3\n"
-            << "\n"
-            << "Examples:\n"
-            << "  " << program_name << " --config apps/axon_recorder/config/config.yaml \\\n"
-            << "    --plugin "
-               "middlewares/ros2/install/axon_ros2_plugin/lib/axon/plugins/libaxon_ros2_plugin.so\n"
-            << "  " << program_name << " --plugin ./ros2_plugin.so \\\n"
-            << "    --topic /camera/image_raw --type sensor_msgs/msg/Image \\\n"
-            << "    --output recording.mcap\n"
-            << std::endl;
+  std::cout
+    << "Usage: " << program_name << " [OPTIONS]\n"
+    << "\n"
+    << "Axon Recorder - Plugin-based ROS message recorder\n"
+    << "\n"
+    << "Options:\n"
+    << "  --config PATH          Path to YAML configuration file\n"
+    << "  --plugin PATH         Path to ROS plugin shared library (.so)\n"
+    << "  --output FILE         Output MCAP file path (default: output.mcap)\n"
+    << "  --topic NAME          Subscribe to topic (can be used multiple times)\n"
+    << "  --type TYPE           Message type for last --topic (e.g., "
+       "sensor_msgs/msg/Image)\n"
+    << "  --profile PROFILE     ROS profile: ros1 or ros2 (default: ros2)\n"
+    << "  --compression ALG     Compression: none, zstd, lz4 (default: zstd)\n"
+    << "  --level LEVEL         Compression level (default: 3)\n"
+    << "  --queue-size SIZE     Message queue capacity (default: 1024)\n"
+    << "  --help                Show this help message\n"
+    << "\n"
+    << "HTTP RPC Server:\n"
+    << "  The recorder automatically starts an HTTP RPC server on port 8080\n"
+    << "  for remote control. Available endpoints:\n"
+    << "    POST /rpc/config      - Set task configuration (IDLE->READY)\n"
+    << "    POST /rpc/begin       - Start recording (READY->RECORDING)\n"
+    << "    POST /rpc/finish      - Finish recording, return to IDLE (RECORDING/PAUSED->IDLE)\n"
+    << "    POST /rpc/quit        - Stop recording and exit program (saves data first)\n"
+    << "    POST /rpc/pause       - Pause recording (RECORDING->PAUSED)\n"
+    << "    POST /rpc/resume      - Resume recording (PAUSED->RECORDING)\n"
+    << "    POST /rpc/cancel      - Cancel recording (RECORDING/PAUSED->IDLE)\n"
+    << "    POST /rpc/clear       - Clear config (READY->IDLE)\n"
+    << "    GET  /rpc/state       - Get current state\n"
+    << "    GET  /rpc/stats       - Get recording statistics\n"
+    << "    GET  / or /health     - Health check\n"
+    << "\n"
+    << "Configuration File:\n"
+    << "  If --config is provided, most options can be specified in a YAML file:\n"
+    << "  dataset:\n"
+    << "    path: /data/recordings\n"
+    << "    output_file: recording.mcap\n"
+    << "    queue_size: 8192\n"
+    << "  topics:\n"
+    << "    - name: /camera/image\n"
+    << "      message_type: sensor_msgs/msg/Image\n"
+    << "      batch_size: 300\n"
+    << "      flush_interval_ms: 10000\n"
+    << "  recording:\n"
+    << "    profile: ros2\n"
+    << "    compression: zstd\n"
+    << "    compression_level: 3\n"
+    << "\n"
+    << "Examples:\n"
+    << "  " << program_name << " --config apps/axon_recorder/config/config.yaml \\\n"
+    << "    --plugin "
+       "middlewares/ros2/install/axon_ros2_plugin/lib/axon/plugins/libaxon_ros2_plugin.so\n"
+    << "  " << program_name << " --plugin ./ros2_plugin.so \\\n"
+    << "    --topic /camera/image_raw --type sensor_msgs/msg/Image \\\n"
+    << "    --output recording.mcap\n"
+    << std::endl;
 }
 
 void print_statistics(const AxonRecorder::Statistics& stats) {
@@ -228,6 +251,15 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // Start HTTP RPC server
+  std::cout << "Starting HTTP RPC server on port 8080..." << std::endl;
+  if (!recorder.start_http_server("0.0.0.0", 8080)) {
+    std::cerr << "Warning: Failed to start HTTP server: " << recorder.get_last_error() << std::endl;
+    std::cerr << "Continuing without HTTP RPC control..." << std::endl;
+  } else {
+    std::cout << "HTTP RPC server listening on http://0.0.0.0:8080" << std::endl;
+  }
+
   // Start recording
   std::cout << "Starting recording..." << std::endl;
   if (!recorder.start()) {
@@ -257,6 +289,12 @@ int main(int argc, char* argv[]) {
 
   // Stop recording
   recorder.stop();
+
+  // Stop HTTP server
+  if (recorder.is_http_server_running()) {
+    std::cout << "Stopping HTTP RPC server..." << std::endl;
+    recorder.stop_http_server();
+  }
 
   // Print final statistics
   auto final_stats = recorder.get_statistics();
