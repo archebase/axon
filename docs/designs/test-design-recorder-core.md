@@ -1,886 +1,1022 @@
 # Test Design Document: Axon Recorder Core Components
 
-**Date:** 2025-12-25
-**Document Version:** 2.0  
-
+**Date:** 2026-01-12
+**Document Version:** 3.0
 
 ## Executive Summary
 
-This document provides a comprehensive test design for the `axon_recorder` package, focusing on three critical components:
+本文档提供了 Axon Recorder 的全面测试设计。Axon 是一个高性能的 ROS 录制器，采用**插件化架构**和 **HTTP RPC API** 进行远程控制。
 
-1. **`recorder_node.cpp`** - The main orchestrator (~865 lines)
-2. **`recording_session.cpp`** - MCAP session lifecycle management (~255 lines)
-3. **`recording_service_impl.cpp`** - ROS service implementation (~430 lines)
+### 架构变化 (v3.0)
 
-### Current Test Status
+与之前的 ROS 服务架构相比，当前实现有以下重大变化：
 
-The test suite currently has **~520 tests** across **20+ test files**:
-- **13 unit test files** (~390 tests) - Fast, no ROS runtime required
-- **6 integration test files** (~100 tests) - Require ROS environment  
-- **1 stress test file** (~5 tests) - High-throughput scenarios
-- **1 regression test file** (23 tests) - Error recovery scenarios
+1. **插件化架构** - 中间件无关的核心 + ROS1/ROS2 插件
+2. **HTTP RPC API** - 替代 ROS 服务接口
+3. **统一状态机** - IDLE → READY → RECORDING ↔ PAUSED
+4. **动态插件加载** - 运行时加载中间件插件
 
-**Note:** Mock infrastructure was removed in v2.0. All tests now use real implementations.
+### 核心组件
 
-The goal is to achieve **>90% line coverage** and **>85% branch coverage** while ensuring robust testing of:
-- State machine transitions
-- Concurrency and thread safety
-- Error handling and recovery
-- ROS1/ROS2 dual compatibility
-- Edge cases and boundary conditions
+| 组件 | 文件 | 职责 | 行数 |
+|------|------|------|------|
+| **AxonRecorder** | [recorder.cpp/hpp](../apps/axon_recorder/recorder.cpp) | 主协调器 | ~350 |
+| **HttpServer** | [http_server.cpp/hpp](../apps/axon_recorder/http_server.cpp) | HTTP RPC API | ~570 |
+| **PluginLoader** | [plugin_loader.cpp/hpp](../apps/axon_recorder/plugin_loader.cpp) | 插件加载 | ~140 |
+| **StateManager** | [state_machine.cpp/hpp](../apps/axon_recorder/state_machine.cpp) | 状态机 | ~200 |
+| **RecordingSession** | [recording_session.cpp/hpp](../apps/axon_recorder/recording_session.cpp) | MCAP 会话 | ~200 |
+| **WorkerThreadPool** | [worker_thread_pool.cpp/hpp](../apps/axon_recorder/worker_thread_pool.cpp) | 工作线程池 | ~270 |
+| **ConfigParser** | [config_parser.cpp/hpp](../apps/axon_recorder/config_parser.cpp) | 配置解析 | ~370 |
+| **MetadataInjector** | [metadata_injector.cpp/hpp](../apps/axon_recorder/metadata_injector.cpp) | 元数据注入 | ~400 |
+| **HttpCallbackClient** | [http_callback_client.cpp/hpp](../apps/axon_recorder/http_callback_client.cpp) | HTTP 回调 | ~360 |
+
+### 测试目标
+
+测试套件需要从零开始设计，因为：
+
+1. **新的 HTTP RPC API** - 需要完整的 HTTP 端点测试
+2. **插件系统** - 需要插件加载和 ABI 兼容性测试
+3. **状态机** - 需要完整的状态转换测试
+4. **并发模型** - 需要线程安全和竞态条件测试
+
+目标：**~240 个测试**，覆盖率 **>85%**
 
 ---
 
 ## Table of Contents
 
-1. [Component Analysis](#1-component-analysis)
-2. [Current Test Coverage Assessment](#2-current-test-coverage-assessment)
+1. [Architecture Overview](#1-architecture-overview)
+2. [Component Analysis](#2-component-analysis)
 3. [Test Strategy](#3-test-strategy)
-4. [Detailed Test Plans](#4-detailed-test-plans)
-5. [Test Infrastructure Improvements](#5-test-infrastructure-improvements)
-6. [Implementation Priority](#6-implementation-priority)
-7. [Appendices](#appendices)
+4. [HTTP RPC API Tests](#4-http-rpc-api-tests)
+5. [Plugin System Tests](#5-plugin-system-tests)
+6. [State Machine Tests](#6-state-machine-tests)
+7. [Concurrency Tests](#7-concurrency-tests)
+8. [Integration Tests](#8-integration-tests)
+9. [E2E Tests](#9-e2e-tests)
+10. [Test Infrastructure](#10-test-infrastructure)
+11. [Implementation Priority](#11-implementation-priority)
 
 ---
 
-## 1. Component Analysis
+## 1. Architecture Overview
 
-### 1.1 RecorderNode (`recorder_node.cpp`)
+### 1.1 系统架构
 
-**Responsibilities:**
-- ROS interface lifecycle management
-- Worker thread pool orchestration
-- MCAP writer initialization and management
-- Topic subscription and message routing
-- Edge uploader integration (conditional)
-- HTTP callback client coordination
-- Statistics collection and reporting
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         HTTP Clients                                │
+│                    (curl, Postman, Browsers)                        │
+└─────────────────────────────────────┬───────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      HttpServer (port 8080)                        │
+│                   Boost.Beast HTTP + JSON                           │
+└─────────────────────────────────────┬───────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                       AxonRecorder                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐   │
+│  │ StateMachine │  │ PluginLoader │  │    WorkerThreadPool     │   │
+│  └──────┬───────┘  └──────┬───────┘  └────────────┬───────────┘   │
+│         │                 │                        │               │
+│         ▼                 ▼                        ▼               │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐   │
+│  │ Recording    │  │ ROS2 Plugin  │  │   SPSC Queues          │   │
+│  │ Session      │  │ (.so)        │  │   (per-topic)          │   │
+│  └──────────────┘  └──────────────┘  └────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Core Libraries                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐   │
+│  │ axon_mcap    │  │ axon_logging │  │   axon_uploader        │   │
+│  │ (no ROS deps)│  │ (no ROS deps)│  │   (no ROS deps)        │   │
+│  └──────────────┘  └──────────────┘  └────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
-**Key Code Paths:**
+### 1.2 HTTP RPC 端点
 
-| Function | Lines | Complexity | Current Coverage |
-|----------|-------|------------|------------------|
-| `initialize()` | 83-137 | High | Partial |
-| `complete_initialization()` | 139-216 | High | Partial |
-| `setup_topic_recording()` | 474-547 | Medium | Low |
-| `start_recording()` | 561-590 | Medium | Good |
-| `stop_recording()` | 655-754 | High | Partial |
-| `cancel_recording()` | 608-653 | Medium | Partial |
-| `shutdown()` | 225-290 | High | Partial |
-| `configure_from_task_config()` | 756-787 | Low | Good |
-| `write_stats_file()` | 816-861 | Low | Good (configurable path) |
+| Method | Endpoint | 状态转换 | 说明 |
+|--------|----------|---------|------|
+| POST | `/rpc/config` | IDLE → READY | 设置任务配置 |
+| POST | `/rpc/begin` | READY → RECORDING | 开始录制 |
+| POST | `/rpc/finish` | RECORDING/PAUSED → IDLE | 完成录制 |
+| POST | `/rpc/pause` | RECORDING → PAUSED | 暂停录制 |
+| POST | `/rpc/resume` | PAUSED → RECORDING | 恢复录制 |
+| POST | `/rpc/cancel` | RECORDING/PAUSED → IDLE | 取消录制 |
+| POST | `/rpc/clear` | READY → IDLE | 清除配置 |
+| POST | `/rpc/quit` | Any → Exit | 退出程序 |
+| GET | `/rpc/state` | - | 获取当前状态 |
+| GET | `/rpc/stats` | - | 获取统计信息 |
+| GET | `/` or `/health` | - | 健康检查 |
 
-**Critical Branches:**
-- Conditional compilation: `#ifdef AXON_HAS_UPLOADER`
-- ROS version detection: `#if defined(AXON_ROS1)` vs `#elif defined(AXON_ROS2)`
-- Topic type detection (Image, IMU, etc.)
-- Error handling in initialization
+详细 API 规范见 [rpc-api-design.md](./rpc-api-design.md)。
 
-### 1.2 RecordingSession (`recording_session.cpp`)
+### 1.3 插件 ABI 接口
 
-**Responsibilities:**
-- MCAP file open/close lifecycle
-- Schema and channel registration
-- Thread-safe message writing
-- Topic statistics tracking
-- Metadata injection coordination
-- Sidecar JSON generation
+插件通过以下 C 结构体暴露功能：
 
-**Key Code Paths:**
+```cpp
+// 插件描述符
+struct AxonPluginDescriptor {
+  uint32_t abi_version_major;
+  uint32_t abi_version_minor;
+  const char* middleware_name;
+  const char* middleware_version;
+  const char* plugin_version;
+  AxonPluginVtable* vtable;
+  void* reserved[16];
+};
 
-| Function | Lines | Complexity | Current Coverage |
-|----------|-------|------------|------------------|
-| `open()` | 21-55 | Medium | Good |
-| `close()` | 57-96 | High | Partial |
-| `register_schema()` | 108-136 | Medium | Good |
-| `register_channel()` | 138-168 | Medium | Good |
-| `write()` | 170-182 | Low | Good |
-| `update_topic_stats()` | 241-251 | Low | Partial |
-| `get_stats()` | 196-209 | Low | Good |
-
-**Thread Safety Concerns:**
-- `registry_mutex_` protects schema/channel maps
-- `topic_stats_mutex_` protects topic statistics
-- `messages_written_` is atomic
-
-### 1.3 RecordingServiceImpl (`recording_service_impl.cpp`)
-
-**Responsibilities:**
-- Service request validation
-- State machine transition coordination
-- Task config caching
-- Recording lifecycle commands (start/stop/pause/resume/cancel/clear)
-- Status reporting
-
-**Key Code Paths:**
-
-| Function | Lines | Complexity | Current Coverage |
-|----------|-------|------------|------------------|
-| `handle_cached_recording_config()` | 22-78 | Medium | Good |
-| `handle_is_recording_ready()` | 84-131 | Low | Good |
-| `handle_recording_control()` | 137-165 | Low | Good |
-| `handle_start_command()` | 167-204 | Medium | Good |
-| `handle_pause_command()` | 206-234 | Medium | Good |
-| `handle_resume_command()` | 236-264 | Medium | Good |
-| `handle_cancel_command()` | 266-294 | Medium | Good |
-| `handle_finish_command()` | 296-324 | Medium | Good |
-| `handle_clear_command()` | 326-348 | Low | Good |
-| `handle_recording_status()` | 354-408 | Medium | Good |
-| `validate_task_id()` | 414-427 | Low | Good |
+// 插件函数表
+struct AxonPluginVtable {
+  AxonInitFn init;           // 初始化插件
+  AxonStartFn start;         // 启动插件
+  AxonStopFn stop;           // 停止插件
+  AxonSubscribeFn subscribe; // 订阅主题
+  AxonPublishFn publish;     // 发布消息
+  void* reserved[9];
+};
+```
 
 ---
 
-## 2. Current Test Coverage Assessment
+## 2. Component Analysis
 
-### 2.1 Existing Test Files
+### 2.1 AxonRecorder (recorder.cpp)
 
-#### Unit Tests (`test/unit/`)
+**职责：**
+- 插件加载和生命周期管理
+- HTTP RPC 服务器管理
+- 状态机协调
+- 工作线程池管理
+- MCAP 会话管理
+- 元数据注入
 
-| Test File | Target Component | Test Count |
-|-----------|------------------|------------|
-| `test_config_parser.cpp` | ConfigParser | 66 |
-| `test_http_callback_client.cpp` | HttpCallbackClient | 92 |
-| `test_metadata_injector.cpp` | MetadataInjector | 57 |
-| `test_state_machine.cpp` | StateManager | 36 |
-| `test_worker_thread_pool.cpp` | WorkerThreadPool | 31 |
-| `test_recording_session.cpp` | RecordingSession | 41 |
-| `test_topic_manager.cpp` | TopicManager | 24 |
-| `test_spsc_queue.cpp` | SPSCQueue | 23 |
-| `test_ros_introspection.cpp` | ROS Introspection | 17 |
-| `test_message_factory_standalone.cpp` | MessageFactory | 15 |
-| `test_task_config.cpp` | TaskConfig | 14 |
-| `test_message_factory.cpp` | MessageFactory (ROS) | 11 |
-| `test_state_transaction_guard.cpp` | StateTransactionGuard | 8 |
+**关键方法：**
 
-**Note:** Mock infrastructure was removed in v2.0. Tests use real implementations.
+| 方法 | 复杂度 | 测试优先级 |
+|------|--------|-----------|
+| `initialize()` | 高 | P0 |
+| `start()` | 高 | P0 |
+| `stop()` | 高 | P0 |
+| `set_task_config()` | 低 | P1 |
+| `on_message()` | 中 | P0 |
+| `start_http_server()` | 中 | P0 |
+| `message_handler()` | 中 | P1 |
+| `register_topics()` | 中 | P1 |
 
-#### Integration Tests (`test/integration/`)
+**测试覆盖重点：**
+- 初始化失败场景（插件不存在、配置错误）
+- 状态转换的正确性
+- 并发消息处理
+- 资源清理（析构、stop）
 
-| Test File | Target Component | Test Count |
-|-----------|------------------|------------|
-| `test_ros_interface.cpp` | RosInterface | 23 |
-| `test_recording_workflow.cpp` | Full recording workflow | 20 |
-| `test_recorder_node_recording.cpp` | RecorderNode recording | 19 |
-| `test_recorder_node_lifecycle.cpp` | RecorderNode lifecycle | 17 |
-| `test_service_adapter.cpp` | ServiceAdapter | 15 |
-| `test_metadata_injection.cpp` | Metadata injection | 6 |
+### 2.2 HttpServer (http_server.cpp)
 
-**E2E Scripts:**
-- `run_e2e_tests.sh` - Full E2E test runner
-- `test_ros_services.sh` - ROS service interface tests
+**职责：**
+- HTTP 请求处理
+- JSON 请求/响应解析
+- RPC 端点路由
+- 错误处理
 
-#### Regression Tests (`test/regression/`)
+**关键方法：**
 
-| Test File | Focus | Test Count |
-|-----------|-------|------------|
-| `test_error_recovery.cpp` | Error recovery scenarios | 23 |
+| 方法 | 复杂度 | 测试优先级 |
+|------|--------|-----------|
+| `handle_request()` | 高 | P0 |
+| `handle_rpc_begin()` | 中 | P0 |
+| `handle_rpc_finish()` | 中 | P0 |
+| `handle_rpc_set_config()` | 中 | P0 |
+| `handle_rpc_get_state()` | 低 | P0 |
+| `handle_rpc_get_stats()` | 低 | P1 |
+| `handle_rpc_pause()` | 低 | P2 |
+| `handle_rpc_resume()` | 低 | P2 |
+| `handle_rpc_cancel()` | 低 | P2 |
+| `handle_rpc_clear()` | 低 | P2 |
+| `handle_rpc_quit()` | 高 | P0 |
 
-#### Performance Tests (`test/perf/`)
+**测试覆盖重点：**
+- 所有 RPC 端点的正常流程
+- 状态转换错误（从错误状态调用）
+- 无效 JSON 请求
+- 并发 HTTP 请求
+- 服务器启动/停止
 
-| File | Purpose |
-|------|---------|
-| `perf_test_node.cpp` | Performance benchmarking node |
-| `synthetic_publisher.cpp` | Test data publisher for load testing |
-| `run_perf_test.sh` | Performance test runner script |
-| `CMakeLists.txt` | Build configuration for perf tests |
+### 2.3 PluginLoader (plugin_loader.cpp)
 
-### 2.2 Coverage Gaps Identified
+**职责：**
+- 动态库加载（dlopen）
+- 符号解析（dlsym）
+- 插件生命周期管理
+- ABI 版本验证
 
-> **Note:** With 590 tests, many code paths are well-covered. The gaps below focus on remaining uncovered paths and edge cases identified through coverage analysis.
+**关键方法：**
 
-#### Root Cause Analysis (Coverage < 50%)
+| 方法 | 复杂度 | 测试优先级 |
+|------|--------|-----------|
+| `load()` | 高 | P0 |
+| `unload()` | 中 | P0 |
+| `get_descriptor()` | 低 | P0 |
+| `get_plugin()` | 低 | P1 |
 
-The following files have been identified as having structural coverage challenges:
+**测试覆盖重点：**
+- 成功加载有效插件
+- 加载不存在的库
+- 加载无效插件（缺少符号）
+- ABI 版本不匹配
+- 重复加载
+- 卸载和资源清理
 
-| File | Coverage | Root Cause | Resolution |
-|------|----------|------------|------------|
-| `register_common_messages.cpp` | ~0% → **Fixed** | ROS2 `init()` was missing call to `register_common_message_types()` | ✅ Added call in ROS2 `RosInterfaceImpl::init()` |
-| `recorder_node.cpp` | ~31% | Main entry point; requires full ROS stack for integration tests | Integration tests cover critical paths |
-| `http_callback_client.cpp` | ~34% | Network code requires HTTP server mocking or real endpoints | Consider adding HTTP mock server |
-| `message_factory.cpp` | ~37% | Template-heavy code; MessageFactory not exercised without ROS init | Covered by `register_common_messages` fix |
-| `ros_interface.cpp` | ~38% | ROS-dependent code paths; conditional ROS1/ROS2 compilation | Each distro covers its own paths |
-| `metadata_injector.cpp` | ~38% | Complex metadata generation; many edge cases | Add targeted unit tests |
-| `recording_service_impl.cpp` | ~40% | Service handlers well-tested; error paths less covered | Add error injection tests |
+### 2.4 StateManager (state_machine.cpp)
 
-#### Coverage Collection Strategy
+**职责：**
+- 状态转换管理
+- 转换验证
+- 转换回调
 
-Coverage is collected from **multiple sources** and merged in Codecov:
+**状态转换图：**
+```
+IDLE → READY → RECORDING ↔ PAUSED
+  ↑                         ↓
+  └───────── (finish/cancel)
+```
 
-| Workflow | Flag | Coverage Source |
-|----------|------|-----------------|
-| `tests-ros.yml` | `ros1`, `ros2` | All ROS tests - unit + integration (Humble/Noetic) |
-| `unit-tests-cpp.yml` | `cpp` | C++ library tests |
-| `e2e-tests.yml` | `ros2` | E2E tests (Humble only) |
+**测试覆盖重点：**
+- 所有效状态转换
+- 无效状态转换
+- 转换回调触发
+- 并发转换尝试
 
-**Note:** `tests-ros.yml` replaced separate `unit-tests-ros.yml` and `integration-tests.yml` (v1.9) because `industrial_ci` doesn't reliably pass `CTEST_ARGS` label filters.
+### 2.5 RecordingSession (recording_session.cpp)
 
-**Important:** ROS1-only code paths (e.g., `#if defined(AXON_ROS1)`) are only covered by `ros1` flag from Noetic builds. Similarly, ROS2-only paths require `ros2` flag.
+**职责：**
+- MCAP 文件打开/关闭
+- Schema 和通道注册
+- 消息写入
+- 统计信息收集
 
-#### RecorderNode Coverage Gaps
+**测试覆盖重点：**
+- 文件生命周期
+- Schema 注册失败
+- 重复注册处理
+- 并发写入
+- 元数据注入
 
-| Gap Category | Functions/Paths | Priority | Notes |
-|--------------|-----------------|----------|-------|
-| **Edge Uploader** | `#ifdef AXON_HAS_UPLOADER` paths | P1 | Conditional compilation - requires mock |
-| **Stats File Writing** | `write_stats_file()` | P1 | ✅ Fixed: Made path configurable, added dedicated tests |
-| **Schema Registration Failures** | `register_topic_schemas()` error paths | P2 | ✅ Fixed: Added 17 tests in test_recording_session.cpp |
-| **Worker Pool Error Paths** | `setup_topic_recording()` failure modes | P2 | ✅ Fixed: Added 15 tests in test_worker_thread_pool.cpp |
+### 2.6 WorkerThreadPool (worker_thread_pool.cpp)
 
-#### RecordingSession Coverage Gaps
+**职责：**
+- 工作线程创建/销毁
+- SPSC 队列管理
+- 消息分发
 
-| Gap Category | Functions/Paths | Priority | Notes |
-|--------------|-----------------|----------|-------|
-| **Metadata Injection** | `close()` with task config | P1 | ✅ Fixed: Added 15 tests in test_metadata_injector.cpp |
-| **Sidecar Generation** | `close()` → sidecar JSON | P1 | ✅ Fixed: Added sidecar validation tests |
-| **Concurrent Write Stress** | Multiple threads writing | P2 | ✅ Fixed: Added concurrent access tests |
-
-#### RecordingServiceImpl Coverage Gaps
-
-| Gap Category | Functions/Paths | Priority | Notes |
-|--------------|-----------------|----------|-------|
-| **State Transition Failures** | `transition_to()` returning false | P2 | ✅ Fixed: Added 24 error injection and edge case tests |
-| **Stress Testing** | High-frequency concurrent calls | P2 | ✅ Covered in test/stress/ |
+**测试覆盖重点：**
+- 线程创建/销毁
+- 队列满时的行为
+- 消息顺序
+- 优雅关闭
 
 ---
 
 ## 3. Test Strategy
 
-### 3.1 Testing Pyramid
+### 3.1 测试金字塔
 
 ```
                     ╭─────────────────╮
-                    │   E2E Tests     │  ← ROS service calls, full integration
-                    │   (10 tests)    │
+                    │   E2E Tests     │  ← HTTP API 完整流程
+                    │   (~20 tests)   │
                 ╭───┴─────────────────┴───╮
-                │  Integration Tests      │  ← RecorderNode + ROS
-                │  (~100 tests)           │
+                │  Integration Tests      │  ← 组件集成
+                │  (~60 tests)            │
             ╭───┴─────────────────────────┴───╮
-            │        Unit Tests               │  ← Component tests (no mocks)
-            │        (~390 tests)             │
+            │        Unit Tests               │  ← 单个组件
+            │        (~150 tests)            │
         ╭───┴─────────────────────────────────┴───╮
-        │     Real Implementations Only           │
-        │   (No mock infrastructure)              │
+        │     Core Libraries (axon_*)             │
+        │     (独立测试，已存在)                    │
         ╰─────────────────────────────────────────╯
 ```
 
-### 3.2 Test Categories
+### 3.2 测试分类
 
-| Category | Focus | Framework | ROS Required |
-|----------|-------|-----------|--------------|
-| **Unit** | Isolated logic, mocked dependencies | GTest | No |
-| **Component** | Single component with real deps | GTest | Partial |
-| **Integration** | Multiple components, real ROS | GTest + ROS | Yes |
-| **E2E** | Full system via service calls | Shell/Python | Yes |
-| **Performance** | Throughput, latency, memory | Custom | Yes |
-| **Stress** | Concurrency, resource limits | GTest | No |
+| 类别 | 范围 | 框架 | ROS 要求 | 典型运行时间 |
+|------|------|------|----------|-------------|
+| **Unit** | 单个组件，隔离依赖 | GTest | 否 | <10ms |
+| **Integration** | 多组件协作 | GTest | 否* | 50-200ms |
+| **HTTP API** | HTTP 端点测试 | GTest + httplib | 否 | 20-100ms |
+| **E2E** | 完整录制流程 | Shell/Python | 是* | 1-10s |
+| **Stress** | 高并发、长时间 | GTest | 否 | 5-60s |
+| **Performance** | 吞吐量、延迟 | Custom | 是 | 1-5min |
 
-> **Note on CI vs Local Execution:**
-> - **Locally:** Unit and integration tests can be run separately using `ctest -L unit` or `ctest -L integration`
-> - **CI:** Both run together in `tests-ros.yml` because `industrial_ci` doesn't reliably pass `CTEST_ARGS` label filters
-> - The test labels and folder organization remain useful for local development and documentation
+*注：Integration 测试可以通过模拟插件避免 ROS 依赖；E2E 测试需要真实的 ROS 环境。
 
-### 3.3 ROS1/ROS2 Dual Testing Strategy
+### 3.3 测试覆盖目标
 
-All tests must pass on both:
-- **ROS1 Noetic** (Ubuntu 20.04, GCC 9)
-- **ROS2 Humble** (Ubuntu 22.04, GCC 11)
-- **ROS2 Jazzy** (Ubuntu 24.04, GCC 13)
-- **ROS2 Rolling** (Latest)
+| 组件 | 行覆盖 | 分支覆盖 |
+|------|--------|----------|
+| AxonRecorder | >90% | >85% |
+| HttpServer | >95% | >90% |
+| PluginLoader | >90% | >85% |
+| StateManager | >95% | >90% |
+| RecordingSession | >90% | >85% |
+| WorkerThreadPool | >85% | >80% |
+| ConfigParser | >90% | >85% |
+| MetadataInjector | >85% | >80% |
+| HttpCallbackClient | >80% | >75% |
 
-Use conditional compilation guards:
+---
+
+## 4. HTTP RPC API Tests
+
+### 4.1 测试文件结构
+
+```
+apps/axon_recorder/test/
+├── CMakeLists.txt
+├── unit/
+│   ├── test_helpers.hpp
+│   ├── test_http_server.cpp           # HTTP 服务器单元测试 (~40 tests)
+│   ├── test_plugin_loader.cpp         # 插件加载器测试 (~30 tests)
+│   ├── test_state_machine.cpp         # 状态机测试 (~25 tests)
+│   ├── test_recording_session.cpp     # MCAP 会话测试 (~20 tests)
+│   ├── test_worker_thread_pool.cpp    # 工作线程池测试 (~15 tests)
+│   ├── test_config_parser.cpp         # 配置解析测试 (~15 tests)
+│   └── test_task_config.cpp           # 任务配置测试 (~10 tests)
+├── integration/
+│   ├── test_recorder_integration.cpp  # AxonRecorder 集成测试 (~25 tests)
+│   ├── test_http_api_integration.cpp  # HTTP API 集成测试 (~30 tests)
+│   └── test_plugin_integration.cpp    # 插件集成测试 (~15 tests)
+└── e2e/
+    ├── run_e2e_tests.sh               # E2E 测试脚本
+    └── test_http_api_e2e.sh           # HTTP API E2E 测试
+```
+
+### 4.2 HTTP 服务器单元测试 (test_http_server.cpp)
+
+**测试夹具：**
 ```cpp
-#if defined(AXON_ROS1)
-  // ROS1-specific test setup
-#elif defined(AXON_ROS2)
-  // ROS2-specific test setup
-#endif
+class HttpServerTest : public ::testing::Test {
+protected:
+  void SetUp() override;
+  void TearDown() override;
+
+  axon::recorder::AxonRecorder* recorder_;
+  axon::recorder::HttpServer* server_;
+  std::string server_url_;
+};
 ```
 
-### 3.4 Current Test Folder Structure
+**测试用例：**
 
-The test suite is organized as follows:
+#### 4.2.1 服务器生命周期 (5 tests)
 
-```
-test/
-├── CMakeLists.txt                     # Auto-discovery macros + test registration
-│
-├── unit/                              # Fast, isolated, no ROS runtime (13 files)
-│   ├── test_helpers.hpp                   ← Shared test utilities
-│   ├── test_config_parser.cpp             ← ConfigParser (66 tests)
-│   ├── test_http_callback_client.cpp      ← HttpCallbackClient (92 tests)
-│   ├── test_message_factory.cpp           ← MessageFactory (ROS required)
-│   ├── test_message_factory_standalone.cpp← MessageFactory (no ROS)
-│   ├── test_metadata_injector.cpp         ← MetadataInjector (57 tests)
-│   ├── test_recording_session.cpp         ← RecordingSession (41 tests)
-│   ├── test_ros_introspection.cpp         ← ROS introspection (17 tests)
-│   ├── test_spsc_queue.cpp                ← Lock-free queue (23 tests)
-│   ├── test_state_machine.cpp             ← StateManager (36 tests)
-│   ├── test_state_transaction_guard.cpp   ← StateTransactionGuard (8 tests)
-│   ├── test_task_config.cpp               ← TaskConfig (14 tests)
-│   ├── test_topic_manager.cpp             ← TopicManager (24 tests)
-│   └── test_worker_thread_pool.cpp        ← WorkerThreadPool (31 tests)
-│
-├── integration/                       # GTest + real ROS (6 test files)
-│   ├── test_metadata_injection.cpp        ← Metadata injection flow (6 tests)
-│   ├── test_recorder_node_lifecycle.cpp   ← RecorderNode lifecycle (17 tests)
-│   ├── test_recorder_node_recording.cpp   ← RecorderNode recording (19 tests)
-│   ├── test_recording_workflow.cpp        ← Full workflow (20 tests)
-│   ├── test_ros_interface.cpp             ← RosInterface (23 tests)
-│   └── test_service_adapter.cpp           ← ServiceAdapter (15 tests)
-│
-├── e2e/                               # E2E shell scripts (Humble only)
-│   ├── run_e2e_tests.sh                   ← E2E test runner
-│   └── test_ros_services.sh               ← ROS service E2E tests
-│
-├── stress/                            # Stress and load tests
-│   └── test_recording_session_stress.cpp  ← High-throughput write tests
-│
-├── perf/                              # Performance benchmarks
-│   ├── CMakeLists.txt                     ← Perf test build config
-│   ├── perf_test_node.cpp                 ← Performance test node
-│   ├── synthetic_publisher.cpp            ← Test data publisher
-│   └── run_perf_test.sh                   ← Perf test runner
-│
-└── regression/                        # Bug reproduction tests (1 file)
-    └── test_error_recovery.cpp            ← Error recovery (23 tests)
+```cpp
+TEST_F(HttpServerTest, Start_BindsToPort)
+TEST_F(HttpServerTest, Start_WhenAlreadyRunning_ReturnsFalse)
+TEST_F(HttpServerTest, Stop_WhenRunning_StopsCleanly)
+TEST_F(HttpServerTest, Stop_WhenNotRunning_NoOp)
+TEST_F(HttpServerTest, GetUrl_ReturnsCorrectUrl)
 ```
 
-**Structure Notes:**
-- E2E shell scripts are in dedicated `e2e/` folder (run on Humble only)
-- GTest integration tests remain in `integration/` folder (run on all distros)
-- **No mock infrastructure** - all tests use real implementations (v2.0)
-- Auto-discovery is already implemented via `axon_discover_unit_tests` macro
+#### 4.2.2 RPC: /rpc/config (8 tests)
 
-> **Note:** The E2E scripts were renamed from `run_integration_tests.sh` to `run_e2e_tests.sh` and moved to `test/e2e/` to better reflect their purpose (end-to-end tests via ROS service calls, not GTest integration tests).
-
-#### Test Category Definitions
-
-| Folder | Test Type | Invocation | ROS Required | CI Distributions | Typical Runtime |
-|--------|-----------|------------|--------------|------------------|-----------------|
-| `unit/` | Unit tests | `ctest -L unit` | No | All (Noetic, Humble, Jazzy, Rolling) | <1ms per test |
-| `integration/` | Integration tests | `ctest -L integration` | Yes | All (Noetic, Humble, Jazzy, Rolling) | 100ms-1s per test |
-| `stress/` | Stress tests | `ctest -L stress` | Partial | Humble only | 5-60s per test |
-| `e2e/` | E2E tests | `./run_e2e_tests.sh` | Yes | **Humble only** | 5-30s |
-| `perf/` | Performance tests | `./run_perf_test.sh` | Yes | Humble only | 1-5 min |
-| `regression/` | Regression tests | `ctest` | Varies | All | Varies |
-
-> **Note:** E2E tests run only on Humble LTS because unit and integration tests already verify ROS API compatibility across all distributions. This saves ~10 minutes of CI time per PR.
-
-#### Key Distinctions
-
-| Aspect | Integration Test | E2E Test (Shell Scripts) |
-|--------|------------------|--------------------------|
-| **Entry Point** | GTest `main()` | Shell script |
-| **Node Control** | Test creates/controls node | Separate running node |
-| **Interface** | C++ method calls | ROS service calls |
-| **Scope** | Component interactions | Full system behavior |
-| **Example** | `node->start_recording()` | `ros2 service call .../start` |
-
-#### CMakeLists.txt: Auto-Discovery Already Implemented ✓
-
-The test infrastructure already uses auto-discovery via the `axon_discover_unit_tests` macro:
-
-```cmake
-# From test/CMakeLists.txt (lines 122-165)
-
-macro(axon_discover_unit_tests)
-    cmake_parse_arguments(DISCOVER "" "DIR;LABEL" "LIBS;EXCLUDE" ${ARGN})
-    
-    # Find all test_*.cpp files in the directory
-    file(GLOB _DISCOVER_TEST_SOURCES CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/${DISCOVER_DIR}/test_*.cpp"
-    )
-    
-    # Exclude specific files if requested
-    if(DISCOVER_EXCLUDE)
-        foreach(_EXCLUDE_PATTERN ${DISCOVER_EXCLUDE})
-            list(FILTER _DISCOVER_TEST_SOURCES EXCLUDE REGEX "${_EXCLUDE_PATTERN}")
-        endforeach()
-    endif()
-    
-    # Register each test with gtest_discover_tests
-    foreach(_TEST_SOURCE ${_DISCOVER_TEST_SOURCES})
-        get_filename_component(_TEST_NAME ${_TEST_SOURCE} NAME_WE)
-        add_executable(${_TEST_NAME} ${_TEST_SOURCE})
-        # ... linking and configuration ...
-        gtest_discover_tests(${_TEST_NAME}
-            PROPERTIES LABELS "${DISCOVER_LABEL}"
-            PROPERTIES TIMEOUT ${AXON_TEST_TIMEOUT}
-        )
-    endforeach()
-endmacro()
+```cpp
+TEST_F(HttpServerTest, SetConfig_WithValidConfig_SetsConfigAndTransitionsToReady)
+TEST_F(HttpServerTest, SetConfig_WithMissingTaskConfig_ReturnsError)
+TEST_F(HttpServerTest, SetConfig_WithInvalidJson_ReturnsError)
+TEST_F(HttpServerTest, SetConfig_WhenRecording_ReturnsError)
+TEST_F(HttpServerTest, SetConfig_Twice_OverwritesPreviousConfig)
+TEST_F(HttpServerTest, SetConfig_WithEmptyTopics_Accepts)
+TEST_F(HttpServerTest, SetConfig_WithCallbackUrls_SetsUrls)
+TEST_F(HttpServerTest, SetConfig_WithUserToken_SetsToken)
 ```
 
-**Current Usage:**
+#### 4.2.3 RPC: /rpc/begin (8 tests)
 
-```cmake
-# Unit tests - auto-discover all test_*.cpp in unit/
-axon_discover_unit_tests(
-    DIR unit
-    LIBS axon_recorder_test_support axon_logging
-    LABEL unit
-    EXCLUDE "test_ros_sink"           # Needs extra source file
-            "test_ros_introspection"  # Needs ROS compile definitions
-            "test_recording_session"  # Needs extra sources
-            "test_metadata_injector"  # Needs extra sources
-            "test_message_factory"    # Requires ROS
-)
+```cpp
+TEST_F(HttpServerTest, Begin_WhenReady_TransitionsToRecording)
+TEST_F(HttpServerTest, Begin_WhenIdle_ReturnsStateError)
+TEST_F(HttpServerTest, Begin_WhenRecording_ReturnsStateError)
+TEST_F(HttpServerTest, Begin_WhenPaused_ReturnsStateError)
+TEST_F(HttpServerTest, Begin_WithoutConfig_ReturnsError)
+TEST_F(HttpServerTest, Begin_WithValidTaskId_StartsRecording)
+TEST_F(HttpServerTest, Begin_WithInvalidTaskId_ReturnsError)
+TEST_F(HttpServerTest, Begin_StartsPluginAndSubscribes)
 ```
 
-**Adding a New Unit Test:**
-```bash
-# Just create the file - CMake auto-discovers it on next configure
-touch test/unit/test_my_feature.cpp
-# No CMakeLists.txt edit needed!
+#### 4.2.4 RPC: /rpc/finish (8 tests)
+
+```cpp
+TEST_F(HttpServerTest, Finish_WhenRecording_TransitionsToIdle)
+TEST_F(HttpServerTest, Finish_WhenPaused_TransitionsToIdle)
+TEST_F(HttpServerTest, Finish_WhenIdle_ReturnsStateError)
+TEST_F(HttpServerTest, Finish_WhenReady_ReturnsStateError)
+TEST_F(HttpServerTest, Finish_WithValidTaskId_ClosesSession)
+TEST_F(HttpServerTest, Finish_WithInvalidTaskId_ReturnsError)
+TEST_F(HttpServerTest, Finish_GeneratesSidecarAndChecksum)
+TEST_F(HttpServerTest, Finish_CallsFinishCallback)
 ```
 
-**Running Tests by Category:**
-```bash
-# Run only unit tests (fast)
-ctest -L unit --output-on-failure
+#### 4.2.5 RPC: /rpc/pause (5 tests)
 
-# Run all tests
-ctest --output-on-failure
+```cpp
+TEST_F(HttpServerTest, Pause_WhenRecording_TransitionsToPaused)
+TEST_F(HttpServerTest, Pause_WhenIdle_ReturnsStateError)
+TEST_F(HttpServerTest, Pause_WhenReady_ReturnsStateError)
+TEST_F(HttpServerTest, Pause_WhenPaused_ReturnsStateError)
+TEST_F(HttpServerTest, Pause_WhenNotImplemented_Returns501)
+```
 
-# Run specific test
-ctest -R test_state_machine --output-on-failure
+#### 4.2.6 RPC: /rpc/resume (5 tests)
+
+```cpp
+TEST_F(HttpServerTest, Resume_WhenPaused_TransitionsToRecording)
+TEST_F(HttpServerTest, Resume_WhenIdle_ReturnsStateError)
+TEST_F(HttpServerTest, Resume_WhenReady_ReturnsStateError)
+TEST_F(HttpServerTest, Resume_WhenRecording_ReturnsStateError)
+TEST_F(HttpServerTest, Resume_WhenNotImplemented_Returns501)
+```
+
+#### 4.2.7 RPC: /rpc/cancel (6 tests)
+
+```cpp
+TEST_F(HttpServerTest, Cancel_WhenRecording_TransitionsToIdle)
+TEST_F(HttpServerTest, Cancel_WhenPaused_TransitionsToIdle)
+TEST_F(HttpServerTest, Cancel_WhenIdle_ReturnsStateError)
+TEST_F(HttpServerTest, Cancel_WhenReady_ReturnsStateError)
+TEST_F(HttpServerTest, Cancel_WithValidTaskId_CancelsRecording)
+TEST_F(HttpServerTest, Cancel_DoesNotGenerateSidecar)
+```
+
+#### 4.2.8 RPC: /rpc/clear (5 tests)
+
+```cpp
+TEST_F(HttpServerTest, Clear_WhenReady_TransitionsToIdle)
+TEST_F(HttpServerTest, Clear_WhenIdle_ReturnsStateError)
+TEST_F(HttpServerTest, Clear_WhenRecording_ReturnsStateError)
+TEST_F(HttpServerTest, Clear_WhenPaused_ReturnsStateError)
+TEST_F(HttpServerTest, Clear_RemovesTaskConfig)
+```
+
+#### 4.2.9 RPC: /rpc/quit (7 tests)
+
+```cpp
+TEST_F(HttpServerTest, Quit_WhenIdle_ExitsCleanly)
+TEST_F(HttpServerTest, Quit_WhenReady_ExitsCleanly)
+TEST_F(HttpServerTest, Quit_WhenRecording_StopsAndExits)
+TEST_F(HttpServerTest, Quit_WhenPaused_StopsAndExits)
+TEST_F(HttpServerTest, Quit_WithValidTaskId_StopsAndExits)
+TEST_F(HttpServerTest, Quit_SendsFinishCallback)
+TEST_F(HttpServerTest, Quit_StopsHttpServer)
+```
+
+#### 4.2.10 RPC: /rpc/state (6 tests)
+
+```cpp
+TEST_F(HttpServerTest, GetState_WhenIdle_ReturnsIdle)
+TEST_F(HttpServerTest, GetState_WhenReady_ReturnsReadyWithConfig)
+TEST_F(HttpServerTest, GetState_WhenRecording_ReturnsRecordingWithConfig)
+TEST_F(HttpServerTest, GetState_WhenPaused_ReturnsPausedWithConfig)
+TEST_F(HttpServerTest, GetState_DoesNotReturnCallbackUrls)
+TEST_F(HttpServerTest, GetState_DoesNotReturnUserToken)
+```
+
+#### 4.2.11 RPC: /rpc/stats (5 tests)
+
+```cpp
+TEST_F(HttpServerTest, GetStats_WhenIdle_ReturnsZeroStats)
+TEST_F(HttpServerTest, GetStats_WhenRecording_ReturnsCurrentStats)
+TEST_F(HttpServerTest, GetStats_WhenPaused_ReturnsCurrentStats)
+TEST_F(HttpServerTest, GetStats_UpdatesInRealTime)
+TEST_F(HttpServerTest, GetStats_IncludesAllFields)
+```
+
+#### 4.2.12 Health Check (3 tests)
+
+```cpp
+TEST_F(HttpServerTest, HealthCheck_ReturnsOkStatus)
+TEST_F(HttpServerTest, HealthCheck_IncludesVersion)
+TEST_F(HttpServerTest, HealthCheck_IncludesCurrentState)
+```
+
+#### 4.2.13 错误处理 (8 tests)
+
+```cpp
+TEST_F(HttpServerTest, InvalidEndpoint_Returns404)
+TEST_F(HttpServerTest, InvalidMethod_Returns405)
+TEST_F(HttpServerTest, InvalidJson_Returns400)
+TEST_F(HttpServerTest, EmptyRequest_Returns400)
+TEST_F(HttpServerTest, MalformedJson_Returns400)
+TEST_F(HttpServerTest, MissingContentType_Returns400)
+TEST_F(HttpServerTest, ServerError_Returns500)
+TEST_F(HttpServerTest, ConcurrentRequests_HandledCorrectly)
+```
+
+### 4.3 HTTP 集成测试 (test_http_api_integration.cpp)
+
+**测试完整流程：**
+
+```cpp
+TEST(HttpApiIntegrationTest, CompleteRecordingWorkflow)
+TEST(HttpApiIntegrationTest, MultipleRecordingTasks)
+TEST(HttpApiIntegrationTest, PauseResumeWorkflow)
+TEST(HttpApiIntegrationTest, CancelWorkflow)
+TEST(HttpApiIntegrationTest, ClearConfigWorkflow)
+TEST(HttpApiIntegrationTest, StateQueryAfterEachTransition)
+TEST(HttpApiIntegrationTest, StatsDuringRecording)
+TEST(HttpApiIntegrationTest, ConfigWithAllFields)
+TEST(HttpApiIntegrationTest, ConfigWithMinimalFields)
+TEST(HttpApiIntegrationTest, InvalidTransitions)
 ```
 
 ---
 
-## 4. Detailed Test Plans
+## 5. Plugin System Tests
 
-### 4.1 Existing Test Coverage Summary
+### 5.1 插件加载器测试 (test_plugin_loader.cpp)
 
-#### RecorderNode Tests (Existing)
-
-**`test/integration/test_recorder_node_lifecycle.cpp`** (17 tests) - ✅ EXISTS
-- Factory method (`CreateRecorderNode`)
-- State queries before recording
-- Shutdown safety (before init, double shutdown)
-- Recording state methods (is_recording, is_paused, etc.)
-
-**`test/integration/test_recorder_node_recording.cpp`** (19 tests) - ✅ EXISTS
-- Recording workflow (start/stop/pause/resume)
-- Duration tracking
-- Statistics reporting
-
-#### RecordingSession Tests (Existing)
-
-**`test/unit/test_recording_session.cpp`** (24 tests) - ✅ EXISTS
-- Open/close lifecycle
-- Schema registration
-- Channel registration
-- Message writing
-- Statistics
-
-**`test/integration/test_metadata_injection.cpp`** (6 tests) - ✅ EXISTS
-- Metadata injection flow
-- Task config integration
-
-#### RecordingServiceImpl Tests
-
-> **Note:** `test_recording_service_impl.cpp` was removed in v2.0 (mock infrastructure removal). 
-> Service behavior is now tested via integration tests in `test_recorder_node_recording.cpp` and `test_service_adapter.cpp` which use real `RecorderNode`.
-
-### 4.2 Additional Tests (Gap Coverage) - ✅ IMPLEMENTED
-
-#### 4.2.1 RecorderNode: Edge Uploader Tests - ✅ IMPLEMENTED
-
-**File:** `test/integration/test_recorder_node_uploader.cpp`
-
-> **Note:** These tests require `AXON_HAS_UPLOADER` to be defined. They conditionally compile.
-
+**测试夹具：**
 ```cpp
-#ifdef AXON_HAS_UPLOADER
-TEST_F(RecorderNodeUploaderTest, UploaderInitializedWhenEnabled)      // ✅
-TEST_F(RecorderNodeUploaderTest, UploaderNotInitializedWhenDisabled)  // ✅
-TEST_F(RecorderNodeUploaderTest, FileQueuedAfterStop)                 // ✅
-TEST_F(RecorderNodeUploaderTest, CorruptFileNotQueued)                // ✅
-TEST_F(RecorderNodeUploaderTest, UploaderShutdownClean)               // ✅
-TEST_F(RecorderNodeUploaderTest, HealthStatusReportsCorrectly)        // ✅
-TEST_F(RecorderNodeUploaderTest, MultipleFilesEnqueuedInOrder)        // ✅
-TEST_F(RecorderNodeUploaderTest, CallbackInvokedOnCompletion)         // ✅
-#endif
+class PluginLoaderTest : public ::testing::Test {
+protected:
+  void SetUp() override;
+  void TearDown() override;
+
+  std::string test_plugin_dir_;
+  axon::recorder::PluginLoader loader_;
+};
 ```
 
-#### 4.2.2 RecordingSession: Extended Metadata Tests - ✅ IMPLEMENTED
+**测试用例：**
 
-**Added to `test/unit/test_recording_session.cpp`:**
-
-```cpp
-// Metadata Injection
-TEST_F(RecordingSessionTest, SetTaskConfigEnablesMetadata)     // ✅
-TEST_F(RecordingSessionTest, SidecarPathAvailableAfterClose)   // ✅
-TEST_F(RecordingSessionTest, ChecksumAvailableAfterClose)      // ✅
-
-// Topic Statistics
-TEST_F(RecordingSessionTest, UpdateTopicStatsAccumulates)      // ✅
-TEST_F(RecordingSessionTest, MessageTypeStoredOnFirstUpdate)   // ✅
-```
-
-#### 4.2.3 Stress Tests - ✅ IMPLEMENTED
-
-**Directory:** `test/stress/`
-
-**File: `test/stress/test_recording_session_stress.cpp`**
+#### 5.1.1 加载有效插件 (8 tests)
 
 ```cpp
-TEST_F(RecordingSessionStressTest, ConcurrentWriteFrom8Threads)      // ✅
-TEST_F(RecordingSessionStressTest, Write100KMessagesPerSecond)       // ✅
-TEST_F(RecordingSessionStressTest, LargeMessagesMemoryStable)        // ✅
-TEST_F(RecordingSessionStressTest, MixedMessageSizesConcurrent)      // ✅
-TEST_F(RecordingSessionStressTest, SustainedLoadFor5Seconds)         // ✅
+TEST_F(PluginLoaderTest, Load_ValidPlugin_ReturnsSuccess)
+TEST_F(PluginLoaderTest, Load_ValidPlugin_SetsDescriptor)
+TEST_F(PluginLoaderTest, Load_ValidPlugin_CallsInit)
+TEST_F(PluginLoaderTest, Load_ValidPlugin_SetsVtable)
+TEST_F(PluginLoaderTest, Load_WithEmptyConfig_Succeeds)
+TEST_F(PluginLoaderTest, Load_WithValidConfig_Succeeds)
+TEST_F(PluginLoaderTest, Load_WithInvalidConfig_Fails)
+TEST_F(PluginLoaderTest, Load_WithNullConfig_Fails)
 ```
 
-> **Note:** `test_recording_service_impl_stress.cpp` was removed in v2.0 as it depended on mock infrastructure.
+#### 5.1.2 加载无效插件 (10 tests)
 
-**Running Stress Tests:**
-```bash
-# Run all stress tests
-ctest -L stress --output-on-failure
+```cpp
+TEST_F(PluginLoaderTest, Load_NonExistentLibrary_ReturnsError)
+TEST_F(PluginLoaderTest, Load_InvalidLibraryFormat_ReturnsError)
+TEST_F(PluginLoaderTest, Load_MissingSymbol_ReturnsError)
+TEST_F(PluginLoaderTest, Load_NullDescriptor_ReturnsError)
+TEST_F(PluginLoaderTest, Load_AbiVersionMismatch_ReturnsError)
+TEST_F(PluginLoaderTest, Load_MissingVtable_ReturnsError)
+TEST_F(PluginLoaderTest, Load_MissingInitFunction_ReturnsError)
+TEST_F(PluginLoaderTest, Load_CorruptedLibrary_ReturnsError)
+TEST_F(PluginLoaderTest, Load_WrongArchitecture_ReturnsError)
+TEST_F(PluginLoaderTest, Load_DependencyMissing_ReturnsError)
+```
 
-# Run specific stress test
-ctest -R test_recording_session_stress --output-on-failure
+#### 5.1.3 卸载插件 (6 tests)
+
+```cpp
+TEST_F(PluginLoaderTest, Unload_LoadedPlugin_Succeeds)
+TEST_F(PluginLoaderTest, Unload_ByName_Succeeds)
+TEST_F(PluginLoaderTest, Unload_NonExistentPlugin_ReturnsFalse)
+TEST_F(PluginLoaderTest, Unload_All_Succeeds)
+TEST_F(PluginLoaderTest, Unload_CallsStopIfRunning)
+TEST_F(PluginLoaderTest, Unload_ClosesHandle)
+```
+
+#### 5.1.4 查询插件 (6 tests)
+
+```cpp
+TEST_F(PluginLoaderTest, GetDescriptor_LoadedPlugin_ReturnsDescriptor)
+TEST_F(PluginLoaderTest, GetDescriptor_NonExistentPlugin_ReturnsNull)
+TEST_F(PluginLoaderTest, GetPlugin_LoadedPlugin_ReturnsPlugin)
+TEST_F(PluginLoaderTest, GetPlugin_NonExistentPlugin_ReturnsNull)
+TEST_F(PluginLoaderTest, IsLoaded_LoadedPlugin_ReturnsTrue)
+TEST_F(PluginLoaderTest, LoadedPlugins_ReturnsListOfNames)
+```
+
+### 5.2 模拟插件
+
+**测试用的模拟插件实现：**
+
+```cpp
+// test/mock_plugin.cpp
+extern "C" {
+
+// 模拟插件描述符
+static axon::AxonPluginVtable g_vtable = {
+  .init = [](const char* config) -> axon::AxonStatus {
+    return AXON_SUCCESS;
+  },
+  .start = []() -> axon::AxonStatus {
+    return AXON_SUCCESS;
+  },
+  .stop = []() -> axon::AxonStatus {
+    return AXON_SUCCESS;
+  },
+  .subscribe = nullptr,
+  .publish = nullptr,
+};
+
+static axon::AxonPluginDescriptor g_descriptor = {
+  .abi_version_major = 1,
+  .abi_version_minor = 0,
+  .middleware_name = "mock",
+  .middleware_version = "1.0.0",
+  .plugin_version = "1.0.0",
+  .vtable = &g_vtable,
+};
+
+const axon::AxonPluginDescriptor* axon_get_plugin_descriptor() {
+  return &g_descriptor;
+}
+
+}  // extern "C"
 ```
 
 ---
 
-## 5. Test Infrastructure
+## 6. State Machine Tests
 
-### 5.1 Test Philosophy: No Mocks
+### 6.1 状态机测试 (test_state_machine.cpp)
 
-**Design Decision (v2.0):** The test suite does not use mock objects. All tests use real implementations directly.
+**测试用例：**
 
-**Benefits:**
-- Tests validate actual behavior, not mock approximations
-- No maintenance overhead keeping mocks in sync with implementation
-- Higher confidence in test results
-- Simpler test code
+#### 6.1.1 有效转换 (10 tests)
 
-**Trade-offs:**
-- Some tests require ROS environment to run
-- Tests may be slightly slower
-- Integration tests handle scenarios that might have been unit-tested with mocks
-
-**Rationale:** The `RecordingServiceImpl` tests (which previously used `MockRecorderContext`) are now covered by integration tests that use the real `RecorderNode`. This ensures we test the actual system behavior rather than mock assumptions.
-
-### 5.2 Test Support Libraries
-
-#### `axon_recorder_test_support` (No MCAP dependency)
-
-Compiles common sources that don't require `axon_mcap`:
-
-```cmake
-add_library(axon_recorder_test_support STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/state_machine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config_parser.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/http_callback_client.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/topic_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/worker_thread_pool.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_service_impl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/logging/axon_ros_sink.cpp
-)
+```cpp
+TEST(StateMachineTest, IdleToReady_WithConfig_Succeeds)
+TEST(StateMachineTest, ReadyToRecording_Succeeds)
+TEST(StateMachineTest, RecordingToPaused_Succeeds)
+TEST(StateMachineTest, PausedToRecording_Succeeds)
+TEST(StateMachineTest, RecordingToIdle_Succeeds)
+TEST(StateMachineTest, PausedToIdle_Succeeds)
+TEST(StateMachineTest, ReadyToIdle_WithClear_Succeeds)
+TEST(StateMachineTest, RecordingToIdle_WithCancel_Succeeds)
+TEST(StateMachineTest, PausedToIdle_WithCancel_Succeeds)
+TEST(StateMachineTest, AnyToIdle_WithQuit_Succeeds)
 ```
 
-#### `axon_recorder_test_support_mcap` (ROS-integrated builds only)
+#### 6.1.2 无效转换 (10 tests)
 
-Compiles MCAP-dependent sources for recording tests:
-
-```cmake
-add_library(axon_recorder_test_support_mcap STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/recording_session.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/metadata_injector.cpp
-)
-target_link_libraries(axon_recorder_test_support_mcap
-    axon_mcap axon_logging nlohmann_json::nlohmann_json
-    OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES}
-)
+```cpp
+TEST(StateMachineTest, IdleToRecording_Fails)
+TEST(StateMachineTest, IdleToPaused_Fails)
+TEST(StateMachineTest, ReadyToIdle_Fails)
+TEST(StateMachineTest, ReadyToPaused_Fails)
+TEST(StateMachineTest, RecordingToReady_Fails)
+TEST(StateMachineTest, RecordingToRecording_Fails)
+TEST(StateMachineTest, PausedToReady_Fails)
+TEST(StateMachineTest, PausedToPaused_Fails)
 ```
 
-### 5.3 Test Fixture Helpers - ✅ IMPLEMENTED
+#### 6.1.3 转换回调 (5 tests)
 
-**File:** `test/unit/test_helpers.hpp`
+```cpp
+TEST(StateMachineTest, Transition_CallsCallback)
+TEST(StateMachineTest, Transition_WithMultipleCallbacks_CallsAll)
+TEST(StateMachineTest, Transition_Failed_DoesNotCallCallback)
+TEST(StateMachineTest, Callback_ReceivesFromAndToStates)
+TEST(StateMachineTest, CanUnregisterCallback)
+```
+
+#### 6.1.4 状态查询 (5 tests)
+
+```cpp
+TEST(StateMachineTest, GetState_ReturnsInitialState)
+TEST(StateMachineTest, GetState_AfterTransition_ReturnsNewState)
+TEST(StateMachineTest, GetStateString_ReturnsCorrectString)
+TEST(StateMachineTest, IsRecording_WhenRecording_ReturnsTrue)
+TEST(StateMachineTest, IsRecording_WhenNotRecording_ReturnsFalse)
+```
+
+---
+
+## 7. Concurrency Tests
+
+### 7.1 并发测试场景
+
+| 场景 | 描述 | 测试方法 |
+|------|------|----------|
+| **并发 HTTP 请求** | 多个客户端同时调用 API | 多线程 HTTP 客户端 |
+| **并发消息写入** | 多个主题同时写入 | 多线程发布者 |
+| **状态转换竞态** | 同时尝试状态转换 | 多线程调用转换 |
+| **队列溢出** | 快速发布者填满队列 | 高频消息生成 |
+| **优雅关闭** | 录制时关闭服务器 | Stop + 资源检查 |
+
+### 7.2 并发测试用例
+
+**test_concurrency.cpp:**
+
+```cpp
+TEST(ConcurrencyTest, ConcurrentHttpRequests_HandledCorrectly)
+TEST(ConcurrencyTest, ConcurrentMessageWrites_NoDataLoss)
+TEST(ConcurrencyTest, ConcurrentStateTransitions_Serializes)
+TEST(ConcurrencyTest, QueueFull_DropsMessages)
+TEST(ConcurrencyTest, GracefulShutdown_WaitsForFlush)
+TEST(ConcurrencyTest, RapidConfigChanges_HandlesCorrectly)
+TEST(ConcurrencyTest, ConcurrentBeginFinish_Serializes)
+TEST(ConcurrencyTest, MultipleClients_IndependentSessions)
+```
+
+### 7.3 压力测试
+
+**test_stress.cpp:**
+
+```cpp
+TEST(StressTest, Write10000Messages_NoLoss)
+TEST(StressTest, WriteFor60Seconds_MemoryStable)
+TEST(StressTest, 100HttpConcurrentRequests_AllSucceed)
+TEST(StressTest, 10ConfigChangesPerSecond_Handles)
+TEST(StressTest, RapidStartStop_NoResourceLeak)
+```
+
+---
+
+## 8. Integration Tests
+
+### 8.1 AxonRecorder 集成测试 (test_recorder_integration.cpp)
+
+**测试完整流程：**
+
+```cpp
+TEST(RecorderIntegrationTest, Initialize_Start_Stop)
+TEST(RecorderIntegrationTest, ConfigAndBeginWorkflow)
+TEST(RecorderIntegrationTest, RecordMessagesAndVerifyMcap)
+TEST(RecorderIntegrationTest, PauseResumeWorkflow)
+TEST(RecorderIntegrationTest, FinishAndGenerateSidecar)
+TEST(RecorderIntegrationTest, MultipleRecordingTasks)
+TEST(RecorderIntegrationTest, HttpServerIntegration)
+TEST(RecorderIntegrationTest, PluginLoadAndSubscribe)
+TEST(RecorderIntegrationTest, MetadataInjection)
+TEST(RecorderIntegrationTest, StatisticsCollection)
+TEST(RecorderIntegrationTest, ErrorHandling_InvalidPlugin)
+TEST(RecorderIntegrationTest, ErrorHandling_DiskFull)
+TEST(RecorderIntegrationTest, ErrorHandling_CorruptMcap)
+```
+
+### 8.2 插件集成测试 (test_plugin_integration.cpp)
+
+**测试与 ROS2 插件的集成：**
+
+```cpp
+TEST(PluginIntegrationTest, LoadRos2Plugin_Succeeds)
+TEST(PluginIntegrationTest, Ros2Plugin_Init_Succeeds)
+TEST(PluginIntegrationTest, Ros2Plugin_Start_Succeeds)
+TEST(PluginIntegrationTest, Ros2Plugin_Subscribe_ReceivesMessages)
+TEST(PluginIntegrationTest, Ros2Plugin_Unsubscribe_StopsReceiving)
+TEST(PluginIntegrationTest, Ros2Plugin_Stop_CleanShutdown)
+TEST(PluginIntegrationTest, Ros2Plugin_ConcurrentSubscribes_Handles)
+```
+
+---
+
+## 9. E2E Tests
+
+### 9.1 E2E 测试脚本 (test_http_api_e2e.sh)
+
+```bash
+#!/bin/bash
+# E2E 测试脚本 - 完整录制流程
+
+set -e
+
+AXON_RECORDER_BIN="./build/axon_recorder"
+PLUGIN_PATH="./middlewares/ros2/src/ros2_plugin/install/libaxon_ros2_plugin.so"
+CONFIG_FILE="./test/e2e/test_config.yaml"
+
+# 启动 recorder
+$AXON_RECORDER_BIN --plugin $PLUGIN_PATH --config $CONFIG_FILE &
+RECORDER_PID=$!
+
+# 等待启动
+sleep 2
+
+# 1. 健康检查
+curl -f http://localhost:8080/health || exit 1
+
+# 2. 设置配置
+curl -X POST http://localhost:8080/rpc/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_config": {
+      "task_id": "e2e_test_001",
+      "device_id": "test_robot",
+      "topics": ["/test/topic1", "/test/topic2"]
+    }
+  }' || exit 1
+
+# 3. 检查状态 (应该是 READY)
+STATE=$(curl -s http://localhost:8080/rpc/state | jq -r '.data.state')
+[ "$STATE" == "ready" ] || exit 1
+
+# 4. 开始录制
+curl -X POST http://localhost:8080/rpc/begin || exit 1
+
+# 5. 检查状态 (应该是 RECORDING)
+STATE=$(curl -s http://localhost:8080/rpc/state | jq -r '.data.state')
+[ "$STATE" == "recording" ] || exit 1
+
+# 6. 发布测试消息
+# (使用 ROS2 发布测试数据)
+
+# 7. 等待录制
+sleep 5
+
+# 8. 检查统计信息
+curl -s http://localhost:8080/rpc/stats || exit 1
+
+# 9. 完成录制
+curl -X POST http://localhost:8080/rpc/finish \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "e2e_test_001"}' || exit 1
+
+# 10. 检查状态 (应该是 IDLE)
+STATE=$(curl -s http://localhost:8080/rpc/state | jq -r '.data.state')
+[ "$STATE" == "idle" ] || exit 1
+
+# 11. 验证 MCAP 文件
+[ -f "output.mcap" ] || exit 1
+
+# 12. 验证 sidecar 文件
+[ -f "output.mcap.json" ] || exit 1
+
+# 清理
+kill $RECORDER_PID
+wait $RECORDER_PID
+
+echo "E2E tests passed!"
+```
+
+### 9.2 E2E 测试场景
+
+| 场景 | 描述 | 验证点 |
+|------|------|--------|
+| **基本流程** | config → begin → finish | MCAP 文件生成 |
+| **暂停恢复** | begin → pause → resume → finish | 数据完整性 |
+| **取消录制** | begin → cancel | 无 sidecar 生成 |
+| **清除配置** | config → clear | 配置已清除 |
+| **多任务** | 多次 begin/finish | 每次独立文件 |
+| **错误恢复** | 无效请求处理 | 正确错误响应 |
+
+---
+
+## 10. Test Infrastructure
+
+### 10.1 测试支持库
+
+**test_helpers.hpp:**
 
 ```cpp
 namespace axon::recorder::test {
 
-// Standard test configurations
+// 测试配置
 TaskConfig make_test_task_config();
-TaskConfig make_minimal_task_config(const std::string& task_id = "minimal_task");
-RecorderConfig make_test_recorder_config(const std::string& output_dir);
-RecorderConfig make_minimal_recorder_config(const std::string& output_dir, const std::string& topic_name = "/test_topic");
+RecorderConfig make_test_recorder_config();
 
-// Temp directory management (RAII)
+// 临时目录管理
 class TempDirectory {
 public:
   TempDirectory();
-  ~TempDirectory();  // Cleanup on destruction
+  ~TempDirectory();
   std::filesystem::path path() const;
-  std::filesystem::path subdir(const std::string& name) const;
   std::filesystem::path file(const std::string& name) const;
 };
 
-// Test utilities
-std::vector<uint8_t> make_test_message(size_t size);
-uint64_t now_ns();
+// HTTP 测试客户端
+class HttpClient {
+public:
+  HttpClient(const std::string& base_url);
+  nlohmann::json post(const std::string& endpoint, const nlohmann::json& body);
+  nlohmann::json get(const std::string& endpoint);
+};
+
+// MCAP 验证
+bool verify_mcap_file(const std::string& path);
+bool verify_sidecar_file(const std::string& path);
 
 }  // namespace axon::recorder::test
 ```
 
-> **Design Decision:** Real MCAP code is used directly in tests rather than mocking `McapWriterWrapper`. This ensures tests validate actual MCAP file generation and avoids maintenance overhead of keeping mocks in sync with implementation changes.
+### 10.2 CMake 配置
 
----
+**test/CMakeLists.txt:**
 
-## 6. Implementation Priority
+```cmake
+# 测试可执行文件
+add_executable(test_http_server unit/test_http_server.cpp)
+target_link_libraries(test_http_server
+    axon_recorder
+    gtest
+    gtest_main
+    Boost::system
+)
 
-### Current Status
+# HTTP 客户端测试（需要 httplib）
+find_package(httplib REQUIRED)
+add_executable(test_http_api integration/test_http_api_integration.cpp)
+target_link_libraries(test_http_api
+    axon_recorder
+    gtest
+    gtest_main
+    httplib
+)
 
-With **~610+ tests** across 25+ files, the test suite has comprehensive coverage. All proposed gaps have been implemented.
-
-### Phase 1: Metadata Injection Coverage (P1) - ✅ COMPLETED
-
-| Task | Description | Status |
-|------|-------------|--------|
-| Add metadata tests to `test_recording_session.cpp` | Cover `set_task_config()`, sidecar generation | ✅ Done |
-| 5 new metadata tests added | SetTaskConfigEnablesMetadata, SidecarPathAvailableAfterClose, etc. | ✅ Done |
-
-### Phase 2: Edge Uploader Testing (P1) - ✅ COMPLETED
-
-| Task | Description | Status |
-|------|-------------|--------|
-| Create `test_recorder_node_uploader.cpp` | Test `#ifdef AXON_HAS_UPLOADER` paths | ✅ Done |
-| 8 uploader integration tests | Conditional compilation, queuing, shutdown | ✅ Done |
-
-### Phase 3: Stress Testing (P2) - ✅ COMPLETED
-
-| Task | Description | Status |
-|------|-------------|--------|
-| Create `test/stress/` directory | Organize stress tests | ✅ Done |
-| `test_recording_session_stress.cpp` | High-throughput write tests (5 tests) | ✅ Done |
-| `test_recording_service_impl_stress.cpp` | Concurrent service call tests (5 tests) | ✅ Done |
-| CMakeLists.txt stress test registration | Auto-discovery with stress label | ✅ Done |
-
-### Phase 4: Test Helpers Infrastructure - ✅ COMPLETED
-
-| Task | Description | Status |
-|------|-------------|--------|
-| Create `test/unit/test_helpers.hpp` | TempDirectory, config helpers | ✅ Done |
-| Common test utilities | make_test_message(), now_ns() | ✅ Done |
-
-### All Completed ✓
-
-- ✅ Auto-discovery infrastructure (`axon_discover_unit_tests` macro)
-- ✅ MockRecorderContext for service testing
-- ✅ Test support library (`axon_recorder_test_support`)
-- ✅ Comprehensive unit tests for all core components
-- ✅ Integration tests for RecorderNode lifecycle
-- ✅ Performance test infrastructure (`test/perf/`)
-- ✅ **Metadata injection tests (5 tests)**
-- ✅ **Edge uploader integration tests (8 tests, conditional)**
-- ✅ **Stress tests (10 tests)**
-- ✅ **Test fixture helpers (`test_helpers.hpp`)**
-
----
-
-## 7. Test Execution Matrix
-
-### ROS Distribution × Test Category
-
-| Test Category | Noetic | Humble | Jazzy | Rolling |
-|---------------|--------|--------|-------|---------|
-| Unit Tests (~480) | ✓ | ✓ | ✓ | ✓ |
-| Integration Tests (~110) | ✓ | ✓ | ✓ | ✓ |
-| Stress Tests (10) | - | ✓ | - | - |
-| Regression Tests (23) | ✓ | ✓ | ✓ | ✓ |
-| E2E Scripts | - | ✓ | - | - |
-| Performance Tests | - | ✓ | ○ | - |
-
-Legend: ✓ = Required, ○ = Optional, - = Not run
-
-**Notes:**
-- Unit tests run without ROS runtime
-- Integration tests require ROS environment
-- Stress tests run on Humble only (`ctest -L stress`)
-- E2E shell scripts only run on Humble LTS
-- Performance tests are manual (run via `./test/perf/run_perf_test.sh`)
-
-### CI Pipeline
-
-```
-┌─────────────────────────────────────────────────┐
-│            Tests (Stage 1 - parallel)           │
-│  ┌───────────────────┐  ┌───────────────────┐   │
-│  │ ROS Tests         │  │ C++ Unit Tests    │   │
-│  │ (unit+integration)│  │ +cov              │   │
-│  │ +cov (Humble/     │  │                   │   │
-│  │      Noetic)      │  │                   │   │
-│  └───────────────────┘  └───────────────────┘   │
-└─────────────────────┬───────────────────────────┘
-                      │
-                      ▼
-                ┌───────────┐
-                │   E2E     │  (E2E tests after unit tests)
-                │   Tests   │
-                │   +cov    │
-                └───────────┘
-```
-
-| Workflow | File | Runs On | Tests | Coverage |
-|----------|------|---------|-------|----------|
-| ROS Tests | `tests-ros.yml` | All distros | All unit + integration tests | Humble/Noetic → `ros1`/`ros2` |
-| C++ Unit Tests | `unit-tests-cpp.yml` | Ubuntu 22.04 | C++ library tests | → `cpp` |
-| E2E Tests | `e2e-tests.yml` | Humble only | `run_e2e_tests.sh` | → `ros2` |
-
-### CI Test Commands
-
-```bash
-# Run all tests
-colcon test --packages-select axon_recorder
-
-# Run unit tests only (fast)
-ctest -L unit --output-on-failure
-
-# Run integration tests only
-ctest -L integration --output-on-failure
-
-# Run specific test file
-ctest -R test_state_machine --output-on-failure
-
-# Run with verbose output
-ctest --output-on-failure --verbose
-```
-
-### Docker Test Environments
-
-The project provides Docker configurations for all supported ROS distributions:
-
-```
-docker/
-├── Dockerfile.ros1          # ROS1 Noetic
-├── Dockerfile.ros2.humble   # ROS2 Humble LTS
-├── Dockerfile.ros2.jazzy    # ROS2 Jazzy
-├── Dockerfile.ros2.rolling  # ROS2 Rolling
-└── docker-compose.test.yml  # Test orchestration
+# 注册测试
+gtest_discover_tests(test_http_server)
+gtest_discover_tests(test_http_api)
 ```
 
 ---
 
-## Appendices
+## 11. Implementation Priority
 
-### A. Test Naming Conventions
+### Phase 1: 基础设施 (P0) - 第1-2周
 
-```
-TEST_F(<Fixture>Test, <Method>_<Scenario>_<Expected>)
-TEST_F(<Fixture>Test, <Scenario>_<Expected>)
+| 任务 | 描述 | 估算 |
+|------|------|------|
+| 创建测试目录结构 | unit/integration/e2e | 0.5天 |
+| 实现 test_helpers.hpp | TempDirectory, HttpClient, 配置工厂 | 1天 |
+| 实现 mock plugin | 用于插件加载测试 | 1天 |
+| 配置 CMake 测试构建 | 测试可执行文件和链接 | 1天 |
+| 设置 CI 测试流水线 | GitHub Actions 配置 | 1天 |
 
-Examples:
-TEST_F(RecorderNodeTest, Initialize_WithInvalidConfig_ReturnsFalse)
-TEST_F(RecordingSessionTest, Write_WhenClosed_ReturnsFalse)
-TEST_F(RecordingServiceImplTest, StartCommand_WhenNotReady_FailsWithError)
-```
+### Phase 2: HTTP API 测试 (P0) - 第3-4周
 
-### B. Test Labels
+| 任务 | 描述 | 估算 |
+|------|------|------|
+| test_http_server.cpp | 所有 RPC 端点单元测试 (~40 tests) | 3天 |
+| test_http_api_integration.cpp | HTTP API 集成测试 (~30 tests) | 2天 |
+| 错误处理测试 | 无效请求、状态转换错误 | 1天 |
+| 并发请求测试 | 多线程 HTTP 客户端 | 1天 |
 
-| Label | Description | Run Command |
-|-------|-------------|-------------|
-| `unit` | Fast, no ROS required | `ctest -L unit` |
-| `integration` | Requires ROS | `ctest -L integration` |
+### Phase 3: 核心组件测试 (P0) - 第5-6周
 
-### C. Coverage Report Commands
+| 任务 | 描述 | 估算 |
+|------|------|------|
+| test_plugin_loader.cpp | 插件加载测试 (~30 tests) | 2天 |
+| test_state_machine.cpp | 状态机测试 (~25 tests) | 1.5天 |
+| test_recording_session.cpp | MCAP 会话测试 (~20 tests) | 1.5天 |
+| test_worker_thread_pool.cpp | 工作线程池测试 (~15 tests) | 1.5天 |
+| test_config_parser.cpp | 配置解析测试 (~15 tests) | 1天 |
 
-```bash
-# Build with coverage enabled
-colcon build --packages-select axon_recorder --cmake-args -DENABLE_COVERAGE=ON
+### Phase 4: 集成测试 (P1) - 第7周
 
-# Run tests
-colcon test --packages-select axon_recorder
+| 任务 | 描述 | 估算 |
+|------|------|------|
+| test_recorder_integration.cpp | AxonRecorder 集成测试 (~25 tests) | 2天 |
+| test_plugin_integration.cpp | ROS2 插件集成测试 (~15 tests) | 1.5天 |
+| 并发集成测试 | 竞态条件、死锁 | 1.5天 |
 
-# Generate coverage report (from project root)
-cd coverage/
-lcov --capture --directory ../build --output-file coverage_raw.info
-lcov --remove coverage_raw.info '/usr/*' '*/test/*' --output-file coverage.info
-genhtml coverage.info --output-directory html
-```
+### Phase 5: E2E 测试 (P1) - 第8周
 
-### D. Test Philosophy Reference
+| 任务 | 描述 | 估算 |
+|------|------|------|
+| run_e2e_tests.sh | E2E 测试脚本 | 1天 |
+| test_http_api_e2e.sh | HTTP API E2E 测试 | 1天 |
+| MCAP 验证工具 | 文件完整性检查 | 1天 |
+| 性能基准测试 | 吞吐量、延迟 | 2天 |
 
-| Decision | Rationale |
-|----------|-----------|
-| No mock objects | Tests use real implementations for higher confidence |
-| Integration-first | Service tests use real RecorderNode, not mocks |
-| Real ROS required | Some tests require ROS environment (trade-off accepted) |
+### Phase 6: 压力测试 (P2) - 第9周
 
-### E. Test File Inventory
-
-**Total: ~520+ tests across 21 files**
-
-| Category | Files | Tests |
-|----------|-------|-------|
-| Unit | 13 | ~390 |
-| Integration | 6 | ~100 |
-| Stress | 1 | 5 |
-| Regression | 1 | 23 |
-
-#### New Files Added (v1.4)
-
-| File | Category | Tests |
-|------|----------|-------|
-| `test/unit/test_helpers.hpp` | Infrastructure | N/A |
-| `test/stress/test_recording_session_stress.cpp` | Stress | 5 |
-| `test/stress/test_recording_service_impl_stress.cpp` | Stress | 5 |
-| `test/integration/test_recorder_node_uploader.cpp` | Integration | 8 |
-
-#### Updated Files (v1.4)
-
-| File | Tests Added |
-|------|-------------|
-| `test/unit/test_recording_session.cpp` | +5 metadata tests |
-
-#### Updated Files (v1.8 - P1/P2 Coverage Improvements)
-
-| File | Tests Added | Category |
-|------|-------------|----------|
-| `test/unit/test_http_callback_client.cpp` | +22 URL parsing, async, token handling tests | P1 |
-| `test/unit/test_recording_session.cpp` | +17 sidecar validation, schema edge cases, concurrent write tests | P1/P2 |
-| `test/unit/test_metadata_injector.cpp` | +15 expanded metadata, Unicode, edge case tests | P1/P2 |
-| `test/unit/test_worker_thread_pool.cpp` | +15 error path, overflow, concurrent creation tests | P2 |
-
-#### Deleted Files (v2.0 - Mock Removal)
-
-| File | Reason |
-|------|--------|
-| `test/unit/mock_recorder_context.hpp` | Mock infrastructure removed |
-| `test/unit/mock_ros_interface_logging.hpp` | Mock infrastructure removed |
-| `test/unit/test_recording_service_impl.cpp` | Depended on mocks; covered by integration tests |
-| `test/unit/test_recorder_context_interface.cpp` | Tested mock infrastructure only |
-| `test/unit/test_ros_sink.cpp` | Depended on mock ROS interface |
-| `test/stress/test_recording_service_impl_stress.cpp` | Depended on mocks |
+| 任务 | 描述 | 估算 |
+|------|------|------|
+| 长时间运行测试 | 24小时稳定性 | 2天 |
+| 高负载测试 | 最大吞吐量 | 1天 |
+| 资源泄漏测试 | 内存、文件描述符 | 1天 |
+| 故障注入测试 | 磁盘满、网络故障 | 1天 |
 
 ---
 
-## Document History
+## 12. Document History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| 1.0 | 2025-12-25 | Axon Robotics | Initial version |
-| 1.1 | 2025-12-25 | Axon Robotics | Updated to reflect actual test structure and counts |
-| 1.2 | 2025-12-25 | Axon Robotics | Renamed integration-tests.yml → e2e-tests.yml; E2E runs on Humble only; moved E2E scripts to test/e2e/ |
-| 1.3 | 2025-12-25 | Axon Robotics | Added integration-tests.yml for GTest integration tests on all distros |
-| 1.4 | 2025-12-25 | Axon Robotics | Implemented all proposed tests: metadata tests (5), stress tests (10), uploader tests (8), test_helpers.hpp; removed MockMcapWriterWrapper proposal (use real code); updated test counts |
-| 1.5 | 2025-12-25 | Axon Robotics | CI refactor: unit-tests.yml → unit-tests-ros.yml; added unit-tests-cpp.yml; coverage now collected in all test workflows; removed standalone coverage-ros.yml |
-| 1.6 | 2025-12-25 | Axon Robotics | Added Root Cause Analysis section for low coverage; fixed ROS2 bug (missing `register_common_message_types()` call); documented coverage collection strategy |
-| 1.7 | 2025-12-25 | Axon Robotics | Made `stats_file_path` configurable in `DatasetConfig`; added `axon_recorder_test_support_mcap` library; added `write_stats_file()` tests |
-| 1.8 | 2025-12-25 | Axon Robotics | P1/P2 coverage improvements: +93 tests covering HTTP client edge cases, sidecar validation, metadata injection, error injection, state transitions, worker pool error paths |
-| 1.9 | 2025-12-25 | Axon Robotics | Merged `unit-tests-ros.yml` and `integration-tests.yml` into `tests-ros.yml` - industrial_ci doesn't reliably pass CTEST_ARGS label filters |
-| 2.0 | 2025-12-25 | Axon Robotics | **Major refactor:** Removed all mock infrastructure. Deleted mock files (`mock_recorder_context.hpp`, `mock_ros_interface_logging.hpp`) and mock-dependent tests (`test_recording_service_impl.cpp`, `test_ros_sink.cpp`, `test_recorder_context_interface.cpp`, `test_recording_service_impl_stress.cpp`). All tests now use real implementations. |
+| 1.0 | 2025-12-25 | Axon Robotics | 初始版本 (ROS 服务架构) |
+| 2.0 | 2025-12-25 | Axon Robotics | 移除 mock 基础设施 |
+| 3.0 | 2026-01-12 | Axon Robotics | **重大重构**: 插件架构 + HTTP RPC API |
+| | | | - 移除 ROS 服务相关测试 |
+| | | | - 添加 HTTP RPC API 测试 (~70 tests) |
+| | | | - 添加插件系统测试 (~30 tests) |
+| | | | - 更新组件分析以反映新架构 |
+| | | | - 添加 E2E 测试脚本 |
 
 ---
 
-## Sign-off
+## 13. Sign-off
 
 | Role | Name | Date | Approval |
 |------|------|------|----------|
-| Author | | 2025-12-25 | |
+| Author | | 2026-01-12 | |
 | Reviewer (Staff Eng) | | | |
 | Reviewer (Test Lead) | | | |
-

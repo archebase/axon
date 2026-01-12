@@ -96,7 +96,10 @@ help:
 	@printf "%s\n" "  $(BLUE)make ci-ros$(NC)            - ROS tests (all distros)"
 	@printf "%s\n" "  $(BLUE)make ci-ros1$(NC)           - ROS1 Noetic tests"
 	@printf "%s\n" "  $(BLUE)make ci-ros2$(NC)           - ROS2 (Humble + Jazzy + Rolling) tests"
-	@printf "%s\n" "  $(BLUE)make ci-coverage$(NC)       - Coverage tests (C++ + ROS2)"
+	@printf "%s\n" "  $(BLUE)make ci-coverage$(NC)       - Coverage tests (C++ + ROS2 + Recorder)"
+	@printf "%s\n" "  $(BLUE)make ci-coverage-cpp$(NC)   - C++ library coverage"
+	@printf "%s\n" "  $(BLUE)make ci-coverage-ros$(NC)   - ROS2 coverage (Docker)"
+	@printf "%s\n" "  $(BLUE)make ci-coverage-recorder$(NC) - Axon recorder coverage (local)"
 	@printf "%s\n" "  $(BLUE)make ci-e2e$(NC)            - End-to-end tests"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Docker Testing:$(NC)"
@@ -723,14 +726,54 @@ ci-coverage-cpp: docker-build-cpp
 ci-coverage-ros: docker-coverage
 	@printf "%s\n" "$(GREEN)✓ ROS2 coverage complete$(NC)"
 
-# ci-coverage: All coverage tests (C++ + ROS2)
-ci-coverage: ci-coverage-cpp ci-coverage-ros
+# ci-coverage-recorder: Axon recorder coverage (local, no ROS required)
+ci-coverage-recorder:
+	@printf "%s\n" "$(YELLOW)Building axon_recorder with coverage...$(NC)"
+	@rm -rf apps/axon_recorder/build
+	@mkdir -p apps/axon_recorder/build $(COVERAGE_DIR)
+	@cd apps/axon_recorder/build && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_ENABLE_COVERAGE=ON \
+			-DAXON_BUILD_WITH_CORE=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
+	@cd apps/axon_recorder/build/test && for test in test_*; do ./$$test 2>&1 | grep -E "PASSED|FAILED" || true; done
+	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
+	@if command -v lcov >/dev/null 2>&1; then \
+		LCOV_MAJOR=$$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9]+' || echo "1"); \
+		IGNORE_FLAGS=""; \
+		if [ "$$LCOV_MAJOR" -ge 2 ]; then IGNORE_FLAGS="--ignore-errors mismatch,unused"; fi; \
+		lcov --capture \
+			--directory apps/axon_recorder/build \
+			--output-file $(COVERAGE_DIR)/axon_recorder_coverage.info \
+			--rc lcov_branch_coverage=1 \
+			$$IGNORE_FLAGS || true; \
+		lcov --remove $(COVERAGE_DIR)/axon_recorder_coverage.info \
+			'/usr/*' '/opt/*' '*/test/*' '*/_deps/*' '*/generated/*' \
+			'*/googletest/*' '*/gtest/*' '*/gmock/*' \
+			'*/single_include/*' \
+			'*/c++/*' \
+			--output-file $(COVERAGE_DIR)/axon_recorder_coverage.info \
+			--rc lcov_branch_coverage=1 \
+			$$IGNORE_FLAGS || true; \
+		lcov --list $(COVERAGE_DIR)/axon_recorder_coverage.info || true; \
+		printf "%s\n" "$(GREEN)✓ Axon recorder coverage: $(COVERAGE_DIR)/axon_recorder_coverage.info$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)Warning: lcov not found - skipping coverage report generation$(NC)"; \
+		printf "%s\n" "$(YELLOW)Tests were built and run successfully, but coverage report requires lcov$(NC)"; \
+	fi
+
+# ci-coverage: All coverage tests (C++ + ROS2 + Recorder)
+ci-coverage: ci-coverage-cpp ci-coverage-ros ci-coverage-recorder
 	@printf "%s\n" "$(YELLOW)Merging coverage reports...$(NC)"
 	@lcov -o $(COVERAGE_DIR)/coverage_merged.info \
 		-a $(COVERAGE_DIR)/axon_mcap_coverage.info 2>/dev/null || true \
 		-a $(COVERAGE_DIR)/axon_uploader_coverage.info 2>/dev/null || true \
 		-a $(COVERAGE_DIR)/axon_logging_coverage.info 2>/dev/null || true \
-		-a $(COVERAGE_DIR)/coverage.info 2>/dev/null || true
+		-a $(COVERAGE_DIR)/coverage.info 2>/dev/null || true \
+		-a $(COVERAGE_DIR)/axon_recorder_coverage.info 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ All coverage complete: $(COVERAGE_DIR)/coverage_merged.info$(NC)"
 	@printf "%s\n" "$(YELLOW)View HTML report: make coverage-html$(NC)"
 

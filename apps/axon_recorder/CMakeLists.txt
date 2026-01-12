@@ -161,6 +161,16 @@ if(TARGET axon_mcap)
     # Enable C++17
     target_compile_features(axon_recorder PRIVATE cxx_std_17)
 
+    # Coverage flags
+    if(AXON_ENABLE_COVERAGE)
+        target_compile_options(axon_recorder PRIVATE
+            --coverage
+        )
+        target_link_options(axon_recorder PRIVATE
+            --coverage
+        )
+    endif()
+
     # Install executable
     install(TARGETS axon_recorder
         RUNTIME DESTINATION bin
@@ -169,6 +179,14 @@ if(TARGET axon_mcap)
     message(STATUS "Axon recorder executable will be built")
 else()
     message(STATUS "axon_mcap not found - skipping axon_recorder executable")
+endif()
+
+# =============================================================================
+# Tests
+# =============================================================================
+option(AXON_BUILD_TESTS "Build unit tests" ON)
+if(AXON_BUILD_TESTS)
+    add_subdirectory(test)
 endif()
 
 # =============================================================================

@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Axon** is a high-performance ROS (Robot Operating System) recorder by ArcheBase that writes sensor data to MCAP format. It supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling) distributions with a task-centric design for fleet management scenarios where a server controls recording via ros-bridge.
+**Axon** is a high-performance ROS (Robot Operating System) recorder by ArcheBase that writes sensor data to MCAP format. It supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling) distributions with a task-centric design for fleet management scenarios where a server controls recording via HTTP RPC API.
 
 **Key Design Philosophy:**
 - Task-centric: One task = one MCAP file with full lifecycle management
 - Lock-free: Per-topic SPSC queues for zero-copy message handling
-- Fleet-ready: Server-controlled recording via HTTP callbacks
+- Fleet-ready: Server-controlled recording via HTTP RPC API (see [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md))
 - Crash-resilient: S3 uploader with SQLite state persistence and recovery
+- Plugin-based: Middleware-agnostic core with ROS1/ROS2 plugins
 
 ## Build and Test Commands
 
@@ -20,6 +21,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # From project root
+
+# Build C++ core libraries (no ROS required)
+make build-core
+
+# Build all applications
+make app
+
+# Build ROS1 middleware
+make build-ros1
+
+# Build ROS2 middleware
+make build-ros2
 
 # Build everything (auto-detects ROS version)
 make build
@@ -120,13 +133,21 @@ Axon/
 ├── middlewares/              # Middleware-specific plugins
 │   ├── ros1/                 # ROS1 (Noetic) plugin → libaxon_ros1.so
 │   └── ros2/                 # ROS2 (Humble/Jazzy/Rolling) plugin → libaxon_ros2.so
+│       └── src/ros2_plugin/  # ROS2 plugin implementation
 │
 ├── apps/                     # Main applications
-│   └── axon_recorder/        # Plugin loader and main application
+│   ├── axon_recorder/        # Plugin loader and HTTP RPC server
+│   └── plugin_example/       # Example plugin implementation
 │
-└── include/                  # Unified plugin interface
-    └── middleware_abi.h      # C API definitions for plugin communication
+└── docs/designs/             # Design documents
+    └── rpc-api-design.md     # HTTP RPC API specification
 ```
+
+**Plugin ABI Interface:**
+The plugin interface is defined in [apps/axon_recorder/plugin_loader.hpp](apps/axon_recorder/plugin_loader.hpp) with the following C structures:
+- `AxonPluginDescriptor`: Plugin metadata and ABI version
+- `AxonPluginVtable`: Function pointers for init/start/stop/subscribe/publish
+- Each plugin exports `axon_get_plugin_descriptor()` function
 
 **Benefits:**
 1. Core libraries have zero middleware dependencies
@@ -151,12 +172,20 @@ IDLE → READY → RECORDING ↔ PAUSED
 
 ### Core Components
 
-**1. ROS Recorder Node** ([middlewares/src/axon_recorder/](middlewares/src/axon_recorder/))
-   - Service-based API for server integration
+**1. Axon Recorder** ([apps/axon_recorder/](apps/axon_recorder/))
+   - HTTP RPC server for remote control (see [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md))
+   - Plugin loader for dynamic middleware integration
    - State machine with thread-safe transitions
    - Worker thread pool with per-topic SPSC queues
    - HTTP callback client for server notifications
    - Metadata injector (MCAP metadata + sidecar JSON)
+
+**Key Files:**
+- [apps/axon_recorder/axon_recorder.cpp](apps/axon_recorder/axon_recorder.cpp) - Main entry point
+- [apps/axon_recorder/http_server.cpp](apps/axon_recorder/http_server.cpp) - HTTP RPC server implementation
+- [apps/axon_recorder/recorder.cpp](apps/axon_recorder/recorder.cpp) - Core recording logic
+- [apps/axon_recorder/plugin_loader.cpp](apps/axon_recorder/plugin_loader.cpp) - Plugin loading system
+- [apps/axon_recorder/state_machine.cpp](apps/axon_recorder/state_machine.cpp) - State machine implementation
 
 **2. MCAP Writer Library** ([core/axon_mcap/](core/axon_mcap/))
    - Thread-safe MCAP file operations
@@ -179,30 +208,47 @@ IDLE → READY → RECORDING ↔ PAUSED
 
 | Thread | Responsibility |
 |--------|----------------|
-| ROS Executor | Service callbacks, subscription callbacks |
+| HTTP RPC Server | Handles incoming HTTP requests (config/begin/end/pause/resume/quit/status) |
+| Plugin Executor | ROS executor for subscription callbacks (via plugin) |
 | Worker Threads | Drain SPSC queues, write to MCAP (one per topic) |
-| HTTP Client | Async callbacks to server |
+| HTTP Client | Async callbacks to server (start/finish notifications) |
 | Uploader Workers | S3 upload with retry |
+
+### HTTP RPC API
+
+The recorder exposes an HTTP RPC server (default port 8080) for remote control:
+
+**Endpoints:**
+- `POST /rpc/config` - Set task configuration (IDLE → READY)
+- `POST /rpc/begin` - Start recording (READY → RECORDING)
+- `POST /rpc/end` - Finish recording (RECORDING/PAUSED → IDLE)
+- `POST /rpc/pause` - Pause recording (RECORDING → PAUSED)
+- `POST /rpc/resume` - Resume recording (PAUSED → RECORDING)
+- `POST /rpc/quit` - Shutdown recorder
+- `GET /rpc/status` - Query current status and metrics
+
+See [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md) for complete API specification including request/response formats.
 
 ## Running Individual Tests
 
 ```bash
-# Run all tests
-make test
+# Run C++ core library tests
+make test-core
 
 # Run specific library tests
 make test-mcap       # MCAP writer tests
 make test-uploader   # Edge uploader tests
 make test-logging    # Logging infrastructure tests
 
+# Run CI tests (Docker-based, no local ROS required)
+make ci-cpp          # C++ library tests (unit + integration)
+make ci-ros1         # ROS1 tests in Docker
+make ci-ros2         # ROS2 tests (all distros) in Docker
+
 # Run a single test from the build directory
 cd core/build
 ctest -R test_mcap_writer -V          # Run with verbose output
 ctest -R test_mcap_validator --output-on-failure
-
-# Run tests with specific labels (ROS tests)
-cd middlewares/build/axon_recorder
-ctest -L integration --output-on-failure  # Run only integration tests
 ```
 
 ## Critical Rules and Conventions
@@ -474,7 +520,7 @@ The `task_config.hpp/cpp` files define the core task configuration that flows th
 
 - [README.md](README.md) - User-facing documentation
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed system architecture
-- [docs/](docs/) - Design documents for individual components
+- [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md) - HTTP RPC API specification
 - [.cursor/rules/](.cursor/rules/) - Additional development rules (refactoring guidelines, C++ best practices)
 
 ## Quick Reference
@@ -514,9 +560,24 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | Purpose | Location |
 |---------|----------|
 | Core libraries | `core/axon_*/` |
-| ROS plugins | `middlewares/ros1/`, `middlewares/ros2/` |
-| Main app | `apps/axon_recorder/` |
+| ROS plugins | `middlewares/ros1/`, `middlewares/ros2/src/ros2_plugin/` |
+| Main app (HTTP RPC) | `apps/axon_recorder/` |
+| Plugin example | `apps/plugin_example/` |
+| Plugin ABI interface | `apps/axon_recorder/plugin_loader.hpp` |
 | Tests | `*/test/` or `*/test_*.cpp` |
-| Configs | `apps/axon_recorder/config/` |
 | CMake modules | `cmake/` |
-| Plugin interface | `include/middleware_abi.h` |
+| Design docs | `docs/designs/` |
+
+### Plugin Development
+
+To create a new middleware plugin:
+
+1. **Define the plugin ABI** - Implement the C interface in [apps/axon_recorder/plugin_loader.hpp](apps/axon_recorder/plugin_loader.hpp)
+2. **Export descriptor function** - Each plugin must export `axon_get_plugin_descriptor()`
+3. **Compile as shared library** - Build as `.so` with C linkage for ABI functions
+4. **Example reference** - See [apps/plugin_example/](apps/plugin_example/) and [middlewares/ros2/src/ros2_plugin/](middlewares/ros2/src/ros2_plugin/)
+
+**ABI Versioning:**
+- `AxonPluginDescriptor` contains `abi_version_major` and `abi_version_minor`
+- Always verify compatibility before loading plugins
+- Reserve space in vtable for future extensions

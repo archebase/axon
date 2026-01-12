@@ -3,10 +3,13 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <new>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace axon {
 namespace recorder {
@@ -225,6 +228,7 @@ public:
    */
   explicit MPSCQueue(size_t capacity_per_producer, size_t num_producers = 8)
       : num_queues_(num_producers)
+      , queues_()
       , current_push_queue_(0)
       , current_pop_queue_(0) {
     queues_.reserve(num_producers);
