@@ -1,5 +1,21 @@
-# Axon Recorder Configuration
-# Usage: ./axon_recorder --config config/config.yaml --plugin <path_to_plugin.so>
+# Axon Recorder Configuration for ROS1 (Noetic)
+# Usage: ./axon_recorder --config config/default_config_ros1.yaml
+
+# ============================================================================
+# Plugin Configuration
+# ============================================================================
+plugin:
+  # Path to the ROS1 plugin shared library
+  # If specified, the recorder will automatically load this plugin on startup
+  # Common locations:
+  #   - Build directory: middlewares/ros1/build/axon_ros1_plugin/libaxon_ros1_plugin.so
+  #   - Install directory: /usr/local/lib/axon/plugins/libaxon_ros1_plugin.so
+  #   - Relative path: ./lib/libaxon_ros1_plugin.so
+  path: ""
+
+  # Optional: JSON configuration passed to the plugin on initialization
+  # Example: {"node_name": "custom_node_name"}
+  config: ""
 
 # ============================================================================
 # Dataset Configuration
@@ -16,9 +32,12 @@ dataset:
   #              1024-2048 for low-frequency topics (status, diagnostics)
   queue_size: 8192
 
-#   High-frequency subscriptions (IMU, camera): Use larger batches (100-5000)
-#   Low-frequency subscriptions (status, diagnostics): Use small batches (1-10)
-#   Control signals: Use batch_size=1 for immediate persistence
+# ============================================================================
+# Subscription Configuration
+# ============================================================================
+# High-frequency subscriptions (IMU, camera): Use larger batches (100-5000)
+# Low-frequency subscriptions (status, diagnostics): Use small batches (1-10)
+# Control signals: Use batch_size=1 for immediate persistence
 subscriptions:
   # IMU data - high frequency (5 seconds of data per batch)
   - name: /imu/data
@@ -59,9 +78,12 @@ subscriptions:
     batch_size: 300
     flush_interval_ms: 10000
 
+# ============================================================================
+# Recording Configuration
+# ============================================================================
 recording:
-  # ROS profile: "ros1" or "ros2" (must match plugin)
-  profile: ros2
+  # ROS profile: "ros1" for ROS1 Noetic
+  profile: ros1
 
   # MCAP compression: "none", "zstd", or "lz4"
   # - zstd: Recommended, good balance of speed and compression
@@ -73,7 +95,9 @@ recording:
   # Maximum disk usage (ignored by axon_recorder, used by full service)
   max_disk_usage_gb: 100
 
-# Logging configuration
+# ============================================================================
+# Logging Configuration
+# ============================================================================
 # Can be overridden by environment variables:
 #   AXON_LOG_LEVEL          - Global level (overrides both console and file)
 #   AXON_LOG_CONSOLE_LEVEL  - Console sink level
@@ -97,11 +121,13 @@ logging:
     max_files: 10
     rotate_at_midnight: true
 
+# ============================================================================
 # Edge Upload Configuration
+# ============================================================================
 # Uploads MCAP and sidecar JSON to S3-compatible storage after recording
 upload:
   enabled: false           # Set to true to enable automatic uploads
-  
+
   # S3 Configuration
   s3:
     endpoint_url: ""       # S3-compatible endpoint (empty for AWS S3)
@@ -109,10 +135,10 @@ upload:
     region: "us-east-1"
     use_ssl: true
     verify_ssl: true
-    
+
   # Worker configuration
   num_workers: 2
-  
+
   # Retry configuration
   retry:
     max_retries: 5
@@ -120,15 +146,14 @@ upload:
     max_delay_ms: 300000
     exponential_base: 2.0
     jitter: true
-    
+
   # State persistence for crash recovery
   state_db_path: "/var/lib/axon/uploader_state.db"
-  
+
   # Cleanup policy
   delete_after_upload: true               # Delete device copy after successful upload
   failed_uploads_dir: "/data/failed_uploads/"
-  
+
   # Backpressure thresholds (GB)
   warn_pending_gb: 8      # ~2 files - emit warning
   alert_pending_gb: 20    # ~5 files - alert operator
-

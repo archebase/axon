@@ -69,12 +69,16 @@ void print_usage(const char* program_name) {
     << "    GET  / or /health     - Health check\n"
     << "\n"
     << "Configuration File:\n"
-    << "  If --config is provided, most options can be specified in a YAML file:\n"
+    << "  If --config is provided, most options can be specified in a YAML file.\n"
+    << "  Command-line arguments OVERRIDE config file values.\n"
+    << "  Example config file structure:\n"
+    << "  plugin:\n"
+    << "    path: /path/to/plugin.so\n"
     << "  dataset:\n"
     << "    path: /data/recordings\n"
     << "    output_file: recording.mcap\n"
     << "    queue_size: 8192\n"
-    << "  topics:\n"
+    << "  subscriptions:\n"
     << "    - name: /camera/image\n"
     << "      message_type: sensor_msgs/msg/Image\n"
     << "      batch_size: 300\n"
@@ -85,9 +89,18 @@ void print_usage(const char* program_name) {
     << "    compression_level: 3\n"
     << "\n"
     << "Examples:\n"
-    << "  " << program_name << " --config apps/axon_recorder/config/config.yaml \\\n"
-    << "    --plugin "
-       "middlewares/ros2/install/axon_ros2_plugin/lib/axon/plugins/libaxon_ros2_plugin.so\n"
+    << "  # Use config file only\n"
+    << "  " << program_name << " --config config/default_config_ros2.yaml\n"
+    << "\n"
+    << "  # Override plugin path from config file\n"
+    << "  " << program_name << " --config config/default_config_ros2.yaml \\\n"
+    << "    --plugin /custom/path/to/libaxon_ros2_plugin.so\n"
+    << "\n"
+    << "  # Override output file and compression level\n"
+    << "  " << program_name << " --config config/default_config_ros2.yaml \\\n"
+    << "    --output /tmp/test.mcap --level 5\n"
+    << "\n"
+    << "  # CLI only (no config file)\n"
     << "  " << program_name << " --plugin ./ros2_plugin.so \\\n"
     << "    --topic /camera/image_raw --type sensor_msgs/msg/Image \\\n"
     << "    --output recording.mcap\n"
@@ -119,11 +132,17 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  RecorderConfig config;
+  // Step 1: Parse command line arguments to extract config file path and CLI overrides
   std::string config_file;
-
-  // Parse command line arguments
+  std::string cli_plugin_path;
+  std::string cli_output_file;
+  std::string cli_profile;
+  std::string cli_compression;
+  int cli_compression_level = -1;
+  size_t cli_queue_capacity = 0;
+  std::vector<SubscriptionConfig> cli_subscriptions;
   std::string current_topic;
+
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--config") == 0) {
       if (i + 1 < argc) {
@@ -134,14 +153,14 @@ int main(int argc, char* argv[]) {
       }
     } else if (strcmp(argv[i], "--plugin") == 0) {
       if (i + 1 < argc) {
-        config.plugin_path = argv[++i];
+        cli_plugin_path = argv[++i];
       } else {
         std::cerr << "Error: --plugin requires a path argument" << std::endl;
         return 1;
       }
     } else if (strcmp(argv[i], "--output") == 0) {
       if (i + 1 < argc) {
-        config.output_file = argv[++i];
+        cli_output_file = argv[++i];
       } else {
         std::cerr << "Error: --output requires a file argument" << std::endl;
         return 1;
@@ -160,7 +179,7 @@ int main(int argc, char* argv[]) {
           return 1;
         }
         std::string message_type = argv[++i];
-        config.subscriptions.push_back({current_topic, message_type});
+        cli_subscriptions.push_back({current_topic, message_type});
         current_topic.clear();
       } else {
         std::cerr << "Error: --type requires a type argument" << std::endl;
@@ -168,28 +187,28 @@ int main(int argc, char* argv[]) {
       }
     } else if (strcmp(argv[i], "--profile") == 0) {
       if (i + 1 < argc) {
-        config.profile = argv[++i];
+        cli_profile = argv[++i];
       } else {
         std::cerr << "Error: --profile requires a profile argument" << std::endl;
         return 1;
       }
     } else if (strcmp(argv[i], "--compression") == 0) {
       if (i + 1 < argc) {
-        config.compression = argv[++i];
+        cli_compression = argv[++i];
       } else {
         std::cerr << "Error: --compression requires an algorithm argument" << std::endl;
         return 1;
       }
     } else if (strcmp(argv[i], "--level") == 0) {
       if (i + 1 < argc) {
-        config.compression_level = std::atoi(argv[++i]);
+        cli_compression_level = std::atoi(argv[++i]);
       } else {
         std::cerr << "Error: --level requires a number argument" << std::endl;
         return 1;
       }
     } else if (strcmp(argv[i], "--queue-size") == 0) {
       if (i + 1 < argc) {
-        config.queue_capacity = static_cast<size_t>(std::atol(argv[++i]));
+        cli_queue_capacity = static_cast<size_t>(std::atol(argv[++i]));
       } else {
         std::cerr << "Error: --queue-size requires a number argument" << std::endl;
         return 1;
@@ -201,7 +220,8 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // Load configuration file if specified
+  // Step 2: Load configuration file if specified
+  RecorderConfig config;
   if (!config_file.empty()) {
     ConfigParser parser;
     if (!parser.load_from_file(config_file, config)) {
@@ -209,6 +229,29 @@ int main(int argc, char* argv[]) {
                 << "': " << parser.get_last_error() << std::endl;
       return 1;
     }
+  }
+
+  // Step 3: Apply CLI argument overrides (CLI takes precedence over config file)
+  if (!cli_plugin_path.empty()) {
+    config.plugin_path = cli_plugin_path;
+  }
+  if (!cli_output_file.empty()) {
+    config.output_file = cli_output_file;
+  }
+  if (!cli_profile.empty()) {
+    config.profile = cli_profile;
+  }
+  if (!cli_compression.empty()) {
+    config.compression = cli_compression;
+  }
+  if (cli_compression_level >= 0) {
+    config.compression_level = cli_compression_level;
+  }
+  if (cli_queue_capacity > 0) {
+    config.queue_capacity = cli_queue_capacity;
+  }
+  if (!cli_subscriptions.empty()) {
+    config.subscriptions = cli_subscriptions;
   }
 
   // Validate required arguments

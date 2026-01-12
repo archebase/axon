@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>axon_ros1_plugin</name>
+  <version>1.0.0</version>
+  <description>ROS1 plugin for Axon recorder - Subscribe to any ROS1 message type</description>
+  <maintainer email="info@archebase.com">ArcheBase</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>roscpp</depend>
+  <depend>roslib</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>topic_tools</depend>
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
+
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+  </export>
+</package>
