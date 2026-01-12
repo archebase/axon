@@ -988,8 +988,8 @@ ctest
 ```bash
 # Requires ROS environment
 cd middlewares/ros2
-colcon build --packages-select axon_ros2_plugin
-colcon test --packages-select axon_ros2_plugin
+colcon build
+colcon test
 ```
 
 ### Integration Testing

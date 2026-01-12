@@ -205,7 +205,6 @@ if [ "$ROS_VERSION" = "1" ]; then
 else
     echo "Running colcon tests..."
     colcon test \
-        --packages-select axon_recorder \
         --event-handlers console_direct+
     colcon test-result --verbose
 fi

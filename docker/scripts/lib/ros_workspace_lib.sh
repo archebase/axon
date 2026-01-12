@@ -167,17 +167,17 @@ ros_workspace_source_workspace() {
             if [ $source_result -eq 0 ]; then
                 export WORKSPACE_INSTALL_DIR="$ws_path"
                 ros_workspace_log "INFO" "Sourced workspace: $setup_file"
-                
+
                 # For ROS 2: Ensure workspace is in AMENT_PREFIX_PATH
                 if [ "$ros_version" = "2" ]; then
-                    local axon_recorder_path="${ws_path}/axon_recorder"
-                    if [ -d "$axon_recorder_path" ]; then
-                        export AMENT_PREFIX_PATH="${axon_recorder_path}:${ws_path}:${AMENT_PREFIX_PATH:-}"
+                    local axon_ros2_plugin_path="${ws_path}/axon_ros2_plugin"
+                    if [ -d "$axon_ros2_plugin_path" ]; then
+                        export AMENT_PREFIX_PATH="${axon_ros2_plugin_path}:${ws_path}:${AMENT_PREFIX_PATH:-}"
                     else
                         export AMENT_PREFIX_PATH="${ws_path}:${AMENT_PREFIX_PATH:-}"
                     fi
                 fi
-                
+
                 return 0
             fi
         fi
@@ -192,7 +192,7 @@ ros_workspace_source_workspace() {
 # Verify Package Availability
 # =============================================================================
 #
-# Verifies that the axon_recorder package is available in the ROS environment.
+# Verifies that the axon_ros2_plugin package is available in the ROS environment.
 #
 # Arguments:
 #   ROS_VERSION - ROS version (1 or 2)
@@ -203,20 +203,20 @@ ros_workspace_source_workspace() {
 #
 ros_workspace_verify_package() {
     local ros_version="${ROS_VERSION:-}"
-    
+
     if [ -z "$ros_version" ]; then
         ros_workspace_error "ROS_VERSION must be set"
     fi
-    
-    ros_workspace_log "INFO" "Verifying axon_recorder package availability..."
-    
+
+    ros_workspace_log "INFO" "Verifying axon_ros2_plugin package availability..."
+
     if [ "$ros_version" = "2" ]; then
         # ROS 2 - Check via ros2 pkg list
-        if ros2 pkg list 2>/dev/null | grep -q "^axon_recorder$"; then
-            ros_workspace_log "INFO" "✓ axon_recorder found in ros2 pkg list"
+        if ros2 pkg list 2>/dev/null | grep -q "^axon_ros2_plugin$"; then
+            ros_workspace_log "INFO" "✓ axon_ros2_plugin found in ros2 pkg list"
             return 0
         else
-            ros_workspace_log "WARN" "axon_recorder not found in ros2 pkg list"
+            ros_workspace_log "WARN" "axon_ros2_plugin not found in ros2 pkg list"
             # Show first 30 packages for debugging
             ros_workspace_log "INFO" "First 30 packages:"
             ros2 pkg list 2>/dev/null | head -30 || true
@@ -224,11 +224,11 @@ ros_workspace_verify_package() {
         fi
     else
         # ROS 1 - Check via rospack
-        if rospack find axon_recorder &>/dev/null; then
-            ros_workspace_log "INFO" "✓ axon_recorder found via rospack"
+        if rospack find axon_ros1_plugin &>/dev/null; then
+            ros_workspace_log "INFO" "✓ axon_ros1_plugin found via rospack"
             return 0
         else
-            ros_workspace_log "WARN" "axon_recorder not found via rospack"
+            ros_workspace_log "WARN" "axon_ros1_plugin not found via rospack"
             return 1
         fi
     fi

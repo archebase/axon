@@ -104,10 +104,10 @@ docker compose -f docker-compose.test.yml run --rm test-ros2-humble bash
 # Inside container:
 source /opt/ros/humble/setup.bash
 cd /workspace/axon/middlewares
-colcon build --packages-select axon_recorder \
+colcon build \
   --cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON
 source install/setup.bash
-colcon test --packages-select axon_recorder
+colcon test
 
 # Generate coverage
 cd build/axon_recorder

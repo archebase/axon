@@ -214,7 +214,6 @@ ros_build_package() {
         
         # Build with colcon
         local colcon_args=(
-            --packages-select axon_recorder
             --cmake-args
             -DCMAKE_BUILD_TYPE="$build_type"
         )
@@ -236,7 +235,7 @@ ros_build_package() {
         }
         
         # Set workspace directories (build artifacts are in current directory)
-        export WORKSPACE_BUILD_DIR="${PWD}/build/axon_recorder"
+        export WORKSPACE_BUILD_DIR="${PWD}/build/axon_ros2_plugin"
         export WORKSPACE_INSTALL_DIR="${PWD}/install"
         
         # Source workspace

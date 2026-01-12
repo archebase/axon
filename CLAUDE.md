@@ -426,7 +426,7 @@ Keep descriptions under 72 characters. Use imperative mood ("add" not "added").
 
 - **Unit Tests**: Core library components ([core/axon_mcap/test/](core/axon_mcap/test/), [core/axon_logging/test/](core/axon_logging/test/), etc.)
 - **Integration Tests**: ROS service API, state machine transitions ([middlewares/src/axon_recorder/test/integration/](middlewares/src/axon_recorder/test/integration/))
-- **E2E Tests**: Full recording workflow with Docker ([middlewares/src/axon_recorder/test/e2e/](middlewares/src/axon_recorder/test/e2e/))
+- **E2E Tests**: Full recording workflow with Docker ([apps/axon_recorder/test/e2e/](apps/axon_recorder/test/e2e/))
 
 **Running Tests:**
 ```bash

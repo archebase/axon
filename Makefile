@@ -96,6 +96,7 @@ help:
 	@printf "%s\n" "  $(BLUE)make ci-ros$(NC)            - ROS tests (all distros)"
 	@printf "%s\n" "  $(BLUE)make ci-ros1$(NC)           - ROS1 Noetic tests"
 	@printf "%s\n" "  $(BLUE)make ci-ros2$(NC)           - ROS2 (Humble + Jazzy + Rolling) tests"
+	@printf "%s\n" "  $(BLUE)make ci-e2e$(NC)            - E2E tests (ROS1 + ROS2 Humble)"
 	@printf "%s\n" "  $(BLUE)make ci-coverage$(NC)       - Coverage tests (C++ + ROS2 + Recorder)"
 	@printf "%s\n" "  $(BLUE)make ci-coverage-cpp$(NC)   - C++ library coverage"
 	@printf "%s\n" "  $(BLUE)make ci-coverage-ros$(NC)   - ROS2 coverage (Docker)"
@@ -103,8 +104,17 @@ help:
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Docker Testing:$(NC)"
 	@printf "%s\n" "  $(BLUE)make docker-test-cpp$(NC)   - C++ tests in Docker"
-	@printf "%s\n" "  $(BLUE)make docker-test-all$(NC)   - All ROS distros in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-ros$(NC)   - ROS tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-e2e$(NC)   - E2E tests in Docker (ROS1 + Humble)"
+	@printf "%s\n" "  $(BLUE)make docker-test-e2e-all$(NC) - E2E tests (all ROS distros)"
 	@printf "%s\n" "  $(BLUE)make docker-coverage$(NC)   - ROS2 coverage in Docker"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)E2E Testing:$(NC)"
+	@printf "%s\n" "  $(BLUE)make e2e$(NC)                - E2E tests (local, requires build)"
+	@printf "%s\n" "  $(BLUE)make docker-test-e2e-ros1$(NC)       - ROS1 E2E tests"
+	@printf "%s\n" "  $(BLUE)make docker-test-e2e-ros2-humble$(NC) - ROS2 Humble E2E tests"
+	@printf "%s\n" "  $(BLUE)make docker-test-e2e-ros2-jazzy$(NC)    - ROS2 Jazzy E2E tests"
+	@printf "%s\n" "  $(BLUE)make docker-test-e2e-ros2-rolling$(NC) - ROS2 Rolling E2E tests"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Utility:$(NC)"
 	@printf "%s\n" "  $(BLUE)make coverage-merge$(NC)    - Merge all coverage reports"
@@ -500,11 +510,9 @@ coverage-ros2:
 	@source /opt/ros/$${ROS_DISTRO}/setup.bash && \
 		cd middlewares/ros2 && \
 		colcon build \
-			--packages-select axon_recorder \
 			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DAXON_ENABLE_COVERAGE=ON && \
 		source install/setup.bash && \
 		colcon test \
-			--packages-select axon_recorder \
 			--event-handlers console_direct+ || true
 	@printf "%s\n" "$(GREEN)✓ Tests completed, generating coverage report...$(NC)"
 	@LCOV_MAJOR=$$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9]+' || echo "1"); \
@@ -640,12 +648,20 @@ ci-cpp-unit: docker-build-cpp
 		-v $(PROJECT_ROOT):/workspace/axon \
 		-e AXON_ENABLE_COVERAGE=OFF \
 		axon:cpp-test \
-		/bin/bash -c "cd /workspace/axon/core && \
+		/bin/bash -c ' \
 			for lib in axon_mcap axon_logging; do \
-				echo \"Testing \$\$lib...\" && \
-				cd build_\$$\$lib && \
+				echo "Building $$lib..." && \
+				cd /workspace/axon && \
+				mkdir -p build/$$lib && \
+				cd build/$$lib && \
+				cmake ../../core/$$lib \
+					-DCMAKE_BUILD_TYPE=Release \
+					-DAXON_REPO_ROOT=/workspace/axon \
+					-DAXON_BUILD_TESTS=ON && \
+				make -j$$(nproc) && \
 				ctest --output-on-failure -L unit || exit 1; \
-			done"
+			done \
+		'
 	@printf "%s\n" "$(GREEN)✓ C++ unit tests passed$(NC)"
 
 # ci-cpp-integration: C++ integration tests in Docker (with MinIO)
@@ -663,12 +679,20 @@ ci-cpp-integration: docker-build-cpp
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		--network host \
 		-v $(PROJECT_ROOT):/workspace/axon \
-		-e MINIO_ENDPOINT=localhost:9000 \
-		-e MINIO_ACCESS_KEY=minioadmin \
-		-e MINIO_SECRET_KEY=minioadmin \
+		-e AWS_ACCESS_KEY_ID=minioadmin \
+		-e AWS_SECRET_ACCESS_KEY=minioadmin \
 		axon:cpp-test \
-		/bin/bash -c "cd /workspace/axon/core/build_uploader && \
-			ctest --output-on-failure -L integration" || \
+		/bin/bash -c '\
+			cd /workspace/axon && \
+			mkdir -p build/axon_uploader && \
+			cd build/axon_uploader && \
+			cmake ../../core/axon_uploader \
+				-DCMAKE_BUILD_TYPE=Debug \
+				-DAXON_REPO_ROOT=/workspace/axon \
+				-DAXON_UPLOADER_BUILD_TESTS=ON && \
+			make -j$$(nproc) && \
+			./test_edge_uploader \
+		' || \
 		(docker stop minio-ci 2>/dev/null || true && \
 		 docker rm minio-ci 2>/dev/null || true && \
 		 exit 1)
@@ -688,6 +712,10 @@ ci-ros1: docker-test-ros1
 ci-ros2: docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling
 	@printf "%s\n" "$(GREEN)✓ ROS2 tests passed$(NC)"
 
+# ci-e2e: E2E tests in Docker (ROS1 + ROS2 Humble)
+ci-e2e: docker-test-e2e-ros1 docker-test-e2e-ros2-humble
+	@printf "%s\n" "$(GREEN)✓ E2E tests passed$(NC)"
+
 # ci-docker: Alias for docker-test-all
 ci-docker: docker-test-all
 	@printf "%s\n" "$(GREEN)✓ All Docker tests passed$(NC)"
@@ -701,25 +729,28 @@ ci-coverage-cpp: docker-build-cpp
 		-v $(PROJECT_ROOT)/coverage:/workspace/coverage \
 		-e AXON_ENABLE_COVERAGE=ON \
 		axon:cpp-test \
-		/bin/bash -c "cd /workspace/axon/core && \
+		/bin/bash -c ' \
 			for lib in axon_mcap axon_uploader axon_logging; do \
-				echo \"Building \$\$lib with coverage...\" && \
-				mkdir -p build_\$$\$lib && \
-				cd build_\$$\$lib && \
-				cmake ../\$$\$lib \
+				echo "Building $$lib with coverage..." && \
+				cd /workspace/axon && \
+				mkdir -p build/$$lib && \
+				cd build/$$lib && \
+				cmake ../../core/$$lib \
 					-DCMAKE_BUILD_TYPE=Debug \
 					-DAXON_ENABLE_COVERAGE=ON \
+					-DAXON_BUILD_TESTS=ON \
 					-DAXON_REPO_ROOT=/workspace/axon && \
-				make -j\$$(nproc) && \
+				make -j$$(nproc) && \
 				ctest --output-on-failure && \
 				lcov --capture --directory . \
-					--output-file /workspace/coverage/\$${lib}_coverage.info \
-					--rc lcov_branch_coverage=1 || true && \
-				cd /workspace/axon/core; \
-			done" || \
+					--output-file /workspace/coverage/$${lib}_coverage.info \
+					--rc lcov_branch_coverage=1 || true; \
+			done \
+		' || \
 		(printf "%s\n" "$(RED)✗ Coverage tests failed$(NC)" && exit 1)
 	@printf "%s\n" "$(GREEN)✓ C++ coverage complete: $(COVERAGE_DIR)/*.info$(NC)"
 	@printf "%s\n" "$(YELLOW)View HTML report: make coverage-html-cpp$(NC)"
+
 
 # ci-coverage-ros: ROS2 coverage in Docker (Humble only for speed)
 ci-coverage-ros: docker-coverage
@@ -802,12 +833,20 @@ docker-test-cpp: docker-build-cpp
 	@DOCKER_BUILDKIT=1 docker run --rm \
 		-v $(PROJECT_ROOT):/workspace/axon \
 		axon:cpp-test \
-		/bin/bash -c "cd /workspace/axon/core && \
+		/bin/bash -c ' \
 			for lib in axon_mcap axon_uploader axon_logging; do \
-				echo \"Testing \$\$lib...\" && \
-				cd build_\$$\$lib && \
+				echo "Building $$lib..." && \
+				cd /workspace/axon && \
+				mkdir -p build/$$lib && \
+				cd build/$$lib && \
+				cmake ../../core/$$lib \
+					-DCMAKE_BUILD_TYPE=Release \
+					-DAXON_REPO_ROOT=/workspace/axon \
+					-DAXON_BUILD_TESTS=ON && \
+				make -j$$(nproc) && \
 				ctest --output-on-failure || exit 1; \
-			done"
+			done \
+		'
 	@printf "%s\n" "$(GREEN)✓ C++ tests passed$(NC)"
 
 # docker-build-cpp: Build C++ test Docker image
@@ -823,6 +862,62 @@ docker-build-cpp:
 # docker-test-ros: Run all ROS tests in Docker
 docker-test-ros: docker-test-ros1 docker-test-ros2-humble
 	@printf "%s\n" "$(GREEN)✓ All ROS tests passed$(NC)"
+
+# docker-test-e2e: Run all E2E tests in Docker
+docker-test-e2e: docker-test-e2e-ros1 docker-test-e2e-ros2-humble
+	@printf "%s\n" "$(GREEN)✓ All E2E tests passed$(NC)"
+
+# docker-test-e2e-ros1: Run E2E tests in ROS1 Docker container
+docker-test-e2e-ros1: docker-build-ros1
+	@printf "%s\n" "$(YELLOW)Running E2E tests in ROS1 Docker container...$(NC)"
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-e ROS_DISTRO=noetic \
+		-e ROS_VERSION=1 \
+		--network host \
+		axon:ros1 \
+		/usr/local/bin/run_e2e_tests.sh
+	@printf "%s\n" "$(GREEN)✓ ROS1 E2E tests passed$(NC)"
+
+# docker-test-e2e-ros2-humble: Run E2E tests in ROS2 Humble Docker container
+docker-test-e2e-ros2-humble: docker-build-ros2-humble
+	@printf "%s\n" "$(YELLOW)Running E2E tests in ROS2 Humble Docker container...$(NC)"
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-e ROS_DISTRO=humble \
+		-e ROS_VERSION=2 \
+		--network host \
+		axon:ros2-humble \
+		/usr/local/bin/run_e2e_tests.sh
+	@printf "%s\n" "$(GREEN)✓ ROS2 Humble E2E tests passed$(NC)"
+
+# docker-test-e2e-ros2-jazzy: Run E2E tests in ROS2 Jazzy Docker container
+docker-test-e2e-ros2-jazzy: docker-build-ros2-jazzy
+	@printf "%s\n" "$(YELLOW)Running E2E tests in ROS2 Jazzy Docker container...$(NC)"
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-e ROS_DISTRO=jazzy \
+		-e ROS_VERSION=2 \
+		--network host \
+		axon:ros2-jazzy \
+		/usr/local/bin/run_e2e_tests.sh
+	@printf "%s\n" "$(GREEN)✓ ROS2 Jazzy E2E tests passed$(NC)"
+
+# docker-test-e2e-ros2-rolling: Run E2E tests in ROS2 Rolling Docker container
+docker-test-e2e-ros2-rolling: docker-build-ros2-rolling
+	@printf "%s\n" "$(YELLOW)Running E2E tests in ROS2 Rolling Docker container...$(NC)"
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-e ROS_DISTRO=rolling \
+		-e ROS_VERSION=2 \
+		--network host \
+		axon:ros2-rolling \
+		/usr/local/bin/run_e2e_tests.sh
+	@printf "%s\n" "$(GREEN)✓ ROS2 Rolling E2E tests passed$(NC)"
+
+# docker-test-e2e-all: Run E2E tests for all ROS distributions
+docker-test-e2e-all: docker-test-e2e-ros1 docker-test-e2e-ros2-humble docker-test-e2e-ros2-jazzy docker-test-e2e-ros2-rolling
+	@printf "%s\n" "$(GREEN)✓ All E2E tests passed$(NC)"
 
 # =============================================================================
 # Utility Targets for CI Testing

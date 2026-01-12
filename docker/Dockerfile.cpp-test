@@ -72,7 +72,30 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     libcurl4-openssl-dev \
+    python3-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# AWS SDK for C++ (required for axon_uploader S3 integration)
+# Building from source as there are no apt packages available
+# =============================================================================
+RUN git clone --recurse-submodules --depth 1 --branch 1.11.458 \
+    https://github.com/aws/aws-sdk-cpp.git /tmp/aws-sdk-cpp && \
+    cd /tmp/aws-sdk-cpp && \
+    cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_ONLY="s3;transfer" \
+        -DENABLE_TESTING=OFF \
+        -DAUTORUN_UNIT_TESTS=OFF \
+        -DBUILD_SHARED_LIBS=ON && \
+    cmake --build build -j$(nproc) && \
+    cmake --install build && \
+    rm -rf /tmp/aws-sdk-cpp
+
+# Set LD_LIBRARY_PATH for AWS SDK
+ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
 # Install MinIO client (for integration tests)
 RUN curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc \

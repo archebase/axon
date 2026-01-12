@@ -115,7 +115,7 @@ fi
 
 # Set defaults
 ROS_DISTRO="${ROS_DISTRO:-humble}"
-WORKSPACE_ROOT="/home/xlw/src/Axon"
+WORKSPACE_ROOT="/workspace/axon"
 
 # Set coverage output directory if coverage is enabled
 if [ "$ENABLE_COVERAGE" = true ]; then
@@ -138,22 +138,8 @@ fi
 
 # Determine source path for test script
 if [ -z "$SOURCE_PATH" ]; then
-    # Try to find test directory based on ROS version
-    if [ "$ROS_VERSION" = "1" ]; then
-        TEST_DIR="${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e"
-    else
-        TEST_DIR="${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e"
-    fi
-
-    if [ -d "$TEST_DIR" ]; then
-        SOURCE_PATH="$TEST_DIR"
-    elif [ -d "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e" ]; then
-        # Fallback to old directory structure (for backward compatibility)
-        SOURCE_PATH="${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e"
-    else
-        # Fallback to script directory (for backward compatibility)
-        SOURCE_PATH="${SCRIPT_DIR}"
-    fi
+    # E2E tests are in apps/axon_recorder/test/e2e
+    SOURCE_PATH="${WORKSPACE_ROOT}/apps/axon_recorder/test/e2e"
 fi
 
 # =============================================================================
@@ -183,7 +169,7 @@ cd "${WORKSPACE_ROOT}"
 [ "$ENABLE_COVERAGE" = true ] && mkdir -p "${COVERAGE_OUTPUT_DIR}"
 
 # =============================================================================
-# Part 1: Build Package
+# Part 1: Build ROS Plugin and Axon Recorder
 # =============================================================================
 
 echo ""
@@ -191,34 +177,36 @@ echo "============================================"
 if [ "$ENABLE_COVERAGE" = true ]; then
     echo "Part 1: Building with coverage instrumentation..."
 else
-    echo "Part 1: Building package..."
+    echo "Part 1: Building ROS plugin and axon_recorder..."
 fi
 echo "============================================"
 
 # Clean build directory if requested or if coverage is enabled
 # (coverage requires clean build to ensure flags are applied)
 if [ "$CLEAN_BUILD" = true ] || [ "$ENABLE_COVERAGE" = true ]; then
-    echo "Cleaning build directory..."
+    echo "Cleaning build directories..."
     if [ "$ROS_VERSION" = "1" ]; then
         rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/build"
         rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/devel"
         rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/logs"
+        rm -rf "${WORKSPACE_ROOT}/build"
     else
         rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/build"
         rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/install"
         rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/log"
+        rm -rf "${WORKSPACE_ROOT}/build"
     fi
 fi
 
-# Build package (with or without coverage)
+# Build ROS plugin
 if [ "$ENABLE_COVERAGE" = true ]; then
     ros_build_package "${WORKSPACE_ROOT}" "true" "true" "Debug" || {
-        ros_build_error "Failed to build package with coverage"
+        ros_build_error "Failed to build ROS plugin with coverage"
     }
     COVERAGE_DIR="${WORKSPACE_BUILD_DIR}"
 else
     ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" || {
-        ros_build_error "Failed to build package"
+        ros_build_error "Failed to build ROS plugin"
     }
 fi
 
@@ -227,170 +215,126 @@ ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
     ros_workspace_error "Failed to source workspace after build"
 }
 
+# Build axon_recorder and mock plugin
+echo ""
+echo "Building axon_recorder..."
+mkdir -p "${WORKSPACE_ROOT}/build"
+cd "${WORKSPACE_ROOT}/build"
+
+# Build core libraries first (required by axon_recorder)
+# Note: Only axon_mcap and axon_logging are needed for E2E tests
+# axon_uploader requires AWS SDK and is not needed for HTTP API tests
+echo "Building core libraries..."
+for lib in axon_mcap axon_logging; do
+    echo "Building $lib..."
+    mkdir -p "$lib"
+    cd "$lib"
+    if [ "$ENABLE_COVERAGE" = true ]; then
+        cmake ../../core/$lib \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DAXON_ENABLE_COVERAGE=ON \
+            -DAXON_BUILD_TESTS=OFF \
+            -DAXON_REPO_ROOT="${WORKSPACE_ROOT}" || {
+            echo "ERROR: Failed to configure $lib with coverage"
+            exit 1
+        }
+    else
+        cmake ../../core/$lib \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DAXON_BUILD_TESTS=OFF \
+            -DAXON_REPO_ROOT="${WORKSPACE_ROOT}" || {
+            echo "ERROR: Failed to configure $lib"
+            exit 1
+        }
+    fi
+    make -j$(nproc) || {
+        echo "ERROR: Failed to build $lib"
+        exit 1
+    }
+    cd "${WORKSPACE_ROOT}/build"
+done
+
+# Configure and build axon_recorder
+# Enable AXON_BUILD_WITH_CORE to link against the core libraries we just built
+if [ "$ENABLE_COVERAGE" = true ]; then
+    cmake ../apps/axon_recorder \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DAXON_ENABLE_COVERAGE=ON \
+        -DAXON_BUILD_MOCK_PLUGIN=ON \
+        -DAXON_BUILD_WITH_CORE=ON || {
+        echo "ERROR: Failed to configure axon_recorder with coverage"
+        exit 1
+    }
+else
+    cmake ../apps/axon_recorder \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DAXON_BUILD_MOCK_PLUGIN=ON \
+        -DAXON_BUILD_WITH_CORE=ON || {
+        echo "ERROR: Failed to configure axon_recorder"
+        exit 1
+    }
+fi
+
+make -j$(nproc) || {
+    echo "ERROR: Failed to build axon_recorder"
+    exit 1
+}
+
+# Ensure correct binary structure for E2E tests
+# The E2E test script expects: ${BUILD_DIR}/apps/axon_recorder/axon_recorder
+# Or it will search for: ${BUILD_DIR}/axon_recorder
+if [ ! -f "${WORKSPACE_ROOT}/build/axon_recorder" ]; then
+    # Copy the binary to the expected location
+    cp "${WORKSPACE_ROOT}/build/apps/axon_recorder/axon_recorder" "${WORKSPACE_ROOT}/build/axon_recorder"
+fi
+
 # =============================================================================
-# Part 2: Verify Package and Find Test Script
+# Part 2: Run E2E Tests
 # =============================================================================
 
 echo ""
 echo "============================================"
-echo "Part 2: Verifying package and test setup..."
+echo "Part 2: Running E2E tests..."
 echo "============================================"
 
-# Verify package is available
-ros_workspace_verify_package || {
-    echo "WARNING: Package verification failed, but continuing..."
-}
-
-# Find test script
-TEST_SCRIPT="${SOURCE_PATH}/test_ros_services.sh"
+# Verify E2E test script exists
+TEST_SCRIPT="${SOURCE_PATH}/run_e2e_tests.sh"
 if [ ! -f "$TEST_SCRIPT" ]; then
-    # Try alternative locations based on ROS version
-    if [ "$ROS_VERSION" = "1" ] && [ -f "${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
-        TEST_SCRIPT="${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e/test_ros_services.sh"
-    elif [ "$ROS_VERSION" = "2" ] && [ -f "${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
-        TEST_SCRIPT="${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e/test_ros_services.sh"
-    elif [ -f "${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh" ]; then
-        # Fallback to old directory structure
-        TEST_SCRIPT="${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh"
-    else
-        echo "ERROR: test_ros_services.sh not found"
-        echo "Searched: ${SOURCE_PATH}/test_ros_services.sh"
-        echo "Searched: ${WORKSPACE_ROOT}/middlewares/ros1/src/axon_recorder/test/e2e/test_ros_services.sh (ROS1)"
-        echo "Searched: ${WORKSPACE_ROOT}/middlewares/ros2/src/axon_recorder/test/e2e/test_ros_services.sh (ROS2)"
-        echo "Searched: ${WORKSPACE_ROOT}/middlewares/src/axon_recorder/test/e2e/test_ros_services.sh (legacy)"
-        exit 1
-    fi
+    echo "ERROR: E2E test script not found at ${TEST_SCRIPT}"
+    exit 1
 fi
 
 chmod +x "$TEST_SCRIPT"
 
-# =============================================================================
-# Part 3: Start ROS Node
-# =============================================================================
-
-echo ""
-echo "============================================"
-echo "Part 3: Starting axon_recorder_node..."
-echo "============================================"
-
-# Start node based on ROS version
-if [ "$ROS_VERSION" = "1" ]; then
-    # ROS 1 - Need roscore
-    roscore &
-    ROSCORE_PID=$!
-    sleep 2
-    
-    # Use __name:= to set node name so services appear at /axon_recorder/...
-    rosrun axon_recorder axon_recorder_node __name:=axon_recorder &
-    NODE_PID=$!
-else
-    # ROS 2 - Set node name to match ROS 1 (so services appear at /axon_recorder/...)
-    ros2 run axon_recorder axon_recorder_node --ros-args -r __node:=axon_recorder &
-    NODE_PID=$!
-fi
-
-sleep 3
-echo "Node started (PID: $NODE_PID)"
-
-# Run diagnostics if library is available (useful for both ROS1 and ROS2 issues)
-echo ""
-echo "Running diagnostics before tests..."
-ros_diagnostics_full "axon_recorder" "axon_recorder/recording_control" || {
-    echo "WARNING: Some diagnostic checks failed, but continuing with tests..."
-}
-echo ""
-
-# =============================================================================
-# Part 4: Run E2E Tests
-# =============================================================================
-
-echo ""
-echo "============================================"
-echo "Part 4: Running E2E tests..."
-echo "============================================"
-
+# Run the E2E tests (they handle starting/stopping the recorder)
 TEST_RESULT=0
 if ! "$TEST_SCRIPT"; then
     TEST_RESULT=1
 fi
 
 # =============================================================================
-# Part 5: Cleanup (Graceful Shutdown for Coverage)
-# =============================================================================
-# IMPORTANT: Coverage data (.gcda files) is only written when processes exit
-# cleanly (via exit() or returning from main()). We need to ensure graceful shutdown.
-
-echo ""
-echo "Cleaning up..."
-
-# Try graceful shutdown first (SIGINT)
-echo "Sending SIGINT to node (PID: $NODE_PID) for graceful shutdown..."
-kill -INT $NODE_PID 2>/dev/null || true
-
-# Wait up to 10 seconds for graceful shutdown
-# The modified spin() method checks rclcpp::ok() every 100ms
-WAIT_COUNT=0
-MAX_WAIT=100  # 100 × 0.1s = 10 seconds
-while kill -0 $NODE_PID 2>/dev/null && [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-    sleep 0.1
-    WAIT_COUNT=$((WAIT_COUNT + 1))
-    # Print progress every second
-    if [ $((WAIT_COUNT % 10)) -eq 0 ]; then
-        echo "  Waiting for shutdown... ($WAIT_COUNT/$MAX_WAIT)"
-    fi
-done
-
-# Check if process exited gracefully
-if ! kill -0 $NODE_PID 2>/dev/null; then
-    echo "✓ Node shut down gracefully via SIGINT"
-else
-    echo "✗ Node still running after SIGINT"
-    echo "  Using SIGTERM..."
-    kill -TERM $NODE_PID 2>/dev/null || true
-    sleep 5
-
-    if ! kill -0 $NODE_PID 2>/dev/null; then
-        echo "✓ Node shut down via SIGTERM"
-    else
-        echo "✗ Node still running, using SIGKILL..."
-        echo "  WARNING: Coverage data may not be written properly!"
-        kill -KILL $NODE_PID 2>/dev/null || true
-    fi
-fi
-
-# Cleanup ROS1 master
-if [ "$ROS_VERSION" = "1" ]; then
-    kill $ROSCORE_PID 2>/dev/null || true
-    killall roscore 2>/dev/null || true
-fi
-
-# Wait for coverage data to be written
-echo "Waiting for coverage data to be written..."
-sleep 2
-
-# =============================================================================
-# Part 6: Generate Coverage Report (if enabled and tests passed)
+# Part 3: Generate Coverage Report (if enabled and tests passed)
 # =============================================================================
 
 # Generate coverage report if enabled and tests passed
 if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
     echo ""
     echo "============================================"
-    echo "Part 6: Generating coverage report..."
+    echo "Part 3: Generating coverage report..."
     echo "============================================"
-    
+
     # Generate coverage report using library function (COVERAGE_DIR is always set when coverage enabled)
     ros_coverage_generate "${COVERAGE_DIR}" "${COVERAGE_OUTPUT_DIR}" || {
         ros_coverage_error "Failed to generate coverage report"
     }
-    
+
     # Display final summary
     echo ""
     echo "============================================"
     echo "E2E Test Coverage Summary"
     echo "============================================"
     lcov --list "${COVERAGE_OUTPUT_DIR}/coverage.info" || true
-    
+
     echo ""
     echo "============================================"
     echo "E2E test coverage collection complete!"
