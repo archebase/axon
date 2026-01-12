@@ -158,14 +158,14 @@ add_axon_test(test_task_config
         ${TEST_SOURCE_DIR}/test_task_config.cpp
 )
 
-# test_config_parser.cpp - DISABLED (needs update for new API)
-# add_axon_test(test_config_parser
-#     SOURCES
-#         ${TEST_SOURCE_DIR}/test_config_parser.cpp
-#         # Add required source files
-#         ../config_parser.cpp
-# )
-# target_link_libraries(test_config_parser yaml-cpp)
+# test_config_parser.cpp
+add_axon_test(test_config_parser
+    SOURCES
+        ${TEST_SOURCE_DIR}/test_config_parser.cpp
+        # Add required source files
+        ../config_parser.cpp
+)
+target_link_libraries(test_config_parser yaml-cpp)
 
 # test_http_callback_client.cpp
 add_axon_test(test_http_callback_client
@@ -200,6 +200,27 @@ add_axon_test(test_message_factory_standalone
         ${TEST_SOURCE_DIR}/test_message_factory_standalone.cpp
 )
 
+# test_metadata_injector.cpp
+add_axon_test(test_metadata_injector
+    SOURCES
+        ${TEST_SOURCE_DIR}/test_metadata_injector.cpp
+        # Add required source files
+        ../metadata_injector.cpp
+)
+target_include_directories(test_metadata_injector PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/..)
+target_link_libraries(test_metadata_injector OpenSSL::Crypto)
+
+# test_recording_session.cpp
+add_axon_test(test_recording_session
+    SOURCES
+        ${TEST_SOURCE_DIR}/test_recording_session.cpp
+        # Add required source files
+        ../recording_session.cpp
+        ../metadata_injector.cpp
+)
+target_include_directories(test_recording_session PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/..)
+target_link_libraries(test_recording_session OpenSSL::Crypto)
+
 # test_topic_manager.cpp - DISABLED (TopicManager removed in new architecture)
 # This file depends on the old RosInterface which has been replaced by plugins
 # To enable: remove from exclusion list and implement mock plugin interface
@@ -209,6 +230,16 @@ message(STATUS "Unit tests configured successfully")
 
 # =============================================================================
 # Integration Tests
+# =============================================================================
+# NOTE: Integration tests for the OLD architecture have been archived to
+# integration/archive/. These tests depend on RosInterface and ROS services,
+# which have been replaced by the new plugin-based architecture with HTTP RPC API.
+#
+# To enable integration testing for the new architecture, create test_recorder_integration.cpp
+# that tests:
+# 1. Plugin loading and ABI interface
+# 2. HTTP RPC endpoints (start, stop, pause, resume, status)
+# 3. Full recording workflow with mock middleware plugins
 # =============================================================================
 if(AXON_BUILD_INTEGRATION_TESTS)
     message(STATUS "Configuring integration tests...")
@@ -230,9 +261,13 @@ if(AXON_BUILD_INTEGRATION_TESTS)
             ../plugin_loader.cpp
             ../config_parser.cpp
             ../http_callback_client.cpp
+            ../http_server.cpp
         )
 
-        target_include_directories(test_recorder_integration PRIVATE ${TEST_INCLUDE_DIRS})
+        target_include_directories(test_recorder_integration PRIVATE
+            ${TEST_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_BINARY_DIR}/..  # For generated version.hpp from parent CMakeLists
+        )
 
         target_link_libraries(test_recorder_integration
             gtest
@@ -303,11 +338,13 @@ endif()
 set_property(TEST test_state_machine PROPERTY LABELS "unit;state")
 set_property(TEST test_state_transaction_guard PROPERTY LABELS "unit;state")
 set_property(TEST test_task_config PROPERTY LABELS "unit;config")
-# set_property(TEST test_config_parser PROPERTY LABELS "unit;config")  # DISABLED
+set_property(TEST test_config_parser PROPERTY LABELS "unit;config")
 set_property(TEST test_http_callback_client PROPERTY LABELS "unit;http")
 set_property(TEST test_spsc_queue PROPERTY LABELS "unit;queue")
 set_property(TEST test_worker_thread_pool PROPERTY LABELS "unit;thread")
 set_property(TEST test_message_factory_standalone PROPERTY LABELS "unit;factory")
+set_property(TEST test_metadata_injector PROPERTY LABELS "unit;metadata")
+set_property(TEST test_recording_session PROPERTY LABELS "unit;session")
 
 if(TARGET test_recorder_integration)
     set_property(TEST test_recorder_integration PROPERTY LABELS "integration;recorder")
