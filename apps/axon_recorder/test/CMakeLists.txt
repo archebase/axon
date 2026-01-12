@@ -298,6 +298,44 @@ if(AXON_BUILD_INTEGRATION_TESTS)
 endif()
 
 # =============================================================================
+# E2E Tests
+# =============================================================================
+# Build mock middleware plugin for E2E testing
+option(AXON_BUILD_E2E_TESTS "Build E2E test support (mock plugin)" ON)
+
+if(AXON_BUILD_E2E_TESTS)
+    message(STATUS "Configuring E2E test support...")
+
+    set(E2E_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/e2e)
+
+    # Build mock middleware plugin
+    add_library(axon_mock MODULE
+        ${E2E_TEST_DIR}/mock_middleware.cpp
+    )
+
+    target_include_directories(axon_mock PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+
+    target_compile_features(axon_mock PRIVATE cxx_std_17)
+
+    # Set output properties
+    set_target_properties(axon_mock PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "axon_mock"
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/middlewares
+    )
+
+    # Installation
+    install(TARGETS axon_mock
+        LIBRARY DESTINATION lib/middlewares
+    )
+
+    message(STATUS "E2E test support configured successfully")
+    message(STATUS "  Mock plugin: ${CMAKE_BINARY_DIR}/middlewares/libaxon_mock.so")
+endif()
+
+# =============================================================================
 # Coverage Reporting
 # =============================================================================
 if(AXON_ENABLE_COVERAGE)
@@ -357,6 +395,7 @@ message(STATUS "")
 message(STATUS "=== Axon Recorder Test Configuration Summary ===")
 message(STATUS "  Unit Tests:          ON")
 message(STATUS "  Integration Tests:  ${AXON_BUILD_INTEGRATION_TESTS}")
+message(STATUS "  E2E Tests:          ${AXON_BUILD_E2E_TESTS}")
 message(STATUS "  Coverage:           ${AXON_ENABLE_COVERAGE}")
 message(STATUS "===================================================")
 message(STATUS "")

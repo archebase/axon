@@ -1,24 +1,32 @@
 # Axon Recorder Tests
 
-This directory contains unit and integration tests for the Axon recorder application.
+This directory contains unit, integration, and end-to-end tests for the Axon recorder application.
 
 ## Test Structure
 
 ```
 test/
 ├── CMakeLists.txt           # Test build configuration
+├── README.md                # This file
 ├── unit/                    # Unit tests (no runtime ROS required)
-│   ├── test_helpers.hpp    # Test helper utilities
 │   ├── test_state_machine.cpp
 │   ├── test_state_transaction_guard.cpp
 │   ├── test_task_config.cpp
 │   ├── test_config_parser.cpp
+│   ├── test_metadata_injector.cpp
+│   ├── test_recording_session.cpp
 │   ├── test_http_callback_client.cpp
 │   ├── test_spsc_queue.cpp
 │   ├── test_worker_thread_pool.cpp
 │   └── test_message_factory_standalone.cpp
-└── integration/             # Integration tests (require core libraries)
-    └── test_recorder_integration.cpp
+├── integration/             # Integration tests (require core libraries)
+│   └── test_recorder_integration.cpp
+└── e2e/                     # End-to-end tests (full workflow)
+    ├── run_e2e_tests.sh    # Main E2E test script
+    ├── run_docker_e2e.sh   # Docker-based E2E tests
+    ├── mock_middleware.cpp # Mock middleware plugin
+    ├── CMakeLists.txt      # Mock plugin build config
+    └── README.md           # E2E test documentation
 ```
 
 ## Building Tests
@@ -122,17 +130,28 @@ make coverage-clean
 | `test_state_machine.cpp` | StateManager state transitions | ~40 |
 | `test_state_transaction_guard.cpp` | StateTransactionGuard RAII wrapper | ~7 |
 | `test_task_config.cpp` | TaskConfig validation and serialization | ~15 |
-| `test_config_parser.cpp` | YAML configuration parsing | ~40 |
-| `test_http_callback_client.cpp` | HTTP callback notifications | ~30 |
-| `test_spsc_queue.cpp` | Lock-free SPSC/MPSC queues | ~25 |
-| `test_worker_thread_pool.cpp` | Per-topic worker threads | ~20 |
-| `test_message_factory_standalone.cpp` | Message factory registry pattern | ~10 |
+| `test_config_parser.cpp` | YAML configuration parsing | ~45 |
+| `test_metadata_injector.cpp` | Metadata injection and sidecar JSON | ~30 |
+| `test_recording_session.cpp` | MCAP recording session lifecycle | ~36 |
+| `test_http_callback_client.cpp` | HTTP callback notifications | ~87 |
+| `test_spsc_queue.cpp` | Lock-free SPSC/MPSC queues | ~16 |
+| `test_worker_thread_pool.cpp` | Per-topic worker threads | ~55 |
+| `test_message_factory_standalone.cpp` | Message factory registry pattern | ~15 |
 
 ### Integration Tests
 
 | Test File | Description | Tests Count |
 |-----------|-------------|-------------|
-| `test_recorder_integration.cpp` | Full AxonRecorder workflow | ~25 |
+| `test_recorder_integration.cpp` | Full AxonRecorder workflow with mock plugin | ~17 |
+
+### End-to-End Tests
+
+| Test Script | Description | Tests Count |
+|-------------|-------------|-------------|
+| `run_e2e_tests.sh` | Full recording workflow with HTTP API | ~9 |
+| `run_docker_e2e.sh` | Docker-based E2E testing | ~9 |
+
+See [e2e/README.md](e2e/README.md) for detailed E2E test documentation.
 
 ## CI/CD Integration
 

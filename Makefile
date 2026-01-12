@@ -100,7 +100,6 @@ help:
 	@printf "%s\n" "  $(BLUE)make ci-coverage-cpp$(NC)   - C++ library coverage"
 	@printf "%s\n" "  $(BLUE)make ci-coverage-ros$(NC)   - ROS2 coverage (Docker)"
 	@printf "%s\n" "  $(BLUE)make ci-coverage-recorder$(NC) - Axon recorder coverage (local)"
-	@printf "%s\n" "  $(BLUE)make ci-e2e$(NC)            - End-to-end tests"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Docker Testing:$(NC)"
 	@printf "%s\n" "  $(BLUE)make docker-test-cpp$(NC)   - C++ tests in Docker"
@@ -624,7 +623,7 @@ ci-quick: format-ci lint
 	@printf "%s\n" "$(YELLOW)Run 'make ci' for quick tests or 'make ci-all' for full validation$(NC)"
 
 # ci-all: Run complete CI test suite (all checks in Docker)
-ci-all: format-ci lint docker-test-all docker-test-ros docker-e2e
+ci-all: format-ci lint docker-test-all docker-test-ros
 	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
 	@printf "%s\n" "$(GREEN)║     ✓ ALL CI CHECKS PASSED!                               ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
@@ -777,8 +776,20 @@ ci-coverage: ci-coverage-cpp ci-coverage-ros ci-coverage-recorder
 	@printf "%s\n" "$(GREEN)✓ All coverage complete: $(COVERAGE_DIR)/coverage_merged.info$(NC)"
 	@printf "%s\n" "$(YELLOW)View HTML report: make coverage-html$(NC)"
 
-# ci-e2e: E2E tests in Docker
-ci-e2e: docker-e2e
+# =============================================================================
+# E2E Test Targets
+# =============================================================================
+
+e2e:
+	@printf "%s\n" "$(YELLOW)Running E2E tests locally...$(NC)"
+	@if [ ! -f "$(BUILD_DIR)/axon_recorder/axon_recorder" ] && \
+	   [ ! -f "$(BUILD_DIR)/apps/axon_recorder/axon_recorder" ] && \
+	   [ ! -f "apps/axon_recorder/build/axon_recorder" ]; then \
+		printf "%s\n" "$(RED)Error: axon_recorder not built.$(NC)"; \
+		printf "%s\n" "$(YELLOW)Build with: cd middlewares/ros2 && colcon build$(NC)"; \
+		exit 1; \
+	fi
+	@cd apps/axon_recorder/test/e2e && ./run_e2e_tests.sh
 	@printf "%s\n" "$(GREEN)✓ E2E tests passed$(NC)"
 
 # =============================================================================
@@ -812,15 +823,6 @@ docker-build-cpp:
 # docker-test-ros: Run all ROS tests in Docker
 docker-test-ros: docker-test-ros1 docker-test-ros2-humble
 	@printf "%s\n" "$(GREEN)✓ All ROS tests passed$(NC)"
-
-# docker-e2e: Run E2E tests sequentially for all ROS versions
-docker-e2e:
-	@printf "%s\n" "$(YELLOW)Running E2E tests sequentially...$(NC)"
-	@$(MAKE) docker-test-ros1
-	@$(MAKE) docker-test-ros2-humble
-	@$(MAKE) docker-test-ros2-jazzy
-	@$(MAKE) docker-test-ros2-rolling
-	@printf "%s\n" "$(GREEN)✓ All E2E tests passed$(NC)"
 
 # =============================================================================
 # Utility Targets for CI Testing
