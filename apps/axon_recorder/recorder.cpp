@@ -30,7 +30,12 @@ void message_callback(
 }  // namespace
 
 AxonRecorder::AxonRecorder()
-    : running_(false) {}
+    : running_(false) {
+  // Register state transition callback
+  state_manager_.register_transition_callback([this](RecorderState from, RecorderState to) {
+    on_state_transition(from, to);
+  });
+}
 
 AxonRecorder::~AxonRecorder() {
   stop();
@@ -38,32 +43,6 @@ AxonRecorder::~AxonRecorder() {
 
 bool AxonRecorder::initialize(const RecorderConfig& config) {
   config_ = config;
-
-  // Create MCAP writer
-  mcap_writer_ = std::make_unique<mcap_wrapper::McapWriterWrapper>();
-
-  // Configure MCAP writer
-  mcap_wrapper::McapWriterOptions mcap_options;
-  mcap_options.profile = config_.profile;
-
-  if (config_.compression == "zstd") {
-    mcap_options.compression = mcap_wrapper::Compression::Zstd;
-  } else if (config_.compression == "lz4") {
-    mcap_options.compression = mcap_wrapper::Compression::Lz4;
-  } else {
-    mcap_options.compression = mcap_wrapper::Compression::None;
-  }
-
-  mcap_options.compression_level = config_.compression_level;
-
-  // Open MCAP file
-  if (!mcap_writer_->open(config_.output_file, mcap_options)) {
-    set_error_helper(
-      std::string("Failed to open MCAP file: ") + config_.output_file + " - " +
-      mcap_writer_->get_last_error()
-    );
-    return false;
-  }
 
   // Configure and create worker thread pool
   WorkerThreadPool::Config pool_config;
@@ -77,15 +56,53 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
 }
 
 bool AxonRecorder::start() {
-  if (running_.load()) {
-    set_error_helper("Recorder already running");
+  std::string error_msg;
+
+  // Transition from IDLE to RECORDING
+  if (!state_manager_.transition(RecorderState::IDLE, RecorderState::RECORDING, error_msg)) {
+    set_error_helper("State transition failed: " + error_msg);
     return false;
+  }
+
+  // Create recording session
+  recording_session_ = std::make_unique<RecordingSession>();
+
+  // Configure MCAP options
+  mcap_wrapper::McapWriterOptions mcap_options;
+  mcap_options.profile = config_.profile;
+
+  if (config_.compression == "zstd") {
+    mcap_options.compression = mcap_wrapper::Compression::Zstd;
+  } else if (config_.compression == "lz4") {
+    mcap_options.compression = mcap_wrapper::Compression::Lz4;
+  } else {
+    mcap_options.compression = mcap_wrapper::Compression::None;
+  }
+
+  mcap_options.compression_level = config_.compression_level;
+
+  // Open MCAP file via recording session
+  if (!recording_session_->open(config_.output_file, mcap_options)) {
+    set_error_helper(
+      "Failed to open MCAP file: " + config_.output_file + " - " +
+      recording_session_->get_last_error()
+    );
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
+    return false;
+  }
+
+  // Set task config if available
+  if (task_config_.has_value()) {
+    recording_session_->set_task_config(task_config_.value());
   }
 
   // Load plugin
   auto plugin_name = plugin_loader_.load(config_.plugin_path);
   if (!plugin_name.has_value()) {
     set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
     return false;
   }
 
@@ -93,6 +110,8 @@ bool AxonRecorder::start() {
   const auto* descriptor = plugin_loader_.get_descriptor(plugin_name.value());
   if (!descriptor || !descriptor->vtable) {
     set_error_helper("Invalid plugin descriptor");
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
     return false;
   }
 
@@ -101,6 +120,8 @@ bool AxonRecorder::start() {
     AxonStatus status = descriptor->vtable->init("");
     if (status != AXON_SUCCESS) {
       set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
+      state_manager_.transition_to(RecorderState::IDLE, error_msg);
+      recording_session_.reset();
       return false;
     }
   }
@@ -108,12 +129,16 @@ bool AxonRecorder::start() {
   // Register topics with MCAP and create topic workers
   if (!register_topics()) {
     set_error_helper("Failed to register topics");
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
     return false;
   }
 
   // Setup subscriptions via plugin
   if (!setup_subscriptions()) {
     set_error_helper("Failed to setup subscriptions");
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
     return false;
   }
 
@@ -122,6 +147,8 @@ bool AxonRecorder::start() {
     AxonStatus status = descriptor->vtable->start();
     if (status != AXON_SUCCESS) {
       set_error_helper(std::string("Plugin start failed: ") + status_to_string(status));
+      state_manager_.transition_to(RecorderState::IDLE, error_msg);
+      recording_session_.reset();
       return false;
     }
   }
@@ -138,6 +165,8 @@ void AxonRecorder::stop() {
     return;
   }
 
+  std::string error_msg;
+
   // Stop worker thread pool (drains remaining messages)
   if (worker_pool_) {
     worker_pool_->stop();
@@ -152,19 +181,39 @@ void AxonRecorder::stop() {
     }
   }
 
-  // Close MCAP writer
-  if (mcap_writer_) {
-    mcap_writer_->close();
+  // Close recording session (injects metadata, generates sidecar)
+  if (recording_session_) {
+    recording_session_->close();
+    recording_session_.reset();
   }
 
   // Unload plugins
   plugin_loader_.unload_all();
+
+  // Transition back to IDLE
+  state_manager_.transition_to(RecorderState::IDLE, error_msg);
 
   running_.store(false);
 }
 
 bool AxonRecorder::is_running() const {
   return running_.load();
+}
+
+RecorderState AxonRecorder::get_state() const {
+  return state_manager_.get_state();
+}
+
+std::string AxonRecorder::get_state_string() const {
+  return state_manager_.get_state_string();
+}
+
+void AxonRecorder::set_task_config(const TaskConfig& config) {
+  task_config_ = config;
+}
+
+RecordingSession* AxonRecorder::get_recording_session() {
+  return recording_session_.get();
 }
 
 std::string AxonRecorder::get_last_error() const {
@@ -182,7 +231,13 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
     stats.messages_written = pool_stats.total_written;
     stats.messages_dropped = pool_stats.total_dropped;
   }
-  stats.bytes_written = mcap_writer_ ? mcap_writer_->get_statistics().bytes_written : 0;
+
+  // Get statistics from recording session
+  if (recording_session_) {
+    auto session_stats = recording_session_->get_stats();
+    stats.messages_written = session_stats.messages_written;
+    stats.bytes_written = session_stats.bytes_written;
+  }
 
   return stats;
 }
@@ -208,53 +263,57 @@ bool AxonRecorder::message_handler(
   const std::string& topic, int64_t timestamp_ns, const uint8_t* data, size_t data_size,
   uint32_t sequence
 ) {
-  // Find channel ID for this topic
-  auto it = channel_ids_.find(topic);
-  if (it == channel_ids_.end()) {
+  if (!recording_session_) {
+    return false;  // No active recording session
+  }
+
+  // Get channel ID for this topic from recording session
+  uint16_t channel_id = recording_session_->get_channel_id(topic);
+  if (channel_id == 0) {
     return false;  // Channel not found
   }
 
-  uint16_t channel_id = it->second;
   uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
 
-  // Write message to MCAP
-  if (mcap_writer_->write(channel_id, log_time_ns, timestamp_ns, data, data_size)) {
-    return true;
-  }
-
-  return false;
+  // Write message to MCAP via recording session
+  return recording_session_->write(
+    channel_id, sequence, log_time_ns, timestamp_ns, data, data_size
+  );
 }
 
 bool AxonRecorder::register_topics() {
+  if (!recording_session_) {
+    set_error_helper("No active recording session");
+    return false;
+  }
+
   // Register schemas and channels for all subscriptions
   for (const auto& sub : config_.subscriptions) {
     // Register schema (use message type as schema name)
-    uint16_t schema_id = mcap_writer_->register_schema(
+    uint16_t schema_id = recording_session_->register_schema(
       sub.message_type, config_.profile == "ros1" ? "ros1msg" : "ros2msg", ""
     );
 
     if (schema_id == 0) {
       set_error_helper(
         "Failed to register schema for: " + sub.message_type + " - " +
-        mcap_writer_->get_last_error()
+        recording_session_->get_last_error()
       );
       return false;
     }
 
     // Register channel
-    uint16_t channel_id = mcap_writer_->register_channel(
+    uint16_t channel_id = recording_session_->register_channel(
       sub.topic_name, config_.profile == "ros1" ? "ros1" : "cdr", schema_id
     );
 
     if (channel_id == 0) {
       set_error_helper(
-        "Failed to register channel for: " + sub.topic_name + " - " + mcap_writer_->get_last_error()
+        "Failed to register channel for: " + sub.topic_name + " - " +
+        recording_session_->get_last_error()
       );
       return false;
     }
-
-    // Store channel ID
-    channel_ids_[sub.topic_name] = channel_id;
 
     // Create topic worker in the pool
     // Use std::bind to bind the message handler member function
@@ -342,6 +401,12 @@ const char* AxonRecorder::status_to_string(AxonStatus status) {
 void AxonRecorder::set_error_helper(const std::string& error) {
   std::lock_guard<std::mutex> lock(error_mutex_);
   last_error_ = error;
+}
+
+void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
+  // Handle state transitions
+  // This callback is invoked after each successful state transition
+  // Can be used for logging, metrics, or triggering side effects
 }
 
 }  // namespace recorder

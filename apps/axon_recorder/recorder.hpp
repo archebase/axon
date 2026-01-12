@@ -6,21 +6,17 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "plugin_loader.hpp"
+#include "recording_session.hpp"
+#include "state_machine.hpp"
+#include "task_config.hpp"
 #include "worker_thread_pool.hpp"
-
-// Forward declarations
-namespace axon {
-namespace mcap_wrapper {
-class McapWriterWrapper;
-struct McapWriterOptions;
-}  // namespace mcap_wrapper
-}  // namespace axon
 
 namespace axon {
 namespace recorder {
@@ -165,13 +161,16 @@ struct RecorderConfig {
 /**
  * Main recorder class
  *
- * Manages plugin loading, message subscriptions, SPSC queues, and MCAP writing.
+ * Manages plugin loading, message subscriptions, SPSC queues, state machine,
+ * and recording sessions.
  *
  * Architecture:
  * 1. Load ROS plugin (e.g., ros2_plugin.so)
  * 2. Subscribe to topics via plugin's subscribe() function
  * 3. Plugin callbacks push messages to MPSC queue
- * 4. Worker thread pops messages and writes to MCAP
+ * 4. Worker thread pops messages and writes to MCAP via RecordingSession
+ * 5. StateManager manages recording state (IDLE -> READY -> RECORDING -> PAUSED)
+ * 6. RecordingSession manages MCAP file lifecycle for each recording task
  */
 class AxonRecorder {
 public:
@@ -212,6 +211,27 @@ public:
   bool is_running() const;
 
   /**
+   * Get current recorder state
+   */
+  RecorderState get_state() const;
+
+  /**
+   * Get current recorder state as string
+   */
+  std::string get_state_string() const;
+
+  /**
+   * Set task configuration for metadata injection
+   * Must be called before start() to enable metadata
+   */
+  void set_task_config(const TaskConfig& config);
+
+  /**
+   * Get the current recording session (for testing/monitoring)
+   */
+  RecordingSession* get_recording_session();
+
+  /**
    * Get last error message
    */
   std::string get_last_error() const;
@@ -247,6 +267,11 @@ private:
   );
 
   /**
+   * Handle state transition callbacks
+   */
+  void on_state_transition(RecorderState from, RecorderState to);
+
+  /**
    * Register schemas and channels for subscriptions
    */
   bool register_topics();
@@ -273,16 +298,21 @@ private:
 
   RecorderConfig config_;
   PluginLoader plugin_loader_;
-  std::unique_ptr<mcap_wrapper::McapWriterWrapper> mcap_writer_;
+
+  // State machine for recording lifecycle management
+  StateManager state_manager_;
+
+  // Recording session manages MCAP file lifecycle
+  std::unique_ptr<RecordingSession> recording_session_;
+
+  // Task configuration for metadata injection
+  std::optional<TaskConfig> task_config_;
 
   // Worker thread pool manages per-topic workers
   // Use unique_ptr with placement new for late initialization with custom config
   std::unique_ptr<WorkerThreadPool> worker_pool_;
 
   std::atomic<bool> running_;
-
-  // Channel ID mapping (topic -> channel_id)
-  std::unordered_map<std::string, uint16_t> channel_ids_;
 
   // Error handling
   mutable std::mutex error_mutex_;

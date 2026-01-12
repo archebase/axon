@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(axon_recorder)
+project(axon_recorder VERSION 0.1.0)
 
 # Export compile commands for clangd/IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -114,6 +114,16 @@ target_link_libraries(axon_plugin_loader
 target_compile_features(axon_plugin_loader PUBLIC cxx_std_17)
 
 # =============================================================================
+# Version Header
+# =============================================================================
+# Generate version.hpp from version.hpp.in
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/version.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/version.hpp
+    @ONLY
+)
+
+# =============================================================================
 # Recorder Main Executable
 # =============================================================================
 # Build the main recorder application if axon_mcap is available
@@ -121,6 +131,9 @@ if(TARGET axon_mcap)
     add_executable(axon_recorder
         axon_recorder.cpp
         recorder.cpp
+        state_machine.cpp
+        recording_session.cpp
+        metadata_injector.cpp
         worker_thread_pool.cpp
         plugin_loader.cpp
         config_parser.cpp
@@ -128,12 +141,16 @@ if(TARGET axon_mcap)
 
     target_include_directories(axon_recorder PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}  # For generated version.hpp
+        ${nlohmann_json_SOURCE_DIR}/single_include
     )
 
     target_link_libraries(axon_recorder
         axon_mcap
         axon_logging
         yaml-cpp
+        OpenSSL::Crypto
+        OpenSSL::SSL
         dl
         pthread
     )
