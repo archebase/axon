@@ -449,6 +449,11 @@ format:
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" -print0 2>/dev/null | \
 			xargs -0 clang-format -i; \
+		printf "%s\n" "$(YELLOW)  Formatting apps/ code...$(NC)"; \
+		find apps \
+			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+			! -path "*/build/*" -print0 2>/dev/null | \
+			xargs -0 clang-format -i; \
 		printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"; \
 	else \
 		printf "%s\n" "$(YELLOW)⚠ clang-format not found, skipping C/C++ format...$(NC)"; \
@@ -459,7 +464,7 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find core middlewares/ros1 middlewares/ros2 \
+		find core middlewares/ros1 middlewares/ros2 apps \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \
@@ -471,6 +476,7 @@ lint:
 			-Icore/axon_mcap/include \
 			-Icore/axon_uploader/include \
 			-Icore/axon_logging/include \
+			-Iapps/axon_recorder; \
 		printf "%s\n" "$(GREEN)✓ C++ linting passed$(NC)"; \
 	else \
 		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \

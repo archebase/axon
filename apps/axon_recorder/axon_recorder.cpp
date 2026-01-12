@@ -77,7 +77,6 @@ void print_statistics(const AxonRecorder::Statistics& stats) {
             << "Messages written:  " << stats.messages_written << "\n"
             << "Messages dropped:  " << stats.messages_dropped << "\n"
             << "Bytes written:     " << stats.bytes_written << "\n"
-            << "Queue size:        " << stats.queue_size << "\n"
             << std::endl;
 }
 
@@ -249,7 +248,7 @@ int main(int argc, char* argv[]) {
     if (stats.messages_written != last_written) {
       std::cout << "\rMessages: " << stats.messages_written << " written, "
                 << stats.messages_received << " received, " << stats.messages_dropped
-                << " dropped, queue: " << stats.queue_size << "   " << std::flush;
+                << " dropped   " << std::flush;
       last_written = stats.messages_written;
     }
   }

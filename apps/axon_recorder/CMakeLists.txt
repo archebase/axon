@@ -121,6 +121,7 @@ if(TARGET axon_mcap)
     add_executable(axon_recorder
         axon_recorder.cpp
         recorder.cpp
+        worker_thread_pool.cpp
         plugin_loader.cpp
         config_parser.cpp
     )

@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "plugin_loader.hpp"
-#include "spsc_queue.hpp"
+#include "worker_thread_pool.hpp"
 
 // Forward declarations
 namespace axon {
@@ -224,7 +224,6 @@ public:
     uint64_t messages_written;
     uint64_t messages_dropped;
     uint64_t bytes_written;
-    size_t queue_size;
   };
   Statistics get_statistics() const;
 
@@ -239,10 +238,13 @@ public:
 
 private:
   /**
-   * Worker thread function
-   * Pops messages from queue and writes to MCAP
+   * Message handler callback for WorkerThreadPool
+   * Called by per-topic worker threads to process messages
    */
-  void worker_thread();
+  bool message_handler(
+    const std::string& topic, int64_t timestamp_ns, const uint8_t* data, size_t data_size,
+    uint32_t sequence
+  );
 
   /**
    * Register schemas and channels for subscriptions
@@ -273,30 +275,11 @@ private:
   PluginLoader plugin_loader_;
   std::unique_ptr<mcap_wrapper::McapWriterWrapper> mcap_writer_;
 
-  // Per-topic message queues (one SPSC queue per topic)
-  std::unordered_map<std::string, std::unique_ptr<SPSCQueue<QueuedMessage>>> topic_queues_;
-  mutable std::mutex topic_queues_mutex_;  // Protects topic_queues_ map
+  // Worker thread pool manages per-topic workers
+  // Use unique_ptr with placement new for late initialization with custom config
+  std::unique_ptr<WorkerThreadPool> worker_pool_;
 
-  // Per-topic message batches for batch writing
-  struct TopicBatch {
-    std::vector<QueuedMessage> messages;
-    std::chrono::steady_clock::time_point last_flush;
-
-    TopicBatch()
-        : last_flush(std::chrono::steady_clock::now()) {}
-  };
-  std::unordered_map<std::string, TopicBatch> topic_batches_;
-  std::mutex topic_batches_mutex_;  // Protects topic_batches_ map
-
-  // Worker thread
-  std::thread worker_thread_;
   std::atomic<bool> running_;
-  std::atomic<bool> should_stop_;
-
-  // Statistics
-  std::atomic<uint64_t> messages_received_;
-  std::atomic<uint64_t> messages_written_;
-  std::atomic<uint64_t> messages_dropped_;
 
   // Channel ID mapping (topic -> channel_id)
   std::unordered_map<std::string, uint16_t> channel_ids_;

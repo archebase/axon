@@ -9,19 +9,11 @@
 #include <thread>
 
 #include "mcap_writer_wrapper.hpp"
-#include "spsc_queue.hpp"
 
 namespace axon {
 namespace recorder {
 
 namespace {
-// Global callback context (simplified for example)
-struct CallbackContext {
-  AxonRecorder* recorder;
-  const std::string* topic_name;
-  const std::string* message_type;
-};
-
 // C callback wrapper for plugin
 void message_callback(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
@@ -38,11 +30,7 @@ void message_callback(
 }  // namespace
 
 AxonRecorder::AxonRecorder()
-    : running_(false)
-    , should_stop_(false)
-    , messages_received_(0)
-    , messages_written_(0)
-    , messages_dropped_(0) {}
+    : running_(false) {}
 
 AxonRecorder::~AxonRecorder() {
   stop();
@@ -77,6 +65,14 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
     return false;
   }
 
+  // Configure and create worker thread pool
+  WorkerThreadPool::Config pool_config;
+  pool_config.queue_capacity_per_topic = config_.queue_capacity;
+  pool_config.worker_idle_sleep_us = 50;
+  pool_config.use_adaptive_backoff = true;
+
+  worker_pool_ = std::make_unique<WorkerThreadPool>(pool_config);
+
   return true;
 }
 
@@ -109,7 +105,7 @@ bool AxonRecorder::start() {
     }
   }
 
-  // Register topics with MCAP
+  // Register topics with MCAP and create topic workers
   if (!register_topics()) {
     set_error_helper("Failed to register topics");
     return false;
@@ -130,9 +126,8 @@ bool AxonRecorder::start() {
     }
   }
 
-  // Start worker thread
-  should_stop_.store(false);
-  worker_thread_ = std::thread(&AxonRecorder::worker_thread, this);
+  // Start worker thread pool
+  worker_pool_->start();
   running_.store(true);
 
   return true;
@@ -143,8 +138,10 @@ void AxonRecorder::stop() {
     return;
   }
 
-  // Signal worker thread to stop
-  should_stop_.store(true);
+  // Stop worker thread pool (drains remaining messages)
+  if (worker_pool_) {
+    worker_pool_->stop();
+  }
 
   // Stop plugin
   auto plugins = plugin_loader_.loaded_plugins();
@@ -153,11 +150,6 @@ void AxonRecorder::stop() {
     if (descriptor && descriptor->vtable && descriptor->vtable->stop) {
       descriptor->vtable->stop();
     }
-  }
-
-  // Wait for worker thread to finish
-  if (worker_thread_.joinable()) {
-    worker_thread_.join();
   }
 
   // Close MCAP writer
@@ -182,20 +174,15 @@ std::string AxonRecorder::get_last_error() const {
 
 AxonRecorder::Statistics AxonRecorder::get_statistics() const {
   Statistics stats;
-  stats.messages_received = messages_received_.load();
-  stats.messages_written = messages_written_.load();
-  stats.messages_dropped = messages_dropped_.load();
-  stats.bytes_written = mcap_writer_ ? mcap_writer_->get_statistics().bytes_written : 0;
 
-  // Calculate total queue size across all topics
-  size_t total_size = 0;
-  {
-    std::lock_guard<std::mutex> lock(topic_queues_mutex_);
-    for (const auto& [topic, queue] : topic_queues_) {
-      total_size += queue->size();
-    }
+  // Get aggregate statistics from worker pool
+  if (worker_pool_) {
+    auto pool_stats = worker_pool_->get_aggregate_stats();
+    stats.messages_received = pool_stats.total_received;
+    stats.messages_written = pool_stats.total_written;
+    stats.messages_dropped = pool_stats.total_dropped;
   }
-  stats.queue_size = total_size;
+  stats.bytes_written = mcap_writer_ ? mcap_writer_->get_statistics().bytes_written : 0;
 
   return stats;
 }
@@ -204,224 +191,43 @@ void AxonRecorder::on_message(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
   const char* message_type, uint64_t timestamp
 ) {
-  messages_received_.fetch_add(1);
+  // Create MessageItem and push to worker pool
+  MessageItem item;
+  item.timestamp_ns = static_cast<int64_t>(timestamp);
+  item.raw_data.assign(message_data, message_data + message_size);
 
-  // Find the queue for this topic
-  std::string topic_key(topic_name);
-  SPSCQueue<QueuedMessage>* queue = nullptr;
-
-  {
-    std::lock_guard<std::mutex> lock(topic_queues_mutex_);
-    auto it = topic_queues_.find(topic_key);
-    if (it != topic_queues_.end()) {
-      queue = it->second.get();
-    }
+  // Push to the topic's queue (worker pool handles this)
+  if (worker_pool_) {
+    worker_pool_->try_push(topic_name, std::move(item));
   }
-
-  if (!queue) {
-    // Queue not found for this topic
-    messages_dropped_.fetch_add(1);
-    return;
-  }
-
-  // Create queued message
-  QueuedMessage msg(topic_name, message_data, message_size, message_type, timestamp);
-
-  // Push to topic's queue (drop if full)
-  if (!queue->try_push(std::move(msg))) {
-    messages_dropped_.fetch_add(1);
-  }
+  // If queue is full or topic not found, message is dropped
+  // Statistics are tracked by WorkerThreadPool
 }
 
-void AxonRecorder::worker_thread() {
-  // Round-robin through all topic queues
-  std::vector<std::string> topic_names;
-
-  while (!should_stop_.load()) {
-    // Get current topic list
-    {
-      std::lock_guard<std::mutex> lock(topic_queues_mutex_);
-      topic_names.clear();
-      topic_names.reserve(topic_queues_.size());
-      for (const auto& [topic, queue] : topic_queues_) {
-        topic_names.push_back(topic);
-      }
-    }
-
-    bool processed = false;
-    auto now = std::chrono::steady_clock::now();
-
-    // Round-robin through all topic queues
-    for (const auto& topic_name : topic_names) {
-      SPSCQueue<QueuedMessage>* queue = nullptr;
-
-      {
-        std::lock_guard<std::mutex> lock(topic_queues_mutex_);
-        auto it = topic_queues_.find(topic_name);
-        if (it != topic_queues_.end()) {
-          queue = it->second.get();
-        }
-      }
-
-      if (!queue) {
-        continue;
-      }
-
-      // Try to pop message from this topic's queue
-      QueuedMessage msg;
-      if (queue->try_pop(msg)) {
-        // Add to batch
-        std::lock_guard<std::mutex> lock(topic_batches_mutex_);
-        auto& batch = topic_batches_[msg.topic_name];
-        batch.messages.push_back(std::move(msg));
-        batch.last_flush = now;
-        processed = true;
-
-        // Get subscription config for this topic
-        const SubscriptionConfig* sub_config = get_subscription_config(msg.topic_name);
-        size_t batch_size = sub_config ? sub_config->batch_size : 1;
-        int flush_interval_ms = sub_config ? sub_config->flush_interval_ms : 100;
-
-        // Check if we should flush this batch
-        bool should_flush = false;
-
-        // Flush if batch size reached
-        if (batch.messages.size() >= batch_size) {
-          should_flush = true;
-        }
-
-        // Also check flush interval for all batches
-        if (!should_flush) {
-          auto elapsed =
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - batch.last_flush).count();
-          if (elapsed >= flush_interval_ms) {
-            should_flush = true;
-          }
-        }
-
-        if (should_flush) {
-          // Write all messages in batch to MCAP
-          for (const auto& batch_msg : batch.messages) {
-            auto it = channel_ids_.find(batch_msg.topic_name);
-            if (it != channel_ids_.end()) {
-              uint16_t channel_id = it->second;
-              uint64_t log_time_ns = batch_msg.timestamp_ns;
-
-              if (mcap_writer_->write(
-                    channel_id,
-                    log_time_ns,
-                    batch_msg.timestamp_ns,
-                    batch_msg.data.data(),
-                    batch_msg.data.size()
-                  )) {
-                messages_written_.fetch_add(1);
-              } else {
-                messages_dropped_.fetch_add(1);
-              }
-            } else {
-              messages_dropped_.fetch_add(1);
-            }
-          }
-          batch.messages.clear();
-          batch.last_flush = now;
-        }
-      }
-    }
-
-    // Check for timed out batches on all topics
-    {
-      std::lock_guard<std::mutex> lock(topic_batches_mutex_);
-      for (auto& [topic_name, batch] : topic_batches_) {
-        if (batch.messages.empty()) {
-          continue;
-        }
-
-        const SubscriptionConfig* sub_config = get_subscription_config(topic_name);
-        int flush_interval_ms = sub_config ? sub_config->flush_interval_ms : 100;
-        auto elapsed =
-          std::chrono::duration_cast<std::chrono::milliseconds>(now - batch.last_flush).count();
-
-        if (elapsed >= flush_interval_ms) {
-          // Flush this batch
-          for (const auto& batch_msg : batch.messages) {
-            auto it = channel_ids_.find(batch_msg.topic_name);
-            if (it != channel_ids_.end()) {
-              uint16_t channel_id = it->second;
-              uint64_t log_time_ns = batch_msg.timestamp_ns;
-
-              if (mcap_writer_->write(
-                    channel_id,
-                    log_time_ns,
-                    batch_msg.timestamp_ns,
-                    batch_msg.data.data(),
-                    batch_msg.data.size()
-                  )) {
-                messages_written_.fetch_add(1);
-              } else {
-                messages_dropped_.fetch_add(1);
-              }
-            } else {
-              messages_dropped_.fetch_add(1);
-            }
-          }
-          batch.messages.clear();
-          batch.last_flush = now;
-        }
-      }
-    }
-
-    // If no messages were processed, sleep a bit
-    if (!processed) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+bool AxonRecorder::message_handler(
+  const std::string& topic, int64_t timestamp_ns, const uint8_t* data, size_t data_size,
+  uint32_t sequence
+) {
+  // Find channel ID for this topic
+  auto it = channel_ids_.find(topic);
+  if (it == channel_ids_.end()) {
+    return false;  // Channel not found
   }
 
-  // Flush all remaining batches before exiting
-  {
-    std::lock_guard<std::mutex> lock(topic_batches_mutex_);
-    for (auto& [topic_name, batch] : topic_batches_) {
-      for (const auto& batch_msg : batch.messages) {
-        auto it = channel_ids_.find(batch_msg.topic_name);
-        if (it != channel_ids_.end()) {
-          uint16_t channel_id = it->second;
-          uint64_t log_time_ns = batch_msg.timestamp_ns;
+  uint16_t channel_id = it->second;
+  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
 
-          if (mcap_writer_->write(
-                channel_id,
-                log_time_ns,
-                batch_msg.timestamp_ns,
-                batch_msg.data.data(),
-                batch_msg.data.size()
-              )) {
-            messages_written_.fetch_add(1);
-          }
-        }
-      }
-      batch.messages.clear();
-    }
+  // Write message to MCAP
+  if (mcap_writer_->write(channel_id, log_time_ns, timestamp_ns, data, data_size)) {
+    return true;
   }
 
-  // Flush MCAP before exiting
-  if (mcap_writer_) {
-    mcap_writer_->flush();
-  }
+  return false;
 }
 
 bool AxonRecorder::register_topics() {
-  // For simplicity, we register schemas with empty definitions
-  // In a real implementation, you would fetch message definitions from ROS
-
+  // Register schemas and channels for all subscriptions
   for (const auto& sub : config_.subscriptions) {
-    // Create SPSC queue for this topic
-    try {
-      auto queue = std::make_unique<SPSCQueue<QueuedMessage>>(config_.queue_capacity);
-      std::lock_guard<std::mutex> lock(topic_queues_mutex_);
-      topic_queues_[sub.topic_name] = std::move(queue);
-    } catch (const std::exception& e) {
-      set_error_helper("Failed to create queue for topic " + sub.topic_name + ": " + e.what());
-      return false;
-    }
-
     // Register schema (use message type as schema name)
     uint16_t schema_id = mcap_writer_->register_schema(
       sub.message_type, config_.profile == "ros1" ? "ros1msg" : "ros2msg", ""
@@ -449,6 +255,23 @@ bool AxonRecorder::register_topics() {
 
     // Store channel ID
     channel_ids_[sub.topic_name] = channel_id;
+
+    // Create topic worker in the pool
+    // Use std::bind to bind the message handler member function
+    auto handler = std::bind(
+      &AxonRecorder::message_handler,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2,
+      std::placeholders::_3,
+      std::placeholders::_4,
+      std::placeholders::_5
+    );
+
+    if (!worker_pool_->create_topic_worker(sub.topic_name, handler)) {
+      set_error_helper("Failed to create worker for topic: " + sub.topic_name);
+      return false;
+    }
   }
 
   return true;

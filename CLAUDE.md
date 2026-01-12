@@ -88,7 +88,7 @@ make clean-coverage
 
 ## High-Level Architecture
 
-The system follows a layered architecture with a 4-state task-centric FSM:
+The system follows a layered architecture with a 4-state task-centric FSM and a plugin-based middleware integration layer:
 
 ```
 Server/Fleet Manager (ros-bridge) → Recording Services → State Machine → MCAP Writer
@@ -98,6 +98,42 @@ Server/Fleet Manager (ros-bridge) → Recording Services → State Machine → M
                            CachedRecordingConfig   Start/Finish   Lock-free
                               (YAML Configuration)   Notify      Message Transfer
 ```
+
+### Plugin-Based Middleware Architecture
+
+Axon uses a **plugin-based middleware integration** that cleanly separates middleware-specific code from core functionality:
+
+**Key Design Principles:**
+- **Middleware Isolation**: Each middleware (ROS1, ROS2) resides in `middlewares/{name}/` and compiles independently into a dynamic library
+- **Core Independence**: All components outside `middlewares/` are middleware-agnostic with no ROS dependencies
+- **Unified C API**: Middlewares expose a unified C API interface for integration with the main application
+- **Dynamic Plugin Loading**: The main program loads middleware plugins as dynamic libraries at runtime via `dlopen/dlsym`
+
+**Directory Structure:**
+```
+Axon/
+├── core/                      # Middleware-agnostic core libraries
+│   ├── axon_mcap/            # MCAP writer (no ROS dependencies)
+│   ├── axon_logging/         # Logging infrastructure (no ROS dependencies)
+│   └── axon_uploader/        # S3 uploader (no ROS dependencies)
+│
+├── middlewares/              # Middleware-specific plugins
+│   ├── ros1/                 # ROS1 (Noetic) plugin → libaxon_ros1.so
+│   └── ros2/                 # ROS2 (Humble/Jazzy/Rolling) plugin → libaxon_ros2.so
+│
+├── apps/                     # Main applications
+│   └── axon_recorder/        # Plugin loader and main application
+│
+└── include/                  # Unified plugin interface
+    └── middleware_abi.h      # C API definitions for plugin communication
+```
+
+**Benefits:**
+1. Core libraries have zero middleware dependencies
+2. New middlewares can be added without touching core code
+3. Core libraries can be tested independently of ROS
+4. Only required middleware plugins need to be deployed
+5. Middleware-specific bugs are isolated to plugin code
 
 ### State Machine
 
@@ -197,6 +233,53 @@ The CMake files use `GLOB CONFIGURE_DEPENDS` to auto-discover `test_*.cpp` files
 #include <cstring>     // for std::memcpy, std::memset
 ```
 
+**Include Order Convention:**
+1. Main header (for .cpp files)
+2. C system headers (`<cstring>`, `<cstdint>`)
+3. C++ standard library headers
+4. Third-party library headers
+5. Project headers
+
+Separate each group with a blank line.
+
+### C++ Best Practices
+
+**Core Principles:**
+- **RAII**: Use smart pointers (`std::unique_ptr`, `std::shared_ptr`) instead of raw pointers for automatic resource management
+- **Rule of Zero/Three/Five**: If your class doesn't manage resources, don't define special member functions. If it does, define all five
+- **Const Correctness**: Mark functions `const` whenever possible, use `constexpr` for compile-time constants
+- **Override Keyword**: Always use `override` for virtual function overrides to catch signature mismatches at compile time
+- **Noexcept**: Mark functions that don't throw exceptions (especially move constructors)
+- **Pass-by-const-reference**: For large objects to avoid unnecessary copies
+
+**Example:**
+```cpp
+// GOOD: Rule of Zero with smart pointers
+class ModernResourceManager {
+public:
+  ModernResourceManager() : resource_(std::make_unique<Resource>()) {}
+  // All special member functions use defaults - smart pointer handles cleanup
+
+private:
+  std::unique_ptr<Resource> resource_;
+};
+
+// GOOD: Const correctness and override
+class Derived : public Base {
+public:
+  void do_work() override {  // Compiler error if signature doesn't match
+    // implementation
+  }
+
+  int compute() const {  // Doesn't modify object state
+    return cached_value_;
+  }
+
+private:
+  int cached_value_;
+};
+```
+
 ### Minimal, Cautious Code Changes
 
 **Make the smallest change that solves the problem.** Avoid refactoring unrelated code or adding infrastructure unless explicitly needed:
@@ -273,6 +356,26 @@ Keep descriptions under 72 characters. Use imperative mood ("add" not "added").
 | Timer | `ros::Timer` | `rclcpp::TimerBase` |
 | Logging | `ROS_INFO()` | `RCLCPP_INFO()` |
 
+**Note**: With the new plugin architecture, most ROS-specific code is isolated within `middlewares/ros1/` and `middlewares/ros2/` plugins. Core code in `core/` and `apps/` should remain middleware-agnostic.
+
+## Refactoring Guidelines
+
+**When refactoring code in this codebase, follow these principles:**
+
+1. **Investigate First**: Never propose refactoring solutions without understanding the full context. Map the architecture, identify dependencies, and understand data flow before making changes.
+
+2. **Consider Robotics/HPC Constraints**:
+   - Real-time constraints and latency sensitivity
+   - Thread safety and lock contention
+   - Memory access patterns and cache locality
+   - Throughput requirements (messages/sec, bytes/sec)
+
+3. **Understand Plugin Architecture**: When refactoring middleware code, remember the plugin-based design. Changes should maintain the clean separation between middleware-specific plugins and middleware-agnostic core.
+
+4. **Minimal Scope**: Make the smallest change that solves the problem. Avoid refactoring unrelated code or adding infrastructure unless explicitly needed.
+
+5. **Ask for Guidance**: If unsure where to start or what the motivation is, ask the user to point you to specific files/modules and explain the context.
+
 ## Testing Strategy
 
 - **Unit Tests**: Core library components ([core/axon_mcap/test/](core/axon_mcap/test/), [core/axon_logging/test/](core/axon_logging/test/), etc.)
@@ -339,7 +442,23 @@ When generating PR descriptions, use the following structure:
 - YAML-based configuration files for recording tasks
 - Environment variable support for all settings
 - Cascading config resolution: env → config → ROS params
-- Default configurations in [middlewares/src/axon_recorder/config/](middlewares/src/axon_recorder/config/)
+- Default configurations in [apps/axon_recorder/config/](apps/axon_recorder/config/)
+
+### Task Configuration Structure
+
+The `task_config.hpp/cpp` files define the core task configuration that flows through the system:
+
+**Key Components:**
+- `TaskConfig`: Contains task_id, device_id, scene, topics list, callback URLs, authentication tokens
+- `CachedRecordingConfig`: Service that caches task configuration (transitions IDLE → READY)
+- Configuration is validated and cached before recording starts
+- Used throughout: metadata injection, HTTP callbacks, MCAP metadata
+
+**Typical Flow:**
+1. Server calls `CachedRecordingConfig` service with task parameters
+2. Config is validated and cached in memory
+3. `RecordingControl::start` uses cached config to initialize recording
+4. Config embedded in MCAP metadata and sidecar JSON
 
 ## Key Technologies
 
@@ -357,3 +476,47 @@ When generating PR descriptions, use the following structure:
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed system architecture
 - [docs/](docs/) - Design documents for individual components
 - [.cursor/rules/](.cursor/rules/) - Additional development rules (refactoring guidelines, C++ best practices)
+
+## Quick Reference
+
+### Adding a New Feature
+
+1. **Investigate**: Read related code to understand patterns
+2. **Plan**: Identify which files need changes (core vs middleware vs apps)
+3. **Implement**: Make minimal, focused changes
+4. **Test**: Add tests (CMake auto-discovery will find them)
+5. **Format**: Run `make format` and `make lint`
+
+### Debugging a Test Failure
+
+```bash
+# Run specific test with verbose output
+cd core/build
+ctest -R test_mcap_writer -V
+
+# Run tests with specific labels
+cd middlewares/build/axon_recorder
+ctest -L integration --output-on-failure
+```
+
+### Checking ROS Version
+
+```bash
+# Check which ROS is sourced
+echo $ROS_DISTRO
+
+# Verify ROS1 vs ROS2 build flags
+grep -r "AXON_ROS1\|AXON_ROS2" build/
+```
+
+### Common File Locations
+
+| Purpose | Location |
+|---------|----------|
+| Core libraries | `core/axon_*/` |
+| ROS plugins | `middlewares/ros1/`, `middlewares/ros2/` |
+| Main app | `apps/axon_recorder/` |
+| Tests | `*/test/` or `*/test_*.cpp` |
+| Configs | `apps/axon_recorder/config/` |
+| CMake modules | `cmake/` |
+| Plugin interface | `include/middleware_abi.h` |
