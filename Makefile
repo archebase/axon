@@ -1,7 +1,7 @@
 # Makefile for Axon by ArcheBase
 # Supports both C++ core libraries and ROS (1/2) middlewares
 
-.PHONY: all build test clean install build-ros1 build-ros2 test-libs help
+.PHONY: all build test clean install build-ros1 build-ros2 test-libs app app-axon-recorder app-plugin-example help
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -15,10 +15,7 @@ ROS_VERSION ?= $(shell if [ -n "$$ROS_VERSION" ]; then echo $$ROS_VERSION; elif 
 ROS_DISTRO ?= $(shell echo $$ROS_DISTRO)
 
 # Build directories (relative to this Makefile location)
-BUILD_DIR := core/build
-UPLOADER_BUILD_DIR := core/build_uploader
-LOGGING_BUILD_DIR := core/build_logging
-TEST_BUILD_DIR := core/build
+BUILD_DIR := build
 COVERAGE_DIR := coverage
 
 # Build type
@@ -62,6 +59,11 @@ help:
 	@printf "%s\n" "  $(BLUE)make test-logging$(NC)    - Build and run axon_logging tests"
 	@printf "%s\n" "  $(BLUE)make test-core$(NC)       - Run all C++ library tests"
 	@printf "%s\n" "  $(BLUE)make coverage-core$(NC)   - Run all C++ tests with coverage"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)Applications:$(NC)"
+	@printf "%s\n" "  $(BLUE)make app$(NC)              - Build all applications"
+	@printf "%s\n" "  $(BLUE)make app-axon-recorder$(NC) - Build axon_recorder plugin loader"
+	@printf "%s\n" "  $(BLUE)make app-plugin-example$(NC) - Build plugin example"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)ROS Middlewares:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build (auto-detects ROS1/ROS2)"
@@ -113,59 +115,33 @@ help:
 # Core C++ Library Targets
 # =============================================================================
 
-# Build all C++ libraries
-build-core: build-mcap build-uploader build-logging
-	@printf "%s\n" "$(GREEN)✓ All C++ libraries built$(NC)"
-
-# Main axon_mcap library
-build-mcap:
-	@printf "%s\n" "$(YELLOW)Building axon_mcap library...$(NC)"
+# Build all C++ libraries and apps using root CMakeLists.txt
+build-core:
+	@printf "%s\n" "$(YELLOW)Building all C++ libraries and apps...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
-		cmake ../axon_mcap \
+		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_MCAP_BUILD_TESTS=ON && \
+			-DAXON_BUILD_TESTS=ON && \
 		cmake --build . -j$(NPROC)
-	@printf "%s\n" "$(GREEN)✓ axon_mcap build complete$(NC)"
-
-# axon_uploader library
-build-uploader:
-	@printf "%s\n" "$(YELLOW)Building axon_uploader library...$(NC)"
-	@mkdir -p $(UPLOADER_BUILD_DIR)
-	@cd $(UPLOADER_BUILD_DIR) && \
-		cmake ../axon_uploader \
-			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_UPLOADER_BUILD_TESTS=ON && \
-		cmake --build . -j$(NPROC)
-	@printf "%s\n" "$(GREEN)✓ axon_uploader build complete$(NC)"
-
-# axon_logging library
-build-logging:
-	@printf "%s\n" "$(YELLOW)Building axon_logging library...$(NC)"
-	@mkdir -p $(LOGGING_BUILD_DIR)
-	@cd $(LOGGING_BUILD_DIR) && \
-		cmake ../axon_logging \
-			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_LOGGING_BUILD_TESTS=ON && \
-		cmake --build . -j$(NPROC)
-	@printf "%s\n" "$(GREEN)✓ axon_logging build complete$(NC)"
+	@printf "%s\n" "$(GREEN)✓ All C++ libraries and apps built$(NC)"
 
 # Test axon_mcap
-test-mcap: build-mcap
+test-mcap: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_mcap tests...$(NC)"
-	@cd $(BUILD_DIR) && ctest --output-on-failure
+	@cd $(BUILD_DIR)/axon_mcap && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_mcap tests passed$(NC)"
 
 # Test axon_uploader
-test-uploader: build-uploader
+test-uploader: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
-	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure
+	@cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
 
 # Test axon_logging
-test-logging: build-logging
+test-logging: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_logging tests...$(NC)"
-	@cd $(LOGGING_BUILD_DIR) && ctest --output-on-failure
+	@cd $(BUILD_DIR)/axon_logging && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_logging tests passed$(NC)"
 
 # Test all C++ libraries
@@ -178,13 +154,13 @@ coverage-mcap:
 	@rm -rf $(BUILD_DIR)
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
-		cmake ../axon_mcap \
+		cmake .. \
 			-DCMAKE_BUILD_TYPE=Debug \
-			-DAXON_MCAP_BUILD_TESTS=ON \
-			-DAXON_MCAP_ENABLE_COVERAGE=ON && \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_ENABLE_COVERAGE=ON && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
-	@cd $(BUILD_DIR) && ctest --output-on-failure
+	@cd $(BUILD_DIR)/axon_mcap && ctest --output-on-failure
 	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
 	@if command -v lcov >/dev/null 2>&1; then \
 		cd $(BUILD_DIR) && \
@@ -202,25 +178,26 @@ coverage-mcap:
 # Coverage for axon_uploader
 coverage-uploader:
 	@printf "%s\n" "$(YELLOW)Building axon_uploader with coverage...$(NC)"
-	@rm -rf $(UPLOADER_BUILD_DIR)
-	@mkdir -p $(UPLOADER_BUILD_DIR)
-	@cd $(UPLOADER_BUILD_DIR) && \
-		cmake ../axon_uploader \
+	@rm -rf $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
 			-DCMAKE_BUILD_TYPE=Debug \
-			-DAXON_UPLOADER_BUILD_TESTS=ON \
-			-DAXON_UPLOADER_ENABLE_COVERAGE=ON && \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_ENABLE_COVERAGE=ON \
+			-DAXON_BUILD_UPLOADER=ON && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
-	@cd $(UPLOADER_BUILD_DIR) && ctest --output-on-failure -j1
+	@cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure -j1
 	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
 	@if command -v lcov >/dev/null 2>&1; then \
-		cd $(UPLOADER_BUILD_DIR) && \
+		cd $(BUILD_DIR) && \
 		lcov --capture --directory . --output-file coverage_raw.info && \
 		lcov --remove coverage_raw.info \
 			'/usr/*' '/opt/*' '*/test/*' '*/_deps/*' '*/c++/*' \
 			--output-file coverage.info && \
 		lcov --list coverage.info; \
-		printf "%s\n" "$(GREEN)✓ Coverage report: $(UPLOADER_BUILD_DIR)/coverage.info$(NC)"; \
+		printf "%s\n" "$(GREEN)✓ Coverage report: $(BUILD_DIR)/coverage.info$(NC)"; \
 	else \
 		printf "%s\n" "$(RED)Error: lcov not found$(NC)"; \
 		exit 1; \
@@ -229,25 +206,25 @@ coverage-uploader:
 # Coverage for axon_logging
 coverage-logging:
 	@printf "%s\n" "$(YELLOW)Building axon_logging with coverage...$(NC)"
-	@rm -rf $(LOGGING_BUILD_DIR)
-	@mkdir -p $(LOGGING_BUILD_DIR)
-	@cd $(LOGGING_BUILD_DIR) && \
-		cmake ../axon_logging \
+	@rm -rf $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
 			-DCMAKE_BUILD_TYPE=Debug \
-			-DAXON_LOGGING_BUILD_TESTS=ON \
-			-DAXON_LOGGING_ENABLE_COVERAGE=ON && \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_ENABLE_COVERAGE=ON && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
-	@cd $(LOGGING_BUILD_DIR) && ctest --output-on-failure
+	@cd $(BUILD_DIR)/axon_logging && ctest --output-on-failure
 	@printf "%s\n" "$(YELLOW)Generating coverage report...$(NC)"
 	@if command -v lcov >/dev/null 2>&1; then \
-		cd $(LOGGING_BUILD_DIR) && \
+		cd $(BUILD_DIR) && \
 		lcov --capture --directory . --output-file coverage_raw.info && \
 		lcov --remove coverage_raw.info \
 			'/usr/*' '/opt/*' '*/test/*' '*/_deps/*' '*/c++/*' \
 			--output-file coverage.info && \
 		lcov --list coverage.info; \
-		printf "%s\n" "$(GREEN)✓ Coverage report: $(LOGGING_BUILD_DIR)/coverage.info$(NC)"; \
+		printf "%s\n" "$(GREEN)✓ Coverage report: $(BUILD_DIR)/coverage.info$(NC)"; \
 	else \
 		printf "%s\n" "$(RED)Error: lcov not found$(NC)"; \
 		exit 1; \
@@ -256,6 +233,22 @@ coverage-logging:
 # Coverage for all C++ libraries
 coverage-core: coverage-mcap coverage-uploader coverage-logging
 	@printf "%s\n" "$(GREEN)✓ All C++ library coverage reports generated$(NC)"
+
+# =============================================================================
+# Application Targets
+# =============================================================================
+
+# Build all applications
+app: build-core
+	@printf "%s\n" "$(GREEN)✓ All applications built$(NC)"
+
+# Build axon_recorder (plugin loader library)
+app-axon-recorder: build-core
+	@printf "%s\n" "$(GREEN)✓ axon_recorder plugin loader built$(NC)"
+
+# Build plugin_example
+app-plugin-example: build-core
+	@printf "%s\n" "$(GREEN)✓ plugin example built$(NC)"
 
 # =============================================================================
 # ROS Middleware Targets
@@ -308,7 +301,7 @@ test: test-core
 # Clean all build artifacts
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
-	@rm -rf $(BUILD_DIR) $(UPLOADER_BUILD_DIR) $(LOGGING_BUILD_DIR) $(COVERAGE_DIR)
+	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
 	@cd middlewares/ros2 && rm -rf build install log 2>/dev/null || true
 	@cd middlewares/ros1 && catkin clean --yes 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"

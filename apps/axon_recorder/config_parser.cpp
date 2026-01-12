@@ -3,6 +3,8 @@
 #include <fstream>
 #include <sstream>
 
+#include "recorder.hpp"
+
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "config_parser"
 #include <axon_log_init.hpp>
@@ -11,76 +13,22 @@
 namespace axon {
 namespace recorder {
 
-RecorderConfig RecorderConfig::from_yaml(const std::string& yaml_path) {
-  ConfigParser parser;
-  RecorderConfig config;
-  if (!parser.load_from_file(yaml_path, config)) {
-    AXON_LOG_ERROR("Failed to load config from file" << ::axon::logging::kv("path", yaml_path));
-  }
-  return config;
-}
-
-RecorderConfig RecorderConfig::from_yaml_string(const std::string& yaml_content) {
-  ConfigParser parser;
-  RecorderConfig config;
-  if (!parser.load_from_string(yaml_content, config)) {
-    AXON_LOG_ERROR("Failed to load config from string");
-  }
-  return config;
-}
-
-bool RecorderConfig::validate() const {
-  if (dataset.path.empty()) {
-    return false;
-  }
-
-  if (topics.empty()) {
-    return false;
-  }
-
-  for (const auto& topic : topics) {
-    if (topic.name.empty() || topic.message_type.empty()) {
-      return false;
-    }
-    if (topic.batch_size == 0) {
-      return false;
-    }
-  }
-
-  if (dataset.mode != "create" && dataset.mode != "append") {
-    return false;
-  }
-
-  // Validate upload config if enabled
-  if (upload.enabled) {
-    std::string error_msg;
-    if (!ConfigParser::validate_upload_config(upload, error_msg)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-std::string RecorderConfig::to_string() const {
-  std::ostringstream oss;
-  oss << "Dataset: " << dataset.path << " (mode: " << dataset.mode << ")\n";
-  oss << "Topics:\n";
-  for (const auto& topic : topics) {
-    oss << "  - " << topic.name << " (" << topic.message_type
-        << ", batch_size: " << topic.batch_size << ", flush_interval: " << topic.flush_interval_ms
-        << "ms)\n";
-  }
-  oss << "Recording: max_disk_usage=" << recording.max_disk_usage_gb << "GB\n";
-  return oss.str();
-}
+// ============================================================================
+// ConfigParser Implementation
+// ============================================================================
 
 bool ConfigParser::load_from_file(const std::string& path, RecorderConfig& config) {
+  std::ifstream file(path);
+  if (!file.good()) {
+    last_error_ = "Config file not found or not readable: " + path;
+    return false;
+  }
+
   try {
-    YAML::Node node = YAML::LoadFile(path);
-    return load_from_string(YAML::Dump(node), config);
+    YAML::Node yaml = YAML::LoadFile(path);
+    return load_from_string(YAML::Dump(yaml), config);
   } catch (const YAML::Exception& e) {
-    AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
+    last_error_ = "Failed to parse YAML file: " + std::string(e.what());
     return false;
   }
 }
@@ -89,14 +37,21 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
   try {
     YAML::Node node = YAML::Load(yaml_content);
 
+    // Parse plugin configuration (optional, for backwards compatibility)
+    if (node["plugin"]) {
+      if (node["plugin"]["path"]) {
+        config.plugin_path = node["plugin"]["path"].as<std::string>();
+      }
+    }
+
     // Parse dataset config
     if (node["dataset"]) {
       parse_dataset(node["dataset"], config.dataset);
     }
 
-    // Parse topics
-    if (node["topics"]) {
-      parse_topics(node["topics"], config.topics);
+    // Parse subscriptions
+    if (node["subscriptions"]) {
+      parse_subscriptions(node["subscriptions"], config.subscriptions);
     }
 
     // Parse recording config
@@ -104,35 +59,19 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_recording(node["recording"], config.recording);
     }
 
-    // Parse logging config (optional - uses defaults if not present)
+    // Parse logging config
     if (node["logging"]) {
       parse_logging(node["logging"], config.logging);
     }
 
-    // Parse upload config (optional - disabled by default)
+    // Parse upload config
     if (node["upload"]) {
       parse_upload(node["upload"], config.upload);
     }
 
-    // Validate the full configuration
-    if (!config.validate()) {
-      return false;
-    }
-
-    // Validate upload config if enabled
-    if (config.upload.enabled) {
-      std::string error_msg;
-      if (!validate_upload_config(config.upload, error_msg)) {
-        AXON_LOG_ERROR(
-          "Upload configuration validation failed" << ::axon::logging::kv("error", error_msg)
-        );
-        return false;
-      }
-    }
-
     return true;
   } catch (const YAML::Exception& e) {
-    AXON_LOG_ERROR("YAML parsing error" << ::axon::logging::kv("error", e.what()));
+    last_error_ = "Failed to parse YAML content: " + std::string(e.what());
     return false;
   }
 }
@@ -144,16 +83,17 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
     // Dataset
     node["dataset"]["path"] = config.dataset.path;
     node["dataset"]["mode"] = config.dataset.mode;
+    node["dataset"]["stats_file_path"] = config.dataset.stats_file_path;
 
-    // Topics
-    node["topics"] = YAML::Node(YAML::NodeType::Sequence);
-    for (const auto& topic : config.topics) {
-      YAML::Node topic_node;
-      topic_node["name"] = topic.name;
-      topic_node["message_type"] = topic.message_type;
-      topic_node["batch_size"] = topic.batch_size;
-      topic_node["flush_interval_ms"] = topic.flush_interval_ms;
-      node["topics"].push_back(topic_node);
+    // Subscriptions
+    node["subscriptions"] = YAML::Node(YAML::NodeType::Sequence);
+    for (const auto& subscription : config.subscriptions) {
+      YAML::Node subscription_node;
+      subscription_node["name"] = subscription.topic_name;
+      subscription_node["message_type"] = subscription.message_type;
+      subscription_node["batch_size"] = subscription.batch_size;
+      subscription_node["flush_interval_ms"] = subscription.flush_interval_ms;
+      node["subscriptions"].push_back(subscription_node);
     }
 
     // Recording
@@ -181,27 +121,30 @@ bool ConfigParser::parse_dataset(const YAML::Node& node, DatasetConfig& dataset)
   return true;
 }
 
-bool ConfigParser::parse_topics(const YAML::Node& node, std::vector<TopicConfig>& topics) {
+bool ConfigParser::parse_subscriptions(
+  const YAML::Node& node, std::vector<SubscriptionConfig>& subscriptions
+) {
   if (!node.IsSequence()) {
+    last_error_ = "Subscriptions must be a sequence";
     return false;
   }
 
-  topics.clear();
-  for (const auto& topic_node : node) {
-    TopicConfig topic;
-    if (topic_node["name"]) {
-      topic.name = topic_node["name"].as<std::string>();
+  subscriptions.clear();
+  for (const auto& subscription_node : node) {
+    SubscriptionConfig subscription;
+    if (subscription_node["name"]) {
+      subscription.topic_name = subscription_node["name"].as<std::string>();
     }
-    if (topic_node["message_type"]) {
-      topic.message_type = topic_node["message_type"].as<std::string>();
+    if (subscription_node["message_type"]) {
+      subscription.message_type = subscription_node["message_type"].as<std::string>();
     }
-    if (topic_node["batch_size"]) {
-      topic.batch_size = topic_node["batch_size"].as<size_t>();
+    if (subscription_node["batch_size"]) {
+      subscription.batch_size = subscription_node["batch_size"].as<size_t>();
     }
-    if (topic_node["flush_interval_ms"]) {
-      topic.flush_interval_ms = topic_node["flush_interval_ms"].as<int>();
+    if (subscription_node["flush_interval_ms"]) {
+      subscription.flush_interval_ms = subscription_node["flush_interval_ms"].as<int>();
     }
-    topics.push_back(topic);
+    subscriptions.push_back(subscription);
   }
   return true;
 }
@@ -213,7 +156,7 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
   return true;
 }
 
-bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfigYaml& logging) {
+bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfig& logging) {
   // Parse console section
   if (node["console"]) {
     const auto& console = node["console"];
@@ -260,7 +203,7 @@ bool ConfigParser::parse_logging(const YAML::Node& node, LoggingConfigYaml& logg
   return true;
 }
 
-bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfigYaml& upload) {
+bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfig& upload) {
   if (node["enabled"]) {
     upload.enabled = node["enabled"].as<bool>();
   }
@@ -342,22 +285,22 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
     return false;
   }
 
-  if (config.topics.empty()) {
-    error_msg = "No topics configured";
+  if (config.subscriptions.empty()) {
+    error_msg = "No subscriptions configured";
     return false;
   }
 
-  for (const auto& topic : config.topics) {
-    if (topic.name.empty()) {
-      error_msg = "Topic name is empty";
+  for (const auto& subscription : config.subscriptions) {
+    if (subscription.topic_name.empty()) {
+      error_msg = "Subscription topic_name is empty";
       return false;
     }
-    if (topic.message_type.empty()) {
-      error_msg = "Topic message_type is empty";
+    if (subscription.message_type.empty()) {
+      error_msg = "Subscription message_type is empty";
       return false;
     }
-    if (topic.batch_size == 0) {
-      error_msg = "Topic batch_size must be > 0";
+    if (subscription.batch_size == 0) {
+      error_msg = "Subscription batch_size must be > 0";
       return false;
     }
   }
@@ -370,7 +313,7 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
   return true;
 }
 
-bool ConfigParser::validate_upload_config(const UploadConfigYaml& upload, std::string& error_msg) {
+bool ConfigParser::validate_upload_config(const UploadConfig& upload, std::string& error_msg) {
   if (!upload.enabled) {
     return true;  // Nothing to validate if disabled
   }
@@ -433,7 +376,7 @@ bool ConfigParser::validate_upload_config(const UploadConfigYaml& upload, std::s
 }
 
 void convert_logging_config(
-  const LoggingConfigYaml& yaml_config, ::axon::logging::LoggingConfig& log_config
+  const LoggingConfig& yaml_config, ::axon::logging::LoggingConfig& log_config
 ) {
   // Console settings
   log_config.console_enabled = yaml_config.console_enabled;

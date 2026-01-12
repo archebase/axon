@@ -13,13 +13,7 @@ else()
     set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 endif()
 
-# Middlewares ABI include directory
-set(MIDDLEWARES_ABI_DIR "${PROJECT_ROOT}/middlewares/include")
-
-if(NOT EXISTS "${MIDDLEWARES_ABI_DIR}/axon/middleware_abi.hpp")
-    message(FATAL_ERROR "Could not find middleware ABI at: ${MIDDLEWARES_ABI_DIR}")
-endif()
-message(STATUS "Found middleware ABI at: ${MIDDLEWARES_ABI_DIR}")
+message(STATUS "Project root: ${PROJECT_ROOT}")
 
 # =============================================================================
 # Dependencies
@@ -81,17 +75,17 @@ if(AXON_BUILD_WITH_CORE)
         set(CPP_LOGGING_DIR "${PROJECT_ROOT}/core/axon_logging")
     endif()
 
-    if(EXISTS "${CPP_MCAP_DIR}/CMakeLists.txt")
+    if(EXISTS "${CPP_MCAP_DIR}/CMakeLists.txt" AND NOT TARGET axon_mcap)
         message(STATUS "Building with axon_mcap at: ${CPP_MCAP_DIR}")
         add_subdirectory(${CPP_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
-    else()
+    elseif(NOT TARGET axon_mcap)
         message(WARNING "axon_mcap not found at: ${CPP_MCAP_DIR}")
     endif()
 
-    if(EXISTS "${CPP_LOGGING_DIR}/CMakeLists.txt")
+    if(EXISTS "${CPP_LOGGING_DIR}/CMakeLists.txt" AND NOT TARGET axon_logging)
         message(STATUS "Building with axon_logging at: ${CPP_LOGGING_DIR}")
         add_subdirectory(${CPP_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
-    else()
+    elseif(NOT TARGET axon_logging)
         message(WARNING "axon_logging not found at: ${CPP_LOGGING_DIR}")
     endif()
 endif()
@@ -105,13 +99,11 @@ set(PLUGIN_LOADER_SOURCES
 
 set(PLUGIN_LOADER_HEADERS
     plugin_loader.hpp
-    ${MIDDLEWARES_ABI_DIR}/axon/middleware_abi.hpp
 )
 
 add_library(axon_plugin_loader ${PLUGIN_LOADER_SOURCES})
 target_include_directories(axon_plugin_loader PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${MIDDLEWARES_ABI_DIR}
 )
 
 target_link_libraries(axon_plugin_loader
@@ -122,37 +114,40 @@ target_link_libraries(axon_plugin_loader
 target_compile_features(axon_plugin_loader PUBLIC cxx_std_17)
 
 # =============================================================================
-# Recorder Library (optional, depends on ROS)
+# Recorder Main Executable
 # =============================================================================
-option(AXON_BUILD_RECORDER_LIB "Build recorder library (requires ROS)" OFF)
-
-if(AXON_BUILD_RECORDER_LIB)
-    # Auto-discover recorder library sources
-    file(GLOB_RECURSE RECORDER_LIB_SOURCES CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+# Build the main recorder application if axon_mcap is available
+if(TARGET axon_mcap)
+    add_executable(axon_recorder
+        axon_recorder.cpp
+        recorder.cpp
+        plugin_loader.cpp
+        config_parser.cpp
     )
-    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*plugin_loader\\.cpp$")
-    list(FILTER RECORDER_LIB_SOURCES EXCLUDE REGEX ".*test_.*\\.cpp$")
 
-    add_library(axon_recorder_lib ${RECORDER_LIB_SOURCES})
-    target_link_libraries(axon_recorder_lib
-        axon_plugin_loader
-        ${Boost_LIBRARIES}
-        OpenSSL::SSL
-        OpenSSL::Crypto
+    target_include_directories(axon_recorder PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(axon_recorder
+        axon_mcap
+        axon_logging
         yaml-cpp
-        nlohmann_json::nlohmann_json
+        dl
+        pthread
     )
 
-    if(TARGET axon_mcap)
-        target_link_libraries(axon_recorder_lib axon_mcap)
-    endif()
+    # Enable C++17
+    target_compile_features(axon_recorder PRIVATE cxx_std_17)
 
-    if(TARGET axon_logging)
-        target_link_libraries(axon_recorder_lib axon_logging)
-    endif()
+    # Install executable
+    install(TARGETS axon_recorder
+        RUNTIME DESTINATION bin
+    )
 
-    target_include_directories(axon_recorder_lib PRIVATE ${Boost_INCLUDE_DIRS})
+    message(STATUS "Axon recorder executable will be built")
+else()
+    message(STATUS "axon_mcap not found - skipping axon_recorder executable")
 endif()
 
 # =============================================================================
@@ -164,6 +159,6 @@ install(TARGETS axon_plugin_loader
     RUNTIME DESTINATION bin
 )
 
-install(FILES ${MIDDLEWARES_ABI_DIR}/axon/middleware_abi.hpp
+install(FILES plugin_loader.hpp
     DESTINATION include/axon
 )

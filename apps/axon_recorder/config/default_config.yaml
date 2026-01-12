@@ -1,53 +1,76 @@
-# Axon Recorder Configuration for Performance Tests
-# This configuration matches the topics published by synthetic_publisher
-# Optimized batch sizes to reduce write frequency and improve throughput
+# Axon Recorder Configuration
+# Usage: ./axon_recorder --config config/config.yaml --plugin <path_to_plugin.so>
 
+# ============================================================================
+# Dataset Configuration
+# ============================================================================
 dataset:
+  # Output directory for MCAP files
   path: /data/recordings
-  mode: append
-  stats_file_path: /data/recordings/recorder_stats.json
 
-topics:
+  # Output filename (optional, defaults to <path>/recording.mcap)
+  output_file: recording.mcap
+
+  # Per-topic queue capacity (number of messages)
+  # Recommended: 4096-8192 for high-frequency topics (camera, IMU)
+  #              1024-2048 for low-frequency topics (status, diagnostics)
+  queue_size: 8192
+
+#   High-frequency subscriptions (IMU, camera): Use larger batches (100-5000)
+#   Low-frequency subscriptions (status, diagnostics): Use small batches (1-10)
+#   Control signals: Use batch_size=1 for immediate persistence
+subscriptions:
   # IMU data - high frequency (5 seconds of data per batch)
   - name: /imu/data
     message_type: sensor_msgs/Imu
     batch_size: 5000
     flush_interval_ms: 5000
-  
+
   # Camera 0 - RGB and Depth (10 seconds of data per batch at 30fps)
   - name: /camera0/rgb
     message_type: sensor_msgs/Image
     batch_size: 300
     flush_interval_ms: 10000
-  
+
   - name: /camera0/depth
     message_type: sensor_msgs/Image
     batch_size: 300
     flush_interval_ms: 10000
-  
+
   # Camera 1 - RGB and Depth
   - name: /camera1/rgb
     message_type: sensor_msgs/Image
     batch_size: 300
     flush_interval_ms: 10000
-  
+
   - name: /camera1/depth
     message_type: sensor_msgs/Image
     batch_size: 300
     flush_interval_ms: 10000
-  
+
   # Camera 2 - RGB and Depth
   - name: /camera2/rgb
     message_type: sensor_msgs/Image
     batch_size: 300
     flush_interval_ms: 10000
-  
+
   - name: /camera2/depth
     message_type: sensor_msgs/Image
     batch_size: 300
     flush_interval_ms: 10000
 
 recording:
+  # ROS profile: "ros1" or "ros2" (must match plugin)
+  profile: ros2
+
+  # MCAP compression: "none", "zstd", or "lz4"
+  # - zstd: Recommended, good balance of speed and compression
+  # - lz4:  Faster compression, larger files
+  # - none: No compression, fastest, largest files
+  compression: zstd
+  compression_level: 3  # zstd: 1-19, lz4: 1-12
+
+  # Maximum disk usage (ignored by axon_recorder, used by full service)
   max_disk_usage_gb: 100
 
 # Logging configuration
