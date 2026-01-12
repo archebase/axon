@@ -54,8 +54,9 @@ void print_usage(const char* program_name) {
     << "  --help                Show this help message\n"
     << "\n"
     << "HTTP RPC Server:\n"
-    << "  The recorder automatically starts an HTTP RPC server on port 8080\n"
-    << "  for remote control. Available endpoints:\n"
+    << "  The recorder starts an HTTP RPC server on port 8080 for remote control.\n"
+    << "  The recorder starts in IDLE state and waits for RPC commands.\n"
+    << "  Available endpoints:\n"
     << "    POST /rpc/config      - Set task configuration (IDLE->READY)\n"
     << "    POST /rpc/begin       - Start recording (READY->RECORDING)\n"
     << "    POST /rpc/finish      - Finish recording, return to IDLE (RECORDING/PAUSED->IDLE)\n"
@@ -303,28 +304,22 @@ int main(int argc, char* argv[]) {
     std::cout << "HTTP RPC server listening on http://0.0.0.0:8080" << std::endl;
   }
 
-  // Start recording
-  std::cout << "Starting recording..." << std::endl;
-  if (!recorder.start()) {
-    std::cerr << "Error: Failed to start recording: " << recorder.get_last_error() << std::endl;
-    return 1;
-  }
+  // Recorder starts in IDLE state, waiting for RPC commands
+  std::cout << "Recorder ready (current state: " << recorder.get_state_string() << ")" << std::endl;
+  std::cout << "Waiting for RPC commands. Use Ctrl+C to quit." << std::endl;
 
-  std::cout << "Recording started. Press Ctrl+C to stop." << std::endl;
-
-  // Monitor statistics
-  uint64_t last_written = 0;
-  while (!g_should_exit.load() && recorder.is_running()) {
+  // Wait for quit signal (recording controlled via RPC)
+  while (!g_should_exit.load()) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    auto stats = recorder.get_statistics();
-
-    // Print progress every second
-    if (stats.messages_written != last_written) {
-      std::cout << "\rMessages: " << stats.messages_written << " written, "
-                << stats.messages_received << " received, " << stats.messages_dropped
-                << " dropped   " << std::flush;
-      last_written = stats.messages_written;
+    // Print statistics if recording is active
+    if (recorder.is_running()) {
+      auto stats = recorder.get_statistics();
+      if (stats.messages_written > 0) {
+        std::cout << "\rMessages: " << stats.messages_written << " written, "
+                  << stats.messages_received << " received, " << stats.messages_dropped
+                  << " dropped   " << std::flush;
+      }
     }
   }
 

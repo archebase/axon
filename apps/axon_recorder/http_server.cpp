@@ -412,6 +412,8 @@ HttpServer::RpcResponse HttpServer::handle_rpc_finish(const nlohmann::json& para
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_quit(const nlohmann::json& params) {
+  (void)params;  // Unused - quit doesn't require task_id
+
   RpcResponse response;
 
   // First, finish recording if running
@@ -427,10 +429,6 @@ HttpServer::RpcResponse HttpServer::handle_rpc_quit(const nlohmann::json& params
   response.success = true;
   response.message = "Program quitting. Recording stopped and data saved.";
   response.data["state"] = recorder_.get_state_string();
-
-  if (params.contains("task_id")) {
-    response.data["task_id"] = params["task_id"];
-  }
 
   return response;
 }
@@ -600,8 +598,25 @@ HttpServer::RpcResponse HttpServer::handle_rpc_set_config(const nlohmann::json& 
 
     recorder_.set_task_config(config);
 
+    // Transition state from IDLE to READY
+    auto current_state = recorder_.get_state();
+    if (current_state == RecorderState::IDLE) {
+      std::string error_msg;
+      if (!recorder_.transition_to(RecorderState::READY, error_msg)) {
+        response.success = false;
+        response.message = "Failed to transition to READY state: " + error_msg;
+        response.data["state"] = recorder_.get_state_string();
+        return response;
+      }
+    }
+
     response.success = true;
     response.message = "Task configuration set successfully";
+    response.data["state"] = recorder_.get_state_string();
+
+    if (!config.task_id.empty()) {
+      response.data["task_id"] = config.task_id;
+    }
 
   } catch (const std::exception& e) {
     response.success = false;

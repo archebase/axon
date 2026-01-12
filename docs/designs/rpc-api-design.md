@@ -239,10 +239,10 @@ Content-Type: application/json
 POST /rpc/quit HTTP/1.1
 Content-Type: application/json
 
-{
-  "task_id": "task_123"
-}
+{}
 ```
+
+**Note:** 此接口不需要 `task_id` 参数，可以在任何状态下调用。
 
 **Response (200 OK):**
 ```json
@@ -250,8 +250,7 @@ Content-Type: application/json
   "success": true,
   "message": "Program quitting. Recording stopped and data saved.",
   "data": {
-    "state": "idle",
-    "task_id": "task_123"
+    "state": "idle"
   }
 }
 ```
@@ -262,7 +261,7 @@ Content-Type: application/json
 3. 程序优雅退出
 
 **Valid From States:**
-- ✅ 任何状态
+- ✅ 任何状态（IDLE, READY, RECORDING, PAUSED）
 
 ---
 
@@ -597,7 +596,10 @@ GET / HTTP/1.1
 # 1. Health check
 curl http://localhost:8080/health
 
-# 2. Configure recording task
+# 2. Check initial state (should be "idle")
+curl http://localhost:8080/rpc/state
+
+# 3. Configure recording task
 curl -X POST http://localhost:8080/rpc/config \
   -H "Content-Type: application/json" \
   -d '{
@@ -612,30 +614,30 @@ curl -X POST http://localhost:8080/rpc/config \
     }
   }'
 
-# 3. Check state (should be "ready")
+# 4. Check state (should be "ready")
 curl http://localhost:8080/rpc/state
 
-# 4. Begin recording
+# 5. Begin recording
 curl -X POST http://localhost:8080/rpc/begin
 
-# 5. Check state (should be "recording")
+# 6. Check state (should be "recording")
 curl http://localhost:8080/rpc/state
 
-# 6. Monitor statistics
+# 7. Monitor statistics
 curl http://localhost:8080/rpc/stats
 
-# 7. Finish recording (but keep program running)
+# 8. Finish recording (but keep program running)
 curl -X POST http://localhost:8080/rpc/finish \
   -H "Content-Type: application/json" \
   -d '{"task_id": "task_123"}'
 
-# 8. Check state (should be "idle")
+# 9. Check state (should be "idle")
 curl http://localhost:8080/rpc/state
 
-# 9. Begin another recording
+# 10. Begin another recording
 curl -X POST http://localhost:8080/rpc/begin
 
-# 10. When done, quit program
+# 11. When done, quit program
 curl -X POST http://localhost:8080/rpc/quit
 ```
 

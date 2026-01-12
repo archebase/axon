@@ -58,9 +58,21 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
 bool AxonRecorder::start() {
   std::string error_msg;
 
-  // Transition from IDLE to READY
-  if (!state_manager_.transition(RecorderState::IDLE, RecorderState::READY, error_msg)) {
-    set_error_helper("State transition to READY failed: " + error_msg);
+  auto current_state = state_manager_.get_state();
+
+  // If in IDLE state, transition to READY first (for direct start() calls)
+  // If already in READY state, proceed to RECORDING (for HTTP RPC mode)
+  if (current_state == RecorderState::IDLE) {
+    // Transition from IDLE to READY
+    if (!state_manager_.transition(RecorderState::IDLE, RecorderState::READY, error_msg)) {
+      set_error_helper("State transition to READY failed: " + error_msg);
+      return false;
+    }
+  } else if (current_state != RecorderState::READY) {
+    set_error_helper(
+      "Cannot start recording from state: " + state_to_string(current_state) +
+      ". Must be in IDLE or READY state."
+    );
     return false;
   }
 
@@ -241,6 +253,10 @@ bool AxonRecorder::is_http_server_running() const {
   return http_server_ && http_server_->is_running();
 }
 
+bool AxonRecorder::transition_to(RecorderState to, std::string& error_msg) {
+  return state_manager_.transition_to(to, error_msg);
+}
+
 void AxonRecorder::set_task_config(const TaskConfig& config) {
   task_config_ = config;
 }
@@ -283,6 +299,12 @@ void AxonRecorder::on_message(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
   const char* message_type, uint64_t timestamp
 ) {
+  // Only enqueue messages when in RECORDING state
+  // Messages received in IDLE, READY, or PAUSED states are discarded
+  if (!state_manager_.is_state(RecorderState::RECORDING)) {
+    return;
+  }
+
   // Create MessageItem and push to worker pool
   MessageItem item;
   item.timestamp_ns = static_cast<int64_t>(timestamp);

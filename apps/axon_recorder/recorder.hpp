@@ -222,6 +222,15 @@ public:
   std::string get_state_string() const;
 
   /**
+   * Transition to a new state
+   *
+   * @param to Target state
+   * @param error_msg Output error message if transition fails
+   * @return true if transition was successful
+   */
+  bool transition_to(RecorderState to, std::string& error_msg);
+
+  /**
    * Set task configuration for metadata injection
    * Must be called before start() to enable metadata
    */

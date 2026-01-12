@@ -300,6 +300,264 @@ test_recording_status() {
     fi
 }
 
+# Extract state from JSON response
+get_state() {
+    local response="$1"
+    echo "${response}" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('data', {}).get('state', 'unknown'))" 2>/dev/null || echo "unknown"
+}
+
+test_state_initial_idle() {
+    log_info "Testing initial state should be 'idle'..."
+
+    local response
+    response=$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")
+
+    local state
+    state=$(get_state "${response}")
+
+    if [[ "${state}" == "idle" ]]; then
+        log_info "✓ Initial state is 'idle'"
+        return 0
+    else
+        log_error "✗ Initial state is '${state}', expected 'idle'"
+        log_error "Response: ${response}"
+        return 1
+    fi
+}
+
+test_state_config_to_ready() {
+    log_info "Testing state transition: IDLE -> READY via /rpc/config..."
+
+    # Cache config
+    local config_response
+    config_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"task_config\": {
+                \"task_id\": \"${TEST_TASK_ID}\",
+                \"device_id\": \"${TEST_DEVICE_ID}\",
+                \"scene\": \"${TEST_SCENE}\",
+                \"topics\": [\"/test/topic1\"]
+            }
+        }" \
+        "http://localhost:${HTTP_PORT}/rpc/config")
+
+    # Check state
+    local state_response
+    state_response=$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")
+
+    local state
+    state=$(get_state "${state_response}")
+
+    if [[ "${state}" == "ready" ]]; then
+        log_info "✓ State transitioned to 'ready' after config"
+        return 0
+    else
+        log_error "✗ State is '${state}', expected 'ready' after /rpc/config"
+        log_error "Config response: ${config_response}"
+        log_error "State response: ${state_response}"
+        return 1
+    fi
+}
+
+test_state_begin_to_recording() {
+    log_info "Testing state transition: READY -> RECORDING via /rpc/begin..."
+
+    # Begin recording
+    local begin_response
+    begin_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+
+    # Check state
+    local state_response
+    state_response=$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")
+
+    local state
+    state=$(get_state "${state_response}")
+
+    if [[ "${state}" == "recording" ]]; then
+        log_info "✓ State transitioned to 'recording' after /rpc/begin"
+        return 0
+    else
+        log_error "✗ State is '${state}', expected 'recording' after /rpc/begin"
+        log_error "Begin response: ${begin_response}"
+        log_error "State response: ${state_response}"
+        return 1
+    fi
+}
+
+test_state_begin_fails_from_idle() {
+    log_info "Testing that /rpc/begin fails from IDLE state..."
+
+    # First ensure we're in IDLE (no config set)
+    # Note: This test assumes the recorder starts in IDLE and no config has been set
+
+    local response
+    response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+
+    if echo "${response}" | grep -q '"success":false'; then
+        log_info "✓ /rpc/begin correctly rejected from IDLE state"
+        return 0
+    else
+        log_error "✗ /rpc/begin should fail from IDLE state"
+        log_error "Response: ${response}"
+        return 1
+    fi
+}
+
+test_state_finish_returns_to_idle() {
+    log_info "Testing state transition: RECORDING -> IDLE via /rpc/finish..."
+
+    # Finish recording
+    local finish_response
+    finish_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/finish")
+
+    # Check state
+    local state_response
+    state_response=$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")
+
+    local state
+    state=$(get_state "${state_response}")
+
+    if [[ "${state}" == "idle" ]]; then
+        log_info "✓ State returned to 'idle' after /rpc/finish"
+        return 0
+    else
+        log_error "✗ State is '${state}', expected 'idle' after /rpc/finish"
+        log_error "Finish response: ${finish_response}"
+        log_error "State response: ${state_response}"
+        return 1
+    fi
+}
+
+test_state_cancel_from_recording() {
+    log_info "Testing state transition: RECORDING -> IDLE via /rpc/cancel..."
+
+    # First, start a new recording
+    # Set config
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"task_config\": {\"task_id\": \"cancel_test_${TEST_TASK_ID}\", \"device_id\": \"${TEST_DEVICE_ID}\", \"scene\": \"${TEST_SCENE}\"}}" \
+        "http://localhost:${HTTP_PORT}/rpc/config" > /dev/null
+
+    # Begin recording
+    local begin_response
+    begin_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+
+    # Verify we're in recording state
+    local state_before
+    state_before=$(get_state "$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")")
+
+    if [[ "${state_before}" != "recording" ]]; then
+        log_error "✗ Failed to reach recording state before cancel (state: ${state_before})"
+        return 1
+    fi
+
+    # Cancel recording
+    local cancel_response
+    cancel_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/cancel")
+
+    # Check state after cancel
+    local state_response
+    state_response=$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")
+
+    local state
+    state=$(get_state "${state_response}")
+
+    if [[ "${state}" == "idle" ]]; then
+        log_info "✓ State returned to 'idle' after /rpc/cancel"
+        return 0
+    else
+        log_error "✗ State is '${state}', expected 'idle' after /rpc/cancel"
+        log_error "Cancel response: ${cancel_response}"
+        log_error "State response: ${state_response}"
+        return 1
+    fi
+}
+
+test_state_cancel_fails_from_idle() {
+    log_info "Testing that /rpc/cancel fails from IDLE state..."
+
+    # Ensure we're in IDLE (no active recording)
+    local response
+    response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/cancel")
+
+    if echo "${response}" | grep -q '"success":false'; then
+        log_info "✓ /rpc/cancel correctly rejected from IDLE state"
+        return 0
+    else
+        log_error "✗ /rpc/cancel should fail from IDLE state"
+        log_error "Response: ${response}"
+        return 1
+    fi
+}
+
+test_state_dynamic_subscription_update() {
+    log_info "Testing dynamic subscription update with different topics..."
+
+    # First recording with /test/topic1
+    local config1_response
+    config1_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"task_config\": {
+                \"task_id\": \"dynamic_sub_test_1_${TEST_TASK_ID}\",
+                \"device_id\": \"${TEST_DEVICE_ID}\",
+                \"scene\": \"${TEST_SCENE}\",
+                \"topics\": [\"/test/topic1\"]
+            }
+        }" \
+        "http://localhost:${HTTP_PORT}/rpc/config")
+
+    # Begin first recording
+    local begin1_response
+    begin1_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+
+    # Verify first recording started
+    local state1
+    state1=$(get_state "$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")")
+    if [[ "${state1}" != "recording" ]]; then
+        log_error "✗ First recording failed to start (state: ${state1})"
+        return 1
+    fi
+
+    # Cancel first recording
+    curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/cancel" > /dev/null
+
+    # Second recording with /test/topic2 (different topic)
+    local config2_response
+    config2_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"task_config\": {
+                \"task_id\": \"dynamic_sub_test_2_${TEST_TASK_ID}\",
+                \"device_id\": \"${TEST_DEVICE_ID}\",
+                \"scene\": \"${TEST_SCENE}\",
+                \"topics\": [\"/test/topic2\"]
+            }
+        }" \
+        "http://localhost:${HTTP_PORT}/rpc/config")
+
+    # Begin second recording
+    local begin2_response
+    begin2_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+
+    # Verify second recording started
+    local state2
+    state2=$(get_state "$(curl -s "http://localhost:${HTTP_PORT}/rpc/state")")
+
+    if [[ "${state2}" == "recording" ]]; then
+        log_info "✓ Dynamic subscription update succeeded (switched from /test/topic1 to /test/topic2)"
+        # Cancel the recording
+        curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/cancel" > /dev/null
+        return 0
+    else
+        log_error "✗ Second recording failed to start with different topics (state: ${state2})"
+        log_error "Config 2 response: ${config2_response}"
+        log_error "Begin 2 response: ${begin2_response}"
+        return 1
+    fi
+}
+
 test_pause_recording() {
     log_info "Testing pause recording endpoint..."
 
@@ -431,15 +689,21 @@ run_all_tests() {
     # Array of test functions
     local tests=(
         "test_health_check"
+        "test_state_initial_idle"
+        "test_state_begin_fails_from_idle"
+        "test_state_cancel_fails_from_idle"
+        "test_state_config_to_ready"
+        "test_state_begin_to_recording"
+        "test_state_cancel_from_recording"
+        "test_state_dynamic_subscription_update"
+        "test_state_config_to_ready"
+        "test_state_begin_to_recording"
+        "test_state_finish_returns_to_idle"
         "test_recording_status"
-        # Note: Config cache and start may have already happened automatically
-        # "test_cache_config"
-        # "test_start_recording"
-        "test_stop_recording"
     )
 
     log_info "================================"
-    log_info "Running E2E Tests"
+    log_info "Running E2E Tests - State Machine Transitions"
     log_info "================================"
 
     # Run each test

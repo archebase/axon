@@ -20,9 +20,25 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHand
   std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
 
   // Check if topic already exists
-  if (topic_contexts_.find(topic) != topic_contexts_.end()) {
-    AXON_LOG_WARN("Topic worker already exists" << axon::logging::kv("topic", topic));
-    return false;
+  auto it = topic_contexts_.find(topic);
+  if (it != topic_contexts_.end()) {
+    auto context = it->second;
+
+    // If worker is already running, this is a no-op (idempotent)
+    if (context->running.load(std::memory_order_acquire)) {
+      AXON_LOG_DEBUG("Topic worker already running" << axon::logging::kv("topic", topic));
+      return true;
+    }
+
+    // Update handler and restart the worker
+    context->handler = std::move(handler);
+
+    // Start the worker thread
+    context->running.store(true, std::memory_order_release);
+    context->worker_thread = std::thread(&WorkerThreadPool::worker_thread_func, this, context);
+
+    AXON_LOG_INFO("Restarted topic worker" << axon::logging::kv("topic", topic));
+    return true;
   }
 
   // Create context using shared_ptr
