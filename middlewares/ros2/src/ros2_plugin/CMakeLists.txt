@@ -14,6 +14,13 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Coverage support
+option(AXON_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
+if(AXON_ENABLE_COVERAGE)
+    add_compile_options(--coverage -g -O0)
+    add_link_options(--coverage)
+endif()
+
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -67,5 +74,34 @@ install(TARGETS axon_ros2_plugin
 install(DIRECTORY include/
     DESTINATION include
 )
+
+# =============================================================================
+# Tests
+# =============================================================================
+if(AXON_BUILD_TESTS)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  # Discover test files automatically
+  file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
+
+  foreach(test_source ${TEST_SOURCES})
+    get_filename_component(test_name ${test_source} NAME_WE)
+
+    ament_add_gtest(${test_name} ${test_source})
+
+    target_link_libraries(${test_name}
+      axon_ros2_plugin
+      rclcpp::rclcpp
+    )
+
+    # Use threads for tests
+    target_link_libraries(${test_name} Threads::Threads)
+
+    # Add test labels
+    set_target_properties(${test_name} PROPERTIES
+      LABELS "unit;ros2_plugin"
+    )
+  endforeach()
+endif()
 
 ament_package()

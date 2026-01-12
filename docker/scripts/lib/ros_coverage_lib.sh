@@ -233,6 +233,7 @@ ros_coverage_filter() {
         '*/mcap/include/*' \
         '*/minio-cpp/*' \
         '*/axon_ros2_plugin/test/*' \
+        '*/axon_ros1_plugin/test/*' \
         '*/axon_logging/test/*' \
         '*/axon_mcap/test/*' \
         '*/axon_uploader/test/*' \

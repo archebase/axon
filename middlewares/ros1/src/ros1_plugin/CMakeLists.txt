@@ -14,6 +14,13 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Coverage support
+option(AXON_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
+if(AXON_ENABLE_COVERAGE)
+    add_compile_options(--coverage -g -O0)
+    add_link_options(--coverage)
+endif()
+
 # Find dependencies (catkin)
 find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -75,3 +82,51 @@ install(TARGETS axon_ros1_plugin
 install(DIRECTORY include/
     DESTINATION include
 )
+
+# =============================================================================
+# Tests
+# =============================================================================
+if(AXON_BUILD_TESTS)
+  find_package(catkin REQUIRED COMPONENTS
+      roscpp
+      roslib
+      std_msgs
+      sensor_msgs
+      topic_tools
+     rostest
+  )
+
+  # Find gtest
+  find_package(GTest REQUIRED)
+
+  # Discover test files automatically
+  file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
+
+  foreach(test_source ${TEST_SOURCES})
+    get_filename_component(test_name ${test_source} NAME_WE)
+
+    add_executable(${test_name} ${test_source})
+
+    target_include_directories(${test_name} PRIVATE
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      ${catkin_INCLUDE_DIRS}
+      ${GTEST_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(${test_name}
+      axon_ros1_plugin
+      ${catkin_LIBRARIES}
+      ${GTEST_LIBRARIES}
+      nlohmann_json::nlohmann_json
+      pthread
+    )
+
+    # Add test to CTest
+    add_test(NAME ${test_name} COMMAND ${test_name})
+
+    # Add test labels
+    set_tests_properties(${test_name} PROPERTIES
+      LABELS "unit;ros1_plugin"
+    )
+  endforeach()
+endif()

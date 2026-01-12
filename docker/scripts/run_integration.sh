@@ -200,13 +200,42 @@ echo "============================================"
 
 if [ "$ROS_VERSION" = "1" ]; then
     echo "Running catkin tests..."
+    cd "${WORKSPACE_ROOT}/middlewares/ros1"
     catkin build --no-notify --catkin-make-args run_tests
     catkin_test_results --verbose
+
+    # Also run plugin tests directly if they were built
+    if [ -d "${WORKSPACE_ROOT}/middlewares/ros1/build/axon_ros1_plugin" ]; then
+        echo ""
+        echo "============================================"
+        echo "Running ROS1 plugin tests..."
+        echo "============================================"
+        cd "${WORKSPACE_ROOT}/middlewares/ros1/build/axon_ros1_plugin"
+        ctest --output-on-failure || {
+            echo "WARNING: Some plugin tests failed"
+        }
+    fi
 else
     echo "Running colcon tests..."
+    cd "${WORKSPACE_ROOT}/middlewares/ros2"
+
+    # Run all tests including plugins
     colcon test \
         --event-handlers console_direct+
     colcon test-result --verbose
+
+    # Also run plugin tests specifically to ensure they execute
+    if [ -d "${WORKSPACE_ROOT}/middlewares/ros2/build/axon_ros2_plugin" ]; then
+        echo ""
+        echo "============================================"
+        echo "Running ROS2 plugin tests..."
+        echo "============================================"
+        colcon test \
+            --packages-select axon_ros2_plugin \
+            --event-handlers console_direct+ || {
+            echo "WARNING: Some plugin tests failed"
+        }
+    fi
 fi
 
 echo ""

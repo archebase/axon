@@ -133,8 +133,10 @@ ros_build_package() {
 
         if [ "$enable_coverage" = "true" ]; then
             catkin_args+=(-DAXON_ENABLE_COVERAGE=ON)
+            catkin_args+=(-DAXON_BUILD_TESTS=ON)
         else
             catkin_args+=(-DAXON_ENABLE_COVERAGE=OFF)
+            catkin_args+=(-DAXON_BUILD_TESTS=OFF)
         fi
         
         # Add extra CMake args if provided
@@ -148,7 +150,7 @@ ros_build_package() {
         }
         
         # Set workspace directories
-        export WORKSPACE_BUILD_DIR="${PWD}/build/axon_recorder"
+        export WORKSPACE_BUILD_DIR="${PWD}/build/axon_ros1_plugin"
         export WORKSPACE_INSTALL_DIR="${PWD}/devel"
         
         # Source workspace
@@ -220,8 +222,10 @@ ros_build_package() {
 
         if [ "$enable_coverage" = "true" ]; then
             colcon_args+=(-DAXON_ENABLE_COVERAGE=ON)
+            colcon_args+=(-DAXON_BUILD_TESTS=ON)
         else
             colcon_args+=(-DAXON_ENABLE_COVERAGE=OFF)
+            colcon_args+=(-DAXON_BUILD_TESTS=OFF)
         fi
         
         # Add extra CMake args if provided

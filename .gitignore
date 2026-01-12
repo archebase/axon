@@ -64,6 +64,8 @@ $RECYCLE.BIN/
 devel/
 build/
 install/
+logs/
+log/
 .catkin_workspace
 .rosinstall
 .catkin_tools/
@@ -121,6 +123,8 @@ log
 
 # ignore coverage files
 coverage
+coverage_output
+coverage.info
 
 .cursor/plans
 core/build_uploader/

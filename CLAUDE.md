@@ -60,13 +60,16 @@ make release
 ### Docker Testing (No Local ROS Required)
 
 ```bash
-# Test specific ROS version
-make docker-test-ros1              # ROS1 Noetic
+# C++ tests (dedicated Docker image, faster than ROS images)
+make docker-test-cpp              # C++ core library tests
+
+# ROS tests
+make docker-test-ros1             # ROS1 Noetic
 make docker-test-ros2-humble      # ROS2 Humble
 make docker-test-ros2-jazzy       # ROS2 Jazzy
 make docker-test-ros2-rolling     # ROS2 Rolling
 
-# Test all versions sequentially
+# Test all ROS versions sequentially
 make docker-test-all
 
 # Test all versions in parallel (faster)
@@ -240,15 +243,43 @@ make test-mcap       # MCAP writer tests
 make test-uploader   # Edge uploader tests
 make test-logging    # Logging infrastructure tests
 
-# Run CI tests (Docker-based, no local ROS required)
-make ci-cpp          # C++ library tests (unit + integration)
-make ci-ros1         # ROS1 tests in Docker
-make ci-ros2         # ROS2 tests (all distros) in Docker
-
 # Run a single test from the build directory
 cd core/build
 ctest -R test_mcap_writer -V          # Run with verbose output
 ctest -R test_mcap_validator --output-on-failure
+```
+
+## CI Testing (Mirror CI Locally)
+
+All CI targets run in Docker to match the CI environment exactly. No local ROS required.
+
+```bash
+# Quick CI check (format + lint + C++ tests)
+make ci
+
+# Fastest check (format + lint only, no tests)
+make ci-quick
+
+# Full CI validation (all checks)
+make ci-all
+
+# C++ tests
+make ci-cpp                # C++ library tests (unit + integration)
+make ci-cpp-unit           # C++ unit tests only
+make ci-cpp-integration    # C++ integration tests (with MinIO)
+
+# ROS tests
+make ci-ros1               # ROS1 Noetic tests in Docker
+make ci-ros2               # ROS2 (Humble + Jazzy + Rolling) tests in Docker
+make ci-ros                # All ROS tests
+
+# E2E tests
+make ci-e2e                # E2E tests (ROS1 + ROS2 Humble)
+
+# Coverage
+make ci-coverage           # All coverage reports (C++ + ROS2 + Recorder)
+make ci-coverage-cpp       # C++ library coverage
+make ci-coverage-ros       # ROS2 coverage (Humble only)
 ```
 
 ## Critical Rules and Conventions
@@ -560,7 +591,8 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | Purpose | Location |
 |---------|----------|
 | Core libraries | `core/axon_*/` |
-| ROS plugins | `middlewares/ros1/`, `middlewares/ros2/src/ros2_plugin/` |
+| ROS1 plugin | `middlewares/ros1/` (catkin package) |
+| ROS2 plugin | `middlewares/ros2/` (colcon workspace with multiple packages) |
 | Main app (HTTP RPC) | `apps/axon_recorder/` |
 | Plugin example | `apps/plugin_example/` |
 | Plugin ABI interface | `apps/axon_recorder/plugin_loader.hpp` |
