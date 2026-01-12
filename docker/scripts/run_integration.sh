@@ -201,6 +201,18 @@ echo "============================================"
 if [ "$ROS_VERSION" = "1" ]; then
     echo "Running catkin tests..."
     cd "${WORKSPACE_ROOT}/middlewares/ros1"
+
+    # Start roscore in background for ROS1
+    echo "Starting roscore..."
+    roscore &
+    ROSCORE_PID=$!
+    echo "roscore started with PID: $ROSCORE_PID"
+
+    # Wait for roscore to be ready
+    echo "Waiting for roscore to initialize..."
+    sleep 3
+
+    # Run tests
     catkin build --no-notify --catkin-make-args run_tests
     catkin_test_results --verbose
 
@@ -215,6 +227,13 @@ if [ "$ROS_VERSION" = "1" ]; then
             echo "WARNING: Some plugin tests failed"
         }
     fi
+
+    # Kill roscore
+    echo ""
+    echo "Stopping roscore..."
+    kill $ROSCORE_PID 2>/dev/null || true
+    wait $ROSCORE_PID 2>/dev/null || true
+    echo "roscore stopped"
 else
     echo "Running colcon tests..."
     cd "${WORKSPACE_ROOT}/middlewares/ros2"
