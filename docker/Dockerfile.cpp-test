@@ -95,7 +95,7 @@ RUN git clone --recurse-submodules --depth 1 --branch 1.11.458 \
     rm -rf /tmp/aws-sdk-cpp
 
 # Set LD_LIBRARY_PATH for AWS SDK
-ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
 # Install MinIO client (for integration tests)
 RUN curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc \
