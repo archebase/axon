@@ -405,7 +405,6 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       return false;
     }
 
-    // TODO: Implement pause functionality
     std::string error_msg;
     return this->transition_to(RecorderState::PAUSED, error_msg);
   };
@@ -416,7 +415,6 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       return false;
     }
 
-    // TODO: Implement resume functionality
     std::string error_msg;
     return this->transition_to(RecorderState::RECORDING, error_msg);
   };
@@ -540,9 +538,18 @@ bool AxonRecorder::message_handler(
   uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
 
   // Write message to MCAP via recording session
-  return recording_session_->write(
-    channel_id, sequence, log_time_ns, timestamp_ns, data, data_size
-  );
+  bool success =
+    recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
+
+  // Update topic statistics for sidecar generation
+  if (success) {
+    const SubscriptionConfig* sub_config = get_subscription_config(topic);
+    if (sub_config) {
+      recording_session_->update_topic_stats(topic, sub_config->message_type);
+    }
+  }
+
+  return success;
 }
 
 bool AxonRecorder::register_topics() {
