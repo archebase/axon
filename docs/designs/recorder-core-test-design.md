@@ -5,41 +5,41 @@
 
 ## Executive Summary
 
-本文档提供了 Axon Recorder 的全面测试设计。Axon 是一个高性能的 ROS 录制器，采用**插件化架构**和 **HTTP RPC API** 进行远程控制。
+This document provides comprehensive test design for Axon Recorder. Axon is a high-performance ROS recorder featuring a **plugin-based architecture** and **HTTP RPC API** for remote control.
 
-### 架构变化 (v3.0)
+### Architecture Changes (v3.0)
 
-与之前的 ROS 服务架构相比，当前实现有以下重大变化：
+Compared to the previous ROS service architecture, the current implementation has major changes:
 
-1. **插件化架构** - 中间件无关的核心 + ROS1/ROS2 插件
-2. **HTTP RPC API** - 替代 ROS 服务接口
-3. **统一状态机** - IDLE → READY → RECORDING ↔ PAUSED
-4. **动态插件加载** - 运行时加载中间件插件
+1. **Plugin-based Architecture** - Middleware-agnostic core + ROS1/ROS2 plugins
+2. **HTTP RPC API** - Replaces ROS service interfaces
+3. **Unified State Machine** - IDLE → READY → RECORDING ↔ PAUSED
+4. **Dynamic Plugin Loading** - Runtime middleware plugin loading
 
-### 核心组件
+### Core Components
 
-| 组件 | 文件 | 职责 | 行数 |
-|------|------|------|------|
-| **AxonRecorder** | [recorder.cpp/hpp](../apps/axon_recorder/recorder.cpp) | 主协调器 | ~350 |
+| Component | File | Responsibility | Lines |
+|-----------|------|-----------------|-------|
+| **AxonRecorder** | [recorder.cpp/hpp](../apps/axon_recorder/recorder.cpp) | Main coordinator | ~350 |
 | **HttpServer** | [http_server.cpp/hpp](../apps/axon_recorder/http_server.cpp) | HTTP RPC API | ~570 |
-| **PluginLoader** | [plugin_loader.cpp/hpp](../apps/axon_recorder/plugin_loader.cpp) | 插件加载 | ~140 |
-| **StateManager** | [state_machine.cpp/hpp](../apps/axon_recorder/state_machine.cpp) | 状态机 | ~200 |
-| **RecordingSession** | [recording_session.cpp/hpp](../apps/axon_recorder/recording_session.cpp) | MCAP 会话 | ~200 |
-| **WorkerThreadPool** | [worker_thread_pool.cpp/hpp](../apps/axon_recorder/worker_thread_pool.cpp) | 工作线程池 | ~270 |
-| **ConfigParser** | [config_parser.cpp/hpp](../apps/axon_recorder/config_parser.cpp) | 配置解析 | ~370 |
-| **MetadataInjector** | [metadata_injector.cpp/hpp](../apps/axon_recorder/metadata_injector.cpp) | 元数据注入 | ~400 |
-| **HttpCallbackClient** | [http_callback_client.cpp/hpp](../apps/axon_recorder/http_callback_client.cpp) | HTTP 回调 | ~360 |
+| **PluginLoader** | [plugin_loader.cpp/hpp](../apps/axon_recorder/plugin_loader.cpp) | Plugin loading | ~140 |
+| **StateManager** | [state_machine.cpp/hpp](../apps/axon_recorder/state_machine.cpp) | State machine | ~200 |
+| **RecordingSession** | [recording_session.cpp/hpp](../apps/axon_recorder/recording_session.cpp) | MCAP session | ~200 |
+| **WorkerThreadPool** | [worker_thread_pool.cpp/hpp](../apps/axon_recorder/worker_thread_pool.cpp) | Worker thread pool | ~270 |
+| **ConfigParser** | [config_parser.cpp/hpp](../apps/axon_recorder/config_parser.cpp) | Config parsing | ~370 |
+| **MetadataInjector** | [metadata_injector.cpp/hpp](../apps/axon_recorder/metadata_injector.cpp) | Metadata injection | ~400 |
+| **HttpCallbackClient** | [http_callback_client.cpp/hpp](../apps/axon_recorder/http_callback_client.cpp) | HTTP callbacks | ~360 |
 
-### 测试目标
+### Testing Objectives
 
-测试套件需要从零开始设计，因为：
+The test suite needs to be designed from scratch because:
 
-1. **新的 HTTP RPC API** - 需要完整的 HTTP 端点测试
-2. **插件系统** - 需要插件加载和 ABI 兼容性测试
-3. **状态机** - 需要完整的状态转换测试
-4. **并发模型** - 需要线程安全和竞态条件测试
+1. **New HTTP RPC API** - Complete HTTP endpoint testing needed
+2. **Plugin System** - Plugin loading and ABI compatibility testing needed
+3. **State Machine** - Complete state transition testing needed
+4. **Concurrency Model** - Thread safety and race condition testing needed
 
-目标：**~240 个测试**，覆盖率 **>85%**
+**Goal:** ~240 tests, coverage >85%
 
 ---
 
@@ -61,7 +61,7 @@
 
 ## 1. Architecture Overview
 
-### 1.1 系统架构
+### 1.1 System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -99,30 +99,30 @@
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.2 HTTP RPC 端点
+### 1.2 HTTP RPC Endpoints
 
-| Method | Endpoint | 状态转换 | 说明 |
-|--------|----------|---------|------|
-| POST | `/rpc/config` | IDLE → READY | 设置任务配置 |
-| POST | `/rpc/begin` | READY → RECORDING | 开始录制 |
-| POST | `/rpc/finish` | RECORDING/PAUSED → IDLE | 完成录制 |
-| POST | `/rpc/pause` | RECORDING → PAUSED | 暂停录制 |
-| POST | `/rpc/resume` | PAUSED → RECORDING | 恢复录制 |
-| POST | `/rpc/cancel` | RECORDING/PAUSED → IDLE | 取消录制 |
-| POST | `/rpc/clear` | READY → IDLE | 清除配置 |
-| POST | `/rpc/quit` | Any → Exit | 退出程序 |
-| GET | `/rpc/state` | - | 获取当前状态 |
-| GET | `/rpc/stats` | - | 获取统计信息 |
-| GET | `/` or `/health` | - | 健康检查 |
+| Method | Endpoint | State Transition | Description |
+|--------|----------|------------------|-------------|
+| POST | `/rpc/config` | IDLE → READY | Set task configuration |
+| POST | `/rpc/begin` | READY → RECORDING | Start recording |
+| POST | `/rpc/finish` | RECORDING/PAUSED → IDLE | Finish recording |
+| POST | `/rpc/pause` | RECORDING → PAUSED | Pause recording |
+| POST | `/rpc/resume` | PAUSED → RECORDING | Resume recording |
+| POST | `/rpc/cancel` | RECORDING/PAUSED → IDLE | Cancel recording |
+| POST | `/rpc/clear` | READY → IDLE | Clear configuration |
+| POST | `/rpc/quit` | Any → Exit | Exit program |
+| GET | `/rpc/state` | - | Get current state |
+| GET | `/rpc/stats` | - | Get statistics |
+| GET | `/` or `/health` | - | Health check |
 
-详细 API 规范见 [rpc-api-design.md](./rpc-api-design.md)。
+See [rpc-api-design.md](./rpc-api-design.md) for detailed API specification.
 
-### 1.3 插件 ABI 接口
+### 1.3 Plugin ABI Interface
 
-插件通过以下 C 结构体暴露功能：
+Plugins expose functionality through the following C structures:
 
 ```cpp
-// 插件描述符
+// Plugin descriptor
 struct AxonPluginDescriptor {
   uint32_t abi_version_major;
   uint32_t abi_version_minor;
@@ -133,13 +133,13 @@ struct AxonPluginDescriptor {
   void* reserved[16];
 };
 
-// 插件函数表
+// Plugin function table
 struct AxonPluginVtable {
-  AxonInitFn init;           // 初始化插件
-  AxonStartFn start;         // 启动插件
-  AxonStopFn stop;           // 停止插件
-  AxonSubscribeFn subscribe; // 订阅主题
-  AxonPublishFn publish;     // 发布消息
+  AxonInitFn init;           // Initialize plugin
+  AxonStartFn start;         // Start plugin
+  AxonStopFn stop;           // Stop plugin
+  AxonSubscribeFn subscribe; // Subscribe to topics
+  AxonPublishFn publish;     // Publish messages
   void* reserved[9];
 };
 ```
@@ -150,176 +150,176 @@ struct AxonPluginVtable {
 
 ### 2.1 AxonRecorder (recorder.cpp)
 
-**职责：**
-- 插件加载和生命周期管理
-- HTTP RPC 服务器管理
-- 状态机协调
-- 工作线程池管理
-- MCAP 会话管理
-- 元数据注入
+**Responsibilities:**
+- Plugin loading and lifecycle management
+- HTTP RPC server management
+- State machine coordination
+- Worker thread pool management
+- MCAP session management
+- Metadata injection
 
-**关键方法：**
+**Key Methods:**
 
-| 方法 | 复杂度 | 测试优先级 |
-|------|--------|-----------|
-| `initialize()` | 高 | P0 |
-| `start()` | 高 | P0 |
-| `stop()` | 高 | P0 |
-| `set_task_config()` | 低 | P1 |
-| `on_message()` | 中 | P0 |
-| `start_http_server()` | 中 | P0 |
-| `message_handler()` | 中 | P1 |
-| `register_topics()` | 中 | P1 |
+| Method | Complexity | Test Priority |
+|--------|------------|---------------|
+| `initialize()` | High | P0 |
+| `start()` | High | P0 |
+| `stop()` | High | P0 |
+| `set_task_config()` | Low | P1 |
+| `on_message()` | Medium | P0 |
+| `start_http_server()` | Medium | P0 |
+| `message_handler()` | Medium | P1 |
+| `register_topics()` | Medium | P1 |
 
-**测试覆盖重点：**
-- 初始化失败场景（插件不存在、配置错误）
-- 状态转换的正确性
-- 并发消息处理
-- 资源清理（析构、stop）
+**Test Coverage Focus:**
+- Initialization failure scenarios (plugin not found, config error)
+- Correctness of state transitions
+- Concurrent message processing
+- Resource cleanup (destructor, stop)
 
 ### 2.2 HttpServer (http_server.cpp)
 
-**职责：**
-- HTTP 请求处理
-- JSON 请求/响应解析
-- RPC 端点路由
-- 错误处理
+**Responsibilities:**
+- HTTP request handling
+- JSON request/response parsing
+- RPC endpoint routing
+- Error handling
 
-**关键方法：**
+**Key Methods:**
 
-| 方法 | 复杂度 | 测试优先级 |
-|------|--------|-----------|
-| `handle_request()` | 高 | P0 |
-| `handle_rpc_begin()` | 中 | P0 |
-| `handle_rpc_finish()` | 中 | P0 |
-| `handle_rpc_set_config()` | 中 | P0 |
-| `handle_rpc_get_state()` | 低 | P0 |
-| `handle_rpc_get_stats()` | 低 | P1 |
-| `handle_rpc_pause()` | 低 | P2 |
-| `handle_rpc_resume()` | 低 | P2 |
-| `handle_rpc_cancel()` | 低 | P2 |
-| `handle_rpc_clear()` | 低 | P2 |
-| `handle_rpc_quit()` | 高 | P0 |
+| Method | Complexity | Test Priority |
+|--------|------------|---------------|
+| `handle_request()` | High | P0 |
+| `handle_rpc_begin()` | Medium | P0 |
+| `handle_rpc_finish()` | Medium | P0 |
+| `handle_rpc_set_config()` | Medium | P0 |
+| `handle_rpc_get_state()` | Low | P0 |
+| `handle_rpc_get_stats()` | Low | P1 |
+| `handle_rpc_pause()` | Low | P2 |
+| `handle_rpc_resume()` | Low | P2 |
+| `handle_rpc_cancel()` | Low | P2 |
+| `handle_rpc_clear()` | Low | P2 |
+| `handle_rpc_quit()` | High | P0 |
 
-**测试覆盖重点：**
-- 所有 RPC 端点的正常流程
-- 状态转换错误（从错误状态调用）
-- 无效 JSON 请求
-- 并发 HTTP 请求
-- 服务器启动/停止
+**Test Coverage Focus:**
+- All RPC endpoint happy paths
+- State transition errors (called from wrong state)
+- Invalid JSON requests
+- Concurrent HTTP requests
+- Server start/stop
 
 ### 2.3 PluginLoader (plugin_loader.cpp)
 
-**职责：**
-- 动态库加载（dlopen）
-- 符号解析（dlsym）
-- 插件生命周期管理
-- ABI 版本验证
+**Responsibilities:**
+- Dynamic library loading (dlopen)
+- Symbol resolution (dlsym)
+- Plugin lifecycle management
+- ABI version verification
 
-**关键方法：**
+**Key Methods:**
 
-| 方法 | 复杂度 | 测试优先级 |
-|------|--------|-----------|
-| `load()` | 高 | P0 |
-| `unload()` | 中 | P0 |
-| `get_descriptor()` | 低 | P0 |
-| `get_plugin()` | 低 | P1 |
+| Method | Complexity | Test Priority |
+|--------|------------|---------------|
+| `load()` | High | P0 |
+| `unload()` | Medium | P0 |
+| `get_descriptor()` | Low | P0 |
+| `get_plugin()` | Low | P1 |
 
-**测试覆盖重点：**
-- 成功加载有效插件
-- 加载不存在的库
-- 加载无效插件（缺少符号）
-- ABI 版本不匹配
-- 重复加载
-- 卸载和资源清理
+**Test Coverage Focus:**
+- Successful load of valid plugin
+- Load non-existent library
+- Load invalid plugin (missing symbols)
+- ABI version mismatch
+- Duplicate loading
+- Unload and resource cleanup
 
 ### 2.4 StateManager (state_machine.cpp)
 
-**职责：**
-- 状态转换管理
-- 转换验证
-- 转换回调
+**Responsibilities:**
+- State transition management
+- Transition validation
+- Transition callbacks
 
-**状态转换图：**
+**State Transition Diagram:**
 ```
 IDLE → READY → RECORDING ↔ PAUSED
   ↑                         ↓
   └───────── (finish/cancel)
 ```
 
-**测试覆盖重点：**
-- 所有效状态转换
-- 无效状态转换
-- 转换回调触发
-- 并发转换尝试
+**Test Coverage Focus:**
+- All valid state transitions
+- Invalid state transitions
+- Transition callback triggering
+- Concurrent transition attempts
 
 ### 2.5 RecordingSession (recording_session.cpp)
 
-**职责：**
-- MCAP 文件打开/关闭
-- Schema 和通道注册
-- 消息写入
-- 统计信息收集
+**Responsibilities:**
+- MCAP file open/close
+- Schema and channel registration
+- Message writing
+- Statistics collection
 
-**测试覆盖重点：**
-- 文件生命周期
-- Schema 注册失败
-- 重复注册处理
-- 并发写入
-- 元数据注入
+**Test Coverage Focus:**
+- File lifecycle
+- Schema registration failure
+- Duplicate registration handling
+- Concurrent writes
+- Metadata injection
 
 ### 2.6 WorkerThreadPool (worker_thread_pool.cpp)
 
-**职责：**
-- 工作线程创建/销毁
-- SPSC 队列管理
-- 消息分发
+**Responsibilities:**
+- Worker thread creation/destruction
+- SPSC queue management
+- Message dispatch
 
-**测试覆盖重点：**
-- 线程创建/销毁
-- 队列满时的行为
-- 消息顺序
-- 优雅关闭
+**Test Coverage Focus:**
+- Thread creation/destruction
+- Behavior when queue is full
+- Message ordering
+- Graceful shutdown
 
 ---
 
 ## 3. Test Strategy
 
-### 3.1 测试金字塔
+### 3.1 Test Pyramid
 
 ```
                     ╭─────────────────╮
-                    │   E2E Tests     │  ← HTTP API 完整流程
+                    │   E2E Tests     │  ← HTTP API complete workflows
                     │   (~20 tests)   │
                 ╭───┴─────────────────┴───╮
-                │  Integration Tests      │  ← 组件集成
+                │  Integration Tests      │  ← Component integration
                 │  (~60 tests)            │
             ╭───┴─────────────────────────┴───╮
-            │        Unit Tests               │  ← 单个组件
+            │        Unit Tests               │  ← Single components
             │        (~150 tests)            │
         ╭───┴─────────────────────────────────┴───╮
         │     Core Libraries (axon_*)             │
-        │     (独立测试，已存在)                    │
+        │     (independent tests, existing)       │
         ╰─────────────────────────────────────────╯
 ```
 
-### 3.2 测试分类
+### 3.2 Test Categories
 
-| 类别 | 范围 | 框架 | ROS 要求 | 典型运行时间 |
-|------|------|------|----------|-------------|
-| **Unit** | 单个组件，隔离依赖 | GTest | 否 | <10ms |
-| **Integration** | 多组件协作 | GTest | 否* | 50-200ms |
-| **HTTP API** | HTTP 端点测试 | GTest + httplib | 否 | 20-100ms |
-| **E2E** | 完整录制流程 | Shell/Python | 是* | 1-10s |
-| **Stress** | 高并发、长时间 | GTest | 否 | 5-60s |
-| **Performance** | 吞吐量、延迟 | Custom | 是 | 1-5min |
+| Category | Scope | Framework | ROS Required | Typical Runtime |
+|----------|-------|-----------|--------------|-----------------|
+| **Unit** | Single component, isolated deps | GTest | No | <10ms |
+| **Integration** | Multi-component collaboration | GTest | No* | 50-200ms |
+| **HTTP API** | HTTP endpoint testing | GTest + httplib | No | 20-100ms |
+| **E2E** | Complete recording workflow | Shell/Python | Yes* | 1-10s |
+| **Stress** | High concurrency, long duration | GTest | No | 5-60s |
+| **Performance** | Throughput, latency | Custom | Yes | 1-5min |
 
-*注：Integration 测试可以通过模拟插件避免 ROS 依赖；E2E 测试需要真实的 ROS 环境。
+*Note: Integration tests can avoid ROS dependencies using mock plugins; E2E tests require real ROS environment.
 
-### 3.3 测试覆盖目标
+### 3.3 Test Coverage Targets
 
-| 组件 | 行覆盖 | 分支覆盖 |
-|------|--------|----------|
+| Component | Line Coverage | Branch Coverage |
+|-----------|---------------|-----------------|
 | AxonRecorder | >90% | >85% |
 | HttpServer | >95% | >90% |
 | PluginLoader | >90% | >85% |
@@ -334,32 +334,32 @@ IDLE → READY → RECORDING ↔ PAUSED
 
 ## 4. HTTP RPC API Tests
 
-### 4.1 测试文件结构
+### 4.1 Test File Structure
 
 ```
 apps/axon_recorder/test/
 ├── CMakeLists.txt
 ├── unit/
 │   ├── test_helpers.hpp
-│   ├── test_http_server.cpp           # HTTP 服务器单元测试 (~40 tests)
-│   ├── test_plugin_loader.cpp         # 插件加载器测试 (~30 tests)
-│   ├── test_state_machine.cpp         # 状态机测试 (~25 tests)
-│   ├── test_recording_session.cpp     # MCAP 会话测试 (~20 tests)
-│   ├── test_worker_thread_pool.cpp    # 工作线程池测试 (~15 tests)
-│   ├── test_config_parser.cpp         # 配置解析测试 (~15 tests)
-│   └── test_task_config.cpp           # 任务配置测试 (~10 tests)
+│   ├── test_http_server.cpp           # HTTP server unit tests (~40 tests)
+│   ├── test_plugin_loader.cpp         # Plugin loader tests (~30 tests)
+│   ├── test_state_machine.cpp         # State machine tests (~25 tests)
+│   ├── test_recording_session.cpp     # MCAP session tests (~20 tests)
+│   ├── test_worker_thread_pool.cpp    # Worker thread pool tests (~15 tests)
+│   ├── test_config_parser.cpp         # Config parser tests (~15 tests)
+│   └── test_task_config.cpp           # Task config tests (~10 tests)
 ├── integration/
-│   ├── test_recorder_integration.cpp  # AxonRecorder 集成测试 (~25 tests)
-│   ├── test_http_api_integration.cpp  # HTTP API 集成测试 (~30 tests)
-│   └── test_plugin_integration.cpp    # 插件集成测试 (~15 tests)
+│   ├── test_recorder_integration.cpp  # AxonRecorder integration tests (~25 tests)
+│   ├── test_http_api_integration.cpp  # HTTP API integration tests (~30 tests)
+│   └── test_plugin_integration.cpp    # Plugin integration tests (~15 tests)
 └── e2e/
-    ├── run_e2e_tests.sh               # E2E 测试脚本
-    └── test_http_api_e2e.sh           # HTTP API E2E 测试
+    ├── run_e2e_tests.sh               # E2E test script
+    └── test_http_api_e2e.sh           # HTTP API E2E test
 ```
 
-### 4.2 HTTP 服务器单元测试 (test_http_server.cpp)
+### 4.2 HTTP Server Unit Tests (test_http_server.cpp)
 
-**测试夹具：**
+**Test Fixture:**
 ```cpp
 class HttpServerTest : public ::testing::Test {
 protected:
@@ -372,9 +372,9 @@ protected:
 };
 ```
 
-**测试用例：**
+**Test Cases:**
 
-#### 4.2.1 服务器生命周期 (5 tests)
+#### 4.2.1 Server Lifecycle (5 tests)
 
 ```cpp
 TEST_F(HttpServerTest, Start_BindsToPort)
@@ -505,7 +505,7 @@ TEST_F(HttpServerTest, HealthCheck_IncludesVersion)
 TEST_F(HttpServerTest, HealthCheck_IncludesCurrentState)
 ```
 
-#### 4.2.13 错误处理 (8 tests)
+#### 4.2.13 Error Handling (8 tests)
 
 ```cpp
 TEST_F(HttpServerTest, InvalidEndpoint_Returns404)
@@ -518,9 +518,9 @@ TEST_F(HttpServerTest, ServerError_Returns500)
 TEST_F(HttpServerTest, ConcurrentRequests_HandledCorrectly)
 ```
 
-### 4.3 HTTP 集成测试 (test_http_api_integration.cpp)
+### 4.3 HTTP Integration Tests (test_http_api_integration.cpp)
 
-**测试完整流程：**
+**Complete workflow tests:**
 
 ```cpp
 TEST(HttpApiIntegrationTest, CompleteRecordingWorkflow)
@@ -539,9 +539,9 @@ TEST(HttpApiIntegrationTest, InvalidTransitions)
 
 ## 5. Plugin System Tests
 
-### 5.1 插件加载器测试 (test_plugin_loader.cpp)
+### 5.1 Plugin Loader Tests (test_plugin_loader.cpp)
 
-**测试夹具：**
+**Test Fixture:**
 ```cpp
 class PluginLoaderTest : public ::testing::Test {
 protected:
@@ -553,9 +553,9 @@ protected:
 };
 ```
 
-**测试用例：**
+**Test Cases:**
 
-#### 5.1.1 加载有效插件 (8 tests)
+#### 5.1.1 Load Valid Plugin (8 tests)
 
 ```cpp
 TEST_F(PluginLoaderTest, Load_ValidPlugin_ReturnsSuccess)
@@ -568,7 +568,7 @@ TEST_F(PluginLoaderTest, Load_WithInvalidConfig_Fails)
 TEST_F(PluginLoaderTest, Load_WithNullConfig_Fails)
 ```
 
-#### 5.1.2 加载无效插件 (10 tests)
+#### 5.1.2 Load Invalid Plugin (10 tests)
 
 ```cpp
 TEST_F(PluginLoaderTest, Load_NonExistentLibrary_ReturnsError)
@@ -583,7 +583,7 @@ TEST_F(PluginLoaderTest, Load_WrongArchitecture_ReturnsError)
 TEST_F(PluginLoaderTest, Load_DependencyMissing_ReturnsError)
 ```
 
-#### 5.1.3 卸载插件 (6 tests)
+#### 5.1.3 Unload Plugin (6 tests)
 
 ```cpp
 TEST_F(PluginLoaderTest, Unload_LoadedPlugin_Succeeds)
@@ -594,7 +594,7 @@ TEST_F(PluginLoaderTest, Unload_CallsStopIfRunning)
 TEST_F(PluginLoaderTest, Unload_ClosesHandle)
 ```
 
-#### 5.1.4 查询插件 (6 tests)
+#### 5.1.4 Query Plugin (6 tests)
 
 ```cpp
 TEST_F(PluginLoaderTest, GetDescriptor_LoadedPlugin_ReturnsDescriptor)
@@ -605,15 +605,15 @@ TEST_F(PluginLoaderTest, IsLoaded_LoadedPlugin_ReturnsTrue)
 TEST_F(PluginLoaderTest, LoadedPlugins_ReturnsListOfNames)
 ```
 
-### 5.2 模拟插件
+### 5.2 Mock Plugin
 
-**测试用的模拟插件实现：**
+**Mock plugin implementation for testing:**
 
 ```cpp
 // test/mock_plugin.cpp
 extern "C" {
 
-// 模拟插件描述符
+// Mock plugin descriptor
 static axon::AxonPluginVtable g_vtable = {
   .init = [](const char* config) -> axon::AxonStatus {
     return AXON_SUCCESS;
@@ -648,11 +648,11 @@ const axon::AxonPluginDescriptor* axon_get_plugin_descriptor() {
 
 ## 6. State Machine Tests
 
-### 6.1 状态机测试 (test_state_machine.cpp)
+### 6.1 State Machine Tests (test_state_machine.cpp)
 
-**测试用例：**
+**Test Cases:**
 
-#### 6.1.1 有效转换 (10 tests)
+#### 6.1.1 Valid Transitions (10 tests)
 
 ```cpp
 TEST(StateMachineTest, IdleToReady_WithConfig_Succeeds)
@@ -667,7 +667,7 @@ TEST(StateMachineTest, PausedToIdle_WithCancel_Succeeds)
 TEST(StateMachineTest, AnyToIdle_WithQuit_Succeeds)
 ```
 
-#### 6.1.2 无效转换 (10 tests)
+#### 6.1.2 Invalid Transitions (10 tests)
 
 ```cpp
 TEST(StateMachineTest, IdleToRecording_Fails)
@@ -680,7 +680,7 @@ TEST(StateMachineTest, PausedToReady_Fails)
 TEST(StateMachineTest, PausedToPaused_Fails)
 ```
 
-#### 6.1.3 转换回调 (5 tests)
+#### 6.1.3 Transition Callbacks (5 tests)
 
 ```cpp
 TEST(StateMachineTest, Transition_CallsCallback)
@@ -690,7 +690,7 @@ TEST(StateMachineTest, Callback_ReceivesFromAndToStates)
 TEST(StateMachineTest, CanUnregisterCallback)
 ```
 
-#### 6.1.4 状态查询 (5 tests)
+#### 6.1.4 State Queries (5 tests)
 
 ```cpp
 TEST(StateMachineTest, GetState_ReturnsInitialState)
@@ -704,17 +704,17 @@ TEST(StateMachineTest, IsRecording_WhenNotRecording_ReturnsFalse)
 
 ## 7. Concurrency Tests
 
-### 7.1 并发测试场景
+### 7.1 Concurrency Test Scenarios
 
-| 场景 | 描述 | 测试方法 |
-|------|------|----------|
-| **并发 HTTP 请求** | 多个客户端同时调用 API | 多线程 HTTP 客户端 |
-| **并发消息写入** | 多个主题同时写入 | 多线程发布者 |
-| **状态转换竞态** | 同时尝试状态转换 | 多线程调用转换 |
-| **队列溢出** | 快速发布者填满队列 | 高频消息生成 |
-| **优雅关闭** | 录制时关闭服务器 | Stop + 资源检查 |
+| Scenario | Description | Test Method |
+|----------|-------------|-------------|
+| **Concurrent HTTP requests** | Multiple clients call API simultaneously | Multi-threaded HTTP client |
+| **Concurrent message writes** | Multiple topics write simultaneously | Multi-threaded publishers |
+| **State transition races** | Attempt state transitions simultaneously | Multi-threaded transition calls |
+| **Queue overflow** | Fast publishers fill queue | High-frequency message generation |
+| **Graceful shutdown** | Shutdown server while recording | Stop + resource check |
 
-### 7.2 并发测试用例
+### 7.2 Concurrency Test Cases
 
 **test_concurrency.cpp:**
 
@@ -729,7 +729,7 @@ TEST(ConcurrencyTest, ConcurrentBeginFinish_Serializes)
 TEST(ConcurrencyTest, MultipleClients_IndependentSessions)
 ```
 
-### 7.3 压力测试
+### 7.3 Stress Tests
 
 **test_stress.cpp:**
 
@@ -745,9 +745,9 @@ TEST(StressTest, RapidStartStop_NoResourceLeak)
 
 ## 8. Integration Tests
 
-### 8.1 AxonRecorder 集成测试 (test_recorder_integration.cpp)
+### 8.1 AxonRecorder Integration Tests (test_recorder_integration.cpp)
 
-**测试完整流程：**
+**Complete workflow tests:**
 
 ```cpp
 TEST(RecorderIntegrationTest, Initialize_Start_Stop)
@@ -765,9 +765,9 @@ TEST(RecorderIntegrationTest, ErrorHandling_DiskFull)
 TEST(RecorderIntegrationTest, ErrorHandling_CorruptMcap)
 ```
 
-### 8.2 插件集成测试 (test_plugin_integration.cpp)
+### 8.2 Plugin Integration Tests (test_plugin_integration.cpp)
 
-**测试与 ROS2 插件的集成：**
+**Test integration with ROS2 plugin:**
 
 ```cpp
 TEST(PluginIntegrationTest, LoadRos2Plugin_Succeeds)
@@ -783,11 +783,11 @@ TEST(PluginIntegrationTest, Ros2Plugin_ConcurrentSubscribes_Handles)
 
 ## 9. E2E Tests
 
-### 9.1 E2E 测试脚本 (test_http_api_e2e.sh)
+### 9.1 E2E Test Script (test_http_api_e2e.sh)
 
 ```bash
 #!/bin/bash
-# E2E 测试脚本 - 完整录制流程
+# E2E test script - Complete recording workflow
 
 set -e
 
@@ -795,17 +795,17 @@ AXON_RECORDER_BIN="./build/axon_recorder"
 PLUGIN_PATH="./middlewares/ros2/src/ros2_plugin/install/libaxon_ros2_plugin.so"
 CONFIG_FILE="./test/e2e/test_config.yaml"
 
-# 启动 recorder
+# Start recorder
 $AXON_RECORDER_BIN --plugin $PLUGIN_PATH --config $CONFIG_FILE &
 RECORDER_PID=$!
 
-# 等待启动
+# Wait for startup
 sleep 2
 
-# 1. 健康检查
+# 1. Health check
 curl -f http://localhost:8080/health || exit 1
 
-# 2. 设置配置
+# 2. Set configuration
 curl -X POST http://localhost:8080/rpc/config \
   -H "Content-Type: application/json" \
   -d '{
@@ -816,75 +816,75 @@ curl -X POST http://localhost:8080/rpc/config \
     }
   }' || exit 1
 
-# 3. 检查状态 (应该是 READY)
+# 3. Check state (should be READY)
 STATE=$(curl -s http://localhost:8080/rpc/state | jq -r '.data.state')
 [ "$STATE" == "ready" ] || exit 1
 
-# 4. 开始录制
+# 4. Begin recording
 curl -X POST http://localhost:8080/rpc/begin || exit 1
 
-# 5. 检查状态 (应该是 RECORDING)
+# 5. Check state (should be RECORDING)
 STATE=$(curl -s http://localhost:8080/rpc/state | jq -r '.data.state')
 [ "$STATE" == "recording" ] || exit 1
 
-# 6. 发布测试消息
-# (使用 ROS2 发布测试数据)
+# 6. Publish test messages
+# (Use ROS2 to publish test data)
 
-# 7. 等待录制
+# 7. Wait for recording
 sleep 5
 
-# 8. 检查统计信息
+# 8. Check statistics
 curl -s http://localhost:8080/rpc/stats || exit 1
 
-# 9. 完成录制
+# 9. Finish recording
 curl -X POST http://localhost:8080/rpc/finish \
   -H "Content-Type: application/json" \
   -d '{"task_id": "e2e_test_001"}' || exit 1
 
-# 10. 检查状态 (应该是 IDLE)
+# 10. Check state (should be IDLE)
 STATE=$(curl -s http://localhost:8080/rpc/state | jq -r '.data.state')
 [ "$STATE" == "idle" ] || exit 1
 
-# 11. 验证 MCAP 文件
+# 11. Verify MCAP file
 [ -f "output.mcap" ] || exit 1
 
-# 12. 验证 sidecar 文件
+# 12. Verify sidecar file
 [ -f "output.mcap.json" ] || exit 1
 
-# 清理
+# Cleanup
 kill $RECORDER_PID
 wait $RECORDER_PID
 
 echo "E2E tests passed!"
 ```
 
-### 9.2 E2E 测试场景
+### 9.2 E2E Test Scenarios
 
-| 场景 | 描述 | 验证点 |
-|------|------|--------|
-| **基本流程** | config → begin → finish | MCAP 文件生成 |
-| **暂停恢复** | begin → pause → resume → finish | 数据完整性 |
-| **取消录制** | begin → cancel | 无 sidecar 生成 |
-| **清除配置** | config → clear | 配置已清除 |
-| **多任务** | 多次 begin/finish | 每次独立文件 |
-| **错误恢复** | 无效请求处理 | 正确错误响应 |
+| Scenario | Description | Validation Points |
+|----------|-------------|-------------------|
+| **Basic workflow** | config → begin → finish | MCAP file generated |
+| **Pause/Resume** | begin → pause → resume → finish | Data integrity |
+| **Cancel recording** | begin → cancel | No sidecar generated |
+| **Clear config** | config → clear | Config cleared |
+| **Multiple tasks** | Multiple begin/finish | Independent files each time |
+| **Error recovery** | Invalid request handling | Correct error responses |
 
 ---
 
 ## 10. Test Infrastructure
 
-### 10.1 测试支持库
+### 10.1 Test Support Library
 
 **test_helpers.hpp:**
 
 ```cpp
 namespace axon::recorder::test {
 
-// 测试配置
+// Test configuration
 TaskConfig make_test_task_config();
 RecorderConfig make_test_recorder_config();
 
-// 临时目录管理
+// Temporary directory management
 class TempDirectory {
 public:
   TempDirectory();
@@ -893,7 +893,7 @@ public:
   std::filesystem::path file(const std::string& name) const;
 };
 
-// HTTP 测试客户端
+// HTTP test client
 class HttpClient {
 public:
   HttpClient(const std::string& base_url);
@@ -901,19 +901,19 @@ public:
   nlohmann::json get(const std::string& endpoint);
 };
 
-// MCAP 验证
+// MCAP verification
 bool verify_mcap_file(const std::string& path);
 bool verify_sidecar_file(const std::string& path);
 
 }  // namespace axon::recorder::test
 ```
 
-### 10.2 CMake 配置
+### 10.2 CMake Configuration
 
 **test/CMakeLists.txt:**
 
 ```cmake
-# 测试可执行文件
+# Test executables
 add_executable(test_http_server unit/test_http_server.cpp)
 target_link_libraries(test_http_server
     axon_recorder
@@ -922,7 +922,7 @@ target_link_libraries(test_http_server
     Boost::system
 )
 
-# HTTP 客户端测试（需要 httplib）
+# HTTP client tests (requires httplib)
 find_package(httplib REQUIRED)
 add_executable(test_http_api integration/test_http_api_integration.cpp)
 target_link_libraries(test_http_api
@@ -932,7 +932,7 @@ target_link_libraries(test_http_api
     httplib
 )
 
-# 注册测试
+# Register tests
 gtest_discover_tests(test_http_server)
 gtest_discover_tests(test_http_api)
 ```
@@ -941,60 +941,60 @@ gtest_discover_tests(test_http_api)
 
 ## 11. Implementation Priority
 
-### Phase 1: 基础设施 (P0) - 第1-2周
+### Phase 1: Infrastructure (P0) - Week 1-2
 
-| 任务 | 描述 | 估算 |
-|------|------|------|
-| 创建测试目录结构 | unit/integration/e2e | 0.5天 |
-| 实现 test_helpers.hpp | TempDirectory, HttpClient, 配置工厂 | 1天 |
-| 实现 mock plugin | 用于插件加载测试 | 1天 |
-| 配置 CMake 测试构建 | 测试可执行文件和链接 | 1天 |
-| 设置 CI 测试流水线 | GitHub Actions 配置 | 1天 |
+| Task | Description | Estimate |
+|------|-------------|----------|
+| Create test directory structure | unit/integration/e2e | 0.5 day |
+| Implement test_helpers.hpp | TempDirectory, HttpClient, config factories | 1 day |
+| Implement mock plugin | For plugin loading tests | 1 day |
+| Configure CMake test builds | Test executables and linking | 1 day |
+| Setup CI test pipeline | GitHub Actions configuration | 1 day |
 
-### Phase 2: HTTP API 测试 (P0) - 第3-4周
+### Phase 2: HTTP API Tests (P0) - Week 3-4
 
-| 任务 | 描述 | 估算 |
-|------|------|------|
-| test_http_server.cpp | 所有 RPC 端点单元测试 (~40 tests) | 3天 |
-| test_http_api_integration.cpp | HTTP API 集成测试 (~30 tests) | 2天 |
-| 错误处理测试 | 无效请求、状态转换错误 | 1天 |
-| 并发请求测试 | 多线程 HTTP 客户端 | 1天 |
+| Task | Description | Estimate |
+|------|-------------|----------|
+| test_http_server.cpp | All RPC endpoint unit tests (~40 tests) | 3 days |
+| test_http_api_integration.cpp | HTTP API integration tests (~30 tests) | 2 days |
+| Error handling tests | Invalid requests, state transition errors | 1 day |
+| Concurrent request tests | Multi-threaded HTTP client | 1 day |
 
-### Phase 3: 核心组件测试 (P0) - 第5-6周
+### Phase 3: Core Component Tests (P0) - Week 5-6
 
-| 任务 | 描述 | 估算 |
-|------|------|------|
-| test_plugin_loader.cpp | 插件加载测试 (~30 tests) | 2天 |
-| test_state_machine.cpp | 状态机测试 (~25 tests) | 1.5天 |
-| test_recording_session.cpp | MCAP 会话测试 (~20 tests) | 1.5天 |
-| test_worker_thread_pool.cpp | 工作线程池测试 (~15 tests) | 1.5天 |
-| test_config_parser.cpp | 配置解析测试 (~15 tests) | 1天 |
+| Task | Description | Estimate |
+|------|-------------|----------|
+| test_plugin_loader.cpp | Plugin loading tests (~30 tests) | 2 days |
+| test_state_machine.cpp | State machine tests (~25 tests) | 1.5 days |
+| test_recording_session.cpp | MCAP session tests (~20 tests) | 1.5 days |
+| test_worker_thread_pool.cpp | Worker thread pool tests (~15 tests) | 1.5 days |
+| test_config_parser.cpp | Config parser tests (~15 tests) | 1 day |
 
-### Phase 4: 集成测试 (P1) - 第7周
+### Phase 4: Integration Tests (P1) - Week 7
 
-| 任务 | 描述 | 估算 |
-|------|------|------|
-| test_recorder_integration.cpp | AxonRecorder 集成测试 (~25 tests) | 2天 |
-| test_plugin_integration.cpp | ROS2 插件集成测试 (~15 tests) | 1.5天 |
-| 并发集成测试 | 竞态条件、死锁 | 1.5天 |
+| Task | Description | Estimate |
+|------|-------------|----------|
+| test_recorder_integration.cpp | AxonRecorder integration tests (~25 tests) | 2 days |
+| test_plugin_integration.cpp | ROS2 plugin integration tests (~15 tests) | 1.5 days |
+| Concurrent integration tests | Race conditions, deadlocks | 1.5 days |
 
-### Phase 5: E2E 测试 (P1) - 第8周
+### Phase 5: E2E Tests (P1) - Week 8
 
-| 任务 | 描述 | 估算 |
-|------|------|------|
-| run_e2e_tests.sh | E2E 测试脚本 | 1天 |
-| test_http_api_e2e.sh | HTTP API E2E 测试 | 1天 |
-| MCAP 验证工具 | 文件完整性检查 | 1天 |
-| 性能基准测试 | 吞吐量、延迟 | 2天 |
+| Task | Description | Estimate |
+|------|-------------|----------|
+| run_e2e_tests.sh | E2E test script | 1 day |
+| test_http_api_e2e.sh | HTTP API E2E tests | 1 day |
+| MCAP verification tools | File integrity checks | 1 day |
+| Performance benchmarks | Throughput, latency | 2 days |
 
-### Phase 6: 压力测试 (P2) - 第9周
+### Phase 6: Stress Tests (P2) - Week 9
 
-| 任务 | 描述 | 估算 |
-|------|------|------|
-| 长时间运行测试 | 24小时稳定性 | 2天 |
-| 高负载测试 | 最大吞吐量 | 1天 |
-| 资源泄漏测试 | 内存、文件描述符 | 1天 |
-| 故障注入测试 | 磁盘满、网络故障 | 1天 |
+| Task | Description | Estimate |
+|------|-------------|----------|
+| Long-running tests | 24-hour stability | 2 days |
+| High-load tests | Maximum throughput | 1 day |
+| Resource leak tests | Memory, file descriptors | 1 day |
+| Fault injection tests | Disk full, network failure | 1 day |
 
 ---
 
@@ -1002,14 +1002,14 @@ gtest_discover_tests(test_http_api)
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| 1.0 | 2025-12-25 | Axon Robotics | 初始版本 (ROS 服务架构) |
-| 2.0 | 2025-12-25 | Axon Robotics | 移除 mock 基础设施 |
-| 3.0 | 2026-01-12 | Axon Robotics | **重大重构**: 插件架构 + HTTP RPC API |
-| | | | - 移除 ROS 服务相关测试 |
-| | | | - 添加 HTTP RPC API 测试 (~70 tests) |
-| | | | - 添加插件系统测试 (~30 tests) |
-| | | | - 更新组件分析以反映新架构 |
-| | | | - 添加 E2E 测试脚本 |
+| 1.0 | 2025-12-25 | Axon Robotics | Initial version (ROS service architecture) |
+| 2.0 | 2025-12-25 | Axon Robotics | Removed mock infrastructure |
+| 3.0 | 2026-01-12 | Axon Robotics | **Major refactor**: Plugin architecture + HTTP RPC API |
+| | | | - Removed ROS service related tests |
+| | | | - Added HTTP RPC API tests (~70 tests) |
+| | | | - Added plugin system tests (~30 tests) |
+| | | | - Updated component analysis to reflect new architecture |
+| | | | - Added E2E test scripts |
 
 ---
 

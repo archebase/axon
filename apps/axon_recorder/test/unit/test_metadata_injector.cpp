@@ -630,6 +630,185 @@ TEST_F(MetadataInjectorTest, SidecarWithoutOptionalFields) {
   EXPECT_EQ(content.find("\"data_collector_id\":"), std::string::npos);
 }
 
+TEST_F(MetadataInjectorTest, SidecarCompleteStructureValidation) {
+  // This test validates the complete structure of sidecar.json
+  // ensuring all important fields are present and correctly formatted
+  MetadataInjector injector;
+  TaskConfig config;
+  config.task_id = "task_complete_001";
+  config.device_id = "robot_complete_01";
+  config.data_collector_id = "collector_complete";
+  config.order_id = "order_complete_123";
+  config.operator_name = "operator_complete";
+  config.scene = "scene_complete";
+  config.subscene = "subscene_complete";
+  config.factory = "factory_complete";
+  config.skills = {"skill1", "skill2", "skill3"};
+  injector.set_task_config(config);
+  injector.set_recording_start_time(std::chrono::system_clock::now());
+
+  // Add comprehensive topic stats
+  injector.update_topic_stats("/camera/image_raw", "sensor_msgs/Image", 300);
+  injector.update_topic_stats("/imu/data", "sensor_msgs/Imu", 1000);
+  injector.update_topic_stats("/lidar/points", "sensor_msgs/PointCloud2", 100);
+
+  // Wait for measurable duration
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto mcap_path = create_test_mcap("test_complete.mcap", "test content for complete validation");
+  uint64_t file_size = 2048;
+  bool result = injector.generate_sidecar_json(mcap_path, file_size);
+
+  ASSERT_TRUE(result);
+  ASSERT_FALSE(injector.get_sidecar_path().empty());
+  ASSERT_FALSE(injector.get_checksum().empty());
+  EXPECT_EQ(64, injector.get_checksum().length());
+
+  // Read and parse the JSON
+  std::ifstream sidecar(injector.get_sidecar_path());
+  std::string content((std::istreambuf_iterator<char>(sidecar)), std::istreambuf_iterator<char>());
+
+  // Verify top-level structure
+  EXPECT_NE(content.find("\"version\":"), std::string::npos);
+  EXPECT_NE(content.find("\"mcap_file\":"), std::string::npos);
+  EXPECT_NE(content.find("\"task\":"), std::string::npos);
+  EXPECT_NE(content.find("\"device\":"), std::string::npos);
+  EXPECT_NE(content.find("\"recording\":"), std::string::npos);
+  EXPECT_NE(content.find("\"topics_summary\":"), std::string::npos);
+
+  // Verify task section - required fields
+  EXPECT_NE(content.find("\"task_id\": \"task_complete_001\""), std::string::npos);
+  EXPECT_NE(content.find("\"device_id\": \"robot_complete_01\""), std::string::npos);
+  EXPECT_NE(content.find("\"scene\": \"scene_complete\""), std::string::npos);
+  EXPECT_NE(content.find("\"factory\": \"factory_complete\""), std::string::npos);
+
+  // Verify task section - optional fields (all set in this test)
+  EXPECT_NE(content.find("\"data_collector_id\": \"collector_complete\""), std::string::npos);
+  EXPECT_NE(content.find("\"order_id\": \"order_complete_123\""), std::string::npos);
+  EXPECT_NE(content.find("\"operator_name\": \"operator_complete\""), std::string::npos);
+  EXPECT_NE(content.find("\"subscene\": \"subscene_complete\""), std::string::npos);
+  EXPECT_NE(content.find("\"skills\":"), std::string::npos);
+  EXPECT_NE(content.find("\"skill1\""), std::string::npos);
+  EXPECT_NE(content.find("\"skill2\""), std::string::npos);
+  EXPECT_NE(content.find("\"skill3\""), std::string::npos);
+
+  // Verify device section
+  EXPECT_NE(content.find("\"hostname\":"), std::string::npos);
+
+  // Verify recording section
+  EXPECT_NE(content.find("\"recorder_version\":"), std::string::npos);
+  EXPECT_NE(content.find("\"recording_started_at\":"), std::string::npos);
+  EXPECT_NE(content.find("\"recording_finished_at\":"), std::string::npos);
+  EXPECT_NE(content.find("\"duration_sec\":"), std::string::npos);
+  EXPECT_NE(content.find("\"message_count\":"), std::string::npos);
+  EXPECT_NE(content.find("\"file_size_bytes\": 2048"), std::string::npos);
+  EXPECT_NE(content.find("\"checksum_sha256\":"), std::string::npos);
+  EXPECT_NE(content.find("\"topics_recorded\":"), std::string::npos);
+
+  // Verify topics_summary contains all topics with correct structure
+  EXPECT_NE(content.find("\"topic\": \"/camera/image_raw\""), std::string::npos);
+  EXPECT_NE(content.find("\"message_type\": \"sensor_msgs/Image\""), std::string::npos);
+  EXPECT_NE(content.find("\"message_count\": 300"), std::string::npos);
+  EXPECT_NE(content.find("\"frequency_hz\":"), std::string::npos);
+
+  EXPECT_NE(content.find("\"topic\": \"/imu/data\""), std::string::npos);
+  EXPECT_NE(content.find("\"message_type\": \"sensor_msgs/Imu\""), std::string::npos);
+  EXPECT_NE(content.find("\"message_count\": 1000"), std::string::npos);
+
+  EXPECT_NE(content.find("\"topic\": \"/lidar/points\""), std::string::npos);
+  EXPECT_NE(content.find("\"message_type\": \"sensor_msgs/PointCloud2\""), std::string::npos);
+  EXPECT_NE(content.find("\"message_count\": 100"), std::string::npos);
+}
+
+TEST_F(MetadataInjectorTest, SidecarMessageCountAggregation) {
+  // Test that total message count is correctly aggregated from all topics
+  MetadataInjector injector;
+  TaskConfig config;
+  config.task_id = "test_count";
+  config.device_id = "robot";
+  config.scene = "test";
+  injector.set_task_config(config);
+  injector.set_recording_start_time(std::chrono::system_clock::now());
+
+  // Add topics with specific counts
+  injector.update_topic_stats("/topic1", "std_msgs/String", 100);
+  injector.update_topic_stats("/topic2", "std_msgs/String", 250);
+  injector.update_topic_stats("/topic3", "std_msgs/String", 50);
+
+  // Total should be 100 + 250 + 50 = 400
+  auto mcap_path = create_test_mcap("test_count.mcap", "content");
+  injector.generate_sidecar_json(mcap_path, 512);
+
+  std::ifstream sidecar(injector.get_sidecar_path());
+  std::string content((std::istreambuf_iterator<char>(sidecar)), std::istreambuf_iterator<char>());
+
+  // The message_count in recording section should be 400
+  EXPECT_NE(content.find("\"message_count\": 400"), std::string::npos);
+
+  // Verify individual topic counts in topics_summary
+  EXPECT_NE(content.find("\"/topic1\""), std::string::npos);
+  size_t pos = content.find("\"/topic1\"");
+  // Find the message_count for topic1 (should be nearby)
+  EXPECT_NE(content.find("\"message_count\": 100", pos), std::string::npos);
+}
+
+TEST_F(MetadataInjectorTest, SidecarTimestampsIso8601Format) {
+  // Test that timestamps are in ISO 8601 format
+  MetadataInjector injector;
+  TaskConfig config;
+  config.task_id = "test_time";
+  config.device_id = "robot";
+  config.scene = "test";
+  injector.set_task_config(config);
+  injector.set_recording_start_time(std::chrono::system_clock::now());
+
+  auto mcap_path = create_test_mcap("test_time.mcap", "content");
+  injector.generate_sidecar_json(mcap_path, 100);
+
+  std::ifstream sidecar(injector.get_sidecar_path());
+  std::string content((std::istreambuf_iterator<char>(sidecar)), std::istreambuf_iterator<char>());
+
+  // ISO 8601 format should contain 'T' between date and time, and 'Z' for UTC
+  EXPECT_NE(content.find("\"recording_started_at\": \""), std::string::npos);
+  EXPECT_NE(content.find("\"recording_finished_at\": \""), std::string::npos);
+
+  // Check for T and Z in timestamp strings (basic ISO 8601 validation)
+  size_t started_pos = content.find("\"recording_started_at\": \"");
+  ASSERT_NE(started_pos, std::string::npos);
+  size_t started_value_start = started_pos + strlen("\"recording_started_at\": \"");
+  size_t started_value_end = content.find("\"", started_value_start);
+  std::string started_time =
+    content.substr(started_value_start, started_value_end - started_value_start);
+
+  // Should contain 'T' (date/time separator) and 'Z' (UTC marker)
+  EXPECT_NE(started_time.find('T'), std::string::npos);
+  EXPECT_NE(started_time.find('Z'), std::string::npos);
+}
+
+TEST_F(MetadataInjectorTest, SidecarAtomicWrite) {
+  // Test that sidecar JSON is written atomically (via temp file)
+  MetadataInjector injector;
+  TaskConfig config;
+  config.task_id = "test_atomic";
+  config.device_id = "robot";
+  config.scene = "test";
+  injector.set_task_config(config);
+  injector.set_recording_start_time(std::chrono::system_clock::now());
+
+  auto mcap_path = create_test_mcap("test_atomic.mcap", "content");
+  bool result = injector.generate_sidecar_json(mcap_path, 100);
+
+  ASSERT_TRUE(result);
+
+  // Verify the final file exists
+  std::string sidecar_path = injector.get_sidecar_path();
+  EXPECT_TRUE(fs::exists(sidecar_path));
+
+  // Verify .tmp file does not exist (should have been renamed)
+  std::string tmp_path = sidecar_path + ".tmp";
+  EXPECT_FALSE(fs::exists(tmp_path));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -89,6 +89,8 @@ Content-Type: application/json
     "scene": "warehouse_navigation",
     "subscene": "aisle_traversal",
     "skills": ["navigation", "obstacle_avoidance"],
+    "factory": "factory_shenzhen",
+    "operator_name": "operator_001",
     "topics": ["/camera/image", "/lidar/scan", "/odom"],
     "start_callback_url": "http://server.example.com/api/v1/tasks/123/start",
     "finish_callback_url": "http://server.example.com/api/v1/tasks/123/finish",
@@ -126,6 +128,8 @@ Content-Type: application/json
 | `scene` | string | No | 录制场景/上下文标签 |
 | `subscene` | string | No | 录制子场景 |
 | `skills` | array | No | 关联的技能列表 |
+| `factory` | string | No | 工厂标识符（标识产生数据的工厂） |
+| `operator_name` | string | No | 操作员标识符 |
 | `topics` | array | No | 要录制的主题列表 |
 | `start_callback_url` | string | No | 开始录制回调 URL |
 | `finish_callback_url` | string | No | 完成录制回调 URL |
@@ -512,6 +516,8 @@ GET /rpc/state HTTP/1.1
       "scene": "warehouse_navigation",
       "subscene": "aisle_traversal",
       "skills": ["navigation", "obstacle_avoidance"],
+      "factory": "factory_01",
+      "operator_name": "operator_01",
       "topics": ["/camera/image", "/lidar/scan", "/odom"]
     }
   }
@@ -530,6 +536,8 @@ GET /rpc/state HTTP/1.1
       "task_id": "task_123",
       "device_id": "robot_01",
       "scene": "warehouse_navigation",
+      "factory": "factory_01",
+      "operator_name": "operator_01",
       "topics": ["/camera/image", "/lidar/scan", "/odom"]
     }
   }
@@ -657,6 +665,8 @@ curl -X POST http://localhost:8080/rpc/config \
       "task_id": "task_123",
       "device_id": "robot_01",
       "scene": "warehouse",
+      "factory": "factory_01",
+      "operator_name": "operator_01",
       "topics": ["/camera/image", "/lidar/scan"],
       "start_callback_url": "http://server/api/start",
       "finish_callback_url": "http://server/api/finish",
@@ -703,7 +713,7 @@ import json
 
 BASE_URL = "http://localhost:8080"
 
-def configure_recording(task_id, device_id, topics):
+def configure_recording(task_id, device_id, factory, operator_name, topics):
     """Configure recording task"""
     response = requests.post(
         f"{BASE_URL}/rpc/config",
@@ -711,6 +721,8 @@ def configure_recording(task_id, device_id, topics):
             "task_config": {
                 "task_id": task_id,
                 "device_id": device_id,
+                "factory": factory,
+                "operator_name": operator_name,
                 "topics": topics
             }
         }
@@ -744,7 +756,7 @@ def get_stats():
     return response.json()
 
 # Usage
-configure_recording("task_123", "robot_01", ["/camera/image", "/lidar/scan"])
+configure_recording("task_123", "robot_01", "factory_01", "operator_01", ["/camera/image", "/lidar/scan"])
 begin_recording("task_123")
 print(f"State: {get_state()['data']['state']}")
 finish_recording("task_123")
@@ -757,11 +769,13 @@ const axios = require('axios');
 
 const BASE_URL = 'http://localhost:8080';
 
-async function configureRecording(taskId, deviceId, topics) {
+async function configureRecording(taskId, deviceId, factory, operatorName, topics) {
   const response = await axios.post(`${BASE_URL}/rpc/config`, {
     task_config: {
       task_id: taskId,
       device_id: deviceId,
+      factory: factory,
+      operator_name: operatorName,
       topics: topics
     }
   });
@@ -789,7 +803,7 @@ async function getState() {
 
 // Usage
 (async () => {
-  await configureRecording('task_123', 'robot_01', ['/camera/image', '/lidar/scan']);
+  await configureRecording('task_123', 'robot_01', 'factory_01', 'operator_01', ['/camera/image', '/lidar/scan']);
   await beginRecording('task_123');
   console.log('State:', (await getState()).data.state);
   await finishRecording('task_123');
@@ -881,6 +895,8 @@ interface TaskConfig {
   scene?: string;
   subscene?: string;
   skills?: string[];
+  factory?: string;
+  operator_name?: string;
   topics?: string[];
   start_callback_url?: string;
   finish_callback_url?: string;
