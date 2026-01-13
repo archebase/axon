@@ -121,6 +121,14 @@ logging:
     rotate_at_midnight: true
 
 # ============================================================================
+# HTTP RPC Server Configuration
+# ============================================================================
+http_server:
+  host: "0.0.0.0"                # Bind address (0.0.0.0 for all interfaces)
+  port: 8080                     # Port number
+  auth_token: ""                 # Authentication token (empty = no authentication)
+
+# ============================================================================
 # Edge Upload Configuration
 # ============================================================================
 # Uploads MCAP and sidecar JSON to S3-compatible storage after recording

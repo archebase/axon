@@ -69,6 +69,11 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_upload(node["upload"], config.upload);
     }
 
+    // Parse HTTP server config
+    if (node["http_server"]) {
+      parse_http_server(node["http_server"], config.http_server);
+    }
+
     return true;
   } catch (const YAML::Exception& e) {
     last_error_ = "Failed to parse YAML content: " + std::string(e.what());
@@ -266,6 +271,20 @@ bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfig& upload) {
   }
   if (node["alert_pending_gb"]) {
     upload.alert_pending_gb = node["alert_pending_gb"].as<double>();
+  }
+
+  return true;
+}
+
+bool ConfigParser::parse_http_server(const YAML::Node& node, HttpServerConfig& http_server) {
+  if (node["host"]) {
+    http_server.host = node["host"].as<std::string>();
+  }
+  if (node["port"]) {
+    http_server.port = node["port"].as<uint16_t>();
+  }
+  if (node["auth_token"]) {
+    http_server.auth_token = node["auth_token"].as<std::string>();
   }
 
   return true;

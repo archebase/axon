@@ -25,6 +25,7 @@ struct S3Config;
 struct RetryConfig;
 struct UploadConfig;
 struct LoggingConfig;
+struct HttpServerConfig;
 struct RecorderConfig;
 
 /**
@@ -77,6 +78,7 @@ private:
   bool parse_recording(const YAML::Node& node, RecordingConfig& recording);
   bool parse_logging(const YAML::Node& node, LoggingConfig& logging);
   bool parse_upload(const YAML::Node& node, UploadConfig& upload);
+  bool parse_http_server(const YAML::Node& node, HttpServerConfig& http_server);
 
   // Last error message
   mutable std::string last_error_;

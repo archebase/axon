@@ -135,6 +135,15 @@ struct LoggingConfig {
 };
 
 /**
+ * HTTP RPC server configuration
+ */
+struct HttpServerConfig {
+  std::string host = "0.0.0.0";  // Bind address (0.0.0.0 for all interfaces)
+  uint16_t port = 8080;          // Port number
+  std::string auth_token = "";   // Authentication token (empty = no authentication required)
+};
+
+/**
  * Recorder configuration (unified for both axon_recorder and full recording service)
  */
 struct RecorderConfig {
@@ -157,6 +166,7 @@ struct RecorderConfig {
   RecordingConfig recording;
   LoggingConfig logging;
   UploadConfig upload;
+  HttpServerConfig http_server;
 };
 
 /**

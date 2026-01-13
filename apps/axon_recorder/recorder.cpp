@@ -478,7 +478,7 @@ std::string AxonRecorder::get_last_error() const {
 }
 
 AxonRecorder::Statistics AxonRecorder::get_statistics() const {
-  Statistics stats;
+  Statistics stats{};  // Value-initialize all fields to 0
 
   // Get aggregate statistics from worker pool
   if (worker_pool_) {

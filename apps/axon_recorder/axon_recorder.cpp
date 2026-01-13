@@ -298,7 +298,8 @@ int main(int argc, char* argv[]) {
   }
 
   // Start HTTP RPC server
-  std::cout << "Starting HTTP RPC server on port 8080..." << std::endl;
+  std::cout << "Starting HTTP RPC server on " << config.http_server.host << ":"
+            << config.http_server.port << "..." << std::endl;
 
   // Register shutdown callback to set exit flag when /rpc/quit is called
   recorder.set_shutdown_callback([]() {
@@ -306,11 +307,12 @@ int main(int argc, char* argv[]) {
     g_should_exit.store(true);
   });
 
-  if (!recorder.start_http_server("0.0.0.0", 8080)) {
+  if (!recorder.start_http_server(config.http_server.host, config.http_server.port)) {
     std::cerr << "Warning: Failed to start HTTP server: " << recorder.get_last_error() << std::endl;
     std::cerr << "Continuing without HTTP RPC control..." << std::endl;
   } else {
-    std::cout << "HTTP RPC server listening on http://0.0.0.0:8080" << std::endl;
+    std::cout << "HTTP RPC server listening on http://" << config.http_server.host << ":"
+              << config.http_server.port << std::endl;
   }
 
   // Recorder starts in IDLE state, waiting for RPC commands
@@ -346,8 +348,6 @@ int main(int argc, char* argv[]) {
   // Print final statistics
   auto final_stats = recorder.get_statistics();
   print_statistics(final_stats);
-
-  std::cout << "Recording saved to: " << config.output_file << std::endl;
 
   return 0;
 }
