@@ -16,23 +16,28 @@
 namespace axon {
 namespace recorder {
 
-// Forward declarations
-class AxonRecorder;
-
 /**
  * HTTP RPC Server for AxonRecorder
  *
  * Provides RESTful JSON API for controlling the recorder remotely.
- *
- * Endpoints:
- * - POST /rpc/start: Start recording
- * - POST /rpc/stop: Stop recording
- * - GET  /rpc/state: Get current state
- * - GET  /rpc/stats: Get recording statistics
- * - POST /rpc/config: Set task configuration
+ * Uses callback interface to avoid direct dependency on AxonRecorder.
  */
 class HttpServer {
 public:
+  /**
+   * Callback function types for RPC operations
+   */
+  using GetStateCallback = std::function<std::string()>;
+  using GetStatsCallback = std::function<nlohmann::json()>;
+  using SetConfigCallback = std::function<bool(const std::string&, const nlohmann::json&)>;
+  using BeginRecordingCallback = std::function<bool(const std::string&)>;
+  using FinishRecordingCallback = std::function<bool(const std::string&)>;
+  using CancelRecordingCallback = std::function<bool()>;
+  using PauseRecordingCallback = std::function<bool()>;
+  using ResumeRecordingCallback = std::function<bool()>;
+  using ClearConfigCallback = std::function<bool()>;
+  using QuitCallback = std::function<void()>;
+
   /**
    * RPC response structure
    */
@@ -53,12 +58,27 @@ public:
   };
 
   /**
+   * Callback registration structure
+   */
+  struct Callbacks {
+    GetStateCallback get_state;
+    GetStatsCallback get_stats;
+    SetConfigCallback set_config;
+    BeginRecordingCallback begin_recording;
+    FinishRecordingCallback finish_recording;
+    CancelRecordingCallback cancel_recording;
+    PauseRecordingCallback pause_recording;
+    ResumeRecordingCallback resume_recording;
+    ClearConfigCallback clear_config;
+    QuitCallback quit;
+  };
+
+  /**
    * Constructor
-   * @param recorder Reference to the AxonRecorder instance
    * @param host Host address to bind to (default: "0.0.0.0")
    * @param port Port number to listen on (default: 8080)
    */
-  HttpServer(AxonRecorder& recorder, const std::string& host = "0.0.0.0", uint16_t port = 8080);
+  HttpServer(const std::string& host = "0.0.0.0", uint16_t port = 8080);
 
   /**
    * Destructor - stops the server
@@ -70,6 +90,12 @@ public:
   HttpServer& operator=(const HttpServer&) = delete;
   HttpServer(HttpServer&&) = delete;
   HttpServer& operator=(HttpServer&&) = delete;
+
+  /**
+   * Register callbacks for RPC operations
+   * Must be called before start()
+   */
+  void register_callbacks(const Callbacks& callbacks);
 
   /**
    * Start the HTTP server in a background thread
@@ -137,9 +163,9 @@ private:
    */
   void set_error_helper(const std::string& error);
 
-  AxonRecorder& recorder_;
   std::string host_;
   uint16_t port_;
+  Callbacks callbacks_;
 
   std::unique_ptr<std::thread> server_thread_;
   std::atomic<bool> running_;

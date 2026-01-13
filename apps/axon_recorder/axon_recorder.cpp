@@ -43,6 +43,7 @@ void print_usage(const char* program_name) {
     << "Options:\n"
     << "  --config PATH          Path to YAML configuration file\n"
     << "  --plugin PATH         Path to ROS plugin shared library (.so)\n"
+    << "  --path PATH           Output directory path (default: .)\n"
     << "  --output FILE         Output MCAP file path (default: output.mcap)\n"
     << "  --topic NAME          Subscribe to topic (can be used multiple times)\n"
     << "  --type TYPE           Message type for last --topic (e.g., "
@@ -97,14 +98,14 @@ void print_usage(const char* program_name) {
     << "  " << program_name << " --config config/default_config_ros2.yaml \\\n"
     << "    --plugin /custom/path/to/libaxon_ros2_plugin.so\n"
     << "\n"
-    << "  # Override output file and compression level\n"
+    << "  # Override output directory and compression level\n"
     << "  " << program_name << " --config config/default_config_ros2.yaml \\\n"
-    << "    --output /tmp/test.mcap --level 5\n"
+    << "    --path /tmp/recordings --level 5\n"
     << "\n"
     << "  # CLI only (no config file)\n"
     << "  " << program_name << " --plugin ./ros2_plugin.so \\\n"
-    << "    --topic /camera/image_raw --type sensor_msgs/msg/Image \\\n"
-    << "    --output recording.mcap\n"
+    << "    --path /data/recordings \\\n"
+    << "    --topic /camera/image_raw --type sensor_msgs/msg/Image\n"
     << std::endl;
 }
 
@@ -136,6 +137,7 @@ int main(int argc, char* argv[]) {
   // Step 1: Parse command line arguments to extract config file path and CLI overrides
   std::string config_file;
   std::string cli_plugin_path;
+  std::string cli_dataset_path;
   std::string cli_output_file;
   std::string cli_profile;
   std::string cli_compression;
@@ -157,6 +159,13 @@ int main(int argc, char* argv[]) {
         cli_plugin_path = argv[++i];
       } else {
         std::cerr << "Error: --plugin requires a path argument" << std::endl;
+        return 1;
+      }
+    } else if (strcmp(argv[i], "--path") == 0) {
+      if (i + 1 < argc) {
+        cli_dataset_path = argv[++i];
+      } else {
+        std::cerr << "Error: --path requires a directory argument" << std::endl;
         return 1;
       }
     } else if (strcmp(argv[i], "--output") == 0) {
@@ -236,6 +245,9 @@ int main(int argc, char* argv[]) {
   if (!cli_plugin_path.empty()) {
     config.plugin_path = cli_plugin_path;
   }
+  if (!cli_dataset_path.empty()) {
+    config.dataset.path = cli_dataset_path;
+  }
   if (!cli_output_file.empty()) {
     config.output_file = cli_output_file;
   }
@@ -269,9 +281,22 @@ int main(int argc, char* argv[]) {
   }
 
   // Print configuration
+  // Construct output file path for display
+  std::string output_file_display;
+  if (!config.dataset.path.empty()) {
+    std::string path = config.dataset.path;
+    if (!path.empty() && path.back() != '/') {
+      path += '/';
+    }
+    output_file_display = path + config.dataset.output_file;
+  } else {
+    output_file_display = config.output_file;
+  }
+
   std::cout << "Axon Recorder Configuration:\n"
             << "  Plugin:      " << config.plugin_path << "\n"
-            << "  Output:      " << config.output_file << "\n"
+            << "  Output:      " << output_file_display << "\n"
+            << "  Dataset:     " << config.dataset.path << "\n"
             << "  Profile:     " << config.profile << "\n"
             << "  Compression: " << config.compression << " level " << config.compression_level
             << "\n"
@@ -297,6 +322,13 @@ int main(int argc, char* argv[]) {
 
   // Start HTTP RPC server
   std::cout << "Starting HTTP RPC server on port 8080..." << std::endl;
+
+  // Register shutdown callback to set exit flag when /rpc/quit is called
+  recorder.set_shutdown_callback([]() {
+    std::cout << "\nReceived quit request via HTTP RPC..." << std::endl;
+    g_should_exit.store(true);
+  });
+
   if (!recorder.start_http_server("0.0.0.0", 8080)) {
     std::cerr << "Warning: Failed to start HTTP server: " << recorder.get_last_error() << std::endl;
     std::cerr << "Continuing without HTTP RPC control..." << std::endl;

@@ -119,11 +119,24 @@ bool AxonRecorder::start() {
 
   mcap_options.compression_level = config_.compression_level;
 
+  // Construct output file path: dataset.path/dataset.output_file
+  std::string output_file;
+  if (!config_.dataset.path.empty()) {
+    // Ensure path ends with /
+    std::string path = config_.dataset.path;
+    if (!path.empty() && path.back() != '/') {
+      path += '/';
+    }
+    output_file = path + config_.dataset.output_file;
+  } else {
+    // Fallback to legacy output_file if dataset.path is not configured
+    output_file = config_.output_file;
+  }
+
   // Open MCAP file via recording session
-  if (!recording_session_->open(config_.output_file, mcap_options)) {
+  if (!recording_session_->open(output_file, mcap_options)) {
     set_error_helper(
-      "Failed to open MCAP file: " + config_.output_file + " - " +
-      recording_session_->get_last_error()
+      "Failed to open MCAP file: " + output_file + " - " + recording_session_->get_last_error()
     );
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     recording_session_.reset();
@@ -231,7 +244,190 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     return false;
   }
 
-  http_server_ = std::make_unique<HttpServer>(*this, host, port);
+  http_server_ = std::make_unique<HttpServer>(host, port);
+
+  // Register callbacks with the HTTP server
+  HttpServer::Callbacks callbacks;
+  callbacks.get_state = [this]() -> std::string {
+    return this->get_state_string();
+  };
+
+  callbacks.get_stats = [this]() -> nlohmann::json {
+    auto stats = this->get_statistics();
+    nlohmann::json j;
+    j["messages_received"] = stats.messages_received;
+    j["messages_written"] = stats.messages_written;
+    j["messages_dropped"] = stats.messages_dropped;
+    j["bytes_written"] = stats.bytes_written;
+    return j;
+  };
+
+  callbacks.set_config =
+    [this](const std::string& task_id, const nlohmann::json& config_json) -> bool {
+    try {
+      TaskConfig config;
+
+      // Parse the config JSON
+      if (config_json.contains("task_id")) {
+        config.task_id = config_json["task_id"];
+      }
+      if (config_json.contains("device_id")) {
+        config.device_id = config_json["device_id"];
+      }
+      if (config_json.contains("data_collector_id")) {
+        config.data_collector_id = config_json["data_collector_id"];
+      }
+      if (config_json.contains("order_id")) {
+        config.order_id = config_json["order_id"];
+      }
+      if (config_json.contains("operator_name")) {
+        config.operator_name = config_json["operator_name"];
+      }
+      if (config_json.contains("scene")) {
+        config.scene = config_json["scene"];
+      }
+      if (config_json.contains("subscene")) {
+        config.subscene = config_json["subscene"];
+      }
+      if (config_json.contains("skills")) {
+        for (const auto& skill : config_json["skills"]) {
+          config.skills.push_back(skill);
+        }
+      }
+      if (config_json.contains("factory")) {
+        config.factory = config_json["factory"];
+      }
+      if (config_json.contains("topics")) {
+        for (const auto& topic : config_json["topics"]) {
+          config.topics.push_back(topic);
+        }
+      }
+      if (config_json.contains("callback_url")) {
+        config.start_callback_url = config_json["callback_url"];
+      }
+      if (config_json.contains("finish_callback_url")) {
+        config.finish_callback_url = config_json["finish_callback_url"];
+      }
+      if (config_json.contains("user_token")) {
+        config.user_token = config_json["user_token"];
+      }
+
+      // Set the task config
+      this->set_task_config(config);
+
+      // Transition state from IDLE to READY
+      auto current_state = this->get_state();
+      if (current_state == RecorderState::IDLE) {
+        std::string error_msg;
+        if (!this->transition_to(RecorderState::READY, error_msg)) {
+          return false;
+        }
+      }
+
+      return true;
+    } catch (const std::exception& e) {
+      return false;
+    }
+  };
+
+  callbacks.begin_recording = [this](const std::string& task_id) -> bool {
+    // Verify task_id matches
+    const TaskConfig* task_config = this->get_task_config();
+    if (!task_config || task_config->task_id.empty()) {
+      return false;
+    }
+
+    if (task_id != task_config->task_id) {
+      return false;
+    }
+
+    // Check if we're in READY state
+    if (this->get_state() != RecorderState::READY) {
+      return false;
+    }
+
+    // Start recording
+    return this->start();
+  };
+
+  callbacks.finish_recording = [this](const std::string& task_id) -> bool {
+    // Verify task_id matches
+    const TaskConfig* task_config = this->get_task_config();
+    if (!task_config || task_config->task_id.empty()) {
+      return false;
+    }
+
+    if (task_id != task_config->task_id) {
+      return false;
+    }
+
+    // Check if we're in RECORDING or PAUSED state
+    auto current_state = this->get_state();
+    if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
+      return false;
+    }
+
+    // Stop recording
+    if (this->is_running()) {
+      this->stop();
+      return true;
+    }
+    return false;
+  };
+
+  callbacks.cancel_recording = [this]() -> bool {
+    // Check if we're in RECORDING or PAUSED state
+    auto current_state = this->get_state();
+    if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
+      return false;
+    }
+
+    // Stop recording (TODO: add cleanup to discard partial recording)
+    if (this->is_running()) {
+      this->stop();
+      return true;
+    }
+    return false;
+  };
+
+  callbacks.pause_recording = [this]() -> bool {
+    // Check if we're in RECORDING state
+    if (this->get_state() != RecorderState::RECORDING) {
+      return false;
+    }
+
+    // TODO: Implement pause functionality
+    std::string error_msg;
+    return this->transition_to(RecorderState::PAUSED, error_msg);
+  };
+
+  callbacks.resume_recording = [this]() -> bool {
+    // Check if we're in PAUSED state
+    if (this->get_state() != RecorderState::PAUSED) {
+      return false;
+    }
+
+    // TODO: Implement resume functionality
+    std::string error_msg;
+    return this->transition_to(RecorderState::RECORDING, error_msg);
+  };
+
+  callbacks.clear_config = [this]() -> bool {
+    // Check if we're in READY state
+    if (this->get_state() != RecorderState::READY) {
+      return false;
+    }
+
+    // TODO: Implement clear to reset task config and return to IDLE
+    std::string error_msg;
+    return this->transition_to(RecorderState::IDLE, error_msg);
+  };
+
+  callbacks.quit = [this]() -> void {
+    this->request_shutdown();
+  };
+
+  http_server_->register_callbacks(callbacks);
 
   if (!http_server_->start()) {
     set_error_helper("Failed to start HTTP server: " + http_server_->get_last_error());
@@ -466,6 +662,21 @@ void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
   // Handle state transitions
   // This callback is invoked after each successful state transition
   // Can be used for logging, metrics, or triggering side effects
+}
+
+void AxonRecorder::request_shutdown() {
+  // Call the shutdown callback if registered
+  if (shutdown_callback_) {
+    shutdown_callback_();
+  }
+}
+
+void AxonRecorder::set_shutdown_callback(ShutdownCallback callback) {
+  shutdown_callback_ = callback;
+}
+
+AxonRecorder::ShutdownCallback AxonRecorder::get_shutdown_callback() const {
+  return shutdown_callback_;
 }
 
 }  // namespace recorder

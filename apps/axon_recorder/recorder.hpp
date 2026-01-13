@@ -66,7 +66,9 @@ struct SubscriptionConfig {
  */
 struct DatasetConfig {
   std::string path;
-  std::string mode = "append";                                           // "create" or "append"
+  std::string output_file =
+    "recording.mcap";           // Output filename (optional, defaults to recording.mcap)
+  std::string mode = "append";  // "create" or "append"
   std::string stats_file_path = "/data/recordings/recorder_stats.json";  // Stats output file
 };
 
@@ -212,6 +214,24 @@ public:
   bool is_running() const;
 
   /**
+   * Request program shutdown (sets global exit flag)
+   * Called by HTTP RPC server when /rpc/quit is invoked
+   */
+  void request_shutdown();
+
+  /**
+   * Set shutdown callback function
+   * Called by HTTP RPC server to request program exit
+   */
+  using ShutdownCallback = std::function<void()>;
+  void set_shutdown_callback(ShutdownCallback callback);
+
+  /**
+   * Get shutdown callback (for HTTP server)
+   */
+  ShutdownCallback get_shutdown_callback() const;
+
+  /**
    * Get current recorder state
    */
   RecorderState get_state() const;
@@ -351,6 +371,9 @@ private:
 
   // HTTP RPC server
   std::unique_ptr<HttpServer> http_server_;
+
+  // Shutdown callback (set by main program)
+  ShutdownCallback shutdown_callback_;
 
   // Error handling
   mutable std::mutex error_mutex_;

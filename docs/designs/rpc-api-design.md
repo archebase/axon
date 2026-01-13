@@ -147,6 +147,8 @@ Content-Type: application/json
 }
 ```
 
+**Note:** `task_id` 参数是必需的，必须与之前通过 `/rpc/config` 设置的任务ID匹配。
+
 **Response (200 OK):**
 ```json
 {
@@ -159,13 +161,37 @@ Content-Type: application/json
 }
 ```
 
-**Error Response (400 Bad Request):**
+**Error Response (400 Bad Request) - Missing task_id:**
+```json
+{
+  "success": false,
+  "message": "Missing required parameter: task_id",
+  "data": {
+    "state": "ready"
+  }
+}
+```
+
+**Error Response (400 Bad Request) - Wrong state:**
 ```json
 {
   "success": false,
   "message": "Cannot start recording from state: idle. Must be in READY state (call /rpc/config first).",
   "data": {
     "state": "idle"
+  }
+}
+```
+
+**Error Response (400 Bad Request) - task_id mismatch:**
+```json
+{
+  "success": false,
+  "message": "task_id mismatch: expected 'task_123' but got 'wrong_task'",
+  "data": {
+    "state": "ready",
+    "expected_task_id": "task_123",
+    "provided_task_id": "wrong_task"
   }
 }
 ```
@@ -205,6 +231,30 @@ Content-Type: application/json
 ```
 
 **Error Response (400 Bad Request):**
+```json
+{
+  "success": false,
+  "message": "Missing required parameter: task_id",
+  "data": {
+    "state": "recording"
+  }
+}
+```
+
+**Error Response (400 Bad Request) - task_id mismatch:**
+```json
+{
+  "success": false,
+  "message": "task_id mismatch: expected 'task_123' but got 'wrong_task_id'",
+  "data": {
+    "state": "recording",
+    "expected_task_id": "task_123",
+    "provided_task_id": "wrong_task_id"
+  }
+}
+```
+
+**Error Response (400 Bad Request) - Invalid state:**
 ```json
 {
   "success": false,
@@ -618,7 +668,9 @@ curl -X POST http://localhost:8080/rpc/config \
 curl http://localhost:8080/rpc/state
 
 # 5. Begin recording
-curl -X POST http://localhost:8080/rpc/begin
+curl -X POST http://localhost:8080/rpc/begin \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_123"}'
 
 # 6. Check state (should be "recording")
 curl http://localhost:8080/rpc/state
@@ -635,7 +687,9 @@ curl -X POST http://localhost:8080/rpc/finish \
 curl http://localhost:8080/rpc/state
 
 # 10. Begin another recording
-curl -X POST http://localhost:8080/rpc/begin
+curl -X POST http://localhost:8080/rpc/begin \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_123"}'
 
 # 11. When done, quit program
 curl -X POST http://localhost:8080/rpc/quit
@@ -663,9 +717,12 @@ def configure_recording(task_id, device_id, topics):
     )
     return response.json()
 
-def begin_recording():
+def begin_recording(task_id):
     """Begin recording"""
-    response = requests.post(f"{BASE_URL}/rpc/begin")
+    response = requests.post(
+        f"{BASE_URL}/rpc/begin",
+        json={"task_id": task_id}
+    )
     return response.json()
 
 def finish_recording(task_id):
@@ -688,7 +745,7 @@ def get_stats():
 
 # Usage
 configure_recording("task_123", "robot_01", ["/camera/image", "/lidar/scan"])
-begin_recording()
+begin_recording("task_123")
 print(f"State: {get_state()['data']['state']}")
 finish_recording("task_123")
 ```
@@ -711,8 +768,10 @@ async function configureRecording(taskId, deviceId, topics) {
   return response.data;
 }
 
-async function beginRecording() {
-  const response = await axios.post(`${BASE_URL}/rpc/begin`);
+async function beginRecording(taskId) {
+  const response = await axios.post(`${BASE_URL}/rpc/begin`, {
+    task_id: taskId
+  });
   return response.data;
 }
 
@@ -731,7 +790,7 @@ async function getState() {
 // Usage
 (async () => {
   await configureRecording('task_123', 'robot_01', ['/camera/image', '/lidar/scan']);
-  await beginRecording();
+  await beginRecording('task_123');
   console.log('State:', (await getState()).data.state);
   await finishRecording('task_123');
 })();

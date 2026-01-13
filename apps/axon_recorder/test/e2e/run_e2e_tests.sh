@@ -363,9 +363,12 @@ test_state_config_to_ready() {
 test_state_begin_to_recording() {
     log_info "Testing state transition: READY -> RECORDING via /rpc/begin..."
 
-    # Begin recording
+    # Begin recording with task_id
     local begin_response
-    begin_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+    begin_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"task_id\": \"${TEST_TASK_ID}\"}" \
+        "http://localhost:${HTTP_PORT}/rpc/begin")
 
     # Check state
     local state_response
@@ -407,9 +410,12 @@ test_state_begin_fails_from_idle() {
 test_state_finish_returns_to_idle() {
     log_info "Testing state transition: RECORDING -> IDLE via /rpc/finish..."
 
-    # Finish recording
+    # Finish recording with task_id
     local finish_response
-    finish_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/finish")
+    finish_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"task_id\": \"${TEST_TASK_ID}\"}" \
+        "http://localhost:${HTTP_PORT}/rpc/finish")
 
     # Check state
     local state_response
@@ -439,9 +445,12 @@ test_state_cancel_from_recording() {
         -d "{\"task_config\": {\"task_id\": \"cancel_test_${TEST_TASK_ID}\", \"device_id\": \"${TEST_DEVICE_ID}\", \"scene\": \"${TEST_SCENE}\"}}" \
         "http://localhost:${HTTP_PORT}/rpc/config" > /dev/null
 
-    # Begin recording
+    # Begin recording with task_id
     local begin_response
-    begin_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+    begin_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"task_id\": \"cancel_test_${TEST_TASK_ID}\"}" \
+        "http://localhost:${HTTP_PORT}/rpc/begin")
 
     # Verify we're in recording state
     local state_before
@@ -508,9 +517,12 @@ test_state_dynamic_subscription_update() {
         }" \
         "http://localhost:${HTTP_PORT}/rpc/config")
 
-    # Begin first recording
+    # Begin first recording with task_id
     local begin1_response
-    begin1_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+    begin1_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"task_id\": \"dynamic_sub_test_1_${TEST_TASK_ID}\"}" \
+        "http://localhost:${HTTP_PORT}/rpc/begin")
 
     # Verify first recording started
     local state1
@@ -537,9 +549,12 @@ test_state_dynamic_subscription_update() {
         }" \
         "http://localhost:${HTTP_PORT}/rpc/config")
 
-    # Begin second recording
+    # Begin second recording with task_id
     local begin2_response
-    begin2_response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/begin")
+    begin2_response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"task_id\": \"dynamic_sub_test_2_${TEST_TASK_ID}\"}" \
+        "http://localhost:${HTTP_PORT}/rpc/begin")
 
     # Verify second recording started
     local state2
@@ -594,7 +609,10 @@ test_stop_recording() {
     log_info "Testing stop recording endpoint..."
 
     local response
-    response=$(curl -s -X POST "http://localhost:${HTTP_PORT}/rpc/finish")
+    response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"task_id\": \"${TEST_TASK_ID}\"}" \
+        "http://localhost:${HTTP_PORT}/rpc/finish")
 
     if echo "${response}" | grep -q '"success":true'; then
         log_info "Recording stopped successfully"

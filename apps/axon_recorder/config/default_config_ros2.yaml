@@ -46,35 +46,35 @@ subscriptions:
     flush_interval_ms: 5000
 
   # Camera 0 - RGB and Depth (10 seconds of data per batch at 30fps)
-  - name: /camera0/rgb
-    message_type: sensor_msgs/Image
+  - name: /camera/cam_hand_left/image
+    message_type: sensor_msgs/CompressedImage
     batch_size: 300
     flush_interval_ms: 10000
 
-  - name: /camera0/depth
-    message_type: sensor_msgs/Image
+  - name: /camera/cam_hand_right/image
+    message_type: sensor_msgs/CompressedImage
     batch_size: 300
     flush_interval_ms: 10000
 
   # Camera 1 - RGB and Depth
-  - name: /camera1/rgb
-    message_type: sensor_msgs/Image
+  - name: /camera/cam_top_head/image
+    message_type: sensor_msgs/CompressedImage
     batch_size: 300
     flush_interval_ms: 10000
 
-  - name: /camera1/depth
-    message_type: sensor_msgs/Image
+  - name: /io_teleop/joint_cmd
+    message_type: sensor_msgs/JointState
     batch_size: 300
     flush_interval_ms: 10000
 
   # Camera 2 - RGB and Depth
-  - name: /camera2/rgb
-    message_type: sensor_msgs/Image
+  - name: /io_teleop/joint_states
+    message_type: sensor_msgs/JointState
     batch_size: 300
     flush_interval_ms: 10000
 
-  - name: /camera2/depth
-    message_type: sensor_msgs/Image
+  - name: /io_teleop/robot_info
+    message_type: std_msgs/String
     batch_size: 300
     flush_interval_ms: 10000
 
