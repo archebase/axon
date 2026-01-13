@@ -18,7 +18,7 @@ public:
   ~Ros1Plugin();
 
   // Initialize the ROS1 plugin with JSON config
-  // Config format: {"node_name": "optional_name"}
+  // Config format: {"node_name": "optional_name", "namespace": "optional_ns"}
   bool init(const char* config_json);
 
   // Start spinning (create async spinner)
@@ -59,6 +59,7 @@ private:
   std::unique_ptr<ros::AsyncSpinner> async_spinner_;
 
   std::string node_name_;
+  std::string namespace_;
 
   std::atomic<bool> initialized_;
   std::atomic<bool> spinning_;

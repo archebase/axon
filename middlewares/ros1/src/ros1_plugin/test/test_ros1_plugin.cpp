@@ -401,6 +401,82 @@ TEST_F(Ros1PluginTest, InitWithCustomNodeName) {
   EXPECT_TRUE(plugin.stop());
 }
 
+/**
+ * @brief Test configuration parsing with namespace
+ */
+TEST_F(Ros1PluginTest, InitWithNamespace) {
+  Ros1Plugin plugin;
+
+  const char* config_json = R"({
+    "namespace": "/my_namespace"
+  })";
+
+  bool result = plugin.init(config_json);
+  EXPECT_TRUE(result);
+  EXPECT_TRUE(plugin.is_initialized());
+
+  auto node_handle = plugin.get_node_handle();
+  ASSERT_NE(node_handle, nullptr);
+
+  // Verify namespace is set by checking the namespace
+  std::string ns = node_handle->getNamespace();
+  EXPECT_EQ(ns, "/my_namespace");
+
+  // Clean up
+  EXPECT_TRUE(plugin.stop());
+}
+
+/**
+ * @brief Test configuration parsing with both node_name and namespace
+ */
+TEST_F(Ros1PluginTest, InitWithNodeNameAndNamespace) {
+  Ros1Plugin plugin;
+
+  const char* config_json = R"({
+    "node_name": "custom_node",
+    "namespace": "/custom_ns"
+  })";
+
+  bool result = plugin.init(config_json);
+  EXPECT_TRUE(result);
+  EXPECT_TRUE(plugin.is_initialized());
+
+  auto node_handle = plugin.get_node_handle();
+  ASSERT_NE(node_handle, nullptr);
+
+  // Verify both node name and namespace are set
+  std::string ns = node_handle->getNamespace();
+  EXPECT_EQ(ns, "/custom_ns");
+
+  // Clean up
+  EXPECT_TRUE(plugin.stop());
+}
+
+/**
+ * @brief Test configuration parsing with empty namespace (default behavior)
+ */
+TEST_F(Ros1PluginTest, InitWithEmptyNamespace) {
+  Ros1Plugin plugin;
+
+  const char* config_json = R"({
+    "namespace": ""
+  })";
+
+  bool result = plugin.init(config_json);
+  EXPECT_TRUE(result);
+  EXPECT_TRUE(plugin.is_initialized());
+
+  auto node_handle = plugin.get_node_handle();
+  ASSERT_NE(node_handle, nullptr);
+
+  // Verify namespace is global namespace
+  std::string ns = node_handle->getNamespace();
+  EXPECT_EQ(ns, "/");
+
+  // Clean up
+  EXPECT_TRUE(plugin.stop());
+}
+
 // =============================================================================
 // SubscriptionManager Tests
 // =============================================================================

@@ -48,8 +48,8 @@ Set the `plugin.path` in the config file:
     - Build: `middlewares/ros1/build/axon_ros1_plugin/libaxon_ros1_plugin.so`
     - Install: `/usr/local/lib/axon/plugins/libaxon_ros1_plugin.so`
 - `config`: Optional JSON configuration passed to the plugin during initialization
-  - ROS1: `{"node_name": "custom_name"}`
-  - ROS2: `{"node_name": "custom_name", "namespace": "custom_ns"}`
+  - ROS1: `{"node_name": "custom_name", "namespace": "/custom_ns"}`
+  - ROS2: `{"node_name": "custom_name", "namespace": "/custom_ns"}`
 
 ### Dataset
 - `path`: Output directory for MCAP files

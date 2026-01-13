@@ -478,13 +478,28 @@ TEST_F(McapValidatorTest, HeaderCannotOpenFile) {
   fs::permissions(path, fs::perms::none, ec);
 
   if (!ec) {
-    auto result = validateMcapHeader(path);
-    // Should fail to open file
-    EXPECT_FALSE(result.valid);
-    EXPECT_FALSE(result.error_message.empty());
+    // Verify we can't actually open the file (check if permission restriction works)
+    // This test may not work when running as root or in some Docker environments
+    std::ifstream test_open(path, std::ios::binary);
+    if (!test_open.is_open()) {
+      // Permission restriction works - file cannot be opened
+      test_open.close();
+
+      auto result = validateMcapHeader(path);
+      // Should fail to open file
+      EXPECT_FALSE(result.valid);
+      EXPECT_FALSE(result.error_message.empty());
+    } else {
+      // Running as root or in environment where chmod doesn't prevent reading
+      // Skip this test since we can't test permission errors
+      test_open.close();
+      GTEST_SKIP() << "Cannot test permission errors (running as root or in Docker?)";
+    }
 
     // Restore permissions for cleanup
     fs::permissions(path, fs::perms::owner_all, ec);
+  } else {
+    GTEST_SKIP() << "Cannot set file permissions on this system";
   }
 }
 
@@ -508,12 +523,27 @@ TEST_F(McapValidatorTest, FooterCannotOpenFile) {
   fs::permissions(path, fs::perms::none, ec);
 
   if (!ec) {
-    auto result = validateMcapFooter(path);
-    EXPECT_FALSE(result.valid);
-    EXPECT_FALSE(result.error_message.empty());
+    // Verify we can't actually open the file (check if permission restriction works)
+    // This test may not work when running as root or in some Docker environments
+    std::ifstream test_open(path, std::ios::binary);
+    if (!test_open.is_open()) {
+      // Permission restriction works - file cannot be opened
+      test_open.close();
+
+      auto result = validateMcapFooter(path);
+      EXPECT_FALSE(result.valid);
+      EXPECT_FALSE(result.error_message.empty());
+    } else {
+      // Running as root or in environment where chmod doesn't prevent reading
+      // Skip this test since we can't test permission errors
+      test_open.close();
+      GTEST_SKIP() << "Cannot test permission errors (running as root or in Docker?)";
+    }
 
     // Restore permissions for cleanup
     fs::permissions(path, fs::perms::owner_all, ec);
+  } else {
+    GTEST_SKIP() << "Cannot set file permissions on this system";
   }
 }
 

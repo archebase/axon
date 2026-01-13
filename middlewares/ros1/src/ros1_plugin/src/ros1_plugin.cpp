@@ -22,12 +22,17 @@ bool Ros1Plugin::init(const char* config_json) {
   try {
     // Parse configuration
     node_name_ = "axon_ros1_plugin";
+    namespace_ = "";
 
     if (config_json && std::strlen(config_json) > 0) {
       auto config = nlohmann::json::parse(config_json);
 
       if (config.contains("node_name")) {
         node_name_ = config["node_name"];
+      }
+
+      if (config.contains("namespace")) {
+        namespace_ = config["namespace"];
       }
     }
 
@@ -37,8 +42,12 @@ bool Ros1Plugin::init(const char* config_json) {
       ros::init(argc, nullptr, node_name_, ros::init_options::AnonymousName);
     }
 
-    // Create node handle
-    node_handle_ = boost::make_shared<ros::NodeHandle>();
+    // Create node handle with namespace if provided
+    if (namespace_.empty()) {
+      node_handle_ = boost::make_shared<ros::NodeHandle>();
+    } else {
+      node_handle_ = boost::make_shared<ros::NodeHandle>(namespace_);
+    }
 
     // Create subscription manager
     subscription_manager_ = std::make_unique<SubscriptionManager>(node_handle_);
