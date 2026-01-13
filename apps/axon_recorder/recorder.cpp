@@ -119,7 +119,7 @@ bool AxonRecorder::start() {
 
   mcap_options.compression_level = config_.compression_level;
 
-  // Construct output file path: dataset.path/dataset.output_file
+  // Construct output file path: dataset.path/task_id.mcap
   std::string output_file;
   if (!config_.dataset.path.empty()) {
     // Ensure path ends with /
@@ -127,7 +127,16 @@ bool AxonRecorder::start() {
     if (!path.empty() && path.back() != '/') {
       path += '/';
     }
-    output_file = path + config_.dataset.output_file;
+
+    // Use task_id as filename if available, otherwise use default
+    std::string filename;
+    if (task_config_.has_value() && !task_config_.value().task_id.empty()) {
+      filename = task_config_.value().task_id + ".mcap";
+    } else {
+      filename = "recording.mcap";
+    }
+
+    output_file = path + filename;
   } else {
     // Fallback to legacy output_file if dataset.path is not configured
     output_file = config_.output_file;

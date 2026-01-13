@@ -44,7 +44,6 @@ void print_usage(const char* program_name) {
     << "  --config PATH          Path to YAML configuration file\n"
     << "  --plugin PATH         Path to ROS plugin shared library (.so)\n"
     << "  --path PATH           Output directory path (default: .)\n"
-    << "  --output FILE         Output MCAP file path (default: output.mcap)\n"
     << "  --topic NAME          Subscribe to topic (can be used multiple times)\n"
     << "  --type TYPE           Message type for last --topic (e.g., "
        "sensor_msgs/msg/Image)\n"
@@ -78,8 +77,6 @@ void print_usage(const char* program_name) {
     << "    path: /path/to/plugin.so\n"
     << "  dataset:\n"
     << "    path: /data/recordings\n"
-    << "    output_file: recording.mcap\n"
-    << "    queue_size: 8192\n"
     << "  subscriptions:\n"
     << "    - name: /camera/image\n"
     << "      message_type: sensor_msgs/msg/Image\n"
@@ -89,6 +86,10 @@ void print_usage(const char* program_name) {
     << "    profile: ros2\n"
     << "    compression: zstd\n"
     << "    compression_level: 3\n"
+    << "\n"
+    << "Output File Naming:\n"
+    << "  When using HTTP RPC mode, output files are named as: <dataset.path>/<task_id>.mcap\n"
+    << "  The task_id is provided via the /rpc/config endpoint.\n"
     << "\n"
     << "Examples:\n"
     << "  # Use config file only\n"
@@ -138,7 +139,6 @@ int main(int argc, char* argv[]) {
   std::string config_file;
   std::string cli_plugin_path;
   std::string cli_dataset_path;
-  std::string cli_output_file;
   std::string cli_profile;
   std::string cli_compression;
   int cli_compression_level = -1;
@@ -166,13 +166,6 @@ int main(int argc, char* argv[]) {
         cli_dataset_path = argv[++i];
       } else {
         std::cerr << "Error: --path requires a directory argument" << std::endl;
-        return 1;
-      }
-    } else if (strcmp(argv[i], "--output") == 0) {
-      if (i + 1 < argc) {
-        cli_output_file = argv[++i];
-      } else {
-        std::cerr << "Error: --output requires a file argument" << std::endl;
         return 1;
       }
     } else if (strcmp(argv[i], "--topic") == 0) {
@@ -248,9 +241,6 @@ int main(int argc, char* argv[]) {
   if (!cli_dataset_path.empty()) {
     config.dataset.path = cli_dataset_path;
   }
-  if (!cli_output_file.empty()) {
-    config.output_file = cli_output_file;
-  }
   if (!cli_profile.empty()) {
     config.profile = cli_profile;
   }
@@ -281,21 +271,8 @@ int main(int argc, char* argv[]) {
   }
 
   // Print configuration
-  // Construct output file path for display
-  std::string output_file_display;
-  if (!config.dataset.path.empty()) {
-    std::string path = config.dataset.path;
-    if (!path.empty() && path.back() != '/') {
-      path += '/';
-    }
-    output_file_display = path + config.dataset.output_file;
-  } else {
-    output_file_display = config.output_file;
-  }
-
   std::cout << "Axon Recorder Configuration:\n"
             << "  Plugin:      " << config.plugin_path << "\n"
-            << "  Output:      " << output_file_display << "\n"
             << "  Dataset:     " << config.dataset.path << "\n"
             << "  Profile:     " << config.profile << "\n"
             << "  Compression: " << config.compression << " level " << config.compression_level

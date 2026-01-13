@@ -628,7 +628,6 @@ TEST_F(ConfigParserTest, ParseDatasetAllFields) {
   const std::string yaml = R"(
 dataset:
   path: /custom/path
-  output_file: custom_output.mcap
   mode: create
   stats_file_path: /tmp/custom_stats.json
 subscriptions:
@@ -641,7 +640,6 @@ subscriptions:
   EXPECT_TRUE(parser.load_from_string(yaml, config));
 
   EXPECT_EQ(config.dataset.path, "/custom/path");
-  EXPECT_EQ(config.dataset.output_file, "custom_output.mcap");
   EXPECT_EQ(config.dataset.mode, "create");
   EXPECT_EQ(config.dataset.stats_file_path, "/tmp/custom_stats.json");
 }
@@ -660,7 +658,6 @@ subscriptions:
   EXPECT_TRUE(parser.load_from_string(yaml, config));
 
   EXPECT_EQ(config.dataset.path, "/only/path");
-  EXPECT_EQ(config.dataset.output_file, "recording.mcap");                            // Default
   EXPECT_EQ(config.dataset.mode, "append");                                           // Default
   EXPECT_EQ(config.dataset.stats_file_path, "/data/recordings/recorder_stats.json");  // Default
 }

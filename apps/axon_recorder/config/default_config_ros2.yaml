@@ -22,10 +22,9 @@ plugin:
 # ============================================================================
 dataset:
   # Output directory for MCAP files
+  # When using HTTP RPC mode, output files are named as: <path>/<task_id>.mcap
+  # The task_id is provided via the /rpc/config endpoint
   path: /data/recordings
-
-  # Output filename (optional, defaults to <path>/recording.mcap)
-  output_file: recording.mcap
 
   # Per-topic queue capacity (number of messages)
   # Recommended: 4096-8192 for high-frequency topics (camera, IMU)

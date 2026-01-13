@@ -82,7 +82,6 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
 
     // Dataset
     node["dataset"]["path"] = config.dataset.path;
-    node["dataset"]["output_file"] = config.dataset.output_file;
     node["dataset"]["mode"] = config.dataset.mode;
     node["dataset"]["stats_file_path"] = config.dataset.stats_file_path;
 
@@ -112,9 +111,6 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
 bool ConfigParser::parse_dataset(const YAML::Node& node, DatasetConfig& dataset) {
   if (node["path"]) {
     dataset.path = node["path"].as<std::string>();
-  }
-  if (node["output_file"]) {
-    dataset.output_file = node["output_file"].as<std::string>();
   }
   if (node["mode"]) {
     dataset.mode = node["mode"].as<std::string>();
