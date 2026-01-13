@@ -11,6 +11,10 @@
 #include <sstream>
 #include <unordered_map>
 
+// Logging infrastructure
+#define AXON_LOG_COMPONENT "http_server"
+#include <axon_log_macros.hpp>
+
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace asio = boost::asio;
@@ -18,11 +22,6 @@ using tcp = asio::ip::tcp;
 
 namespace axon {
 namespace recorder {
-
-// Simple logging macros for HTTP server
-#define HTTP_LOG_INFO(msg) std::cout << "[HTTP_SERVER] [INFO] " << msg << std::endl
-#define HTTP_LOG_ERROR(msg) std::cerr << "[HTTP_SERVER] [ERROR] " << msg << std::endl
-#define HTTP_LOG_DEBUG(msg) std::cout << "[HTTP_SERVER] [DEBUG] " << msg << std::endl
 
 HttpServer::HttpServer(const std::string& host, uint16_t port)
     : host_(host)
@@ -101,7 +100,7 @@ void HttpServer::server_thread_func() {
     acceptor.bind(endpoint);
     acceptor.listen(asio::socket_base::max_listen_connections);
 
-    HTTP_LOG_INFO("HTTP RPC server listening on " << get_url());
+    AXON_LOG_INFO("HTTP RPC server listening on " << get_url());
 
     while (!stop_requested_.load()) {
       tcp::socket socket(io_context);
@@ -142,7 +141,7 @@ void HttpServer::server_thread_func() {
 
       if (!accept_complete && accept_ec != asio::error::operation_aborted) {
         // Actual error (not timeout)
-        HTTP_LOG_ERROR("Accept failed: " << accept_ec.message());
+        AXON_LOG_ERROR("Accept failed: " << accept_ec.message());
         continue;
       }
 
@@ -188,18 +187,18 @@ void HttpServer::server_thread_func() {
       } catch (const beast::system_error& se) {
         // Don't report on normal shutdown
         if (se.code() != beast::errc::connection_reset && se.code() != beast::errc::operation_canceled && se.code() != asio::error::eof) {
-          HTTP_LOG_ERROR("Connection error: " << se.what());
+          AXON_LOG_ERROR("Connection error: " << se.what());
         }
       } catch (const std::exception& e) {
-        HTTP_LOG_ERROR("Request processing error: " << e.what());
+        AXON_LOG_ERROR("Request processing error: " << e.what());
       }
     }
 
-    HTTP_LOG_INFO("HTTP RPC server stopped");
+    AXON_LOG_INFO("HTTP RPC server stopped");
 
   } catch (const std::exception& e) {
     set_error_helper(std::string("Server error: ") + e.what());
-    HTTP_LOG_ERROR("HTTP server error: " << e.what());
+    AXON_LOG_ERROR("HTTP server error: " << e.what());
   }
 }
 
@@ -207,18 +206,18 @@ void HttpServer::handle_request(
   const boost::beast::string_view& method, const boost::beast::string_view& target,
   const std::string& body, std::string& response_body, std::string& content_type, int& status_code
 ) {
-  HTTP_LOG_DEBUG("Received request: " << method << " " << target);
+  AXON_LOG_DEBUG("Received request: " << method << " " << target);
 
   // Convert string_view to string for easier handling
   std::string method_str(method);
   std::string target_str(target);
 
-  HTTP_LOG_DEBUG("Method: [" << method_str << "], Target: [" << target_str << "]");
+  AXON_LOG_DEBUG("Method: [" << method_str << "], Target: [" << target_str << "]");
 
   // Check if it's an RPC call
   if (target_str.find("/rpc/") == 0) {
     std::string rpc_method = target_str.substr(5);  // Remove "/rpc/"
-    HTTP_LOG_DEBUG("RPC method: [" << rpc_method << "]");
+    AXON_LOG_DEBUG("RPC method: [" << rpc_method << "]");
 
     try {
       // Parse request body if present
@@ -229,10 +228,10 @@ void HttpServer::handle_request(
 
       RpcResponse rpc_response;
 
-      HTTP_LOG_DEBUG(
+      AXON_LOG_DEBUG(
         "Routing: rpc_method=[" << rpc_method << "], method_str=[" << method_str << "]"
       );
-      HTTP_LOG_DEBUG(
+      AXON_LOG_DEBUG(
         "Comparison: begin=" << (rpc_method == "begin") << ", finish=" << (rpc_method == "finish")
                              << ", quit=" << (rpc_method == "quit")
                              << ", POST=" << (method_str == "POST")
@@ -240,37 +239,37 @@ void HttpServer::handle_request(
 
       // Route to appropriate RPC handler
       if (rpc_method == "begin" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_begin");
+        AXON_LOG_DEBUG("Routing to handle_rpc_begin");
         rpc_response = handle_rpc_begin(params);
       } else if (rpc_method == "finish" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_finish");
+        AXON_LOG_DEBUG("Routing to handle_rpc_finish");
         rpc_response = handle_rpc_finish(params);
       } else if (rpc_method == "quit" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_quit");
+        AXON_LOG_DEBUG("Routing to handle_rpc_quit");
         rpc_response = handle_rpc_quit(params);
       } else if (rpc_method == "pause" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_pause");
+        AXON_LOG_DEBUG("Routing to handle_rpc_pause");
         rpc_response = handle_rpc_pause(params);
       } else if (rpc_method == "resume" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_resume");
+        AXON_LOG_DEBUG("Routing to handle_rpc_resume");
         rpc_response = handle_rpc_resume(params);
       } else if (rpc_method == "cancel" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_cancel");
+        AXON_LOG_DEBUG("Routing to handle_rpc_cancel");
         rpc_response = handle_rpc_cancel(params);
       } else if (rpc_method == "clear" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_clear");
+        AXON_LOG_DEBUG("Routing to handle_rpc_clear");
         rpc_response = handle_rpc_clear(params);
       } else if (rpc_method == "state" && method_str == "GET") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_get_state");
+        AXON_LOG_DEBUG("Routing to handle_rpc_get_state");
         rpc_response = handle_rpc_get_state(params);
       } else if (rpc_method == "stats" && method_str == "GET") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_get_stats");
+        AXON_LOG_DEBUG("Routing to handle_rpc_get_stats");
         rpc_response = handle_rpc_get_stats(params);
       } else if (rpc_method == "config" && method_str == "POST") {
-        HTTP_LOG_DEBUG("Routing to handle_rpc_set_config");
+        AXON_LOG_DEBUG("Routing to handle_rpc_set_config");
         rpc_response = handle_rpc_set_config(params);
       } else {
-        HTTP_LOG_DEBUG("No match found, returning 404");
+        AXON_LOG_DEBUG("No match found, returning 404");
         rpc_response.success = false;
         rpc_response.message = "Unknown RPC method or invalid HTTP method: " + rpc_method;
         status_code = 404;
@@ -440,7 +439,7 @@ HttpServer::RpcResponse HttpServer::handle_rpc_quit(const nlohmann::json& params
   }
 
   // Stop the HTTP server
-  HTTP_LOG_INFO("Stopping HTTP server...");
+  AXON_LOG_INFO("Stopping HTTP server...");
   stop_requested_.store(true);
 
   response.success = true;
