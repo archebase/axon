@@ -386,6 +386,9 @@ private:
   // Error handling
   mutable std::mutex error_mutex_;
   std::string last_error_;
+
+  // Mutex for protecting task_config_, worker_pool_, recording_session_ from concurrent access
+  mutable std::mutex recorder_mutex_;
 };
 
 }  // namespace recorder

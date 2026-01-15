@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -109,6 +110,7 @@ public:
   std::string get_last_error() const;
 
 private:
+  mutable std::mutex plugins_mutex_;
   std::unordered_map<std::string, std::unique_ptr<Plugin>> plugins_;
   std::string last_error_;
 

@@ -123,11 +123,13 @@ void HttpServer::server_thread_func() {
         accept_ec = ec;
         if (!ec) {
           accept_complete = true;
+          timer.cancel();  // Cancel timer when accept completes
         }
       });
 
-      timer.async_wait([&](const boost::system::error_code&) {
-        if (!accept_complete) {
+      timer.async_wait([&](const boost::system::error_code& ec) {
+        if (ec != asio::error::operation_aborted && !accept_complete) {
+          // Timer fired naturally, cancel the pending accept
           acceptor.cancel();
         }
       });
@@ -189,8 +191,16 @@ void HttpServer::server_thread_func() {
         if (se.code() != beast::errc::connection_reset && se.code() != beast::errc::operation_canceled && se.code() != asio::error::eof) {
           AXON_LOG_ERROR("Connection error: " << se.what());
         }
+        // Ensure socket is closed on error
+        beast::error_code ec;
+        socket.shutdown(tcp::socket::shutdown_both, ec);
+        socket.close(ec);
       } catch (const std::exception& e) {
         AXON_LOG_ERROR("Request processing error: " << e.what());
+        // Ensure socket is closed on error
+        beast::error_code ec;
+        socket.shutdown(tcp::socket::shutdown_both, ec);
+        socket.close(ec);
       }
     }
 
@@ -311,7 +321,7 @@ void HttpServer::handle_request(
 HttpServer::RpcResponse HttpServer::handle_rpc_begin(const nlohmann::json& params) {
   RpcResponse response;
 
-  // Check if task_id is provided
+  // Check if task_id is provided and is a string
   if (!params.contains("task_id")) {
     response.success = false;
     response.message = "Missing required parameter: task_id";
@@ -319,7 +329,14 @@ HttpServer::RpcResponse HttpServer::handle_rpc_begin(const nlohmann::json& param
     return response;
   }
 
-  std::string provided_task_id = params["task_id"];
+  if (!params["task_id"].is_string()) {
+    response.success = false;
+    response.message = "task_id must be a string";
+    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
+    return response;
+  }
+
+  std::string provided_task_id = params["task_id"].get<std::string>();
 
   // Check callback exists
   if (!callbacks_.begin_recording) {
@@ -396,7 +413,7 @@ HttpServer::RpcResponse HttpServer::handle_rpc_resume(const nlohmann::json& para
 HttpServer::RpcResponse HttpServer::handle_rpc_finish(const nlohmann::json& params) {
   RpcResponse response;
 
-  // Check if task_id is provided
+  // Check if task_id is provided and is a string
   if (!params.contains("task_id")) {
     response.success = false;
     response.message = "Missing required parameter: task_id";
@@ -404,7 +421,14 @@ HttpServer::RpcResponse HttpServer::handle_rpc_finish(const nlohmann::json& para
     return response;
   }
 
-  std::string task_id = params["task_id"];
+  if (!params["task_id"].is_string()) {
+    response.success = false;
+    response.message = "task_id must be a string";
+    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
+    return response;
+  }
+
+  std::string task_id = params["task_id"].get<std::string>();
 
   if (!callbacks_.finish_recording) {
     response.success = false;
@@ -570,7 +594,13 @@ HttpServer::RpcResponse HttpServer::handle_rpc_set_config(const nlohmann::json& 
     // Extract task_id for response
     std::string task_id;
     if (config_json.contains("task_id")) {
-      task_id = config_json["task_id"];
+      if (!config_json["task_id"].is_string()) {
+        response.success = false;
+        response.message = "task_id must be a string";
+        response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
+        return response;
+      }
+      task_id = config_json["task_id"].get<std::string>();
     }
 
     // Call the callback with the config

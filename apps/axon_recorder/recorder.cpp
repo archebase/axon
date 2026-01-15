@@ -461,14 +461,17 @@ bool AxonRecorder::transition_to(RecorderState to, std::string& error_msg) {
 }
 
 void AxonRecorder::set_task_config(const TaskConfig& config) {
+  std::lock_guard<std::mutex> lock(recorder_mutex_);
   task_config_ = config;
 }
 
 const TaskConfig* AxonRecorder::get_task_config() const {
+  std::lock_guard<std::mutex> lock(recorder_mutex_);
   return task_config_.has_value() ? &task_config_.value() : nullptr;
 }
 
 RecordingSession* AxonRecorder::get_recording_session() {
+  std::lock_guard<std::mutex> lock(recorder_mutex_);
   return recording_session_.get();
 }
 
@@ -478,6 +481,7 @@ std::string AxonRecorder::get_last_error() const {
 }
 
 AxonRecorder::Statistics AxonRecorder::get_statistics() const {
+  std::lock_guard<std::mutex> lock(recorder_mutex_);
   Statistics stats{};  // Value-initialize all fields to 0
 
   // Get aggregate statistics from worker pool

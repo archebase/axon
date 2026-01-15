@@ -226,6 +226,21 @@ target_link_libraries(test_recording_session OpenSSL::Crypto)
 # To enable: remove from exclusion list and implement mock plugin interface
 list(APPEND EXCLUDED_TEST_FILES ${TEST_SOURCE_DIR}/test_topic_manager.cpp)
 
+# =============================================================================
+# Thread Safety and Type Validation Tests (Added for reviewer fixes)
+# =============================================================================
+
+# test_plugin_loader_thread_safety.cpp
+add_axon_test(test_plugin_loader_thread_safety
+    SOURCES
+        ${TEST_SOURCE_DIR}/test_plugin_loader_thread_safety.cpp
+        # Add required source files
+        ../plugin_loader.cpp
+)
+target_link_libraries(test_plugin_loader_thread_safety ${CMAKE_DL_LIBS})
+
+
+
 message(STATUS "Unit tests configured successfully")
 
 # =============================================================================

@@ -26,6 +26,8 @@ PluginLoader::~PluginLoader() {
 }
 
 std::optional<std::string> PluginLoader::load(const std::string& plugin_path) {
+  std::lock_guard<std::mutex> lock(plugins_mutex_);
+
   // Clear previous error
   last_error_.clear();
 
@@ -114,6 +116,8 @@ std::optional<std::string> PluginLoader::load(const std::string& plugin_path) {
 }
 
 bool PluginLoader::unload(const std::string& plugin_name) {
+  std::lock_guard<std::mutex> lock(plugins_mutex_);
+
   auto it = plugins_.find(plugin_name);
   if (it == plugins_.end()) {
     set_error("Plugin not loaded: " + plugin_name);
@@ -138,6 +142,8 @@ bool PluginLoader::unload(const std::string& plugin_name) {
 }
 
 void PluginLoader::unload_all() {
+  std::lock_guard<std::mutex> lock(plugins_mutex_);
+
   for (auto& [name, plugin] : plugins_) {
     if (plugin->running && plugin->descriptor->vtable->stop) {
       plugin->descriptor->vtable->stop();
@@ -150,6 +156,8 @@ void PluginLoader::unload_all() {
 }
 
 const AxonPluginDescriptor* PluginLoader::get_descriptor(const std::string& plugin_name) const {
+  std::lock_guard<std::mutex> lock(plugins_mutex_);
+
   auto it = plugins_.find(plugin_name);
   if (it == plugins_.end()) {
     return nullptr;
@@ -158,6 +166,8 @@ const AxonPluginDescriptor* PluginLoader::get_descriptor(const std::string& plug
 }
 
 PluginLoader::Plugin* PluginLoader::get_plugin(const std::string& plugin_name) {
+  std::lock_guard<std::mutex> lock(plugins_mutex_);
+
   auto it = plugins_.find(plugin_name);
   if (it == plugins_.end()) {
     return nullptr;
@@ -166,10 +176,14 @@ PluginLoader::Plugin* PluginLoader::get_plugin(const std::string& plugin_name) {
 }
 
 bool PluginLoader::is_loaded(const std::string& plugin_name) const {
+  std::lock_guard<std::mutex> lock(plugins_mutex_);
+
   return plugins_.find(plugin_name) != plugins_.end();
 }
 
 std::vector<std::string> PluginLoader::loaded_plugins() const {
+  std::lock_guard<std::mutex> lock(plugins_mutex_);
+
   std::vector<std::string> names;
   names.reserve(plugins_.size());
   for (const auto& [name, plugin] : plugins_) {
