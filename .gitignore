@@ -64,6 +64,8 @@ $RECYCLE.BIN/
 devel/
 build/
 install/
+logs/
+log/
 .catkin_workspace
 .rosinstall
 .catkin_tools/
@@ -91,8 +93,8 @@ CMakeFiles/
 cmake_install.cmake
 
 # C++ library build directories (not ROS packages)
-cpp/build*/
-cpp/*/build/
+core/build*/
+core/*/build/
 
 # Coverage
 *.gcda
@@ -108,11 +110,11 @@ src/bridge/target/
 target
 
 # log files
-ros/log
+middlewares/log
 
 # Performance test output (flamegraphs, recordings)
-ros/docker/output/*
-!ros/docker/output/.gitkeep
+docker/output/*
+!docker/output/.gitkeep
 perf.data
 perf.data.*
 *.folded
@@ -121,6 +123,8 @@ log
 
 # ignore coverage files
 coverage
+coverage_output
+coverage.info
 
 .cursor/plans
-cpp/build_uploader/
+core/build_uploader/

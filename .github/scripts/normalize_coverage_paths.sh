@@ -5,6 +5,13 @@
 # Normalizes paths in lcov coverage files to repo-relative format.
 # This script can be used in individual workflows before uploading with flags.
 #
+# Current directory structure:
+#   - core/                    # Core libraries (axon_mcap, axon_logging, axon_uploader)
+#   - middlewares/ros1/src/ros1_plugin/    # ROS1 plugin
+#   - middlewares/ros2/src/ros2_plugin/    # ROS2 plugin
+#   - apps/axon_recorder/      # Main recorder application
+#   - build/                   # Build output (build/axon_mcap, build/axon_uploader, etc.)
+#
 # Usage: normalize_coverage_paths.sh <coverage.info>
 # =============================================================================
 
@@ -24,47 +31,55 @@ fi
 
 echo "=== Normalizing paths in: $COVERAGE_FILE ==="
 
-# -----------------------------------------------------------------
+# =============================================================================
 # Step 1: GitHub Actions workspace prefix
-# -----------------------------------------------------------------
-# Path: /home/runner/work/Axon/Axon/cpp/... → cpp/...
+# =============================================================================
+# Path: /home/runner/work/Axon/Axon/core/... → core/...
 sed -i 's|^SF:/home/runner/work/Axon/Axon/|SF:|' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
-# Step 2: Docker ROS2 workspace (/workspace/axon/...)
-# -----------------------------------------------------------------
+# =============================================================================
+# Step 2: Docker workspace prefix (/workspace/axon/...)
+# =============================================================================
 sed -i 's|^SF:/workspace/axon/|SF:|' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
-# Step 3: Docker ROS1 catkin workspace
-# -----------------------------------------------------------------
-sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./cpp/|SF:cpp/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/\.\./\.\./|SF:|' "$COVERAGE_FILE"
-sed -i 's|^SF:/workspace/catkin_ws/cpp/|SF:cpp/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/workspace/catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
-sed -i 's|^SF:/workspace/catkin_ws/build/|SF:build/|' "$COVERAGE_FILE"
+# =============================================================================
+# Step 3: Build directory normalization
+# =============================================================================
+# Keep build/ prefix for Codecov filtering (codecov.yml has "build/**/*" ignore)
+# Ensure build paths use forward slashes
+sed -i 's|^SF:build\\|SF:build/|g' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
-# Step 4: Cleanup remaining relative paths
-# -----------------------------------------------------------------
-sed -i 's|^SF:catkin_ws/cpp/|SF:cpp/|' "$COVERAGE_FILE"
-sed -i 's|^SF:catkin_ws/src/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
+# =============================================================================
+# Step 4: ROS1 catkin workspace paths
+# =============================================================================
+# middlewares/ros1/build/axon_ros1_plugin/src/... → middlewares/ros1/src/ros1_plugin/...
+sed -i 's|^SF:middlewares/ros1/build/axon_ros1_plugin/src/|SF:middlewares/ros1/src/ros1_plugin/|' "$COVERAGE_FILE"
+sed -i 's|^SF:middlewares/ros1/build/|SF:build/|' "$COVERAGE_FILE"
+
+# =============================================================================
+# Step 5: ROS2 colcon workspace paths
+# =============================================================================
+# middlewares/ros2/build/axon_ros2_plugin/src/... → middlewares/ros2/src/ros2_plugin/...
+sed -i 's|^SF:middlewares/ros2/build/axon_ros2_plugin/src/|SF:middlewares/ros2/src/ros2_plugin/|' "$COVERAGE_FILE"
+sed -i 's|^SF:middlewares/ros2/build/|SF:build/|' "$COVERAGE_FILE"
+# Also handle install directory paths
+sed -i 's|^SF:middlewares/ros2/install/axon_ros2_plugin/|SF:middlewares/ros2/src/ros2_plugin/|' "$COVERAGE_FILE"
+
+# =============================================================================
+# Step 6: Cleanup remaining incorrect paths
+# =============================================================================
+# Remove any remaining Axon/ prefix
 sed -i 's|^SF:Axon/|SF:|' "$COVERAGE_FILE"
 
-# -----------------------------------------------------------------
-# Step 5: Fix incorrect normalizations (ros/axon_recorder/ → ros/src/axon_recorder/)
-# -----------------------------------------------------------------
-# Some paths may have been normalized incorrectly to ros/axon_recorder/ (missing src/)
-# This step fixes them to match the actual repo structure: ros/src/axon_recorder/
-sed -i 's|^SF:ros/axon_recorder/|SF:ros/src/axon_recorder/|' "$COVERAGE_FILE"
-
-# Note: Build directory paths (SF:build/...) are kept as-is so that
-# Codecov's ignore rule "build/**/*" in codecov.yml can properly filter them.
-# Earlier steps normalize absolute build paths to SF:build/... format,
-# and they should remain in this format for proper exclusion.
+# =============================================================================
+# Step 7: Fix old structure paths (if any exist)
+# =============================================================================
+# These are for backward compatibility with old CI runs
+sed -i 's|^SF:middlewares/src/axon_recorder/|SF:apps/axon_recorder/|' "$COVERAGE_FILE"
+sed -i 's|^SF:core/build_axon_uploader/|SF:build/axon_uploader/|' "$COVERAGE_FILE"
 
 echo "✓ Path normalization complete"
 echo ""
 echo "Sample normalized paths:"
-grep "^SF:" "$COVERAGE_FILE" | head -5 || echo "  (none)"
+grep "^SF:" "$COVERAGE_FILE" | head -10 || echo "  (none)"
 

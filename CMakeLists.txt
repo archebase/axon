@@ -10,7 +10,7 @@
 #   cmake --build build
 #
 # Build individual modules (still works):
-#   cmake -B build -S cpp/axon_mcap
+#   cmake -B build -S core/axon_mcap
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.14)
@@ -23,18 +23,20 @@ project(Axon VERSION 1.0.0 LANGUAGES CXX)
 # This ensures consistency across the codebase.
 
 get_filename_component(AXON_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
-set(AXON_CPP_DIR "${AXON_REPO_ROOT}/cpp")
-set(AXON_LOGGING_DIR "${AXON_CPP_DIR}/axon_logging")
-set(AXON_MCAP_DIR "${AXON_CPP_DIR}/axon_mcap")
-set(AXON_UPLOADER_DIR "${AXON_CPP_DIR}/axon_uploader")
+set(AXON_CORE_DIR "${AXON_REPO_ROOT}/core")
+set(AXON_LOGGING_DIR "${AXON_CORE_DIR}/axon_logging")
+set(AXON_MCAP_DIR "${AXON_CORE_DIR}/axon_mcap")
+set(AXON_UPLOADER_DIR "${AXON_CORE_DIR}/axon_uploader")
+set(AXON_APPS_DIR "${AXON_REPO_ROOT}/apps")
 set(AXON_CMAKE_MODULES_DIR "${AXON_REPO_ROOT}/cmake/Modules")
 
 # Make variables available to child CMakeLists
 set(AXON_REPO_ROOT "${AXON_REPO_ROOT}" CACHE INTERNAL "")
-set(AXON_CPP_DIR "${AXON_CPP_DIR}" CACHE INTERNAL "")
+set(AXON_CORE_DIR "${AXON_CORE_DIR}" CACHE INTERNAL "")
 set(AXON_LOGGING_DIR "${AXON_LOGGING_DIR}" CACHE INTERNAL "")
 set(AXON_MCAP_DIR "${AXON_MCAP_DIR}" CACHE INTERNAL "")
 set(AXON_UPLOADER_DIR "${AXON_UPLOADER_DIR}" CACHE INTERNAL "")
+set(AXON_APPS_DIR "${AXON_APPS_DIR}" CACHE INTERNAL "")
 set(AXON_CMAKE_MODULES_DIR "${AXON_CMAKE_MODULES_DIR}" CACHE INTERNAL "")
 
 # =============================================================================
@@ -86,13 +88,28 @@ if(AXON_BUILD_UPLOADER AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt")
 endif()
 
 # =============================================================================
+# Applications
+# =============================================================================
+
+# axon_recorder (plugin loader)
+if(EXISTS "${AXON_APPS_DIR}/axon_recorder/CMakeLists.txt")
+    add_subdirectory(${AXON_APPS_DIR}/axon_recorder ${CMAKE_CURRENT_BINARY_DIR}/axon_recorder)
+endif()
+
+# plugin_example
+if(EXISTS "${AXON_APPS_DIR}/plugin_example/CMakeLists.txt")
+    add_subdirectory(${AXON_APPS_DIR}/plugin_example ${CMAKE_CURRENT_BINARY_DIR}/plugin_example)
+endif()
+
+# =============================================================================
 # Summary
 # =============================================================================
 
 message(STATUS "")
 message(STATUS "=== Axon Configuration ===")
 message(STATUS "  Repository Root: ${AXON_REPO_ROOT}")
-message(STATUS "  C++ Libraries:    ${AXON_CPP_DIR}")
+message(STATUS "  Core Libraries:   ${AXON_CORE_DIR}")
+message(STATUS "  Applications:     ${AXON_APPS_DIR}")
 message(STATUS "  Coverage:         ${AXON_ENABLE_COVERAGE}")
 message(STATUS "  Tests:            ${AXON_BUILD_TESTS}")
 message(STATUS "  Uploader:         ${AXON_BUILD_UPLOADER}")

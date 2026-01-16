@@ -1,0 +1,128 @@
+FROM ros:rolling-ros-base
+
+# =============================================================================
+# IMPORTANT: When adding new dependencies here, also update:
+#   .github/workflows/ci.yml -> ADDITIONAL_DEBS
+# to ensure CI builds have the same dependencies.
+# =============================================================================
+
+# Install system dependencies and ROS build tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    g++ \
+    cmake \
+    pkg-config \
+    curl \
+    git \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    libgtest-dev \
+    libgmock-dev \
+    wget \
+    ca-certificates \
+    lsb-release \
+    clang-format \
+    && rm -rf /var/lib/apt/lists/*
+
+# Initialize rosdep
+RUN rosdep init || true && rosdep update
+
+# Install yaml-cpp
+RUN apt-get update && apt-get install -y \
+    libyaml-cpp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install compression libraries (required for MCAP compression)
+# These are needed for LZ4, ZSTD compression and reduce recording data size significantly
+RUN apt-get update && apt-get install -y \
+    liblz4-dev \
+    libzstd-dev \
+    libre2-dev \
+    libturbojpeg0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Boost and OpenSSL (required for HTTP callback client with HTTPS support and logging)
+RUN apt-get update && apt-get install -y \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-log-dev \
+    libboost-thread-dev \
+    libboost-filesystem-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install FastDDS/FastRTPS libraries and RMW implementation (required for ROS2 service discovery)
+# FastDDS is the default DDS implementation for ROS2 Rolling
+RUN apt-get update && \
+    apt-get install -y --upgrade \
+    ros-rolling-fastdds \
+    ros-rolling-fastcdr \
+    ros-rolling-foonathan-memory-vendor \
+    ros-rolling-rmw-dds-common \
+    ros-rolling-rmw-fastrtps-shared-cpp \
+    ros-rolling-rmw-fastrtps-cpp \
+    && ldconfig && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install ROS CLI tools and core libraries (required for integration tests)
+# Note: rcl and rclpy must be from the same version to avoid symbol mismatches
+# The undefined symbol error indicates rclpy was compiled against a different rcl version
+RUN apt-get update && apt-get install -y \
+    ros-rolling-rcl \
+    ros-rolling-rclpy \
+    ros-rolling-rmw \
+    ros-rolling-rmw-implementation \
+    ros-rolling-ros2cli \
+    ros-rolling-ros2service \
+    ros-rolling-ros2run \
+    ros-rolling-ros2node \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install lcov for coverage reporting
+RUN apt-get update && apt-get install -y \
+    lcov \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install profiling tools for flamegraph generation
+# Note: linux-tools-generic may not match host kernel; perf requires --privileged
+RUN apt-get update && apt-get install -y \
+    linux-tools-generic \
+    linux-tools-common \
+    perl \
+    && rm -rf /var/lib/apt/lists/* \
+    && git clone --depth 1 https://github.com/brendangregg/FlameGraph.git /opt/FlameGraph || true
+
+# Set working directory
+WORKDIR /workspace
+
+# Set compiler environment variables for CMake
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
+
+
+# Copy test scripts first (for better Docker layer caching)
+COPY docker/scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh
+
+# Build GTest (required for some systems)
+# GTest may be in different locations depending on Ubuntu version
+RUN if [ -d /usr/src/googletest ]; then \
+        cd /usr/src/googletest && \
+        mkdir -p build && cd build && \
+        cmake .. && make && \
+        cp lib/*.a /usr/lib/ || cp lib/libgtest*.a /usr/lib/; \
+    elif [ -d /usr/src/gtest ]; then \
+        cd /usr/src/gtest && \
+        cmake . && make && \
+        cp *.a /usr/lib/ 2>/dev/null || cp lib/*.a /usr/lib/; \
+    else \
+        echo "GTest source not found, using system package"; \
+    fi
+
+# Source setup script
+RUN echo "source /opt/ros/rolling/setup.bash" >> /root/.bashrc
+
+# Note: Source code is mounted as volume at runtime
+# Note: Build happens at runtime, not during image build, for better caching
+CMD ["/bin/bash"]

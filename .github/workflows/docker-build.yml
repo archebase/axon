@@ -71,10 +71,10 @@ jobs:
         id: dockerfile
         run: |
           case "${{ matrix.distro }}" in
-            noetic)  echo "path=ros/docker/Dockerfile.ros1" >> $GITHUB_OUTPUT ;;
-            humble)  echo "path=ros/docker/Dockerfile.ros2.humble" >> $GITHUB_OUTPUT ;;
-            jazzy)   echo "path=ros/docker/Dockerfile.ros2.jazzy" >> $GITHUB_OUTPUT ;;
-            rolling) echo "path=ros/docker/Dockerfile.ros2.rolling" >> $GITHUB_OUTPUT ;;
+            noetic)  echo "path=docker/Dockerfile.ros1" >> $GITHUB_OUTPUT ;;
+            humble)  echo "path=docker/Dockerfile.ros2.humble" >> $GITHUB_OUTPUT ;;
+            jazzy)   echo "path=docker/Dockerfile.ros2.jazzy" >> $GITHUB_OUTPUT ;;
+            rolling) echo "path=docker/Dockerfile.ros2.rolling" >> $GITHUB_OUTPUT ;;
             *) echo "ERROR: Unknown distro: ${{ matrix.distro }}"; exit 1 ;;
           esac
 

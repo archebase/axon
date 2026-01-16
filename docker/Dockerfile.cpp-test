@@ -1,0 +1,121 @@
+# =============================================================================
+# C++ Test Docker Image for Axon
+# =============================================================================
+# This image is used for running C++ library tests (axon_mcap, axon_uploader,
+# axon_logging) in Docker. It includes all dependencies needed for building
+# and testing the core libraries, but NOT ROS dependencies.
+#
+# Usage:
+#   docker build -f docker/Dockerfile.cpp-test -t axon:cpp-test .
+#   docker run --rm -v $(pwd):/workspace/axon axon:cpp-test
+# =============================================================================
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build tools and core dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    curl \
+    git \
+    ccache \
+    wget \
+    ca-certificates \
+    lsb-release \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install testing dependencies
+RUN apt-get update && apt-get install -y \
+    libgtest-dev \
+    libgmock-dev \
+    lcov \
+    gcovr \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build and install GTest (system version may be too old)
+RUN if [ -d /usr/src/googletest ]; then \
+        cd /usr/src/googletest && \
+        cmake -B build -DCMAKE_INSTALL_PREFIX=/usr && \
+        cmake --build build --parallel && \
+        cmake --install build; \
+    fi
+
+# Install yaml-cpp
+RUN apt-get update && apt-get install -y \
+    libyaml-cpp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install compression libraries (required for MCAP)
+RUN apt-get update && apt-get install -y \
+    liblz4-dev \
+    libzstd-dev \
+    libre2-dev \
+    libturbojpeg0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Boost and OpenSSL
+RUN apt-get update && apt-get install -y \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-log-dev \
+    libboost-thread-dev \
+    libboost-filesystem-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install SQLite3 and curl (required for axon_uploader)
+RUN apt-get update && apt-get install -y \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    python3-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# AWS SDK for C++ (required for axon_uploader S3 integration)
+# Building from source as there are no apt packages available
+# =============================================================================
+RUN git clone --recurse-submodules --depth 1 --branch 1.11.458 \
+    https://github.com/aws/aws-sdk-cpp.git /tmp/aws-sdk-cpp && \
+    cd /tmp/aws-sdk-cpp && \
+    cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_ONLY="s3;transfer" \
+        -DENABLE_TESTING=OFF \
+        -DAUTORUN_UNIT_TESTS=OFF \
+        -DBUILD_SHARED_LIBS=ON && \
+    cmake --build build -j$(nproc) && \
+    cmake --install build && \
+    rm -rf /tmp/aws-sdk-cpp
+
+# Set LD_LIBRARY_PATH for AWS SDK
+ENV LD_LIBRARY_PATH=/usr/local/lib
+
+# Install MinIO client (for integration tests)
+RUN curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc \
+    -o /usr/local/bin/mc && \
+    chmod +x /usr/local/bin/mc
+
+# Install clang-format (for code quality checks)
+RUN apt-get update && apt-get install -y \
+    clang-format \
+    cppcheck \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /workspace/axon
+
+# Configure ccache
+ENV PATH="/usr/lib/ccache:${PATH}"
+ENV CCACHE_DIR=/root/.ccache
+RUN ccache --set-config=max_size=500M && \
+    ccache --set-config=compression=true
+
+# Default command
+CMD ["/bin/bash"]

@@ -168,7 +168,7 @@ Docker containers include:
 
 ## Configuration
 
-Create a YAML configuration file (see `ros/src/axon_recorder/config/default_config.yaml` for example):
+Create a YAML configuration file (see `middlewares/src/axon_recorder/config/default_config.yaml` for example):
 
 ```yaml
 dataset:
@@ -314,13 +314,12 @@ The project includes comprehensive unit and integration tests.
 
 **ROS Package Tests:**
 ```bash
-cd ros
 make test  # Builds and runs all tests
 ```
 
 **C++ Library Tests:**
 ```bash
-cd cpp/axon_mcap
+cd core/axon_mcap
 mkdir -p build && cd build
 cmake .. -DAXON_MCAP_BUILD_TESTS=ON
 cmake --build .
@@ -338,14 +337,13 @@ ctest --output-on-failure
 - ✅ Metadata injector (MCAP metadata, sidecar JSON)
 - ✅ Recording service (all 4 services)
 
-See `ros/src/axon_recorder/test/` for the full test suite.
+See `middlewares/src/axon_recorder/test/` for the full test suite.
 
 ### Generating Coverage Reports
 
 **Local Coverage (requires ROS 2 sourced and lcov installed):**
 
 ```bash
-cd ros
 
 # Generate coverage report
 make coverage
@@ -369,7 +367,7 @@ Coverage reports are automatically generated on every push to `main` and uploade
 Ensure the MCAP library is built before compiling ROS packages:
 
 ```bash
-cd cpp/axon_mcap
+cd core/axon_mcap
 mkdir -p build && cd build
 cmake ..
 cmake --build .

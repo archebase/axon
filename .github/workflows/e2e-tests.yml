@@ -108,7 +108,7 @@ jobs:
             -e COVERAGE_OUTPUT=/coverage_output \
             --network host \
             axon-test-${{ matrix.ros_distro }}:latest \
-            /workspace/axon/ros/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
+            /workspace/axon/docker/scripts/run_e2e_tests.sh --coverage --coverage-output /coverage_output
 
       - name: Debug coverage output
         run: |
