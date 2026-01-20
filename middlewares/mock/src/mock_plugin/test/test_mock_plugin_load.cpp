@@ -1,9 +1,12 @@
+<<<<<<< HEAD
 /*
  * SPDX-FileCopyrightText: 2026 ArcheBase
  *
  * SPDX-License-Identifier: MulanPSL-2.0
  */
 
+=======
+>>>>>>> c922f5b (feat(mock_plugin): Implement mock plugin with C ABI interface and E2E tests)
 /**
  * @file test_mock_plugin_load.cpp
  * @brief Test loading the mock plugin using PluginLoader
@@ -128,9 +131,13 @@ int main(int argc, char* argv[]) {
     std::cout << std::endl;
   };
 
+<<<<<<< HEAD
   if (descriptor->vtable->subscribe(
         "/test_topic", "std_msgs/String", "{}", callback, &message_count
       ) != 0) {
+=======
+  if (descriptor->vtable->subscribe("/test_topic", "std_msgs/String", callback, &message_count) != 0) {
+>>>>>>> c922f5b (feat(mock_plugin): Implement mock plugin with C ABI interface and E2E tests)
     std::cerr << "[FAIL] Could not subscribe to topic" << std::endl;
     return 1;
   }

@@ -1,9 +1,12 @@
+<<<<<<< HEAD
 /*
  * SPDX-FileCopyrightText: 2026 ArcheBase
  *
  * SPDX-License-Identifier: MulanPSL-2.0
  */
 
+=======
+>>>>>>> c922f5b (feat(mock_plugin): Implement mock plugin with C ABI interface and E2E tests)
 /**
  * @file test_mock_plugin_e2e.cpp
  * @brief End-to-end test for the mock plugin without PluginLoader
