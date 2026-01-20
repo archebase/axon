@@ -57,14 +57,21 @@ int main(int argc, char* argv[]) {
   std::cout << "========================================" << std::endl;
 
   // Parse arguments
-  std::string plugin_path =
-    "/home/xlw/src/Axon/middlewares/ros2/src/ros2_plugin/install/axon_ros2_plugin/lib/axon/plugins/"
-    "libaxon_ros2_plugin.so";
+  // Default plugin path - can be overridden via command line argument or environment variable
+  std::string plugin_path;
+  const char* env_path = std::getenv("AXON_ROS2_PLUGIN_PATH");
+  if (env_path) {
+    plugin_path = env_path;
+  } else if (argc > 1) {
+    plugin_path = argv[1];
+  } else {
+    std::cerr << "[ERROR] Plugin path must be provided via:" << std::endl;
+    std::cerr << "  1. Command line argument: ./test_with_ros2_tools <plugin_path>" << std::endl;
+    std::cerr << "  2. Environment variable: export AXON_ROS2_PLUGIN_PATH=<path>" << std::endl;
+    return 1;
+  }
   int wait_seconds = 30;
 
-  if (argc > 1) {
-    plugin_path = argv[1];
-  }
   if (argc > 2) {
     wait_seconds = std::atoi(argv[2]);
   }

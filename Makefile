@@ -1,7 +1,7 @@
 # Makefile for Axon by ArcheBase
 # Supports both C++ core libraries and ROS (1/2) middlewares
 
-.PHONY: all build test clean install build-ros1 build-ros2 test-libs app app-axon-recorder app-plugin-example help
+.PHONY: all build test clean install build-ros1 build-ros2 test-libs app app-axon-recorder app-plugin-example build-mock test-mock-e2e test-mock-load test-mock-integration test-mock-all help
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -64,6 +64,13 @@ help:
 	@printf "%s\n" "  $(BLUE)make app$(NC)              - Build all applications"
 	@printf "%s\n" "  $(BLUE)make app-axon-recorder$(NC) - Build axon_recorder plugin loader"
 	@printf "%s\n" "  $(BLUE)make app-plugin-example$(NC) - Build plugin example"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
+	@printf "%s\n" "  $(BLUE)make build-mock$(NC)           - Build mock middleware plugin"
+	@printf "%s\n" "  $(BLUE)make test-mock-e2e$(NC)        - Run mock plugin E2E test (standalone)"
+	@printf "%s\n" "  $(BLUE)make test-mock-load$(NC)       - Run mock plugin load test"
+	@printf "%s\n" "  $(BLUE)make test-mock-integration$(NC) - Run mock middleware integration E2E test"
+	@printf "%s\n" "  $(BLUE)make test-mock-all$(NC)         - Run all mock middleware tests"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)ROS Middlewares:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build (auto-detects ROS1/ROS2)"
@@ -147,8 +154,12 @@ test-mcap: build-core
 # Test axon_uploader
 test-uploader: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
-	@cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure
-	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
+	@if [ -d "$(BUILD_DIR)/axon_uploader" ]; then \
+		cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure; \
+		printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)⚠ axon_uploader not built, skipping tests$(NC)"; \
+	fi
 
 # Test axon_logging
 test-logging: build-core
@@ -263,6 +274,46 @@ app-plugin-example: build-core
 	@printf "%s\n" "$(GREEN)✓ plugin example built$(NC)"
 
 # =============================================================================
+# Mock Middleware Targets
+# =============================================================================
+
+# Build mock middleware
+build-mock:
+	@printf "%s\n" "$(YELLOW)Building mock middleware...$(NC)"
+	@mkdir -p middlewares/mock/src/mock_plugin/build
+	@cd middlewares/mock/src/mock_plugin/build && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DCMAKE_INSTALL_PREFIX=$(PROJECT_ROOT)/middlewares/mock/install && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ Mock middleware built$(NC)"
+
+# Test mock plugin E2E
+test-mock-e2e: build-mock
+	@printf "%s\n" "$(YELLOW)Running mock plugin E2E test...$(NC)"
+	@cd middlewares/mock/src/mock_plugin/build && ./test_mock_plugin_e2e
+	@printf "%s\n" "$(GREEN)✓ Mock plugin E2E test passed$(NC)"
+
+# Test mock plugin load
+test-mock-load: build-mock
+	@printf "%s\n" "$(YELLOW)Running mock plugin load test...$(NC)"
+	@cd middlewares/mock/src/mock_plugin/build && \
+		./test_mock_plugin_load ./libmock_plugin.so
+	@printf "%s\n" "$(GREEN)✓ Mock plugin load test passed$(NC)"
+
+# Test mock middleware integration with axon_recorder
+test-mock-integration: build-mock build-core
+	@printf "%s\n" "$(YELLOW)Running mock middleware integration E2E test...$(NC)"
+	@cd middlewares/mock && ./test_e2e_with_mock.sh
+	@printf "%s\n" "$(GREEN)✓ Mock middleware integration test passed$(NC)"
+
+# Run all mock middleware tests
+test-mock-all: build-mock
+	@printf "%s\n" "$(YELLOW)Running all mock middleware tests...$(NC)"
+	@cd middlewares/mock && ./test_full_workflow.sh
+	@printf "%s\n" "$(GREEN)✓ All mock middleware tests passed$(NC)"
+
+# =============================================================================
 # ROS Middleware Targets
 # =============================================================================
 
@@ -316,6 +367,7 @@ clean:
 	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
 	@cd middlewares/ros2 && rm -rf build install log 2>/dev/null || true
 	@cd middlewares/ros1 && catkin clean --yes 2>/dev/null || true
+	@rm -rf middlewares/mock/src/mock_plugin/build middlewares/mock/install 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target

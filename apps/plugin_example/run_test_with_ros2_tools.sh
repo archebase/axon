@@ -4,7 +4,17 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_PATH="${1:-/home/xlw/src/Axon/middlewares/ros2/src/ros2_plugin/install/axon_ros2_plugin/lib/axon/plugins/libaxon_ros2_plugin.so}"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Plugin path - use environment variable, command line argument, or default relative path
+if [ -n "$AXON_ROS2_PLUGIN_PATH" ]; then
+  PLUGIN_PATH="$AXON_ROS2_PLUGIN_PATH"
+elif [ -n "$1" ]; then
+  PLUGIN_PATH="$1"
+else
+  # Default relative path from project root
+  PLUGIN_PATH="${PROJECT_ROOT}/middlewares/ros2/install/axon_ros2_plugin/lib/axon/plugins/libaxon_ros2_plugin.so"
+fi
 
 # Colors for output
 RED='\033[0;31m'
