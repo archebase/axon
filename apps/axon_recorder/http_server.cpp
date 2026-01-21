@@ -534,6 +534,25 @@ HttpServer::RpcResponse HttpServer::handle_rpc_get_state(const nlohmann::json& p
     response.data["state"] = "unknown";
   }
 
+  // Get task config if available (READY, RECORDING, PAUSED states)
+  if (callbacks_.get_task_config) {
+    const TaskConfig* task_config = callbacks_.get_task_config();
+    if (task_config) {
+      nlohmann::json config_json;
+      config_json["task_id"] = task_config->task_id;
+      config_json["device_id"] = task_config->device_id;
+      config_json["data_collector_id"] = task_config->data_collector_id;
+      config_json["scene"] = task_config->scene;
+      config_json["subscene"] = task_config->subscene;
+      config_json["skills"] = task_config->skills;
+      config_json["factory"] = task_config->factory;
+      config_json["operator_name"] = task_config->operator_name;
+      config_json["topics"] = task_config->topics;
+      // Note: Don't include sensitive fields like callback URLs and tokens
+      response.data["task_config"] = config_json;
+    }
+  }
+
   // Get stats from callback to check if running
   if (callbacks_.get_stats) {
     try {
