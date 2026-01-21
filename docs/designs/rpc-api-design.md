@@ -1,18 +1,19 @@
 # HTTP RPC API Design for Axon Recorder
 
 **Date:** 2025-01-12
+**Last Updated:** 2025-01-21
 
 ## Overview
 
-本文档定义了 Axon Recorder 的 HTTP RPC API 设计，用于替代原有的 ROS 服务接口。该设计提供了基于 JSON 的 RESTful API，支持通过 HTTP 协议进行远程录制控制。
+This document defines the HTTP RPC API design for Axon Recorder, which replaces the original ROS service interface. The design provides a JSON-based RESTful API that supports remote recording control via HTTP protocol.
 
 ## Design Goals
 
-1. **HTTP-Based Control**: 使用 HTTP 协议替代 ROS 服务，降低依赖
-2. **JSON Format**: 统一使用 JSON 格式进行数据交换
-3. **RESTful Design**: 遵循 REST 设计原则，使用合适的 HTTP 方法和路径
-4. **State Machine Alignment**: 与状态机设计紧密对齐，确保状态转换的正确性
-5. **Remote Control**: 支持服务器端远程控制录制任务
+1. **HTTP-Based Control**: Use HTTP protocol instead of ROS services to reduce dependencies
+2. **JSON Format**: Unified JSON format for data exchange
+3. **RESTful Design**: Follow REST design principles with appropriate HTTP methods and paths
+4. **State Machine Alignment**: Tightly aligned with state machine design to ensure correct state transitions
+5. **Remote Control**: Support server-side remote control of recording tasks
 
 ## Architecture
 
@@ -46,7 +47,7 @@
 
 ## State Machine
 
-HTTP RPC API 与状态机紧密集成：
+The HTTP RPC API is tightly integrated with the state machine:
 
 ```
 IDLE ──(POST /rpc/config)──► READY ──(POST /rpc/begin)──► RECORDING ↔ PAUSED
@@ -65,16 +66,16 @@ IDLE ──(POST /rpc/config)──► READY ──(POST /rpc/begin)──► RE
 
 | State | Description |
 |-------|-------------|
-| `IDLE` | 初始状态，等待任务配置 |
-| `READY` | 任务配置已缓存，等待开始录制 |
-| `RECORDING` | 正在录制 ROS 消息到 MCAP 文件 |
-| `PAUSED` | 录制已暂停，可以恢复或完成 |
+| `IDLE` | Initial state, waiting for task configuration |
+| `READY` | Task configuration cached, waiting to start recording |
+| `RECORDING` | Currently recording ROS messages to MCAP file |
+| `PAUSED` | Recording paused, can be resumed or finished |
 
 ## RPC Endpoints
 
 ### 1. POST /rpc/config
 
-设置任务配置（缓存元数据），状态转换：**IDLE → READY**
+Set task configuration (cache metadata), state transition: **IDLE → READY**
 
 **Request:**
 ```http
@@ -122,24 +123,24 @@ Content-Type: application/json
 **TaskConfig Fields:**
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `task_id` | string | Yes | 服务器分配的任务标识符 |
-| `device_id` | string | Yes | 机器人/设备标识符 |
-| `data_collector_id` | string | No | 数据采集器标识符 |
-| `scene` | string | No | 录制场景/上下文标签 |
-| `subscene` | string | No | 录制子场景 |
-| `skills` | array | No | 关联的技能列表 |
-| `factory` | string | No | 工厂标识符（标识产生数据的工厂） |
-| `operator_name` | string | No | 操作员标识符 |
-| `topics` | array | No | 要录制的主题列表 |
-| `start_callback_url` | string | No | 开始录制回调 URL |
-| `finish_callback_url` | string | No | 完成录制回调 URL |
-| `user_token` | string | No | 回调认证的 JWT 令牌 |
+| `task_id` | string | Yes | Server-assigned task identifier |
+| `device_id` | string | Yes | Robot/device identifier |
+| `data_collector_id` | string | No | Data collector identifier |
+| `scene` | string | No | Recording scene/context tag |
+| `subscene` | string | No | Recording subscene |
+| `skills` | array | No | List of associated skills |
+| `factory` | string | No | Factory identifier (identifies the factory producing the data) |
+| `operator_name` | string | No | Operator identifier |
+| `topics` | array | No | List of topics to record |
+| `start_callback_url` | string | No | Start recording callback URL |
+| `finish_callback_url` | string | No | Finish recording callback URL |
+| `user_token` | string | No | JWT token for callback authentication |
 
 ---
 
 ### 2. POST /rpc/begin
 
-开始录制，状态转换：**READY → RECORDING**
+Start recording, state transition: **READY → RECORDING**
 
 **Request:**
 ```http
@@ -151,7 +152,7 @@ Content-Type: application/json
 }
 ```
 
-**Note:** `task_id` 参数是必需的，必须与之前通过 `/rpc/config` 设置的任务ID匹配。
+**Note:** The `task_id` parameter is required and must match the task ID previously set via `/rpc/config`.
 
 **Response (200 OK):**
 ```json
@@ -201,16 +202,16 @@ Content-Type: application/json
 ```
 
 **Valid From States:**
-- ✅ `READY` (必须先调用 /rpc/config)
-- ❌ `IDLE` (必须先配置任务)
-- ❌ `RECORDING` (已在录制)
-- ❌ `PAUSED` (已暂停)
+- ✅ `READY` (must call /rpc/config first)
+- ❌ `IDLE` (must configure task first)
+- ❌ `RECORDING` (already recording)
+- ❌ `PAUSED` (already paused)
 
 ---
 
 ### 3. POST /rpc/finish
 
-结束录制，状态转换：**RECORDING/PAUSED → IDLE**
+Finish recording, state transition: **RECORDING/PAUSED → IDLE**
 
 **Request:**
 ```http
@@ -276,17 +277,17 @@ Content-Type: application/json
 - ❌ `READY`
 
 **Behavior:**
-- 停止录制，保存 MCAP 文件
-- 注入元数据，生成 sidecar JSON
-- 状态回到 IDLE
-- **程序继续运行**，HTTP 服务器继续监听
-- 可以再次调用 `/rpc/begin` 开始新的录制
+- Stop recording and save MCAP file
+- Inject metadata and generate sidecar JSON
+- Return to IDLE state
+- **Program continues running**, HTTP server keeps listening
+- Can call `/rpc/begin` again to start a new recording
 
 ---
 
 ### 4. POST /rpc/quit
 
-退出程序（先保存数据）
+Exit program (saves data first)
 
 **Request:**
 ```http
@@ -296,7 +297,7 @@ Content-Type: application/json
 {}
 ```
 
-**Note:** 此接口不需要 `task_id` 参数，可以在任何状态下调用。
+**Note:** This endpoint does not require a `task_id` parameter and can be called from any state.
 
 **Response (200 OK):**
 ```json
@@ -310,18 +311,18 @@ Content-Type: application/json
 ```
 
 **Behavior:**
-1. 如果正在录制，先自动停止录制并保存数据
-2. 停止 HTTP 服务器
-3. 程序优雅退出
+1. If currently recording, automatically stop recording and save data first
+2. Stop HTTP server
+3. Gracefully exit program
 
 **Valid From States:**
-- ✅ 任何状态（IDLE, READY, RECORDING, PAUSED）
+- ✅ Any state (IDLE, READY, RECORDING, PAUSED)
 
 ---
 
 ### 5. POST /rpc/pause
 
-暂停录制，状态转换：**RECORDING → PAUSED**
+Pause recording, state transition: **RECORDING → PAUSED**
 
 **Request:**
 ```http
@@ -355,13 +356,13 @@ Content-Type: application/json
 
 **Valid From States:**
 - ✅ `RECORDING`
-- ❌ 其他状态
+- ❌ Other states
 
 ---
 
 ### 6. POST /rpc/resume
 
-恢复录制，状态转换：**PAUSED → RECORDING**
+Resume recording, state transition: **PAUSED → RECORDING**
 
 **Request:**
 ```http
@@ -395,13 +396,13 @@ Content-Type: application/json
 
 **Valid From States:**
 - ✅ `PAUSED`
-- ❌ 其他状态
+- ❌ Other states
 
 ---
 
 ### 7. POST /rpc/cancel
 
-取消录制（丢弃部分数据），状态转换：**RECORDING/PAUSED → IDLE**
+Cancel recording (discard partial data), state transition: **RECORDING/PAUSED → IDLE**
 
 **Request:**
 ```http
@@ -426,19 +427,19 @@ Content-Type: application/json
 ```
 
 **Behavior:**
-- TODO: 当前实现等同于 finish，应该丢弃部分录制
-- 未来应该删除不完整的 MCAP 文件
+- TODO: Currently implemented the same as finish, should discard partial recording
+- Should delete incomplete MCAP files in the future
 
 **Valid From States:**
 - ✅ `RECORDING`
 - ✅ `PAUSED`
-- ❌ 其他状态
+- ❌ Other states
 
 ---
 
 ### 8. POST /rpc/clear
 
-清除配置，状态转换：**READY → IDLE**
+Clear configuration, state transition: **READY → IDLE**
 
 **Request:**
 ```http
@@ -471,18 +472,18 @@ Content-Type: application/json
 ```
 
 **Behavior:**
-- TODO: 重置任务配置，返回到 IDLE 状态
-- 用于放弃未开始的录制任务
+- TODO: Reset task configuration and return to IDLE state
+- Used to abandon unstarted recording tasks
 
 **Valid From States:**
 - ✅ `READY`
-- ❌ 其他状态
+- ❌ Other states
 
 ---
 
 ### 9. GET /rpc/state
 
-查询当前状态
+Query current state
 
 **Request:**
 ```http
@@ -545,21 +546,21 @@ GET /rpc/state HTTP/1.1
 ```
 
 **State Values:**
-- `"idle"` - 空闲状态，无配置
-- `"ready"` - 已配置，等待开始（包含 task_config）
-- `"recording"` - 正在录制（包含 task_config）
-- `"paused"` - 已暂停（包含 task_config）
+- `"idle"` - Idle state, no configuration
+- `"ready"` - Configured, waiting to start (includes task_config)
+- `"recording"` - Currently recording (includes task_config)
+- `"paused"` - Currently paused (includes task_config)
 
 **Notes:**
-- 当状态为 `IDLE` 时，`task_config` 字段不存在
-- 当状态为 `READY`、`RECORDING` 或 `PAUSED` 时，响应包含任务配置信息
-- `task_config` 仅包含业务字段（task_id, device_id, scene, topics 等），不包含回调 URL 和认证令牌
+- When state is `IDLE`, the `task_config` field is not present
+- When state is `READY`, `RECORDING`, or `PAUSED`, the response includes task configuration information
+- `task_config` only includes business fields (task_id, device_id, scene, topics, etc.), excluding callback URLs and authentication tokens
 
 ---
 
 ### 10. GET /rpc/stats
 
-查询录制统计信息
+Query recording statistics
 
 **Request:**
 ```http
@@ -583,16 +584,16 @@ GET /rpc/stats HTTP/1.1
 **Statistics Fields:**
 | Field | Type | Description |
 |-------|------|-------------|
-| `messages_received` | uint64 | 接收到的消息总数 |
-| `messages_written` | uint64 | 写入 MCAP 的消息数 |
-| `messages_dropped` | uint64 | 丢弃的消息数（队列满） |
-| `bytes_written` | uint64 | 写入的字节数 |
+| `messages_received` | uint64 | Total messages received |
+| `messages_written` | uint64 | Messages written to MCAP |
+| `messages_dropped` | uint64 | Messages dropped (queue full) |
+| `bytes_written` | uint64 | Bytes written |
 
 ---
 
 ### 11. GET / or /health
 
-健康检查
+Health check
 
 **Request:**
 ```http
@@ -614,7 +615,7 @@ GET / HTTP/1.1
 
 ### Error Response Format
 
-所有错误响应遵循统一格式：
+All error responses follow a unified format:
 
 ```json
 {
@@ -814,24 +815,24 @@ async function getState() {
 
 ### Authentication
 
-当前版本未实现认证。建议的认证方式：
+The current version does not implement authentication. Recommended authentication methods:
 
-1. **JWT Token**: 在 HTTP Header 中传递 JWT token
+1. **JWT Token**: Pass JWT token in HTTP Header
    ```http
    POST /rpc/begin HTTP/1.1
    Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
    ```
 
-2. **API Key**: 通过查询参数或 Header 传递
+2. **API Key**: Pass via query parameter or Header
    ```http
    POST /rpc/begin?api_key=your_api_key HTTP/1.1
    ```
 
-3. **Mutual TLS**: 双向 TLS 认证
+3. **Mutual TLS**: Two-way TLS authentication
 
 ### CORS
 
-如果需要从浏览器访问，需要配置 CORS：
+If accessing from a browser, configure CORS:
 
 ```cpp
 response.set(http::field::access_control_allow_origin, "*");
@@ -841,20 +842,20 @@ response.set(http::field::access_control_allow_headers, "Content-Type, Authoriza
 
 ## Rate Limiting
 
-建议添加速率限制以防止滥用：
+Recommend adding rate limiting to prevent abuse:
 
-- 每个客户端每秒最多 10 个请求
-- `/rpc/begin` 和 `/rpc/finish` 需要更严格的限制
+- Maximum 10 requests per second per client
+- `/rpc/begin` and `/rpc/finish` require stricter limits
 
 ## Future Enhancements
 
 ### Planned Features
 
-1. **WebSocket Support**: 实时状态更新和统计推送
-2. **Batch Operations**: 批量配置多个任务
-3. **File Upload**: 直接上传 MCAP 文件到服务器
-4. **Task Queue**: 支持任务队列，按顺序执行
-5. **OAuth 2.0**: 集成 OAuth 2.0 认证
+1. **WebSocket Support**: Real-time status updates and statistics push
+2. **Batch Operations**: Configure multiple tasks in batch
+3. **File Upload**: Upload MCAP files directly to server
+4. **Task Queue**: Support task queues with sequential execution
+5. **OAuth 2.0**: Integrate OAuth 2.0 authentication
 
 ## Appendix
 
@@ -927,6 +928,11 @@ interface Statistics {
   bytes_written: number;
 }
 ```
+
+## Related Documentation
+
+- [Frontend Design](frontend-design.md) - AxonPanel web control panel architecture and implementation
+- [tools/axon_panel/](../../tools/axon_panel/) - Vue 3-based web interface source code
 
 ## Revision History
 
