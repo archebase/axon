@@ -2,31 +2,41 @@
 
 [![CI](https://github.com/ArcheBase/Axon/actions/workflows/ci.yml/badge.svg)](https://github.com/ArcheBase/Axon/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ArcheBase/Axon/graph/badge.svg?token=2NJARPM7KH)](https://codecov.io/gh/ArcheBase/Axon)
+[![License](https://img.shields.io/badge/License-Mulan%20PSL%20v2-blue)](LICENSE)
 
-A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling). Designed for fleet management with server-controlled recording via ros-bridge.
+A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling) with a task-centric design for fleet management scenarios where a server controls recording via HTTP RPC API.
+
+**Current Version:** 0.2.0
 
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
 
 ```
-Server (ros-bridge) → Recording Services → State Machine → MCAP
+Server/Fleet Manager → Recording Services → State Machine → MCAP
          ↓                    ↓                 ↓
-   Task Config          HTTP Callbacks    Worker Threads
+   HTTP RPC API         HTTP Callbacks    Worker Threads
          ↓                    ↓                 ↓
-   CachedRecording      Start/Finish      SPSC Queues
-       Config             Notify           (lock-free)
+   Task Config          Start/Finish      SPSC Queues
+   (YAML)                Notify           (lock-free)
 ```
+
+**Plugin-Based Architecture:**
+- Middleware-agnostic core with zero ROS dependencies
+- ROS1/ROS2 plugins dynamically loaded at runtime via `dlopen/dlsym`
+- Unified C ABI interface for extensibility
+- Core libraries testable without ROS environment
 
 ## Features
 
 - **Task-Centric Design**: One task = one MCAP file with full lifecycle management
-- **Server Integration**: Fleet management via ros-bridge with HTTP callbacks
+- **HTTP RPC API**: RESTful API for remote control (config/begin/end/pause/resume/quit/status)
+- **Plugin Architecture**: Middleware-agnostic core with dynamic ROS1/ROS2 plugin loading
+- **State Machine**: 4-state FSM (IDLE → READY → RECORDING ↔ PAUSED)
 - **MCAP Format**: Efficient append-only container compatible with Foxglove Studio
 - **Lock-Free Queues**: Per-topic SPSC queues for zero-copy message handling
 - **Multi-ROS Support**: ROS 1 Noetic and ROS 2 Humble/Jazzy/Rolling
 - **Metadata Injection**: Embeds task/device/recording metadata + sidecar JSON
-- **Edge Uploader**: S3 upload with retry, crash recovery, and backpressure
 - **Structured Logging**: Boost.Log with console/file/ROS sinks
 
 ## Dependencies
@@ -34,11 +44,14 @@ Server (ros-bridge) → Recording Services → State Machine → MCAP
 ### System Dependencies
 
 - CMake 3.12+
-- Boost 1.71+ (`libboost-log-dev`, `libboost-filesystem-dev`, `libboost-thread-dev`)
+- GCC 7+ or Clang 6+ (C++17 support)
+- Boost 1.71+ (`libboost-all-dev`)
 - yaml-cpp (`libyaml-cpp-dev`)
-- OpenSSL (`libssl-dev`) - for HTTPS callbacks
+- OpenSSL (`libssl-dev`) - for HTTPS callbacks and RPC server
 - zstd (`libzstd-dev`) - optional, for MCAP compression
 - lz4 (`liblz4-dev`) - optional, for MCAP compression
+- cppcheck - optional, for static code analysis
+- clang-format - required, for code formatting
 
 ### ROS Dependencies
 
@@ -60,22 +73,39 @@ Server (ros-bridge) → Recording Services → State Machine → MCAP
 The easiest way to build and test:
 
 ```bash
-# Source ROS setup
-source /opt/ros/noetic/setup.bash  # For ROS1
-# OR
-source /opt/ros/humble/setup.bash  # For ROS2
+# Build C++ core libraries (no ROS required)
+make build-core
 
-# Build everything
+# Build all applications
+make app
+
+# Build ROS1 middleware
+make build-ros1
+
+# Build ROS2 middleware
+make build-ros2
+
+# Build everything (auto-detects ROS version)
 make build
 
-# Run tests
+# Run all tests
 make test
 
-# Clean build artifacts
+# Clean all build artifacts
 make clean
 
 # See all available targets
 make help
+```
+
+### Build Modes
+
+```bash
+# Debug build
+make debug
+
+# Release build (default)
+make release
 ```
 
 ### Manual Build
@@ -117,28 +147,31 @@ source install/setup.bash
 ### Makefile Targets
 
 **Local Build:**
-- `make build` - Build C++ code
+- `make build-core` - Build C++ core libraries (no ROS required)
+- `make build-ros1` - Build ROS1 middleware plugin
+- `make build-ros2` - Build ROS2 middleware plugin
+- `make build` - Build everything (auto-detects ROS version)
+- `make app` - Build all applications
 - `make test` - Run all tests
-- `make cpp-build` - Build only C++ code
-- `make cpp-test` - Run only C++ tests
 - `make clean` - Clean all build artifacts
-- `make install` - Install the package
 
-**Docker Build & Test:**
-- `make docker-build` - Build all Docker images
-- `make docker-test` - Run tests in Docker (auto-detect ROS version)
-- `make docker-test-ros1` - Run tests in ROS1 Docker container
-- `make docker-test-ros2-humble` - Run tests in ROS2 Humble Docker container
-- `make docker-test-ros2-jazzy` - Run tests in ROS2 Jazzy Docker container
-- `make docker-test-ros2-rolling` - Run tests in ROS2 Rolling Docker container
-- `make docker-test-all` - Run tests in all Docker containers
-- `make docker-test-compose` - Run tests using docker-compose (parallel)
+**Docker Testing (No Local ROS Required):**
+- `make docker-test-cpp` - C++ core library tests
+- `make docker-test-ros1` - ROS1 Noetic tests
+- `make docker-test-ros2-humble` - ROS2 Humble tests
+- `make docker-test-ros2-jazzy` - ROS2 Jazzy tests
+- `make docker-test-ros2-rolling` - ROS2 Rolling tests
+- `make docker-test-all` - Test all ROS versions sequentially
+- `make docker-test-compose` - Test all versions in parallel (faster)
 
 **Code Quality:**
-- `make debug` - Build in debug mode
-- `make release` - Build in release mode (default)
-- `make format` - Format code (requires formatters)
-- `make lint` - Lint code (requires linters)
+- `make format` - Format code (requires clang-format and cargo)
+- `make lint` - Lint code (requires cppcheck and clippy)
+
+**Coverage:**
+- `make coverage` - Generate coverage report (requires lcov, ROS2 recommended)
+- `make coverage-html` - Generate HTML coverage report
+- `make docker-coverage` - Coverage in Docker
 
 ### Docker Testing
 
@@ -168,7 +201,7 @@ Docker containers include:
 
 ## Configuration
 
-Create a YAML configuration file (see `middlewares/src/axon_recorder/config/default_config.yaml` for example):
+Create a YAML configuration file (see `apps/axon_recorder/config/default_config_ros2.yaml` for example):
 
 ```yaml
 dataset:
@@ -180,7 +213,7 @@ topics:
     message_type: "sensor_msgs/Image"
     batch_size: 100
     flush_interval_ms: 1000
-    
+
   - name: "/lidar/points"
     message_type: "sensor_msgs/PointCloud2"
     batch_size: 50
@@ -189,88 +222,101 @@ topics:
 recording:
   auto_start: true
   max_disk_usage_gb: 100.0
+
+# HTTP RPC server configuration
+http_server:
+  port: 8080
+  host: "0.0.0.0"
 ```
 
 ## Usage
 
-### ROS 1
+### Command Line Interface
 
 ```bash
-# Launch with default config
-roslaunch axon recorder_ros1.launch
+# Display version
+./build/axon_recorder/axon_recorder --version
 
-# Launch with custom config
-roslaunch axon recorder_ros1.launch config_path:=/path/to/config.yaml
+# Run with default configuration
+./build/axon_recorder/axon_recorder
+
+# Run with custom configuration
+./build/axon_recorder/axon_recorder --config /path/to/config.yaml
+
+# Run with plugin
+./build/axon_recorder/axon_recorder --plugin /path/to/libaxon_ros2.so
+
+# Specify output directory
+./build/axon_recorder/axon_recorder --path /data/recordings
+
+# Subscribe to specific topics
+./build/axon_recorder/axon_recorder --topic /camera/image --type sensor_msgs/msg/Image
 ```
 
-### ROS 2
+### HTTP RPC API
+
+The recorder exposes an HTTP RPC server (default port 8080) for remote control:
+
+**Quick Start with curl:**
 
 ```bash
-# Launch with default config
-ros2 launch axon recorder_ros2.launch.py
+# Set task configuration (IDLE → READY)
+curl -X POST http://localhost:8080/rpc/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_123",
+    "device_id": "robot_01",
+    "scene": "warehouse",
+    "topics": ["/camera/image", "/lidar/scan"],
+    "output_path": "/data/recordings/task_123.mcap"
+  }'
 
-# Launch with custom config
-ros2 launch axon recorder_ros2.launch.py config_path:=/path/to/config.yaml
+# Start recording (READY → RECORDING)
+curl -X POST http://localhost:8080/rpc/begin
+
+# Pause recording (RECORDING → PAUSED)
+curl -X POST http://localhost:8080/rpc/pause
+
+# Resume recording (PAUSED → RECORDING)
+curl -X POST http://localhost:8080/rpc/resume
+
+# Finish recording (RECORDING/PAUSED → IDLE)
+curl -X POST http://localhost:8080/rpc/end
+
+# Query status
+curl http://localhost:8080/rpc/status
+
+# Get statistics
+curl http://localhost:8080/rpc/stats
 ```
 
-## ROS Services
+**Complete API Documentation:**
 
-The recorder uses a task-centric service API designed for server integration:
+See [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md) for:
+- Full API specification with all endpoints
+- Request/response formats
+- State machine transitions
+- Error handling
+- Usage examples (curl, Python, JavaScript)
 
-| Service | Purpose |
-|---------|---------|
-| `CachedRecordingConfig` | Cache task configuration (IDLE → READY) |
-| `IsRecordingReady` | Query if recorder has cached config |
-| `RecordingControl` | Control lifecycle: start/pause/resume/cancel/finish/clear |
-| `RecordingStatus` | Query status, metrics, and task info |
+### Running with Plugins
 
-### CachedRecordingConfig
-
-Cache task configuration from server before starting.
+Axon uses a plugin-based architecture. Specify the plugin path:
 
 ```bash
-# ROS 2
-ros2 service call /axon_recorder/cached_recording_config axon_recorder/srv/CachedRecordingConfig "{
-  task_id: 'task_123',
-  device_id: 'robot_01',
-  scene: 'warehouse',
-  topics: ['/camera/image', '/lidar/scan'],
-  start_callback_url: 'http://server/api/start',
-  finish_callback_url: 'http://server/api/finish',
-  user_token: 'jwt_token'
-}"
+# ROS 1 plugin
+./build/axon_recorder/axon_recorder --plugin ./build/middlewares/libaxon_ros1.so
+
+# ROS 2 plugin
+./build/axon_recorder/axon_recorder --plugin ./build/middlewares/libaxon_ros2.so
 ```
 
-### RecordingControl
+### ROS Integration
 
-Unified control interface for all lifecycle operations.
+The recorder integrates with ROS through middleware plugins. See the plugin documentation for details:
 
-```bash
-# Start recording (requires READY state)
-ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'start'}"
-
-# Pause recording
-ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'pause', task_id: 'task_123'}"
-
-# Resume recording
-ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'resume', task_id: 'task_123'}"
-
-# Finish recording (finalizes MCAP, triggers upload)
-ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'finish', task_id: 'task_123'}"
-
-# Cancel recording (cleanup without upload)
-ros2 service call /axon_recorder/recording_control axon_recorder/srv/RecordingControl "{command: 'cancel', task_id: 'task_123'}"
-```
-
-### RecordingStatus
-
-Query current status and metrics.
-
-```bash
-ros2 service call /axon_recorder/recording_status axon_recorder/srv/RecordingStatus "{}"
-```
-
-See [docs/recording-service-api-design-2025-12-20.md](docs/recording-service-api-design-2025-12-20.md) for complete API documentation.
+- **ROS 1 Plugin**: `middlewares/ros1/`
+- **ROS 2 Plugin**: `middlewares/ros2/`
 
 ## Docker
 
@@ -301,10 +347,10 @@ docker-compose exec ros1-noetic /bin/bash
 ## Performance Considerations
 
 - **Lock-Free Queues**: Per-topic SPSC queues with cache-line alignment prevent false sharing
-- **Zero-Copy Transfer**: Messages moved through queue without copying
+- **Copy-Minimized**: Minimized allocations and copies in message path
 - **Direct Serialization**: MCAP stores ROS messages directly without conversion overhead
-- **Bounded Memory**: Fixed-capacity queues (default 4096 per topic) with backpressure
-- **Async I/O**: Non-blocking HTTP callbacks and S3 uploads
+- **Bounded Memory**: Fixed-capacity queues with backpressure
+- **Async I/O**: Non-blocking HTTP callbacks
 
 ## Testing
 
@@ -331,13 +377,14 @@ ctest --output-on-failure
 - ✅ MCAP writer (file operations, compression, thread safety)
 - ✅ MCAP validator (file integrity checks)
 - ✅ Logging infrastructure (console/file sinks)
-- ✅ Edge uploader (retry, state management)
 - ✅ SPSC queue (lock-free operations)
 - ✅ State machine (transitions, guards)
 - ✅ Metadata injector (MCAP metadata, sidecar JSON)
-- ✅ Recording service (all 4 services)
+- ✅ HTTP RPC server (all endpoints)
+- ✅ Plugin interface (ABI compatibility)
+- ✅ Configuration parser (YAML validation)
 
-See `middlewares/src/axon_recorder/test/` for the full test suite.
+See `core/*/test/` and `apps/axon_recorder/test/` for the full test suite.
 
 ### Generating Coverage Reports
 
@@ -364,7 +411,7 @@ Coverage reports are automatically generated on every push to `main` and uploade
 
 ### MCAP Library Not Found
 
-Ensure the MCAP library is built before compiling ROS packages:
+Ensure the MCAP library is built before compiling applications:
 
 ```bash
 cd core/axon_mcap
@@ -379,7 +426,19 @@ Install required development packages:
 
 ```bash
 # Ubuntu/Debian
-sudo apt-get install libyaml-cpp-dev libzstd-dev liblz4-dev
+sudo apt-get install libyaml-cpp-dev libzstd-dev liblz4-dev libssl-dev
+```
+
+### HTTP Server Connection Refused
+
+Check if the HTTP RPC server is running and accessible:
+
+```bash
+# Query server status
+curl http://localhost:8080/rpc/status
+
+# Check if port is in use
+netstat -tlnp | grep 8080
 ```
 
 ### Message Type Not Supported
@@ -390,7 +449,42 @@ The system uses ROS message introspection to handle all message types dynamicall
 2. ROS message packages are installed
 3. Check logs for conversion errors
 
+## Documentation
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed system architecture
+- **[ROADMAP.md](ROADMAP.md)** - Project development roadmap ([中文版](ROADMAP_ZH.md))
+- **[docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md)** - HTTP RPC API specification
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributor guidelines ([中文版](CONTRIBUTING_ZH.md))
+- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** - Code of conduct ([中文版](CODE_OF_CONDUCT_ZH.md))
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+**Quick Links:**
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Development Workflow](CONTRIBUTING.md#development-workflow)
+- [Code Style Guidelines](CONTRIBUTING.md#code-style)
+- [Pull Request Process](CONTRIBUTING.md#submitting-changes)
+
 ## License
 
-Apache-2.0
+**Mulan PSL v2**
+
+Copyright (c) 2026 ArcheBase
+
+Axon is licensed under Mulan PSL v2. You can use this software according to the terms and conditions of the Mulan PSL v2.
+
+You may obtain a copy of Mulan PSL v2 at:
+http://license.coscl.org.cn/MulanPSL2
+
+THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the Mulan PSL v2 for more details.
+
+## Acknowledgments
+
+Built with:
+- [MCAP](https://mcap.dev/) - Modern robotics data format
+- [Boost.Beast](https://github.com/boostorg/beast) - HTTP/WebSocket library
+- [yaml-cpp](https://github.com/jbeder/yaml-cpp) - YAML parser
+- [Foxglove](https://foxglove.dev/) - Robotics data visualization
 
