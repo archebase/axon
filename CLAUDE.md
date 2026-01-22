@@ -552,7 +552,7 @@ The `task_config.hpp/cpp` files define the core task configuration that flows th
 - [README.md](README.md) - User-facing documentation
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed system architecture
 - [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md) - HTTP RPC API specification
-- [.cursor/rules/](.cursor/rules/) - Additional development rules (refactoring guidelines, C++ best practices)
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflow and contribution guidelines
 
 ## Quick Reference
 

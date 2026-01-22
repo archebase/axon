@@ -1,10 +1,8 @@
 # Axon Roadmap
 
-This document outlines the development roadmap for the Axon project. Axon is an **in-process**, high-performance robotic data recorder with a plugin-based architecture, designed to work reliably in high-bandwidth scenarios (images/point clouds) while providing observable and maintainable recording capabilities.
+This document outlines the development roadmap for the Axon project. Axon is an **in-process**, high-performance robotic data recorder with a plugin-based architecture. The core objective is to operate reliably in high-bandwidth scenarios (images/point clouds) while providing observable and maintainable recording capabilities.
 
-## Version 0.2.0 (Current)
-
-**Focus: Plugin Architecture and Core Recording Engine**
+## Version 0.2.0 (Current Version)
 
 ### Plugin System (Core Feature)
 - ✅ **Plugin Architecture**: Middleware-agnostic core with dynamic plugin loading
@@ -59,9 +57,7 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ---
 
-## Version 0.3.0 (Planned)
-
-**Focus: Web Control Panel, Binary Embedding, Usability Improvements**
+## Version 0.3.0 (In Planning)
 
 ### Web Control Panel (AxonPanel)
 - [ ] Frontend Interface
@@ -76,6 +72,15 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - [ ] Static resources embedded in binary
   - [ ] Standalone deployment mode
 
+### UDP Reception Service and JSON Recording
+- [ ] UDP Server
+  - [ ] High-performance UDP socket reception
+  - [ ] JSON data stream reception
+- [ ] JSON Message Recording to MCAP
+  - [ ] Generic JSON schema definition
+  - [ ] JSON compression and storage
+- [ ] Hybrid Recording (ROS binary + UDP JSON)
+
 ### Binary File Embedding in MCAP
 - [ ] Embed Format Design
   - [ ] MCAP attachment mechanism
@@ -87,7 +92,7 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - [ ] Calibration files
   - [ ] Custom attachments
 
-### Usability Improvements
+### Usability Enhancements
 - [ ] Configuration Management Enhancements
   - [ ] Configuration validation and error messages
   - [ ] More configuration templates and presets
@@ -102,8 +107,6 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 ---
 
 ## Version 0.4.0 (Performance Optimization)
-
-**Focus: Memory and Copy Optimization, Blocking Backpressure**
 
 ### Memory Optimization
 - [ ] Zero-Copy Optimization
@@ -134,8 +137,6 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ## Version 0.5.0 (Future)
 
-**Focus: Security Baseline + Operations Enhancement + Selective Recording**
-
 ### Security Enhancements (Security by Default)
 - [ ] HTTPS/TLS support
 - [ ] API key authentication
@@ -148,6 +149,15 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - [ ] Disk space threshold monitoring and alerting
 - [ ] Long blocking alerting
 
+### Custom Upload Rules
+- [ ] Upload Strategy Configuration
+  - [ ] Topic-based filtering rules
+  - [ ] Message type-based filtering rules
+  - [ ] Conditional upload triggers (file size, time interval)
+- [ ] Upload Priority Management
+  - [ ] Critical data prioritization
+  - [ ] Bandwidth throttling strategies
+
 ### Selective Topic Recording
 - [ ] Regex pattern matching for topic names
 - [ ] Topic blacklist/whitelist mechanisms
@@ -156,8 +166,6 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 ---
 
 ## Version 0.6.0 (Long-term)
-
-**Focus: Enterprise Features and Ecosystem (Building on 0.3/0.4)**
 
 ### Enterprise Features
 - [ ] Multi-tenant support and authentication/authorization
@@ -190,9 +198,7 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ---
 
-## Version 1.0.0 (Stable)
-
-**Focus: Production Ready and Long-term Support**
+## Version 1.0.0 (Stable Release)
 
 ### Production Ready
 - [ ] Test coverage goals

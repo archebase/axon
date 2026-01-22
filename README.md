@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/ArcheBase/Axon/graph/badge.svg?token=2NJARPM7KH)](https://codecov.io/gh/ArcheBase/Axon)
 [![License](https://img.shields.io/badge/License-Mulan%20PSL%20v2-blue)](LICENSE)
 
-A high-performance ROS recorder by ArcheBase that writes data to MCAP format. Supports both ROS 1 (Noetic) and ROS 2 (Humble, Jazzy, Rolling) with a task-centric design for fleet management scenarios where a server controls recording via HTTP RPC API.
+A high-performance, plugin-based data recorder with ROS1/ROS2 compatibility and fleet-ready HTTP RPC control for task-centric recording to MCAP format.
 
 **Current Version:** 0.2.0
 
@@ -486,5 +486,4 @@ Built with:
 - [MCAP](https://mcap.dev/) - Modern robotics data format
 - [Boost.Beast](https://github.com/boostorg/beast) - HTTP/WebSocket library
 - [yaml-cpp](https://github.com/jbeder/yaml-cpp) - YAML parser
-- [Foxglove](https://foxglove.dev/) - Robotics data visualization
 
