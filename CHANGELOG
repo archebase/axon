@@ -11,16 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2025-01-22
 
 ### Added
-- **license**: Add Mulan Permissive Software License v2
-- **license**: Add copyright notice and licensing information to all header files
-- **docs**: Add code of conduct (CODE_OF_CONDUCT.md)
-
-### Changed
-- **version**: Update project version to 0.2.0 in preparation for open source release
-
-## [0.1.0] - 2025-01-15
-
-### Added
 - **architecture**: Implement plugin-based architecture with dynamic middleware loading
   - Introduce C ABI plugin interface (`AxonPluginDescriptor`, `AxonPluginVtable`)
   - Separate ROS1 and ROS2 into independent plugin libraries
@@ -33,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - JSON request/response format with error handling
   - HTTP callback client for server notifications
 
+- **license**: Add Mulan Permissive Software License v2
+- **license**: Add copyright notice and licensing information to all header files
+- **docs**: Add code of conduct (CODE_OF_CONDUCT.md)
+
+### Changed
+- **version**: Update project version to 0.2.0 in preparation for open source release
+
+## [0.1.0] - 2025-01-15
+
+### Added
 - **recorder**: Complete rewrite of recording engine
   - 4-state finite state machine with thread-safe transitions
   - Per-topic SPSC queues for lock-free message handling
