@@ -1,0 +1,149 @@
+name: Documentation Request
+description: Request improvements or additions to Axon documentation
+title: "[Docs]: "
+labels: ["documentation"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Axon's documentation! Clear documentation is essential for a great user experience.
+
+  - type: textarea
+    id: what-needs-documenting
+    attributes:
+      label: What Needs Documentation?
+      description: What aspect of Axon needs better documentation?
+      placeholder: |
+        The plugin development process is not well documented. I want to create a custom middleware plugin but the existing documentation is incomplete.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation improvement is needed?
+      options:
+        - New documentation page
+        - Improve existing documentation
+        - Add code examples
+        - Add diagrams/visualizations
+        - Fix errors or inaccuracies
+        - Add translation
+        - API reference
+        - Tutorial/Guide
+      validations:
+      required: true
+
+  - type: dropdown
+    id: target-audience
+    attributes:
+      label: Target Audience
+      description: Who is this documentation for?
+      options:
+        - New users (getting started)
+        - System integrators
+        - Plugin developers
+        - Contributors
+        - Advanced users
+        - All users
+      validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current State
+      description: What is the current state of the documentation for this topic?
+      placeholder: |
+        The plugin development is briefly mentioned in ARCHITECTURE.md but lacks concrete examples and step-by-step instructions. There's no reference for the plugin ABI.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-changes
+    attributes:
+      label: Proposed Changes
+      description: What specific improvements would you like to see?
+      placeholder: |
+        1. Add a dedicated "Plugin Development Guide" in docs/
+        2. Include a complete working example plugin
+        3. Document the full plugin ABI interface
+        4. Add troubleshooting section for common plugin issues
+        5. Include CMake configuration for building plugins
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-content
+    attributes:
+      label: Suggested Content (Optional)
+      description: If you have specific content or examples in mind, please share
+      placeholder: |
+        # Plugin Development Guide Outline
+
+        ## Overview
+        - What is a plugin?
+        - Why use the plugin architecture?
+
+        ## Quick Start
+        - Minimal plugin example (full code)
+        - Build instructions
+        - Loading the plugin
+
+        ## Plugin ABI Reference
+        - Complete function signatures
+        - Parameter descriptions
+        - Return codes
+
+        ## Examples
+        - Simple plugin
+        - Advanced plugin with custom message types
+    validations:
+      required: false
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Suggested Location
+      description: Where should this documentation be added?
+      placeholder: |
+        New file: docs/plugin-development-guide.md
+        Also update: README.md (add link to new guide)
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to write this documentation
+          required: false
+        - label: I am willing to review documentation drafts
+          required: false
+        - label: I have experience with technical writing
+          required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other relevant information
+      placeholder: |
+        - I'm a plugin developer and struggled with this
+        - Similar to how ROS2 documents its components
+        - Would be great to have diagrams showing the plugin architecture
+      validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have checked existing documentation for similar content
+          required: true
+        - label: This documentation request aligns with the project scope
+          required: false
