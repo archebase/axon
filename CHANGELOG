@@ -1,0 +1,117 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+
+## [0.2.0] - 2025-01-22
+
+### Added
+- **license**: Add Mulan Permissive Software License v2
+- **license**: Add copyright notice and licensing information to all header files
+- **docs**: Add code of conduct (CODE_OF_CONDUCT.md)
+
+### Changed
+- **version**: Update project version to 0.2.0 in preparation for open source release
+
+## [0.1.0] - 2025-01-15
+
+### Added
+- **architecture**: Implement plugin-based architecture with dynamic middleware loading
+  - Introduce C ABI plugin interface (`AxonPluginDescriptor`, `AxonPluginVtable`)
+  - Separate ROS1 and ROS2 into independent plugin libraries
+  - Core libraries now have zero ROS dependencies
+  - Support for runtime plugin loading via `dlopen/dlsym`
+
+- **rpc**: Implement HTTP RPC API for remote control
+  - RESTful API endpoints: `/rpc/config`, `/rpc/begin`, `/rpc/end`, `/rpc/pause`, `/rpc/resume`, `/rpc/quit`, `/rpc/status`
+  - Task-centric design with state machine (IDLE → READY → RECORDING ↔ PAUSED)
+  - JSON request/response format with error handling
+  - HTTP callback client for server notifications
+
+- **recorder**: Complete rewrite of recording engine
+  - 4-state finite state machine with thread-safe transitions
+  - Per-topic SPSC queues for lock-free message handling
+  - Worker thread pool for parallel message processing
+  - Metadata injection (MCAP metadata + sidecar JSON)
+  - Support for task/device/recording metadata
+
+- **mcap**: Migrate from Lance to MCAP format
+  - Thread-safe MCAP writer with compression (zstd, lz4)
+  - Schema/channel registration with validation
+  - File integrity validation
+  - Compatible with Foxglove Studio
+
+- **logging**: Introduce structured logging infrastructure
+  - Boost.Log-based async logging system
+  - Multiple sinks: console, file, ROS
+  - Severity filtering and log rotation
+  - Component-based log categorization
+
+- **uploader**: Implement edge uploader for S3-compatible storage
+  - Multipart upload for large files
+  - SQLite state persistence for crash recovery
+  - Exponential backoff retry with jitter
+  - MCAP-first, JSON-last upload order
+
+- **testing**: Comprehensive test coverage
+  - Unit tests for all core libraries (~85% coverage)
+  - Integration tests for ROS service API
+  - E2E tests with Docker (ROS1 Noetic, ROS2 Humble/Jazzy/Rolling)
+  - Pre-commit hooks for code quality (clang-format, cppcheck, clippy)
+
+- **ci**: Multi-platform CI/CD pipeline
+  - Separate workflows for C++, ROS1, and ROS2
+  - Coverage reporting with Codecov
+  - Docker-based testing for reproducibility
+  - Parallel test execution for faster feedback
+
+- **build**: Refactor CMake build system
+  - Modern CMake targets (no deprecated `ament_target_dependencies`)
+  - Auto-discovery of test files via `GLOB CONFIGURE_DEPENDS`
+  - Unified Makefile interface for common operations
+  - Support for both catkin (ROS1) and colcon (ROS2)
+
+### Fixed
+- **recorder**: Resolve thread safety issues in state machine transitions
+- **recorder**: Fix memory leaks in worker thread pool
+- **recorder**: Improve performance by reducing lock contention
+- **ci**: Align ROS 2 workspace paths with standardized layout
+- **tests**: Fix flaky ROS tests with proper synchronization
+- **coverage**: Exclude test directories and generated code from coverage reports
+
+### Changed
+- **workspace**: Standardize ROS workspace layout
+  - Migrate from manual Makefile to catkin build for ROS1
+  - Consolidate ROS2 packages under `middlewares/ros2/`
+  - Separate core libraries from middleware-specific code
+
+- **uploader**: Migrate S3Client from minio-cpp to AWS SDK for C++
+  - Better AWS S3 compatibility
+  - Improved error handling and retry logic
+
+- **ci**: Optimize CI workflow with caching and parallel execution
+  - Cache Docker layers for faster builds
+  - Run C++ and ROS tests in parallel
+  - Separate coverage workflows for different components
+
+### Removed
+- **build**: Remove Rust-related build tools and dependencies
+
+## [0.0.1] - 2024-12-15
+
+### Added
+- Initial commit
+- Basic ROS recorder functionality
+- Support for ROS 1 Noetic and ROS 2 Humble
+
+---
+
+[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ArcheBase/Axon/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/ArcheBase/Axon/compare/v0.0.1...v0.1.0
+[0.0.1]: https://github.com/ArcheBase/Axon/releases/tag/v0.0.1
