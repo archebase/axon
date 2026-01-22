@@ -21,6 +21,8 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "version.hpp"
+
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "http_server"
 #include <axon_log_macros.hpp>
@@ -536,6 +538,9 @@ HttpServer::RpcResponse HttpServer::handle_rpc_get_state(const nlohmann::json& p
 
   response.success = true;
   response.message = "State retrieved successfully";
+
+  // Add version information
+  response.data["version"] = get_version();
 
   // Get state from callback
   if (callbacks_.get_state) {

@@ -17,6 +17,7 @@
 
 #include "config_parser.hpp"
 #include "recorder.hpp"
+#include "version.hpp"
 
 namespace axon {
 namespace recorder {
@@ -49,6 +50,7 @@ void print_usage(const char* program_name) {
     << "Usage: " << program_name << " [OPTIONS]\n"
     << "\n"
     << "Axon Recorder - Plugin-based ROS message recorder\n"
+    << "Version: " << axon::recorder::get_version() << "\n"
     << "\n"
     << "Options:\n"
     << "  --config PATH          Path to YAML configuration file\n"
@@ -61,6 +63,7 @@ void print_usage(const char* program_name) {
     << "  --compression ALG     Compression: none, zstd, lz4 (default: zstd)\n"
     << "  --level LEVEL         Compression level (default: 3)\n"
     << "  --queue-size SIZE     Message queue capacity (default: 1024)\n"
+    << "  --version             Show version information\n"
     << "  --help                Show this help message\n"
     << "\n"
     << "HTTP RPC Server:\n"
@@ -137,10 +140,13 @@ void print_statistics(const AxonRecorder::Statistics& stats) {
 int main(int argc, char* argv[]) {
   using namespace axon::recorder;
 
-  // Check for help flag
+  // Check for help and version flags
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
       print_usage(argv[0]);
+      return 0;
+    } else if (strcmp(argv[i], "--version") == 0) {
+      std::cout << get_version_info() << std::endl;
       return 0;
     }
   }

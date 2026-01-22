@@ -1,5 +1,28 @@
 cmake_minimum_required(VERSION 3.12)
-project(axon_recorder VERSION 0.1.0)
+project(axon_recorder VERSION 0.2.0)
+
+# Use parent project version if available
+if(DEFINED AXON_REPO_ROOT AND EXISTS "${AXON_REPO_ROOT}/CMakeLists.txt")
+    # Get version from parent CMake project
+    function(get_axon_version)
+        # Read parent CMakeLists.txt to extract version
+        file(READ "${AXON_REPO_ROOT}/CMakeLists.txt" PARENT_CMAKE)
+        string(REGEX MATCH "project\\(Axon VERSION ([0-9.]+)" _ ${PARENT_CMAKE})
+        if(CMAKE_MATCH_1)
+            set(PROJECT_VERSION ${CMAKE_MATCH_1} PARENT_SCOPE)
+            # Parse version components
+            string(REPLACE "." ";" VERSION_LIST ${CMAKE_MATCH_1})
+            list(GET VERSION_LIST 0 MAJOR)
+            list(GET VERSION_LIST 1 MINOR)
+            list(GET VERSION_LIST 2 PATCH)
+            set(PROJECT_VERSION_MAJOR ${MAJOR} PARENT_SCOPE)
+            set(PROJECT_VERSION_MINOR ${MINOR} PARENT_SCOPE)
+            set(PROJECT_VERSION_PATCH ${PATCH} PARENT_SCOPE)
+            message(STATUS "Using Axon version from parent: ${CMAKE_MATCH_1}")
+        endif()
+    endfunction()
+    get_axon_version()
+endif()
 
 # Export compile commands for clangd/IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

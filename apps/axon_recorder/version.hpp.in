@@ -24,6 +24,23 @@ constexpr int AXON_RECORDER_VERSION_PATCH = @PROJECT_VERSION_PATCH@;
 // Convenience alias for use in code
 constexpr const char* AXON_RECORDER_VERSION = AXON_RECORDER_VERSION_STRING;
 
+// Helper functions to get version information
+inline const char* get_version() {
+  return AXON_RECORDER_VERSION_STRING;
+}
+
+inline const char* get_version_info() {
+  static constexpr char version_info[] =
+    "Axon Recorder @PROJECT_VERSION@\n"
+    "Copyright (c) 2026 ArcheBase\n"
+    "Licensed under Mulan PSL v2\n"
+    "\n"
+    "MCAP-based ROS message recorder with HTTP RPC API\n"
+    "Plugin architecture: ROS1/ROS2 support\n"
+    "Website: https://github.com/ArcheBase/Axon";
+  return version_info;
+}
+
 }  // namespace recorder
 }  // namespace axon
 
