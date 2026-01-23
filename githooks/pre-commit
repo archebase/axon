@@ -1,8 +1,19 @@
 #!/bin/bash
-# Pre-commit hook for clang-format
-# Runs clang-format --dry-run --Werror on staged C/C++ files
+# Pre-commit hook for Axon
+# Runs clang-format and REUSE compliance checks
 
 set -e
+
+echo "===================================="
+echo "Axon Pre-commit Checks"
+echo "===================================="
+
+# ============================================================================
+# 1. clang-format check
+# ============================================================================
+
+echo ""
+echo "1. Checking C/C++ code formatting..."
 
 # Find clang-format executable
 CLANG_FORMAT=""
@@ -14,44 +25,76 @@ for cmd in clang-format clang-format-17 clang-format-16 clang-format-15 clang-fo
 done
 
 if [ -z "$CLANG_FORMAT" ]; then
-    echo "Warning: clang-format not found. Skipping format check."
-    exit 0
-fi
+    echo "  Warning: clang-format not found. Skipping format check."
+else
+    echo "  Using: $CLANG_FORMAT"
 
-echo "Running clang-format check..."
+    # Get list of staged C/C++ files (excluding build directories and deps)
+    FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|cc|hh|h|c)$' | grep -v -E '(^|/)(build|_deps|\.git)(/|$)' || true)
 
-# Get list of staged C/C++ files (excluding build directories and deps)
-# || true prevents grep from returning exit code 1 when no files match
-# Pattern matches build/, _deps/, .git/ only as directory components (not in filenames)
-FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|cc|hh|h|c)$' | grep -v -E '(^|/)(build|_deps|\.git)(/|$)' || true)
+    if [ -n "$FILES" ]; then
+        FAILED=0
+        while IFS= read -r FILE; do
+            # Check the staged content, not the working directory file
+            if ! git show ":$FILE" 2>/dev/null | $CLANG_FORMAT --dry-run --Werror --assume-filename="$FILE" &> /dev/null; then
+                echo "  ✗ $FILE needs formatting"
+                FAILED=1
+            fi
+        done <<< "$FILES"
 
-if [ -z "$FILES" ]; then
-    echo "No C/C++ files to check."
-    exit 0
-fi
+        if [ $FAILED -eq 1 ]; then
+            echo ""
+            echo "  clang-format check failed. Please run:"
+            echo "    git clang-format"
+            echo "  or format files individually:"
+            echo "    clang-format -i <file>"
+            exit 1
+        fi
 
-# Check formatting of STAGED content (not working directory)
-# We extract the staged version with git show :$FILE to ensure
-# we're checking what will actually be committed, not what's on disk.
-# Use while-read loop to handle filenames with spaces correctly.
-# Use --assume-filename so clang-format can detect language and find .clang-format
-FAILED=0
-while IFS= read -r FILE; do
-    # Check the staged content, not the working directory file
-    if ! git show ":$FILE" 2>/dev/null | $CLANG_FORMAT --dry-run --Werror --assume-filename="$FILE" &> /dev/null; then
-        echo "  $FILE needs formatting"
-        FAILED=1
+        echo "  ✓ All C/C++ files are properly formatted"
+    else
+        echo "  ✓ No C/C++ files to check"
     fi
-done <<< "$FILES"
-
-if [ $FAILED -eq 1 ]; then
-    echo ""
-    echo "clang-format check failed. Please run:"
-    echo "  git clang-format"
-    echo "or format files individually:"
-    echo "  clang-format -i <file>"
-    exit 1
 fi
 
-echo "All files are properly formatted!"
+# ============================================================================
+# 2. REUSE license compliance check
+# ============================================================================
+
+echo ""
+echo "2. Checking REUSE license compliance..."
+
+if command -v reuse &> /dev/null; then
+    echo "  Using: $(reuse --version)"
+
+    # Run REUSE lint and capture output
+    if ! reuse lint 2>&1; then
+        echo ""
+        echo "  ✗ REUSE compliance check failed."
+        echo ""
+        echo "  Some files are missing licensing information."
+        echo "  Please run 'reuse lint' to see the full report."
+        echo ""
+        echo "  To fix common issues:"
+        echo "    reuse annotate --year 2026 --license 'MulanPSL-2.0' <file>"
+        echo "    reuse addheader --year 2026 --license 'MulanPSL2.0' <file>"
+        echo ""
+        echo "  Or run 'reuse fix' to automatically fix issues."
+        exit 1
+    fi
+
+    echo "  ✓ REUSE compliance check passed"
+else
+    echo "  ⚠ Warning: reuse not found. Skipping license check."
+    echo "  Install with: pip install fsfe-reuse"
+fi
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+echo ""
+echo "===================================="
+echo "✓ All pre-commit checks passed!"
+echo "===================================="
 exit 0

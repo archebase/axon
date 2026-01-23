@@ -126,5 +126,10 @@ coverage
 coverage_output
 coverage.info
 
+# REUSE tool
+.spdx
+reuse.spdx
+.reuse/downloads/
+
 .cursor/plans
 core/build_uploader/

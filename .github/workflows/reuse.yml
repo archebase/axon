@@ -1,0 +1,53 @@
+name: REUSE Compliance
+
+on:
+  push:
+    branches: [ main, prep-opensource ]
+  pull_request:
+    branches: [ main, prep-opensource ]
+  workflow_dispatch:
+
+jobs:
+  reuse:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install fsfe-reuse
+        run: |
+          pip install reuse
+          reuse --version
+
+      - name: Run REUSE check
+        run: |
+          reuse lint
+          echo "REUSE compliance check passed!"
+
+      - name: Generate SPDX SBOM
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          reuse spdx --output-file reuse.spdx
+          echo "SPDX SBOM generated successfully!"
+
+      - name: Upload SPDX SBOM
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spdx-sbom
+          path: reuse.spdx
+          retention-days: 90
+
+      - name: Check for missing licenses
+        run: |
+          echo "Checking for missing licensing information..."
+          reuse lint || {
+            echo "::warning::REUSE lint found issues. Please check the output above."
+            exit 1
+          }
