@@ -67,6 +67,7 @@ RUN apt-get update && \
     ros-rolling-rmw-dds-common \
     ros-rolling-rmw-fastrtps-shared-cpp \
     ros-rolling-rmw-fastrtps-cpp \
+    ros-rolling-ament-index-cpp \
     && ldconfig && \
     rm -rf /var/lib/apt/lists/*
 

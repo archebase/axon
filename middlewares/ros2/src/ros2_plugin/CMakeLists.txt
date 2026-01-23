@@ -32,11 +32,15 @@ find_package(rosidl_typesupport_introspection_cpp REQUIRED)
 # Find nlohmann/json
 include(FetchContent)
 
+# Set CMP0135 policy to NEW behavior for CMake 3.25+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
+    cmake_policy(SET CMP0135 NEW)
+endif()
+
 FetchContent_Declare(
     nlohmann_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
     URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
@@ -53,9 +57,14 @@ target_include_directories(axon_ros2_plugin PUBLIC
 )
 
 target_link_libraries(axon_ros2_plugin
-    ament_index_cpp::ament_index_cpp
     rclcpp::rclcpp
     nlohmann_json::nlohmann_json
+)
+
+# Use ament_target_dependencies for ament packages to ensure proper linking
+# This handles both modern targets (Humble/Jazzy) and older setups (Rolling)
+ament_target_dependencies(axon_ros2_plugin
+  ament_index_cpp
 )
 
 # Export all symbols
