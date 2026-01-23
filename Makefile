@@ -18,6 +18,22 @@ ROS_DISTRO ?= $(shell echo $$ROS_DISTRO)
 BUILD_DIR := build
 COVERAGE_DIR := coverage
 
+# =============================================================================
+# clang-format setup - use system clang-format-21
+# =============================================================================
+
+CLANG_FORMAT_VERSION := 21
+CLANG_FORMAT_BIN := clang-format-$(CLANG_FORMAT_VERSION)
+
+# Use system clang-format-21
+ifeq ($(shell command -v $(CLANG_FORMAT_BIN) >/dev/null 2>&1; echo $$?),0)
+    $(info ✓ Using system $(CLANG_FORMAT_BIN))
+else
+    $(info ⚠ $(CLANG_FORMAT_BIN) not found, will install from LLVM apt repository)
+endif
+
+CLANG_FORMAT := $(CLANG_FORMAT_BIN)
+
 # Build type
 BUILD_TYPE ?= Release
 
@@ -449,28 +465,32 @@ docker-test-compose:
 
 # Format code
 format:
-	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
-	@if command -v clang-format >/dev/null 2>&1; then \
-		printf "%s\n" "$(YELLOW)  Formatting core/ libraries...$(NC)"; \
-		find core/axon_mcap core/axon_uploader core/axon_logging \
-			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
-			! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
-			xargs -0 clang-format -i; \
-		printf "%s\n" "$(YELLOW)  Formatting middlewares/ros1/ and ros2/ code...$(NC)"; \
-		find middlewares/ros1 middlewares/ros2 \
-			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
-			! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" -print0 2>/dev/null | \
-			xargs -0 clang-format -i; \
-		printf "%s\n" "$(YELLOW)  Formatting apps/ code...$(NC)"; \
-		find apps \
-			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
-			! -path "*/build/*" -print0 2>/dev/null | \
-			xargs -0 clang-format -i; \
-		printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"; \
-	else \
-		printf "%s\n" "$(YELLOW)⚠ clang-format not found, skipping C/C++ format...$(NC)"; \
-		printf "%s\n" "$(YELLOW)  Install with: sudo apt install clang-format$(NC)"; \
+	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		printf "%s\n" "$(YELLOW)⚠ $(CLANG_FORMAT) not found, installing...$(NC)"; \
+		printf "%s\n" "$(YELLOW)Installing dependencies...$(NC)"; \
+		sudo apt install -y lsb-release wget software-properties-common gnupg >/dev/null 2>&1; \
+		wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s $(CLANG_FORMAT_VERSION) >/dev/null 2>&1 && \
+		sudo apt install -y $(CLANG_FORMAT) >/dev/null 2>&1; \
+		printf "%s\n" "$(GREEN)✓ Installed $(CLANG_FORMAT)$(NC)"; \
 	fi
+	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
+	@printf "%s\n" "$(YELLOW)  Using: $(CLANG_FORMAT)$(NC)"
+	@printf "%s\n" "$(YELLOW)  Formatting core/ libraries...$(NC)"
+	@find core/axon_mcap core/axon_uploader core/axon_logging \
+		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+		! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
+		xargs -0 $(CLANG_FORMAT) -i
+	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ros1/ and ros2/ code...$(NC)"
+	@find middlewares/ros1 middlewares/ros2 \
+		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+		! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" -print0 2>/dev/null | \
+		xargs -0 $(CLANG_FORMAT) -i
+	@printf "%s\n" "$(YELLOW)  Formatting apps/ code...$(NC)"
+	@find apps \
+		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+		! -path "*/build/*" -print0 2>/dev/null | \
+		xargs -0 $(CLANG_FORMAT) -i
+	@printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"
 
 # Lint code
 lint:
@@ -493,6 +513,7 @@ lint:
 	else \
 		printf "%s\n" "$(YELLOW)⚠ cppcheck not found, skipping$(NC)"; \
 	fi
+
 
 # =============================================================================
 # Coverage Targets (ROS)
@@ -935,19 +956,6 @@ coverage-html-cpp:
 	@printf "%s\n" "$(GREEN)✓ Coverage report: $(COVERAGE_DIR)/html/index.html$(NC)"
 
 # format-ci: Check code formatting (CI style check, no modifications)
-format-ci:
-	@printf "%s\n" "$(YELLOW)Checking code formatting...$(NC)"
-	@find core middlewares/ros1 middlewares/ros2 apps \
-		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
-		! -path "*/build/*" ! -path "*/build_*/*" ! -path "*/install/*" ! -path "*/devel/*" \
-		-print0 2>/dev/null | \
-		xargs -0 clang-format --dry-run --Werror > /dev/null 2>&1 || \
-		(printf "%s\n" "$(RED)✗ Code formatting check failed$(NC)" && \
-		 printf "%s\n" "$(YELLOW)Run 'make format' to fix formatting issues$(NC)" && \
-		 printf "%s\n" "$(YELLOW)Or format files individually: clang-format -i <file>$(NC)" && \
-		 exit 1)
-	@printf "%s\n" "$(GREEN)✓ Code formatting check passed$(NC)"
-
 # coverage-merge: Merge coverage from all libraries into one report
 coverage-merge:
 	@printf "%s\n" "$(YELLOW)Merging coverage reports...$(NC)"
@@ -958,3 +966,24 @@ coverage-merge:
 		-a $(COVERAGE_DIR)/axon_logging_coverage.info 2>/dev/null || true \
 		-a $(COVERAGE_DIR)/coverage.info 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ Coverage merged: $(COVERAGE_DIR)/coverage_merged.info$(NC)"
+
+# format-ci: Check code formatting (CI style check, no modifications)
+format-ci:
+	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		printf "%s\n" "$(RED)✗ $(CLANG_FORMAT) not found$(NC)"; \
+		printf "%s\n" "$(YELLOW)Please install: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s $(CLANG_FORMAT_VERSION)$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(YELLOW)Checking code formatting...$(NC)"
+	@printf "%s\n" "$(YELLOW)  Using: $(CLANG_FORMAT)$(NC)"
+	@find core middlewares/ros1 middlewares/ros2 apps \
+		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+		! -path "*/build/*" ! -path "*/build_*/*" ! -path "*/install/*" ! -path "*/devel/*" \
+		-print0 2>/dev/null | \
+		xargs -0 $(CLANG_FORMAT) --dry-run --Werror > /dev/null 2>&1 || \
+		(printf "%s\n" "$(RED)✗ Code formatting check failed$(NC)" && \
+		 printf "%s\n" "$(YELLOW)Run 'make format' to fix formatting issues$(NC)" && \
+			printf "%s\n" "$(YELLOW)Or format files individually: $(CLANG_FORMAT) -i <file>$(NC)" && \
+			exit 1)
+	@printf "%s\n" "$(GREEN)✓ Code formatting check passed$(NC)"
+

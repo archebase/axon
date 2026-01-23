@@ -179,7 +179,8 @@ void HttpServer::server_thread_func() {
         );
 
         http::response<http::string_body> response{
-          static_cast<http::status>(status_code), request.version()};
+          static_cast<http::status>(status_code), request.version()
+        };
         response.set(http::field::server, "AxonRecorder/0.1.0");
         response.set(http::field::content_type, content_type);
         response.keep_alive(request.keep_alive());
@@ -194,7 +195,8 @@ void HttpServer::server_thread_func() {
 
       } catch (const beast::system_error& se) {
         // Don't report on normal shutdown
-        if (se.code() != beast::errc::connection_reset && se.code() != beast::errc::operation_canceled && se.code() != asio::error::eof) {
+        if (se.code() != beast::errc::connection_reset &&
+            se.code() != beast::errc::operation_canceled && se.code() != asio::error::eof) {
           AXON_LOG_ERROR("Connection error: " << se.what());
         }
         // Ensure socket is closed on error

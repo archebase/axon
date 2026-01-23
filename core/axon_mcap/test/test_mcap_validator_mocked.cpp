@@ -108,7 +108,8 @@ TEST_F(McapValidatorMockedTest, HeaderCannotOpenFile) {
   // Test file cannot be opened
   EXPECT_CALL(*mock_filesystem_, exists(test_path_)).WillOnce(Return(true));
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_path_, std::ios::binary))
-    .WillOnce(Return(ByMove(std::unique_ptr<IFileStream>()))
+    .WillOnce(
+      Return(ByMove(std::unique_ptr<IFileStream>()))
     );  // Factory returns nullptr (open failed)
 
   auto result = validateMcapHeaderImpl(test_path_, *mock_filesystem_, *mock_stream_factory_);
@@ -199,7 +200,8 @@ TEST_F(McapValidatorMockedTest, FooterCannotOpenFile) {
   EXPECT_CALL(*mock_filesystem_, exists(test_path_)).WillOnce(Return(true));
   EXPECT_CALL(*mock_filesystem_, file_size(test_path_)).WillOnce(Return(1000));  // Large enough
   EXPECT_CALL(*mock_stream_factory_, create_file_stream(test_path_, std::ios::binary))
-    .WillOnce(Return(ByMove(std::unique_ptr<IFileStream>()))
+    .WillOnce(
+      Return(ByMove(std::unique_ptr<IFileStream>()))
     );  // Factory returns nullptr (open failed)
 
   auto result = validateMcapFooterImpl(test_path_, *mock_filesystem_, *mock_stream_factory_);

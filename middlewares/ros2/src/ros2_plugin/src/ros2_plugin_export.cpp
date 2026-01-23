@@ -194,10 +194,12 @@ struct AxonPluginDescriptor {
 
 // Static vtable
 static AxonPluginVtable ros2_vtable = {
-  axon_init, axon_start, axon_stop, axon_subscribe, axon_publish, {nullptr}};
+  axon_init, axon_start, axon_stop, axon_subscribe, axon_publish, {nullptr}
+};
 
 // Exported plugin descriptor
-__attribute__((visibility("default"))) const AxonPluginDescriptor* axon_get_plugin_descriptor(void
+__attribute__((visibility("default"))) const AxonPluginDescriptor* axon_get_plugin_descriptor(
+  void
 ) {
   static const AxonPluginDescriptor descriptor = {
     AXON_ABI_VERSION_MAJOR,
@@ -206,7 +208,8 @@ __attribute__((visibility("default"))) const AxonPluginDescriptor* axon_get_plug
     "Humble/Jazzy/Rolling",
     "1.0.0",
     &ros2_vtable,
-    {nullptr}};
+    {nullptr}
+  };
   return &descriptor;
 }
 

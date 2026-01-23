@@ -397,7 +397,8 @@ TEST_F(StateMachineTest, TransitionWithExpectedState_WrongCurrent) {
   EXPECT_TRUE(state_manager_.is_state(RecorderState::IDLE));
 
   // Try transition expecting READY but current is IDLE
-  EXPECT_FALSE(state_manager_.transition(RecorderState::READY, RecorderState::RECORDING, error_msg)
+  EXPECT_FALSE(
+    state_manager_.transition(RecorderState::READY, RecorderState::RECORDING, error_msg)
   );
 
   // State should remain IDLE

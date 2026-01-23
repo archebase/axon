@@ -265,7 +265,8 @@ TEST_F(RecordingSessionTest, RegisterChannelWithMetadata) {
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
 
   std::unordered_map<std::string, std::string> metadata = {
-    {"qos_depth", "10"}, {"qos_reliable", "true"}};
+    {"qos_depth", "10"}, {"qos_reliable", "true"}
+  };
 
   uint16_t channel_id = session.register_channel("/test", "cdr", schema_id, metadata);
 

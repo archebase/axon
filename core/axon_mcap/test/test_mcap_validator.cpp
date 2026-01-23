@@ -639,7 +639,8 @@ TEST_F(McapValidatorTest, FileJustBelowMinimumSize) {
 
   // Write only 15 bytes (just below minimum)
   static const char data[] = {
-    '\x89', 'M', 'C', 'A', 'P', '0', '\r', '\n', '\x89', 'M', 'C', 'A', 'P', '0', '\r'};
+    '\x89', 'M', 'C', 'A', 'P', '0', '\r', '\n', '\x89', 'M', 'C', 'A', 'P', '0', '\r'
+  };
   file.write(data, 15);
 
   file.close();

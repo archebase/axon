@@ -15,18 +15,10 @@ echo "===================================="
 echo ""
 echo "1. Checking C/C++ code formatting..."
 
-# Find clang-format executable
-CLANG_FORMAT=""
-for cmd in clang-format clang-format-17 clang-format-16 clang-format-15 clang-format-14; do
-    if command -v "$cmd" &> /dev/null; then
-        CLANG_FORMAT="$cmd"
-        break
-    fi
-done
+# Use system clang-format-21
+CLANG_FORMAT="clang-format-21"
 
-if [ -z "$CLANG_FORMAT" ]; then
-    echo "  Warning: clang-format not found. Skipping format check."
-else
+if command -v "$CLANG_FORMAT" &> /dev/null; then
     echo "  Using: $CLANG_FORMAT"
 
     # Get list of staged C/C++ files (excluding build directories and deps)
@@ -45,9 +37,9 @@ else
         if [ $FAILED -eq 1 ]; then
             echo ""
             echo "  clang-format check failed. Please run:"
-            echo "    git clang-format"
+            echo "    make format"
             echo "  or format files individually:"
-            echo "    clang-format -i <file>"
+            echo "    $CLANG_FORMAT -i <file>"
             exit 1
         fi
 
@@ -55,6 +47,11 @@ else
     else
         echo "  ✓ No C/C++ files to check"
     fi
+else
+    echo "  ✗ clang-format-21 not found. Please install:"
+    echo "    wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21"
+    echo "    sudo apt install -y clang-format-21"
+    exit 1
 fi
 
 # ============================================================================

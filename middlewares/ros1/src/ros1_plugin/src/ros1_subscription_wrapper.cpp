@@ -40,8 +40,9 @@ bool SubscriptionManager::subscribe(
     auto subscriber = node_handle_->subscribe<topic_tools::ShapeShifter>(
       topic_name,
       queue_size,
-      [topic_name, message_type, callback](const typename topic_tools::ShapeShifter::ConstPtr& msg
-      ) {
+      [topic_name,
+       message_type,
+       callback](const typename topic_tools::ShapeShifter::ConstPtr& msg) {
         if (!callback) {
           return;
         }

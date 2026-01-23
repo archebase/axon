@@ -277,8 +277,8 @@ TEST_F(EdgeUploaderIntegrationTest, CrashRecovery) {
 
     // Wait for recovery upload
     auto start = std::chrono::steady_clock::now();
-    while (!upload_completed && std::chrono::steady_clock::now() - start < std::chrono::seconds(30)
-    ) {
+    while (!upload_completed &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(30)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 

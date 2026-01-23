@@ -277,7 +277,8 @@ TEST_F(McapWriterTest, ChannelMetadata) {
 
   // Register channel with metadata
   std::unordered_map<std::string, std::string> metadata = {
-    {"frame_id", "base_link"}, {"offered_qos_profiles", "- history: keep_last\n  depth: 10"}};
+    {"frame_id", "base_link"}, {"offered_qos_profiles", "- history: keep_last\n  depth: 10"}
+  };
 
   uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id, metadata);
   EXPECT_GT(channel_id, 0);
@@ -361,7 +362,8 @@ TEST_F(McapWriterTest, WriteMetadata) {
   std::unordered_map<std::string, std::string> metadata = {
     {"task_id", "task_12345"},
     {"device_id", "robot_001"},
-    {"recording_start", "2024-01-15T10:30:00Z"}};
+    {"recording_start", "2024-01-15T10:30:00Z"}
+  };
 
   EXPECT_TRUE(writer.write_metadata("axon.task", metadata));
 
@@ -381,15 +383,18 @@ TEST_F(McapWriterTest, WriteMultipleMetadata) {
 
   // Write multiple metadata records
   std::unordered_map<std::string, std::string> task_metadata = {
-    {"task_id", "task_abc"}, {"task_type", "mapping"}};
+    {"task_id", "task_abc"}, {"task_type", "mapping"}
+  };
   EXPECT_TRUE(writer.write_metadata("axon.task", task_metadata));
 
   std::unordered_map<std::string, std::string> device_metadata = {
-    {"device_id", "robot_xyz"}, {"firmware_version", "1.2.3"}};
+    {"device_id", "robot_xyz"}, {"firmware_version", "1.2.3"}
+  };
   EXPECT_TRUE(writer.write_metadata("axon.device", device_metadata));
 
   std::unordered_map<std::string, std::string> recording_metadata = {
-    {"start_time", "1000000000"}, {"end_time", "2000000000"}, {"duration_seconds", "1000"}};
+    {"start_time", "1000000000"}, {"end_time", "2000000000"}, {"duration_seconds", "1000"}
+  };
   EXPECT_TRUE(writer.write_metadata("axon.recording", recording_metadata));
 
   writer.close();

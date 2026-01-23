@@ -646,7 +646,8 @@ bool AxonRecorder::setup_subscriptions() {
   return true;
 }
 
-const SubscriptionConfig* AxonRecorder::get_subscription_config(const std::string& topic_name
+const SubscriptionConfig* AxonRecorder::get_subscription_config(
+  const std::string& topic_name
 ) const {
   for (const auto& sub : config_.subscriptions) {
     if (sub.topic_name == topic_name) {

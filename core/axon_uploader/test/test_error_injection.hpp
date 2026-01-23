@@ -87,11 +87,13 @@ class S3ErrorCodeInjector {
 public:
   // Common retryable error codes
   static constexpr const char* RETRYABLE_ERRORS[] = {
-    "RequestTimeout", "ServiceUnavailable", "InternalError", "SlowDown", "Throttling"};
+    "RequestTimeout", "ServiceUnavailable", "InternalError", "SlowDown", "Throttling"
+  };
 
   // Common non-retryable error codes
   static constexpr const char* NON_RETRYABLE_ERRORS[] = {
-    "AccessDenied", "NoSuchBucket", "InvalidArgument", "NoSuchKey"};
+    "AccessDenied", "NoSuchBucket", "InvalidArgument", "NoSuchKey"
+  };
 
   static bool isRetryable(const std::string& error_code) {
     for (const char* retryable : RETRYABLE_ERRORS) {

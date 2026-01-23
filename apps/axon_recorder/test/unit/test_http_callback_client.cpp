@@ -936,7 +936,8 @@ TEST_F(StartCallbackPayloadTest, TopicsWithSpecialCharacters) {
   payload.status = "recording";
   payload.started_at = "2025-12-20T10:30:00Z";
   payload.topics = {
-    "/camera/image_raw", "/namespace/sub_topic", "/topic.with.dots", "/topic-with-dashes"};
+    "/camera/image_raw", "/namespace/sub_topic", "/topic.with.dots", "/topic-with-dashes"
+  };
 
   std::string json = payload.to_json();
 
