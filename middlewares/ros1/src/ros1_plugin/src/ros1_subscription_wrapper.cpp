@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "ros1_subscription_wrapper.hpp"
 
 #include <ros/console.h>
@@ -36,8 +40,9 @@ bool SubscriptionManager::subscribe(
     auto subscriber = node_handle_->subscribe<topic_tools::ShapeShifter>(
       topic_name,
       queue_size,
-      [topic_name, message_type, callback](const typename topic_tools::ShapeShifter::ConstPtr& msg
-      ) {
+      [topic_name,
+       message_type,
+       callback](const typename topic_tools::ShapeShifter::ConstPtr& msg) {
         if (!callback) {
           return;
         }

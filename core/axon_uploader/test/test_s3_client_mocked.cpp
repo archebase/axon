@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * Unit tests for S3Client using GoogleMock
  *

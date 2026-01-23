@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "worker_thread_pool.hpp"
 
 #include <chrono>

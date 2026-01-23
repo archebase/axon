@@ -102,9 +102,13 @@ RUN curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc \
     -o /usr/local/bin/mc && \
     chmod +x /usr/local/bin/mc
 
-# Install clang-format (for code quality checks)
+# Install clang-format-21 (for code quality checks)
 RUN apt-get update && apt-get install -y \
-    clang-format \
+    lsb-release wget software-properties-common gnupg \
+    && rm -rf /var/lib/apt/lists/*
+RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s 21
+RUN apt-get update && apt-get install -y \
+    clang-format-21 \
     cppcheck \
     && rm -rf /var/lib/apt/lists/*
 

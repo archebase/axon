@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "s3_client.hpp"
 
 #include <aws/core/Aws.h>
@@ -198,7 +202,8 @@ public:
     // LCOV_EXCL_BR_STOP
 
     // Configure TransferManager for multipart uploads
-    Aws::Transfer::TransferManagerConfiguration transfer_config(executor.get()
+    Aws::Transfer::TransferManagerConfiguration transfer_config(
+      executor.get()
     );  // LCOV_EXCL_BR_LINE
     transfer_config.s3Client = client;
 

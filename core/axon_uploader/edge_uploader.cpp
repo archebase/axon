@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "edge_uploader.hpp"
 
 #include <chrono>
@@ -215,7 +219,8 @@ void EdgeUploader::enqueue(
     return;
   }
   if (json_path.empty()) {
-    AXON_LOG_ERROR("Cannot enqueue upload - json_path is empty (JSON sidecar is required)"
+    AXON_LOG_ERROR(
+      "Cannot enqueue upload - json_path is empty (JSON sidecar is required)"
     );  // LCOV_EXCL_BR_LINE
     return;
   }
@@ -370,7 +375,8 @@ void EdgeUploader::processItem(const UploadItem& item) {
   FileUploadResult mcap_result = FileUploadResult::ok();
   if (s3_client_->objectExists(mcap_s3_key)) {
     // MCAP already uploaded (retry after JSON failure) - verify checksum
-    if (item.checksum_sha256.empty() || s3_client_->verifyUpload(mcap_s3_key, item.checksum_sha256)) {
+    if (item.checksum_sha256.empty() ||
+        s3_client_->verifyUpload(mcap_s3_key, item.checksum_sha256)) {
       AXON_LOG_INFO("MCAP already in S3, skipping upload: " << mcap_s3_key);
       // mcap_result already set to ok()
     } else {

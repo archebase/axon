@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 // ROS1 Plugin C ABI Export
 // Direct C interface without shared ABI header dependency
 
@@ -187,10 +191,12 @@ struct AxonPluginDescriptor {
 
 // Static vtable
 static AxonPluginVtable ros1_vtable = {
-  axon_init, axon_start, axon_stop, axon_subscribe, axon_publish, {nullptr}};
+  axon_init, axon_start, axon_stop, axon_subscribe, axon_publish, {nullptr}
+};
 
 // Exported plugin descriptor
-__attribute__((visibility("default"))) const AxonPluginDescriptor* axon_get_plugin_descriptor(void
+__attribute__((visibility("default"))) const AxonPluginDescriptor* axon_get_plugin_descriptor(
+  void
 ) {
   static const AxonPluginDescriptor descriptor = {
     AXON_ABI_VERSION_MAJOR,
@@ -199,7 +205,8 @@ __attribute__((visibility("default"))) const AxonPluginDescriptor* axon_get_plug
     "Noetic",
     "1.0.0",
     &ros1_vtable,
-    {nullptr}};
+    {nullptr}
+  };
   return &descriptor;
 }
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "http_server.hpp"
 
 #include <boost/asio.hpp>
@@ -10,6 +14,8 @@
 #include <iostream>
 #include <sstream>
 #include <unordered_map>
+
+#include "version.hpp"
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "http_server"
@@ -173,7 +179,8 @@ void HttpServer::server_thread_func() {
         );
 
         http::response<http::string_body> response{
-          static_cast<http::status>(status_code), request.version()};
+          static_cast<http::status>(status_code), request.version()
+        };
         response.set(http::field::server, "AxonRecorder/0.1.0");
         response.set(http::field::content_type, content_type);
         response.keep_alive(request.keep_alive());
@@ -188,7 +195,8 @@ void HttpServer::server_thread_func() {
 
       } catch (const beast::system_error& se) {
         // Don't report on normal shutdown
-        if (se.code() != beast::errc::connection_reset && se.code() != beast::errc::operation_canceled && se.code() != asio::error::eof) {
+        if (se.code() != beast::errc::connection_reset &&
+            se.code() != beast::errc::operation_canceled && se.code() != asio::error::eof) {
           AXON_LOG_ERROR("Connection error: " << se.what());
         }
         // Ensure socket is closed on error
@@ -526,6 +534,9 @@ HttpServer::RpcResponse HttpServer::handle_rpc_get_state(const nlohmann::json& p
 
   response.success = true;
   response.message = "State retrieved successfully";
+
+  // Add version information
+  response.data["version"] = get_version();
 
   // Get state from callback
   if (callbacks_.get_state) {

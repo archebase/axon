@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 // Define MCAP_IMPLEMENTATION in exactly one .cpp file
 // This must be before including ANY mcap headers to get the implementation
 #define MCAP_IMPLEMENTATION
@@ -308,7 +312,8 @@ public:
       messages_written_.load(std::memory_order_relaxed),
       bytes_written_.load(std::memory_order_relaxed),
       schemas_registered_.load(std::memory_order_relaxed),
-      channels_registered_.load(std::memory_order_relaxed)};
+      channels_registered_.load(std::memory_order_relaxed)
+    };
   }
 
   std::string get_path() const {
@@ -336,7 +341,8 @@ private:
   // Rate limiting for error logging (avoid flooding logs on repeated failures)
   std::atomic<uint64_t> write_errors_{0};
   std::atomic<std::chrono::steady_clock::time_point> last_write_error_log_{
-    std::chrono::steady_clock::time_point{}};
+    std::chrono::steady_clock::time_point{}
+  };
 };
 
 // =============================================================================

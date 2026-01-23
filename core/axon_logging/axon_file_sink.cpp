@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "axon_file_sink.hpp"
 
 #include <boost/filesystem.hpp>
@@ -170,14 +174,17 @@ boost::shared_ptr<async_file_sink_t> create_file_sink(
 
   // Set time-based rotation if enabled
   if (config.rotate_at_midnight) {
-    backend->set_time_based_rotation(sinks::file::rotation_at_time_point(0, 0, 0)  // Midnight
+    backend->set_time_based_rotation(
+      sinks::file::rotation_at_time_point(0, 0, 0)  // Midnight
     );
   }
 
   // Set up file collector for rotation management
-  backend->set_file_collector(sinks::file::make_collector(
-    keywords::target = log_directory, keywords::max_files = config.max_files
-  ));
+  backend->set_file_collector(
+    sinks::file::make_collector(
+      keywords::target = log_directory, keywords::max_files = config.max_files
+    )
+  );
 
   // Scan for existing files on startup
   backend->scan_for_files();

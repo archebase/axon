@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file test_console_sink.cpp
  * @brief Unit tests for console sink creation and configuration

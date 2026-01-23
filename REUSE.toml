@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: MulanPSL-2.0
+# Copyright (c) 2026 ArcheBase
+# reuse.toml - Configuration for REUSE tool
+
+version = 1
+
+[[annotations]]
+path = "LICENSE"
+precedence = "override"
+SPDX-FileCopyrightText = "2020 Mulan PSL v2 Author"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+# All source files in the project
+[[annotations]]
+path = "docs/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "cmake/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "docker/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = ".github/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "githooks/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+# files by pattern
+[[annotations]]
+path = "**/*.md"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/*.xml"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/*.yml"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/*.yaml"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/*.sh"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/CMakeLists.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/Makefile"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/.gitignore"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/.clang-format"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "**/.dockerignore"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "codecov.yml"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = ".vscode/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+# Ignore build directories and generated files
+[[annotations]]
+path = "build/**"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"
+
+[[annotations]]
+path = "*.o"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"
+
+[[annotations]]
+path = "*.a"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"
+
+[[annotations]]
+path = "*.so"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"
+
+# Ignore test data and mocks
+[[annotations]]
+path = "**/test/**/mocks/**"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"
+
+[[annotations]]
+path = "**/*_mock.*"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"
+
+# Ignore dependency directories
+[[annotations]]
+path = "_deps/**"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"
+
+[[annotations]]
+path = "install/**"
+SPDX-FileCopyrightText = "NO-COPYRIGHT"
+SPDX-License-Identifier = "NO-COPYRIGHT"

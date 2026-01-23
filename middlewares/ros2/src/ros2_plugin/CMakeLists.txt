@@ -23,6 +23,7 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(rosidl_typesupport_cpp REQUIRED)
@@ -30,6 +31,11 @@ find_package(rosidl_typesupport_introspection_cpp REQUIRED)
 
 # Find nlohmann/json
 include(FetchContent)
+
+# Set CMP0135 policy to NEW behavior for CMake 3.25+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
+    cmake_policy(SET CMP0135 NEW)
+endif()
 
 FetchContent_Declare(
     nlohmann_json
@@ -53,6 +59,12 @@ target_include_directories(axon_ros2_plugin PUBLIC
 target_link_libraries(axon_ros2_plugin
     rclcpp::rclcpp
     nlohmann_json::nlohmann_json
+)
+
+# Use ament_target_dependencies for ament packages to ensure proper linking
+# This handles both modern targets (Humble/Jazzy) and older setups (Rolling)
+ament_target_dependencies(axon_ros2_plugin
+  ament_index_cpp
 )
 
 # Export all symbols

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file test_with_ros2_tools.cpp
  * @brief Test plugin by subscribing to messages published via ros2 topic pub CLI tool

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file test_state_transaction_guard.cpp
  * @brief Unit tests for StateTransactionGuard class

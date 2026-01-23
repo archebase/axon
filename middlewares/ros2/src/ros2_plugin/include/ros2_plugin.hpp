@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #ifndef ROS2_PLUGIN_HPP
 #define ROS2_PLUGIN_HPP
 

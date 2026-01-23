@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file test_log_init.cpp
  * @brief Unit tests for logging initialization and configuration

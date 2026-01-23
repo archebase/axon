@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file test_spsc_queue.cpp
  * @brief Unit tests for SPSCQueue and MPSCQueue lock-free data structures

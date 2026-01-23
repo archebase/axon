@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #ifndef AXON_S3_CLIENT_HPP
 #define AXON_S3_CLIENT_HPP
 

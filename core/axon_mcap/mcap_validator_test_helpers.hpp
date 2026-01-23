@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #ifndef AXON_MCAP_VALIDATOR_TEST_HELPERS_HPP
 #define AXON_MCAP_VALIDATOR_TEST_HELPERS_HPP
 

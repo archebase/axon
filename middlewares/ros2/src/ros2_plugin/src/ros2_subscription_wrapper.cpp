@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "ros2_subscription_wrapper.hpp"
 
 #include <rcutils/logging_macros.h>

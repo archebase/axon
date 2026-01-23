@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file simple_load_test.cpp
  * @brief Minimal test to verify plugin can be loaded and descriptor accessed

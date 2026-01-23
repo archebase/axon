@@ -22,8 +22,13 @@ RUN apt-get update && apt-get install -y \
     wget \
     ca-certificates \
     lsb-release \
-    clang-format \
+    software-properties-common \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Install clang-format-21 from LLVM repository
+RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s 21
+RUN apt-get update && apt-get install -y clang-format-21 && rm -rf /var/lib/apt/lists/*
 
 # Initialize rosdep
 RUN rosdep init || true && rosdep update
@@ -62,6 +67,7 @@ RUN apt-get update && \
     ros-rolling-rmw-dds-common \
     ros-rolling-rmw-fastrtps-shared-cpp \
     ros-rolling-rmw-fastrtps-cpp \
+    ros-rolling-ament-index-cpp \
     && ldconfig && \
     rm -rf /var/lib/apt/lists/*
 

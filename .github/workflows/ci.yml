@@ -68,11 +68,62 @@ permissions:
 
 jobs:
   # ===========================================================================
-  # Stage 0: Build Docker Images (shared for ROS and E2E tests)
+  # Stage 0: Format, Lint, and License Compliance (runs first)
+  # ===========================================================================
+  format-lint-reuse:
+    name: Format, Lint & License
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install clang-format-21
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lsb-release wget software-properties-common gnupg
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
+          sudo apt-get install -y clang-format-21
+          clang-format-21 --version
+
+      - name: Install fsfe-reuse
+        run: |
+          pip install reuse
+          reuse --version
+
+      - name: Run clang-format check
+        run: |
+          make format-ci
+
+      - name: Run REUSE compliance check
+        run: |
+          echo "Checking REUSE license compliance..."
+          reuse lint
+          echo "✓ REUSE compliance check passed!"
+
+      - name: Generate SPDX SBOM
+        run: |
+          reuse spdx --output reuse.spdx
+          echo "✓ SPDX SBOM generated successfully!"
+
+      - name: Upload SPDX SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: spdx-sbom
+          path: reuse.spdx
+          retention-days: 90
+
+  # ===========================================================================
+  # Stage 1: Build Docker Images (shared for ROS and E2E tests)
   # Builds all ROS distributions once, used by both tests-ros and e2e-tests
   # ===========================================================================
   build-images:
     name: Build Images
+    needs: format-lint-reuse
     uses: ./.github/workflows/docker-build.yml
     secrets: inherit
 

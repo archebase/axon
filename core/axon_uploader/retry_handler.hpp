@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #ifndef AXON_RETRY_HANDLER_HPP
 #define AXON_RETRY_HANDLER_HPP
 
@@ -101,30 +105,32 @@ public:
    * @return true if the error is transient and should be retried
    */
   static bool isRetryableError(const std::string& error_code) {
-    static const std::set<std::string> retryable = {// S3/HTTP errors
-                                                    "RequestTimeout",
-                                                    "ServiceUnavailable",
-                                                    "InternalError",
-                                                    "SlowDown",
-                                                    "RequestTimeTooSkewed",
-                                                    "OperationAborted",
+    static const std::set<std::string> retryable = {
+      // S3/HTTP errors
+      "RequestTimeout",
+      "ServiceUnavailable",
+      "InternalError",
+      "SlowDown",
+      "RequestTimeTooSkewed",
+      "OperationAborted",
 
-                                                    // Network errors
-                                                    "ConnectionReset",
-                                                    "ConnectionTimeout",
-                                                    "ConnectionRefused",
-                                                    "NetworkingError",
-                                                    "UnknownEndpoint",
+      // Network errors
+      "ConnectionReset",
+      "ConnectionTimeout",
+      "ConnectionRefused",
+      "NetworkingError",
+      "UnknownEndpoint",
 
-                                                    // MinIO-specific
-                                                    "XMinioServerNotInitialized",
-                                                    "XAmzContentSHA256Mismatch",
+      // MinIO-specific
+      "XMinioServerNotInitialized",
+      "XAmzContentSHA256Mismatch",
 
-                                                    // Generic
-                                                    "Throttling",
-                                                    "ThrottlingException",
-                                                    "ProvisionedThroughputExceededException",
-                                                    "TransientError"};
+      // Generic
+      "Throttling",
+      "ThrottlingException",
+      "ProvisionedThroughputExceededException",
+      "TransientError"
+    };
     return retryable.count(error_code) > 0;
   }
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file plugin_loader_test.cpp
  * @brief Plugin loader test example for Axon middleware plugins

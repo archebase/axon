@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "config_parser.hpp"
 
 #include <fstream>
@@ -346,7 +350,8 @@ bool ConfigParser::validate_upload_config(const UploadConfig& upload, std::strin
   // Validate endpoint_url format if provided
   if (!upload.s3.endpoint_url.empty()) {
     // Basic URL validation - should start with http:// or https://
-    if (upload.s3.endpoint_url.find("http://") != 0 && upload.s3.endpoint_url.find("https://") != 0) {
+    if (upload.s3.endpoint_url.find("http://") != 0 &&
+        upload.s3.endpoint_url.find("https://") != 0) {
       error_msg = "Invalid s3.endpoint_url - must start with http:// or https://";
       return false;
     }

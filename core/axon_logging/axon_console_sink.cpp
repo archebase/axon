@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "axon_console_sink.hpp"
 
 #include <boost/core/null_deleter.hpp>

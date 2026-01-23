@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #ifndef ROS1_PLUGIN_SUBSCRIPTION_WRAPPER_HPP
 #define ROS1_PLUGIN_SUBSCRIPTION_WRAPPER_HPP
 

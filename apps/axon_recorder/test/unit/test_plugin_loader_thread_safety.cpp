@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * Unit tests for PluginLoader thread safety
  * Tests for fix: Added std::mutex plugins_mutex_ to protect plugins_ map

@@ -1,0 +1,148 @@
+name: Feature Request
+description: Propose a new feature or enhancement for Axon
+title: "[Feature]: "
+labels: ["enhancement"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a new feature for Axon! Please provide as much detail as possible to help us understand and evaluate your proposal.
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What pain point does it address?
+      placeholder: |
+        Currently, Axon requires users to manually configure topics in a YAML file. This is error-prone and time-consuming for fleet deployments where the same configuration is used across multiple robots.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this feature to work?
+      placeholder: |
+        Add a command-line flag `--auto-discover-topics` that automatically discovers all available ROS topics and subscribes to them by default. Users can still provide exclusion patterns for topics they don't want to record.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions
+      description: What alternative solutions have you considered?
+      placeholder: |
+        1. Use rosbag's auto-discovery feature and migrate recordings to MCAP
+        2. Create a Python script that generates config files dynamically
+        3. Extend the HTTP RPC API to support dynamic topic subscription
+      render: shell
+    validations:
+      required: false
+
+  - type: dropdown
+    id: feature-type
+    attributes:
+      label: Feature Type
+      description: What type of feature is this?
+      options:
+        - Core Functionality
+        - Performance Enhancement
+        - Developer Experience
+        - Documentation
+        - Testing
+        - Integration (ROS1/ROS2/Other)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Critical (blocking my work)
+        - High (would greatly improve workflow)
+        - Medium (nice to have)
+        - Low (minor improvement)
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Describe specific use cases where this feature would be beneficial
+      placeholder: |
+        1. Fleet deployment - Automatically discover topics across different robot types
+        2. Quick testing - Start recording without manual configuration
+        3. Dynamic environments - Adapt to changing topic configurations
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation-details
+    attributes:
+      label: Implementation Details (Optional)
+      description: If you have technical ideas about how to implement this feature, please share
+      placeholder: |
+        - Use `rosbag::TopicQuery` (ROS1) or `rclcpp::topic_endpoint_info` (ROS2) to discover topics
+        - Add new CLI argument to `axon_recorder.cpp`
+        - Extend `TaskConfig` to support auto-discovery mode
+        - Add unit tests for topic discovery logic
+    validations:
+      required: false
+
+  - type: textarea
+    id: api-changes
+    attributes:
+      label: API Changes (Optional)
+      description: Would this feature require changes to the HTTP RPC API or plugin interface?
+      placeholder: |
+        - New endpoint: `GET /rpc/topics` to list available topics
+        - Modified `POST /rpc/config` to support `auto_discover: true` flag
+    validations:
+      required: false
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups or Examples (Optional)
+      description: If applicable, include mockups, diagrams, or code examples
+      render: shell
+      placeholder: |
+        ```bash
+        # Example usage
+        ./axon_recorder --auto-discover-topics --exclude "/tf,/tf_static"
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other relevant information about the feature request
+      placeholder: |
+        - This feature is available in rosbag and would improve parity
+        - Related to issue #123
+        - I'm willing to contribute this feature if approved
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues for similar feature requests
+          required: true
+        - label: I have checked the [ROADMAP](https://github.com/ArcheBase/Axon/blob/main/ROADMAP.md) for planned features
+          required: false
+        - label: This feature aligns with Axon's design philosophy (task-centric, lock-free, fleet-ready)
+          required: false
+        - label: I am willing to contribute to implementing this feature
+          required: false

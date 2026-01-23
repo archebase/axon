@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 /**
  * @file test_message_factory_standalone.cpp
  * @brief Unit tests for message_factory.cpp registry pattern

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #ifndef AXON_RECORDER_TASK_CONFIG_HPP
 #define AXON_RECORDER_TASK_CONFIG_HPP
 
