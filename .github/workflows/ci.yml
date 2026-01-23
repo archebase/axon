@@ -82,10 +82,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install clang-format
+      - name: Install clang-format-21
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format
+          sudo apt-get install -y lsb-release wget software-properties-common gnupg
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
+          sudo apt-get install -y clang-format-21
+          clang-format-21 --version
 
       - name: Install fsfe-reuse
         run: |
