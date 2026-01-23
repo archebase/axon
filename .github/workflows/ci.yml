@@ -107,7 +107,7 @@ jobs:
 
       - name: Generate SPDX SBOM
         run: |
-          reuse spdx --output-file reuse.spdx
+          reuse spdx --output reuse.spdx
           echo "✓ SPDX SBOM generated successfully!"
 
       - name: Upload SPDX SBOM
