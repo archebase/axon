@@ -33,7 +33,7 @@ jobs:
       - name: Generate SPDX SBOM
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          reuse spdx --output-file reuse.spdx
+          reuse spdx --output reuse.spdx
           echo "SPDX SBOM generated successfully!"
 
       - name: Upload SPDX SBOM
