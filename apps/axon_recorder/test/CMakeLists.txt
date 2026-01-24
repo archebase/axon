@@ -55,6 +55,14 @@ if(NOT GTest_FOUND)
     FetchContent_MakeAvailable(googletest)
 else()
     message(STATUS "Found system GTest: ${GTest_VERSION}")
+    # System GTest provides GTest::gtest and GTest::gtest_main targets
+    # Create aliases for compatibility with FetchContent-style naming
+    if(NOT TARGET gtest AND TARGET GTest::gtest)
+        add_library(gtest ALIAS GTest::gtest)
+    endif()
+    if(NOT TARGET gtest_main AND TARGET GTest::gtest_main)
+        add_library(gtest_main ALIAS GTest::gtest_main)
+    endif()
 endif()
 
 # =============================================================================

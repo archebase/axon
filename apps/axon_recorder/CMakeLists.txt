@@ -47,6 +47,10 @@ find_package(Boost REQUIRED COMPONENTS log log_setup thread filesystem)
 # Try to find system component (optional for backward compatibility)
 find_package(Boost QUIET COMPONENTS system)
 find_package(yaml-cpp REQUIRED)
+# Create yaml-cpp alias if using modern yaml-cpp::yaml-cpp target
+if(NOT TARGET yaml-cpp AND TARGET yaml-cpp::yaml-cpp)
+    add_library(yaml-cpp ALIAS yaml-cpp::yaml-cpp)
+endif()
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 
