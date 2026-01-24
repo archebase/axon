@@ -24,7 +24,7 @@ jobs:
   # ===========================================================================
   cpp-integration-tests:
     name: axon_uploader
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     
     # Note: MinIO is started manually in a step below because GitHub Actions
     # services don't support command override, and MinIO requires

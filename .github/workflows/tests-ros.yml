@@ -35,7 +35,7 @@ jobs:
   # ==========================================================================
   ros-tests:
     name: (${{ matrix.ros_distro }})
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -166,7 +166,7 @@ jobs:
   # ==========================================================================
   ros-tests-success:
     name: ROS Tests Success
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [ros-tests]
     if: always()
     steps:
