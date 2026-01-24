@@ -98,6 +98,7 @@ source /opt/ros/<distro>/setup.bash
 ```
 
 4. **Install dependencies:**
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
@@ -113,6 +114,25 @@ sudo apt-get install -y \
     clang-tidy \
     lcov \
     cppcheck
+
+# macOS (using Homebrew)
+brew install \
+    cmake \
+    boost \
+    yaml-cpp \
+    openssl \
+    zstd \
+    lz4 \
+    llvm@21 \
+    lcov \
+    cppcheck
+
+# Add clang-format-21 to PATH on macOS
+echo 'export PATH="/opt/homebrew/opt/llvm@21/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Verify installation
+clang-format-21 --version
 ```
 
 ---
