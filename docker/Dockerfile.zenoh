@@ -90,6 +90,16 @@ ENV LD_LIBRARY_PATH=/usr/local/lib
 # Set working directory
 WORKDIR /workspace
 
+# Pre-build Zenoh plugin to avoid runtime compilation
+# This eliminates race conditions when multiple containers start
+COPY middlewares/zenoh /workspace/axon/middlewares/zenoh
+RUN cd /workspace/axon/middlewares/zenoh && \
+    mkdir -p build && \
+    cd build && \
+    cmake .. && \
+    make && \
+    echo "Zenoh plugin pre-built successfully"
+
 # Copy test scripts
 COPY docker/scripts/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
