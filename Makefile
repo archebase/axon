@@ -179,8 +179,12 @@ test-mcap: build-core
 # Test axon_uploader
 test-uploader: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
-	@cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure
-	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
+	@if [ -d "$(BUILD_DIR)/axon_uploader" ]; then \
+		cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure && \
+		printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)⚠ axon_uploader not built (requires AWS SDK, enable with -DAXON_BUILD_UPLOADER=ON)$(NC)"; \
+	fi
 
 # Test axon_logging
 test-logging: build-core
