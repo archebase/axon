@@ -16,9 +16,9 @@ services:
     image: eclipse/zenoh:1.7.2
     container_name: zenoh_router
     network_mode: host
-    command: ["zenohd", "--mode", "router", "--port", "7447", "--no-multicast-scouting"]
+    command: ["--mode", "router", "--listen", "tcp/0.0.0.0:7447", "--no-multicast-scouting"]
     healthcheck:
-      test: ["CMD", "zenoh", "ping", "--router", "tcp/127.0.0.1:7447"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 7447 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
