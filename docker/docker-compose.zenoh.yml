@@ -1,0 +1,101 @@
+# Docker Compose for Axon + Zenoh Integration Testing
+#
+# Services:
+#   - zenoh-router: Eclipse Zenoh router for pub/sub messaging
+#   - axon-recorder: Axon recorder with Zenoh plugin loaded
+#   - test-publisher: Publishes test messages to Zenoh
+#   - test-subscriber: Verifies subscription and message flow
+#
+# Usage:
+#   cd docker && docker-compose -f docker-compose.zenoh.yml up --abort-on-container-exit
+#   Or: make docker-test-zenoh-integration
+
+services:
+  # Zenoh Router - Central pub/sub broker
+  zenoh-router:
+    image: eclipse/zenoh:1.7.2
+    container_name: zenoh_router
+    network_mode: host
+    command: ["zenohd", "--mode", "router", "--port", "7447", "--no-multicast-scouting"]
+    healthcheck:
+      test: ["CMD", "zenoh", "ping", "--router", "tcp/127.0.0.1:7447"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Axon Recorder with Zenoh plugin
+  axon-recorder:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.zenoh
+    container_name: axon_recorder
+    volumes:
+      - ..:/workspace/axon
+      - axon-data:/data
+    working_dir: /workspace/axon
+    environment:
+      - ZENOH_ROUTER=tcp/127.0.0.1:7447
+      - AXON_OUTPUT_DIR=/data/recordings
+    depends_on:
+      zenoh-router:
+        condition: service_healthy
+    network_mode: host
+    command: >
+      bash -c "
+      cd middlewares/zenoh/build || (mkdir -p middlewares/zenoh/build && cd middlewares/zenoh/build) &&
+      cmake .. && make &&
+      cd /workspace/axon &&
+      make app-axon-recorder &&
+      echo 'Axon recorder with Zenoh plugin ready - TODO: start recording' &&
+      sleep infinity
+      "
+
+  # Test Publisher - Sends test messages to Zenoh
+  test-publisher:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.zenoh
+    container_name: test_publisher
+    volumes:
+      - ..:/workspace/axon
+    working_dir: /workspace/axon
+    environment:
+      - ZENOH_ROUTER=tcp/127.0.0.1:7447
+    depends_on:
+      zenoh-router:
+        condition: service_healthy
+    network_mode: host
+    command: >
+      bash -c "
+      cd middlewares/zenoh/build || (mkdir -p middlewares/zenoh/build && cd middlewares/zenoh/build) &&
+      cmake .. && make &&
+      echo 'Test publisher ready - TODO: implement test publisher' &&
+      sleep infinity
+      "
+
+  # Test Subscriber - Verifies message reception
+  test-subscriber:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.zenoh
+    container_name: test_subscriber
+    volumes:
+      - ..:/workspace/axon
+    working_dir: /workspace/axon
+    environment:
+      - ZENOH_ROUTER=tcp/127.0.0.1:7447
+    depends_on:
+      zenoh-router:
+        condition: service_healthy
+    network_mode: host
+    command: >
+      bash -c "
+      cd middlewares/zenoh/build || (mkdir -p middlewares/zenoh/build && cd middlewares/zenoh/build) &&
+      cmake .. && make &&
+      echo 'Test subscriber ready - TODO: implement test subscriber' &&
+      sleep infinity
+      "
+
+volumes:
+  axon-data:
+    driver: local

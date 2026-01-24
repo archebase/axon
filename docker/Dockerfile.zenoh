@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+#
+# SPDX-License-Identifier: MulanPSL-2.0
+
+FROM ubuntu:22.04 AS builder
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    git \
+    curl \
+    ca-certificates \
+    gnupg \
+    wget \
+    libgtest-dev \
+    libgmock-dev \
+    lcov \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install nlohmann/json
+RUN apt-get update && apt-get install -y nlohmann-json3-dev && rm -rf /var/lib/apt/lists/*
+
+# Install Zenoh from official Eclipse repository (pre-built packages)
+RUN curl -L https://download.eclipse.org/zenoh/debian-repo/zenoh-public-key | \
+    gpg --dearmor --yes --output /etc/apt/keyrings/zenoh-public-key.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/zenoh-public-key.gpg] https://download.eclipse.org/zenoh/debian-repo/ /" | \
+    tee /etc/apt/sources.list.d/zenoh.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y zenoh libzenohc-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install zenoh-cpp headers (header-only library)
+WORKDIR /tmp
+RUN git clone --depth 1 --branch 1.7.2 https://github.com/eclipse-zenoh/zenoh-cpp.git && \
+    cd zenoh-cpp && \
+    mkdir build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DZENOHCXX_ZENOHC=ON \
+      -DZENOHCXX_ZENOHPICO=OFF \
+      -DCMAKE_BUILD_TYPE=Release && \
+    cmake --install . && \
+    cd / && rm -rf /tmp/zenoh-cpp
+
+# =============================================================================
+# Final stage - minimal runtime with Zenoh
+# =============================================================================
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Copy zenoh-cpp headers from builder
+COPY --from=builder /usr/local /usr/local/
+
+# Install Zenoh from official Eclipse repository
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    ca-certificates \
+    && curl -L https://download.eclipse.org/zenoh/debian-repo/zenoh-public-key | \
+    gpg --dearmor --yes --output /etc/apt/keyrings/zenoh-public-key.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/zenoh-public-key.gpg] https://download.eclipse.org/zenoh/debian-repo/ /" | \
+    tee /etc/apt/sources.list.d/zenoh.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y zenoh libzenohc-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install testing tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    git \
+    libgtest-dev \
+    libgmock-dev \
+    lcov \
+    wget \
+    nlohmann-json3-dev \
+    gnupg2 \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install clang-format-21
+RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s 21
+RUN apt-get update && apt-get install -y clang-format-21 && rm -rf /var/lib/apt/lists/*
+
+# Add library path
+ENV LD_LIBRARY_PATH=/usr/local/lib
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy test scripts
+COPY docker/scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh
+
+CMD ["/bin/bash"]
