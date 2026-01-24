@@ -8,7 +8,7 @@ on:
 jobs:
   publish-rust:
     name: Publish Rust Crate
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
       
@@ -27,7 +27,7 @@ jobs:
 
   publish-python:
     name: Publish Python Packages
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       matrix:
         package: [axon, axon-dagster]
@@ -67,7 +67,7 @@ jobs:
 
   publish-ros:
     name: Publish ROS Packages
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       matrix:
         ros-distro: [noetic, humble, jazzy, rolling]

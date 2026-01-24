@@ -34,7 +34,7 @@ jobs:
   # ==========================================================================
   ros-e2e-tests:
     name: (${{ matrix.ros_distro }})
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -162,7 +162,7 @@ jobs:
   # ==========================================================================
   e2e-tests-success:
     name: E2E Tests Success
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [ros-e2e-tests]
     if: always()
     steps:

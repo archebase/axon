@@ -24,7 +24,7 @@ jobs:
   # ===========================================================================
   cpp-unit-tests:
     name: ${{ matrix.library }}
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
