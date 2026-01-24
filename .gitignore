@@ -133,3 +133,10 @@ reuse.spdx
 
 .cursor/plans
 core/build_uploader/
+
+# Claude Code user-specific settings
+.claude/settings.local.json
+
+# Serena runtime artifacts
+.serena/cache/
+.serena/memories/
