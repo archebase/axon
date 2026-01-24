@@ -20,20 +20,32 @@ BUILD_DIR := build
 COVERAGE_DIR := coverage
 
 # =============================================================================
-# clang-format setup - use system clang-format-21
+# clang-format setup - detect version 21 (clang-format-21 or clang-format)
 # =============================================================================
 
 CLANG_FORMAT_VERSION := 21
-CLANG_FORMAT_BIN := clang-format-$(CLANG_FORMAT_VERSION)
 
-# Use system clang-format-21
-ifeq ($(shell command -v $(CLANG_FORMAT_BIN) >/dev/null 2>&1; echo $$?),0)
-    $(info ✓ Using system $(CLANG_FORMAT_BIN))
+# Try to find clang-format version 21 (prefer clang-format-21, then clang-format)
+CLANG_FORMAT := $(shell \
+	for cmd in clang-format-21 clang-format; do \
+		if command -v $$cmd >/dev/null 2>&1; then \
+			VERSION=$$($$cmd --version 2>/dev/null | grep -oE 'version [0-9]+' | grep -oE '[0-9]+' | head -1); \
+			if [ "$$VERSION" = "$(CLANG_FORMAT_VERSION)" ]; then \
+				echo $$cmd; \
+				break; \
+			fi; \
+		fi; \
+	done \
+)
+
+# Check if we found a suitable clang-format
+ifneq ($(CLANG_FORMAT),)
+    $(info ✓ Using $(CLANG_FORMAT) (version $(CLANG_FORMAT_VERSION)))
 else
-    $(info ⚠ $(CLANG_FORMAT_BIN) not found, will install from LLVM apt repository)
+    $(info ⚠ clang-format version $(CLANG_FORMAT_VERSION) not found)
+    $(info   Linux: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s $(CLANG_FORMAT_VERSION))
+    $(info   macOS: brew install llvm@$(CLANG_FORMAT_VERSION))
 endif
-
-CLANG_FORMAT := $(CLANG_FORMAT_BIN)
 
 # Build type
 BUILD_TYPE ?= Release
