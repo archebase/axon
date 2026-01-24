@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: MulanPSL-2.0
 
-#include <zenoh.hxx>
-
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <zenoh.hxx>
 
 int main(int argc, char** argv) {
   // Parse command-line arguments
@@ -33,7 +32,8 @@ int main(int argc, char** argv) {
   std::cout << "Zenoh Test Publisher" << std::endl;
   std::cout << "Router: " << router_endpoint << std::endl;
   std::cout << "Key expression: " << keyexpr << std::endl;
-  std::cout << "Publishing " << num_messages << " messages every " << interval_ms << "ms" << std::endl;
+  std::cout << "Publishing " << num_messages << " messages every " << interval_ms << "ms"
+            << std::endl;
 
   try {
     // Create Zenoh config (use default which will scout for router)
@@ -53,10 +53,7 @@ int main(int argc, char** argv) {
       std::string payload = "Hello from test publisher #" + std::to_string(i);
       std::cout << "Publishing message " << i << ": " << payload << std::endl;
 
-      session.put(
-        keyexpr,
-        payload
-      );
+      session.put(keyexpr, payload);
 
       if (i < num_messages - 1) {
         std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));

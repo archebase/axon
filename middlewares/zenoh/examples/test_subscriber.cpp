@@ -2,14 +2,13 @@
 //
 // SPDX-License-Identifier: MulanPSL-2.0
 
-#include <zenoh.hxx>
-
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <zenoh.hxx>
 
 int main(int argc, char** argv) {
   // Parse command-line arguments
@@ -34,7 +33,8 @@ int main(int argc, char** argv) {
   std::cout << "Zenoh Test Subscriber" << std::endl;
   std::cout << "Router: " << router_endpoint << std::endl;
   std::cout << "Key expression: " << keyexpr << std::endl;
-  std::cout << "Expecting " << expected_messages << " messages (timeout: " << timeout_sec << "s)" << std::endl;
+  std::cout << "Expecting " << expected_messages << " messages (timeout: " << timeout_sec << "s)"
+            << std::endl;
 
   try {
     // Create Zenoh config (use default which will scout for router)
@@ -67,8 +67,9 @@ int main(int argc, char** argv) {
     auto start_time = std::chrono::steady_clock::now();
     while (message_count < expected_messages) {
       auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::steady_clock::now() - start_time
-      ).count();
+                       std::chrono::steady_clock::now() - start_time
+      )
+                       .count();
 
       if (elapsed >= timeout_sec) {
         std::cerr << "❌ Timeout: Only received " << message_count << "/" << expected_messages
