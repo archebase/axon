@@ -1,0 +1,125 @@
+# =============================================================================
+# Zenoh Plugin Tests Workflow for Axon
+# =============================================================================
+# Runs C++ tests for the Zenoh middleware plugin.
+#
+# Uses Docker to build a container with Zenoh C++ SDK installed,
+# then runs the plugin tests inside that container.
+#
+# These tests require Zenoh runtime and cannot run in standard C++ test env.
+# =============================================================================
+
+name: Zenoh Plugin Tests
+
+on:
+  # Called by ci.yml orchestrator
+  workflow_call:
+  # Allow standalone runs
+  workflow_dispatch:
+
+jobs:
+  zenoh-plugin-tests:
+    name: Zenoh Plugin Unit Tests
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Zenoh Docker image
+        run: |
+          echo "Building Docker image with Zenoh C++ SDK..."
+          docker build -f docker/Dockerfile.zenoh -t axon:zenoh .
+
+      - name: Run Zenoh plugin tests
+        run: |
+          echo "Running Zenoh plugin tests..."
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace/axon \
+            -w /workspace/axon/middlewares/zenoh \
+            axon:zenoh \
+            bash -c "
+              mkdir -p build && cd build && \
+              cmake .. \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_TESTING=ON && \
+              make -j\$(nproc) && \
+              ctest --output-on-failure -V
+            "
+
+      - name: Generate coverage report (optional)
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        run: |
+          echo "Running tests with coverage..."
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace/axon \
+            -w /workspace/axon/middlewares/zenoh \
+            axon:zenoh \
+            bash -c "
+              rm -rf build && mkdir build && cd build && \
+              cmake .. \
+                -DCMAKE_BUILD_TYPE=Debug \
+                -DAXON_ENABLE_COVERAGE=ON \
+                -DBUILD_TESTING=ON && \
+              make -j\$(nproc) && \
+              ctest --output-on-failure && \
+              lcov --capture --directory . --output-file coverage_raw.info \
+                --rc lcov_branch_coverage=1 && \
+              lcov --remove coverage_raw.info \
+                '/usr/*' '/opt/*' '*/test/*' '*/_deps/*' '*/c++/*' \
+                --output-file coverage.info --rc lcov_branch_coverage=1 && \
+              lcov --list coverage.info
+            "
+
+      - name: Copy coverage to host
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace/axon \
+            axon:zenoh \
+            cat /workspace/axon/middlewares/zenoh/build/coverage.info > coverage.info || true
+
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.info
+          flags: zenoh-plugin
+          name: zenoh-plugin
+          fail_ci_if_error: false
+          verbose: true
+          disable_search: true
+          disable_file_fixes: true
+
+  # ===========================================================================
+  # Axon + Zenoh Integration Tests (E2E)
+  # ===========================================================================
+  zenoh-integration-tests:
+    name: Axon + Zenoh Integration Tests
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Docker image
+        run: |
+          echo "Building Docker image with Zenoh C++ SDK..."
+          docker build -f docker/Dockerfile.zenoh -t axon:zenoh .
+
+      - name: Run integration tests with docker compose
+        run: |
+          echo "Running Axon + Zenoh integration tests..."
+          cd docker
+          docker compose -f docker-compose.zenoh.yml build
+          docker compose -f docker-compose.zenoh.yml up --abort-on-container-exit --exit-code-from test-subscriber
+
+      - name: Cleanup
+        if: always()
+        run: |
+          cd docker && docker compose -f docker-compose.zenoh.yml down -v

@@ -1,0 +1,80 @@
+# Docker Compose for Axon + Zenoh Integration Testing
+#
+# Services:
+#   - zenoh-router: Eclipse Zenoh router for pub/sub messaging
+#   - test-publisher: Publishes test messages to Zenoh
+#   - test-subscriber: Verifies subscription and message flow
+#
+# Usage:
+#   cd docker && docker compose -f docker-compose.zenoh.yml up --abort-on-container-exit --exit-code-from test-subscriber
+
+services:
+  # Zenoh Router - Central pub/sub broker
+  zenoh-router:
+    image: eclipse/zenoh:1.7.2
+    container_name: zenoh_router
+    network_mode: host
+    command: ["--listen", "tcp/0.0.0.0:7447", "--no-multicast-scouting"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 7447 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Test Publisher - Sends test messages to Zenoh
+  test-publisher:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.zenoh
+    container_name: test_publisher
+    volumes:
+      - ..:/workspace/axon
+      - test-publisher-build:/workspace/axon/middlewares/zenoh/build
+    working_dir: /workspace/axon
+    environment:
+      - ZENOH_ROUTER=tcp/127.0.0.1:7447
+    depends_on:
+      zenoh-router:
+        condition: service_healthy
+    network_mode: host
+    command: >
+      bash -c "
+      mkdir -p middlewares/zenoh/build &&
+      cd middlewares/zenoh/build &&
+      cmake .. && make &&
+      echo 'Running test publisher...' &&
+      ./test_publisher tcp/127.0.0.1:7447 demo/test/data 10 1000
+      "
+
+  # Test Subscriber - Verifies message reception
+  test-subscriber:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.zenoh
+    container_name: test_subscriber
+    volumes:
+      - ..:/workspace/axon
+      - test-subscriber-build:/workspace/axon/middlewares/zenoh/build
+    working_dir: /workspace/axon
+    environment:
+      - ZENOH_ROUTER=tcp/127.0.0.1:7447
+    depends_on:
+      zenoh-router:
+        condition: service_healthy
+      test-publisher:
+        condition: service_started
+    network_mode: host
+    command: >
+      bash -c "
+      mkdir -p middlewares/zenoh/build &&
+      cd middlewares/zenoh/build &&
+      cmake .. && make &&
+      echo 'Running test subscriber...' &&
+      ./test_subscriber tcp/127.0.0.1:7447 'demo/test/**' 10 30
+      "
+
+volumes:
+  test-publisher-build:
+    driver: local
+  test-subscriber-build:
+    driver: local

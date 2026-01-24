@@ -15,11 +15,21 @@ echo "===================================="
 echo ""
 echo "1. Checking C/C++ code formatting..."
 
-# Use system clang-format-21
-CLANG_FORMAT="clang-format-21"
+# Find clang-format (prefer version 21)
+CLANG_FORMAT=""
+for cmd in clang-format-21 clang-format; do
+    if command -v "$cmd" &> /dev/null; then
+        # Verify it's version 21
+        VERSION=$($cmd --version | grep -oE 'version [0-9]+' | grep -oE '[0-9]+' | head -1)
+        if [ "$VERSION" = "21" ]; then
+            CLANG_FORMAT="$cmd"
+            break
+        fi
+    fi
+done
 
-if command -v "$CLANG_FORMAT" &> /dev/null; then
-    echo "  Using: $CLANG_FORMAT"
+if [ -n "$CLANG_FORMAT" ]; then
+    echo "  Using: $CLANG_FORMAT ($($CLANG_FORMAT --version | head -1))"
 
     # Get list of staged C/C++ files (excluding build directories and deps)
     FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|cc|hh|h|c)$' | grep -v -E '(^|/)(build|_deps|\.git)(/|$)' || true)
@@ -48,9 +58,18 @@ if command -v "$CLANG_FORMAT" &> /dev/null; then
         echo "  ✓ No C/C++ files to check"
     fi
 else
-    echo "  ✗ clang-format-21 not found. Please install:"
+    echo "  ✗ clang-format version 21 not found."
+    echo ""
+    echo "  Please install clang-format 21:"
+    echo ""
+    echo "  Linux:"
     echo "    wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21"
     echo "    sudo apt install -y clang-format-21"
+    echo ""
+    echo "  macOS:"
+    echo "    brew install llvm@21"
+    echo "    echo 'export PATH=\"/opt/homebrew/opt/llvm@21/bin:\$PATH\"' >> ~/.zshrc"
+    echo "    source ~/.zshrc"
     exit 1
 fi
 

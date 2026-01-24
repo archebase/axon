@@ -1,7 +1,8 @@
 # Makefile for Axon by ArcheBase
 # Supports both C++ core libraries and ROS (1/2) middlewares
 
-.PHONY: all build test clean install build-ros1 build-ros2 test-libs app app-axon-recorder app-plugin-example help
+.PHONY: all build test clean install build-ros1 build-ros2 build-zenoh test-libs app app-axon-recorder app-plugin-example help \
+	test-python test-python-models test-python-client test-python-retry test-python-exceptions test-python-zenoh test-python-coverage
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -19,20 +20,32 @@ BUILD_DIR := build
 COVERAGE_DIR := coverage
 
 # =============================================================================
-# clang-format setup - use system clang-format-21
+# clang-format setup - detect version 21 (clang-format-21 or clang-format)
 # =============================================================================
 
 CLANG_FORMAT_VERSION := 21
-CLANG_FORMAT_BIN := clang-format-$(CLANG_FORMAT_VERSION)
 
-# Use system clang-format-21
-ifeq ($(shell command -v $(CLANG_FORMAT_BIN) >/dev/null 2>&1; echo $$?),0)
-    $(info ✓ Using system $(CLANG_FORMAT_BIN))
+# Try to find clang-format version 21 (prefer clang-format-21, then clang-format)
+CLANG_FORMAT := $(shell \
+	for cmd in clang-format-21 clang-format; do \
+		if command -v $$cmd >/dev/null 2>&1; then \
+			VERSION=$$($$cmd --version 2>/dev/null | grep -oE 'version [0-9]+' | grep -oE '[0-9]+' | head -1); \
+			if [ "$$VERSION" = "$(CLANG_FORMAT_VERSION)" ]; then \
+				echo $$cmd; \
+				break; \
+			fi; \
+		fi; \
+	done \
+)
+
+# Check if we found a suitable clang-format
+ifneq ($(CLANG_FORMAT),)
+    $(info ✓ Using $(CLANG_FORMAT) (version $(CLANG_FORMAT_VERSION)))
 else
-    $(info ⚠ $(CLANG_FORMAT_BIN) not found, will install from LLVM apt repository)
+    $(info ⚠ clang-format version $(CLANG_FORMAT_VERSION) not found)
+    $(info   Linux: wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s $(CLANG_FORMAT_VERSION))
+    $(info   macOS: brew install llvm@$(CLANG_FORMAT_VERSION))
 endif
-
-CLANG_FORMAT := $(CLANG_FORMAT_BIN)
 
 # Build type
 BUILD_TYPE ?= Release
@@ -85,6 +98,7 @@ help:
 	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build (auto-detects ROS1/ROS2)"
 	@printf "%s\n" "  $(BLUE)make build-ros1$(NC)        - Build ROS1 (Noetic)"
 	@printf "%s\n" "  $(BLUE)make build-ros2$(NC)        - Build ROS2 (Humble/Jazzy/Rolling)"
+	@printf "%s\n" "  $(BLUE)make build-zenoh$(NC)       - Build Zenoh plugin"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Docker tests:$(NC)"
 	@printf "%s\n" "  $(BLUE)make docker-test-ros1$(NC)         - ROS 1 (Noetic) tests in Docker"
@@ -120,6 +134,8 @@ help:
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Docker Testing:$(NC)"
 	@printf "%s\n" "  $(BLUE)make docker-test-cpp$(NC)   - C++ tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-zenoh$(NC) - Zenoh plugin tests in Docker"
+	@printf "%s\n" "  $(BLUE)make docker-test-zenoh-integration$(NC) - Axon + Zenoh integration tests"
 	@printf "%s\n" "  $(BLUE)make docker-test-ros$(NC)   - ROS tests in Docker"
 	@printf "%s\n" "  $(BLUE)make docker-test-e2e$(NC)   - E2E tests in Docker (ROS1 + Humble)"
 	@printf "%s\n" "  $(BLUE)make docker-test-e2e-all$(NC) - E2E tests (all ROS distros)"
@@ -163,8 +179,12 @@ test-mcap: build-core
 # Test axon_uploader
 test-uploader: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
-	@cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure
-	@printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"
+	@if [ -d "$(BUILD_DIR)/axon_uploader" ]; then \
+		cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure && \
+		printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)⚠ axon_uploader not built (requires AWS SDK, enable with -DAXON_BUILD_UPLOADER=ON)$(NC)"; \
+	fi
 
 # Test axon_logging
 test-logging: build-core
@@ -175,6 +195,80 @@ test-logging: build-core
 # Test all C++ libraries
 test-core: test-mcap test-uploader test-logging
 	@printf "%s\n" "$(GREEN)✓ All C++ library tests passed$(NC)"
+
+# =============================================================================
+# Python Tests
+# =============================================================================
+
+# Python package directory
+PYTHON_CLIENT_DIR := python/axon_client
+
+# Check if pytest is available
+HAS_PYTEST := $(shell command -v pytest >/dev/null 2>&1; echo $$?)
+
+# Test Python models
+test-python-models:
+	@if [ $(HAS_PYTEST) -ne 0 ]; then \
+		printf "%s\n" "$(RED)Error: pytest not found. Install with: pip install pytest$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(YELLOW)Running Python model tests...$(NC)"
+	@cd $(PYTHON_CLIENT_DIR) && pytest tests/test_models.py -v
+	@printf "%s\n" "$(GREEN)✓ Python model tests passed$(NC)"
+
+# Test Python HTTP client
+test-python-client:
+	@if [ $(HAS_PYTEST) -ne 0 ]; then \
+		printf "%s\n" "$(RED)Error: pytest not found. Install with: pip install pytest$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(YELLOW)Running Python client tests...$(NC)"
+	@cd $(PYTHON_CLIENT_DIR) && pytest tests/test_client.py tests/test_async_client.py -v
+	@printf "%s\n" "$(GREEN)✓ Python client tests passed$(NC)"
+
+# Test Python retry logic
+test-python-retry:
+	@if [ $(HAS_PYTEST) -ne 0 ]; then \
+		printf "%s\n" "$(RED)Error: pytest not found. Install with: pip install pytest$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(YELLOW)Running Python retry tests...$(NC)"
+	@cd $(PYTHON_CLIENT_DIR) && pytest tests/test_retry.py -v
+	@printf "%s\n" "$(GREEN)✓ Python retry tests passed$(NC)"
+
+# Test Python exceptions
+test-python-exceptions:
+	@if [ $(HAS_PYTEST) -ne 0 ]; then \
+		printf "%s\n" "$(RED)Error: pytest not found. Install with: pip install pytest$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(YELLOW)Running Python exception tests...$(NC)"
+	@cd $(PYTHON_CLIENT_DIR) && pytest tests/test_exceptions.py -v
+	@printf "%s\n" "$(GREEN)✓ Python exception tests passed$(NC)"
+
+# Test Python Zenoh publisher
+test-python-zenoh:
+	@if [ $(HAS_PYTEST) -ne 0 ]; then \
+		printf "%s\n" "$(RED)Error: pytest not found. Install with: pip install pytest$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(YELLOW)Running Python Zenoh publisher tests...$(NC)"
+	@cd $(PYTHON_CLIENT_DIR) && pytest tests/test_zenoh_publisher.py -v
+	@printf "%s\n" "$(GREEN)✓ Python Zenoh publisher tests passed$(NC)"
+
+# Test all Python components
+test-python: test-python-models test-python-client test-python-retry test-python-exceptions test-python-zenoh
+	@printf "%s\n" "$(GREEN)✓ All Python tests passed$(NC)"
+
+# Test Python with coverage
+test-python-coverage:
+	@if [ $(HAS_PYTEST) -ne 0 ]; then \
+		printf "%s\n" "$(RED)Error: pytest not found. Install with: pip install pytest pytest-cov$(NC)"; \
+		exit 1; \
+	fi
+	@printf "%s\n" "$(YELLOW)Running Python tests with coverage...$(NC)"
+	@cd $(PYTHON_CLIENT_DIR) && pytest tests/ --cov=axon_client --cov-report=term-missing --cov-report=html
+	@printf "%s\n" "$(GREEN)✓ Python coverage report: $(PYTHON_CLIENT_DIR)/htmlcov/index.html$(NC)"
 
 # Coverage for axon_mcap
 coverage-mcap:
@@ -318,6 +412,17 @@ build-ros2:
 	fi
 	@cd middlewares/ros2 && colcon build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
 	@printf "%s\n" "$(GREEN)✓ Code built for ROS2$(NC)"
+
+# Build for Zenoh plugin
+build-zenoh:
+	@printf "%s\n" "$(YELLOW)Building Zenoh plugin...$(NC)"
+	@mkdir -p middlewares/zenoh/build
+	@cd middlewares/zenoh/build && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ Zenoh plugin built$(NC)"
 
 # =============================================================================
 # General Targets
@@ -480,8 +585,8 @@ format:
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
-	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ros1/ and ros2/ code...$(NC)"
-	@find middlewares/ros1 middlewares/ros2 \
+	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ros1/, ros2/, and zenoh/ code...$(NC)"
+	@find middlewares/ros1 middlewares/ros2 middlewares/zenoh \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
@@ -496,7 +601,7 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find core middlewares/ros1 middlewares/ros2 apps \
+		find core middlewares/ros1 middlewares/ros2 middlewares/zenoh apps \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \
@@ -879,6 +984,34 @@ docker-build-cpp:
 		--build-arg BUILDKIT_INLINE_CACHE=1 \
 		.
 	@printf "%s\n" "$(GREEN)✓ C++ test image built$(NC)"
+
+# docker-build-zenoh: Build Zenoh test Docker image
+docker-build-zenoh:
+	@printf "%s\n" "$(YELLOW)Building Zenoh test Docker image...$(NC)"
+	@DOCKER_BUILDKIT=1 docker build \
+		-f docker/Dockerfile.zenoh \
+		-t axon:zenoh \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		.
+	@printf "%s\n" "$(GREEN)✓ Zenoh test image built$(NC)"
+
+# docker-test-zenoh: Run Zenoh plugin tests in Docker
+docker-test-zenoh: docker-build-zenoh
+	@printf "%s\n" "$(YELLOW)Running Zenoh plugin tests in Docker...$(NC)"
+	@DOCKER_BUILDKIT=1 docker run --rm \
+		-v $(PROJECT_ROOT):/workspace/axon \
+		-w /workspace/axon/middlewares/zenoh \
+		axon:zenoh \
+		bash -c "rm -rf build && mkdir build && cd build && cmake .. && make && make test"
+	@printf "%s\n" "$(GREEN)✓ Zenoh plugin tests passed$(NC)"
+
+# docker-test-zenoh-integration: Run Axon + Zenoh integration tests
+docker-test-zenoh-integration: docker-build-zenoh
+	@printf "%s\n" "$(YELLOW)Running Axon + Zenoh integration tests...$(NC)"
+	@cd docker && docker-compose -f docker-compose.zenoh.yml build
+	@cd docker && docker-compose -f docker-compose.zenoh.yml up --abort-on-container-exit --exit-code-from test-subscriber
+	@cd docker && docker-compose -f docker-compose.zenoh.yml down -v
+	@printf "%s\n" "$(GREEN)✓ Zenoh integration tests passed$(NC)"
 
 # docker-test-ros: Run all ROS tests in Docker
 docker-test-ros: docker-test-ros1 docker-test-ros2-humble

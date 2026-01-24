@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+#
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# Production dependencies for axon_client
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# Optional Zenoh integration
+eclipse-zenoh>=1.0.0

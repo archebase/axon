@@ -53,8 +53,14 @@ if(NOT GTest_FOUND)
     # For Windows: Prevent overriding parent project's compiler/linker settings
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
+    # FetchContent provides: gtest and gtest_main targets
+    set(GTEST_TARGET gtest)
+    set(GTEST_MAIN_TARGET gtest_main)
 else()
     message(STATUS "Found system GTest: ${GTest_VERSION}")
+    # System GTest provides: GTest::gtest and GTest::gtest_main targets
+    set(GTEST_TARGET GTest::gtest)
+    set(GTEST_MAIN_TARGET GTest::gtest_main)
 endif()
 
 # =============================================================================
@@ -103,8 +109,8 @@ function(add_axon_test test_name)
     target_include_directories(${test_name} PRIVATE ${TEST_INCLUDE_DIRS})
 
     target_link_libraries(${test_name}
-        gtest
-        gtest_main
+        ${GTEST_TARGET}
+        ${GTEST_MAIN_TARGET}
         axon_mcap
         axon_logging
         pthread
@@ -177,9 +183,12 @@ add_axon_test(test_http_callback_client
 target_link_libraries(test_http_callback_client
     OpenSSL::Crypto
     OpenSSL::SSL
-    Boost::system
     ${CMAKE_DL_LIBS}
 )
+# Link Boost::system if available (header-only but some platforms still provide it)
+if(TARGET Boost::system)
+    target_link_libraries(test_http_callback_client Boost::system)
+endif()
 
 # test_spsc_queue.cpp
 add_axon_test(test_spsc_queue
@@ -285,18 +294,22 @@ if(AXON_BUILD_INTEGRATION_TESTS)
         )
 
         target_link_libraries(test_recorder_integration
-            gtest
-            gtest_main
+            ${GTEST_TARGET}
+            ${GTEST_MAIN_TARGET}
             axon_mcap
             axon_logging
             yaml-cpp
             OpenSSL::Crypto
             OpenSSL::SSL
-            Boost::system
             Boost::thread
             pthread
             ${CMAKE_DL_LIBS}
         )
+
+        # Link Boost::system if available (header-only but some platforms still provide it)
+        if(TARGET Boost::system)
+            target_link_libraries(test_recorder_integration Boost::system)
+        endif()
 
         target_compile_features(test_recorder_integration PRIVATE cxx_std_17)
 

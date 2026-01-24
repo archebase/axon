@@ -41,8 +41,16 @@ message(STATUS "Project root: ${PROJECT_ROOT}")
 # =============================================================================
 # Dependencies
 # =============================================================================
-find_package(Boost REQUIRED COMPONENTS system log log_setup thread filesystem)
+# Note: system is header-only since Boost 1.69, but some platforms still provide it
+# Find required components first
+find_package(Boost REQUIRED COMPONENTS log log_setup thread filesystem)
+# Try to find system component (optional for backward compatibility)
+find_package(Boost QUIET COMPONENTS system)
 find_package(yaml-cpp REQUIRED)
+# Create yaml-cpp alias if using modern yaml-cpp::yaml-cpp target
+if(NOT TARGET yaml-cpp AND TARGET yaml-cpp::yaml-cpp)
+    add_library(yaml-cpp ALIAS yaml-cpp::yaml-cpp)
+endif()
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 
@@ -175,11 +183,15 @@ if(TARGET axon_mcap)
         yaml-cpp
         OpenSSL::Crypto
         OpenSSL::SSL
-        Boost::system
         Boost::thread
         dl
         pthread
     )
+
+    # Link Boost::system if available (header-only but some platforms still provide it)
+    if(TARGET Boost::system)
+        target_link_libraries(axon_recorder Boost::system)
+    endif()
 
     # Enable C++17
     target_compile_features(axon_recorder PRIVATE cxx_std_17)

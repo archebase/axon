@@ -69,6 +69,8 @@ log/
 .catkin_workspace
 .rosinstall
 .catkin_tools/
+./ros  # ROS workspace with only build artifacts (root level only)
+ros
 
 # Temporary files
 *.tmp
@@ -133,3 +135,10 @@ reuse.spdx
 
 .cursor/plans
 core/build_uploader/
+
+# Claude Code user-specific settings
+.claude/settings.local.json
+
+# Serena runtime artifacts
+.serena/cache/
+.serena/memories/

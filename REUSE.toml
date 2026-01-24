@@ -114,6 +114,18 @@ precedence = "override"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
+[[annotations]]
+path = ".claude/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = ".serena/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
 # Ignore build directories and generated files
 [[annotations]]
 path = "build/**"
