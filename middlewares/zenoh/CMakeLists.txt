@@ -146,6 +146,23 @@ if(BUILD_TESTING)
 endif()
 
 # =============================================================================
+# Examples (Integration Test Programs)
+# =============================================================================
+if(zenohcxx_FOUND)
+  # Test Publisher
+  add_executable(test_publisher examples/test_publisher.cpp)
+  target_link_libraries(test_publisher zenohcxx::zenohc)
+  target_compile_definitions(test_publisher PRIVATE ZENOHCXX_ZENOHC)
+
+  # Test Subscriber
+  add_executable(test_subscriber examples/test_subscriber.cpp)
+  target_link_libraries(test_subscriber zenohcxx::zenohc)
+  target_compile_definitions(test_subscriber PRIVATE ZENOHCXX_ZENOHC)
+
+  message(STATUS "Building integration test programs (test_publisher, test_subscriber)")
+endif()
+
+# =============================================================================
 # Install
 # =============================================================================
 install(TARGETS axon_zenoh_plugin

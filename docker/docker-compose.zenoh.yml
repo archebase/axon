@@ -32,6 +32,7 @@ services:
     volumes:
       - ..:/workspace/axon
       - axon-data:/data
+      - axon-recorder-build:/workspace/axon/middlewares/zenoh/build
     working_dir: /workspace/axon
     environment:
       - ZENOH_ROUTER=tcp/127.0.0.1:7447
@@ -45,8 +46,6 @@ services:
       mkdir -p middlewares/zenoh/build &&
       cd middlewares/zenoh/build &&
       cmake .. && make &&
-      cd /workspace/axon &&
-      make app-axon-recorder &&
       echo 'Axon recorder with Zenoh plugin ready - TODO: start recording' &&
       sleep infinity
       "
@@ -59,6 +58,7 @@ services:
     container_name: test_publisher
     volumes:
       - ..:/workspace/axon
+      - test-publisher-build:/workspace/axon/middlewares/zenoh/build
     working_dir: /workspace/axon
     environment:
       - ZENOH_ROUTER=tcp/127.0.0.1:7447
@@ -71,8 +71,8 @@ services:
       mkdir -p middlewares/zenoh/build &&
       cd middlewares/zenoh/build &&
       cmake .. && make &&
-      echo 'Test publisher ready - TODO: implement test publisher' &&
-      sleep infinity
+      echo 'Running test publisher...' &&
+      ./test_publisher tcp/127.0.0.1:7447 demo/test/data 10 1000
       "
 
   # Test Subscriber - Verifies message reception
@@ -83,22 +83,31 @@ services:
     container_name: test_subscriber
     volumes:
       - ..:/workspace/axon
+      - test-subscriber-build:/workspace/axon/middlewares/zenoh/build
     working_dir: /workspace/axon
     environment:
       - ZENOH_ROUTER=tcp/127.0.0.1:7447
     depends_on:
       zenoh-router:
         condition: service_healthy
+      test-publisher:
+        condition: service_started
     network_mode: host
     command: >
       bash -c "
       mkdir -p middlewares/zenoh/build &&
       cd middlewares/zenoh/build &&
       cmake .. && make &&
-      echo 'Test subscriber ready - TODO: implement test subscriber' &&
-      sleep infinity
+      echo 'Running test subscriber...' &&
+      ./test_subscriber tcp/127.0.0.1:7447 'demo/test/**' 10 30
       "
 
 volumes:
   axon-data:
+    driver: local
+  axon-recorder-build:
+    driver: local
+  test-publisher-build:
+    driver: local
+  test-subscriber-build:
     driver: local
