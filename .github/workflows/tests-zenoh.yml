@@ -112,13 +112,13 @@ jobs:
           echo "Building Docker image with Zenoh C++ SDK..."
           docker build -f docker/Dockerfile.zenoh -t axon:zenoh .
 
-      - name: Run integration tests with docker-compose
+      - name: Run integration tests with docker compose
         run: |
           echo "Running Axon + Zenoh integration tests..."
-          cd docker && docker-compose -f docker-compose.zenoh.yml build
-          cd docker && docker-compose -f docker-compose.zenoh.yml up --abort-on-container-exit --exit-code-from test-subscriber
+          cd docker && docker compose -f docker-compose.zenoh.yml build
+          cd docker && docker compose -f docker-compose.zenoh.yml up --abort-on-container-exit --exit-code-from test-subscriber
 
       - name: Cleanup
         if: always()
         run: |
-          cd docker && docker-compose -f docker-compose.zenoh.yml down -v
+          cd docker && docker compose -f docker-compose.zenoh.yml down -v
