@@ -2,13 +2,11 @@
 #
 # Services:
 #   - zenoh-router: Eclipse Zenoh router for pub/sub messaging
-#   - axon-recorder: Axon recorder with Zenoh plugin loaded
 #   - test-publisher: Publishes test messages to Zenoh
 #   - test-subscriber: Verifies subscription and message flow
 #
 # Usage:
-#   cd docker && docker-compose -f docker-compose.zenoh.yml up --abort-on-container-exit
-#   Or: make docker-test-zenoh-integration
+#   cd docker && docker compose -f docker-compose.zenoh.yml up --abort-on-container-exit --exit-code-from test-subscriber
 
 services:
   # Zenoh Router - Central pub/sub broker
@@ -22,33 +20,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-
-  # Axon Recorder with Zenoh plugin
-  axon-recorder:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.zenoh
-    container_name: axon_recorder
-    volumes:
-      - ..:/workspace/axon
-      - axon-data:/data
-      - axon-recorder-build:/workspace/axon/middlewares/zenoh/build
-    working_dir: /workspace/axon
-    environment:
-      - ZENOH_ROUTER=tcp/127.0.0.1:7447
-      - AXON_OUTPUT_DIR=/data/recordings
-    depends_on:
-      zenoh-router:
-        condition: service_healthy
-    network_mode: host
-    command: >
-      bash -c "
-      mkdir -p middlewares/zenoh/build &&
-      cd middlewares/zenoh/build &&
-      cmake .. && make &&
-      echo 'Axon recorder with Zenoh plugin ready - TODO: start recording' &&
-      sleep infinity
-      "
 
   # Test Publisher - Sends test messages to Zenoh
   test-publisher:
@@ -103,10 +74,6 @@ services:
       "
 
 volumes:
-  axon-data:
-    driver: local
-  axon-recorder-build:
-    driver: local
   test-publisher-build:
     driver: local
   test-subscriber-build:
