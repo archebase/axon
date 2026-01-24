@@ -53,16 +53,14 @@ if(NOT GTest_FOUND)
     # For Windows: Prevent overriding parent project's compiler/linker settings
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
+    # FetchContent provides: gtest and gtest_main targets
+    set(GTEST_TARGET gtest)
+    set(GTEST_MAIN_TARGET gtest_main)
 else()
     message(STATUS "Found system GTest: ${GTest_VERSION}")
-    # System GTest provides GTest::gtest and GTest::gtest_main targets
-    # Create aliases for compatibility with FetchContent-style naming
-    if(NOT TARGET gtest AND TARGET GTest::gtest)
-        add_library(gtest ALIAS GTest::gtest)
-    endif()
-    if(NOT TARGET gtest_main AND TARGET GTest::gtest_main)
-        add_library(gtest_main ALIAS GTest::gtest_main)
-    endif()
+    # System GTest provides: GTest::gtest and GTest::gtest_main targets
+    set(GTEST_TARGET GTest::gtest)
+    set(GTEST_MAIN_TARGET GTest::gtest_main)
 endif()
 
 # =============================================================================
@@ -111,8 +109,8 @@ function(add_axon_test test_name)
     target_include_directories(${test_name} PRIVATE ${TEST_INCLUDE_DIRS})
 
     target_link_libraries(${test_name}
-        gtest
-        gtest_main
+        ${GTEST_TARGET}
+        ${GTEST_MAIN_TARGET}
         axon_mcap
         axon_logging
         pthread
@@ -296,8 +294,8 @@ if(AXON_BUILD_INTEGRATION_TESTS)
         )
 
         target_link_libraries(test_recorder_integration
-            gtest
-            gtest_main
+            ${GTEST_TARGET}
+            ${GTEST_MAIN_TARGET}
             axon_mcap
             axon_logging
             yaml-cpp
