@@ -69,6 +69,7 @@ log/
 .catkin_workspace
 .rosinstall
 .catkin_tools/
+ros/  # ROS workspace with only build artifacts
 
 # Temporary files
 *.tmp
