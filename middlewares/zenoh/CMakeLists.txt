@@ -25,6 +25,11 @@ if(AXON_ENABLE_COVERAGE)
   add_link_options(--coverage)
 endif()
 
+find_package(nlohmann_json 3.2.0 QUIET)
+if(NOT nlohmann_json_FOUND)
+  message(FATAL_ERROR "nlohmann_json not found. Please install nlohmann-json3-dev or build from parent project.")
+endif()
+
 # Find Zenoh C++ library
 # First find zenohc (C library), then zenohcxx (C++ wrapper)
 list(APPEND CMAKE_PREFIX_PATH /usr/local /usr/local/lib/cmake /usr/local/lib/x86_64-linux-gnu/cmake /usr/lib/cmake)
