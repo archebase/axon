@@ -1,50 +1,70 @@
-cmake_minimum_required(VERSION 3.12)
-project(axon_ros2_plugin)
+# =============================================================================
+# Axon ROS2 Plugin
+# =============================================================================
+# The plugin is built as a shared library that can be dynamically loaded
+# by the main axon_recorder application.
+# =============================================================================
+
+cmake_minimum_required(VERSION 3.14)
+project(axon_ros2_plugin VERSION 1.0.0 LANGUAGES CXX)
 
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 17)
-endif()
-
-if(NOT CMAKE_CXX_STANDARD_REQUIRED)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 
+# Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Coverage support
-option(AXON_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
-if(AXON_ENABLE_COVERAGE)
-    add_compile_options(--coverage -g -O0)
-    add_link_options(--coverage)
+# =============================================================================
+# Find ROS2
+# =============================================================================
+
+# Try to detect ROS2 automatically
+set(ROS2_DIR "/opt/ros/humble" CACHE PATH "ROS2 installation directory")
+
+# Try alternative ROS2 distributions if humble not found
+if(NOT EXISTS "${ROS2_DIR}")
+    if(EXISTS "/opt/ros/jazzy")
+        set(ROS2_DIR "/opt/ros/jazzy" CACHE PATH "ROS2 installation directory" FORCE)
+    elseif(EXISTS "/opt/ros/rolling")
+        set(ROS2_DIR "/opt/ros/rolling" CACHE PATH "ROS2 installation directory" FORCE)
+    endif()
 endif()
 
-# Find dependencies
-find_package(ament_cmake REQUIRED)
-find_package(ament_index_cpp REQUIRED)
+if(NOT EXISTS "${ROS2_DIR}")
+    message(FATAL_ERROR "ROS2 not found. "
+                        "Install ROS2 (Humble/Jazzy/Rolling) or set ROS2_DIR to your ROS installation.")
+endif()
+
+# ROS2 library and include directories
+set(ROS2_LIB_DIR "${ROS2_DIR}/lib")
+set(ROS2_INCLUDE_DIR "${ROS2_DIR}/include")
+
+# Find ROS2 CMake config files
+set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};${ROS2_DIR}")
+
+# Find required ROS2 packages
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(rosidl_typesupport_cpp REQUIRED)
-find_package(rosidl_typesupport_introspection_cpp REQUIRED)
 
-# Find nlohmann/json
-include(FetchContent)
-
-# Set CMP0135 policy to NEW behavior for CMake 3.25+
-if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
-    cmake_policy(SET CMP0135 NEW)
-endif()
-
-FetchContent_Declare(
-    nlohmann_json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+# Check for required ROS2 libraries
+set(ROS2_REQUIRED_LIBS
+    "${ROS2_LIB_DIR}/librclcpp.so"
 )
-FetchContent_MakeAvailable(nlohmann_json)
+foreach(lib ${ROS2_REQUIRED_LIBS})
+    if(NOT EXISTS "${lib}")
+        message(FATAL_ERROR "ROS2 library not found: ${lib}")
+    endif()
+endforeach()
 
-# Build the plugin library (direct C interface, no external ABI header)
+# =============================================================================
+# Build the Plugin Library
+# =============================================================================
+
 add_library(axon_ros2_plugin SHARED
     src/ros2_plugin.cpp
     src/ros2_subscription_wrapper.cpp
@@ -56,27 +76,58 @@ target_include_directories(axon_ros2_plugin PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(axon_ros2_plugin
+# Link ROS2 libraries
+target_link_libraries(axon_ros2_plugin PUBLIC
     rclcpp::rclcpp
     nlohmann_json::nlohmann_json
 )
 
-# Use ament_target_dependencies for ament packages to ensure proper linking
-# This handles both modern targets (Humble/Jazzy) and older setups (Rolling)
-ament_target_dependencies(axon_ros2_plugin
-  ament_index_cpp
-)
-
-# Export all symbols
-target_compile_options(axon_ros2_plugin PRIVATE -fvisibility=default)
-
 # For ROS2 type support macros - we need to link against message libraries
-# This ensures type support symbols are available
 if(TARGET std_msgs__rosidl_typesupport_cpp)
     target_link_libraries(axon_ros2_plugin PRIVATE std_msgs__rosidl_typesupport_cpp)
 endif()
 
+# Export all symbols for dynamic loading
+target_compile_options(axon_ros2_plugin PRIVATE -fvisibility=default)
+
+# Define AXON_ROS2 for conditional compilation
+target_compile_definitions(axon_ros2_plugin PRIVATE AXON_ROS2)
+
+# =============================================================================
+# Tests
+# =============================================================================
+option(AXON_BUILD_TESTS "Build tests" OFF)
+if(AXON_BUILD_TESTS)
+    enable_testing()
+    find_package(GTest REQUIRED)
+
+    # Discover test files automatically
+    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
+
+    foreach(test_source ${TEST_SOURCES})
+        get_filename_component(test_name ${test_source} NAME_WE)
+
+        add_executable(${test_name} ${test_source})
+
+        target_link_libraries(${test_name}
+            axon_ros2_plugin
+            rclcpp::rclcpp
+            GTest::GTest
+        )
+
+        # Add test labels
+        set_target_properties(${test_name} PROPERTIES
+            LABELS "unit;ros2_plugin"
+        )
+
+        # Register with CTest
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endforeach()
+endif()
+
+# =============================================================================
 # Install
+# =============================================================================
 install(TARGETS axon_ros2_plugin
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib/axon/plugins
@@ -85,35 +136,16 @@ install(TARGETS axon_ros2_plugin
 
 install(DIRECTORY include/
     DESTINATION include
+    FILES_MATCHING PATTERN "*.hpp"
 )
 
 # =============================================================================
-# Tests
+# Summary
 # =============================================================================
-if(AXON_BUILD_TESTS)
-  find_package(ament_cmake_gtest REQUIRED)
-
-  # Discover test files automatically
-  file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
-
-  foreach(test_source ${TEST_SOURCES})
-    get_filename_component(test_name ${test_source} NAME_WE)
-
-    ament_add_gtest(${test_name} ${test_source})
-
-    target_link_libraries(${test_name}
-      axon_ros2_plugin
-      rclcpp::rclcpp
-    )
-
-    # Use threads for tests
-    target_link_libraries(${test_name} Threads::Threads)
-
-    # Add test labels
-    set_target_properties(${test_name} PROPERTIES
-      LABELS "unit;ros2_plugin"
-    )
-  endforeach()
-endif()
-
-ament_package()
+message(STATUS "")
+message(STATUS "Axon ROS2 Plugin Configuration:")
+message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  ROS2 Root: ${ROS2_DIR}")
+message(STATUS "  Tests Enabled: ${AXON_BUILD_TESTS}")
+message(STATUS "")

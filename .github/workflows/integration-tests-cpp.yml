@@ -137,21 +137,18 @@ jobs:
 
       - name: Build axon_uploader with coverage
         run: |
-          cd core
-          mkdir -p build_uploader_integration && cd build_uploader_integration
+          # Set ccache for faster builds
+          export CCACHE_DIR=~/.ccache
+          ccache -z
 
-          export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          # Build with make
+          export CMAKE_EXTRA_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          make build-uploader \
+            BUILD_TYPE=Debug \
+            AXON_ENABLE_COVERAGE=ON \
+            AXON_BUILD_UPLOADER=ON \
+            CMAKE_PREFIX_PATH=~/aws-sdk-cpp-install
 
-          cmake ../axon_uploader \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DAXON_REPO_ROOT=${{ github.workspace }} \
-            -DAXON_ENABLE_COVERAGE=ON \
-            -DAXON_UPLOADER_BUILD_TESTS=ON \
-            -DCMAKE_PREFIX_PATH=~/aws-sdk-cpp-install
-
-          make -j$(nproc)
           ccache -s
 
       - name: Run EdgeUploader integration test
@@ -162,17 +159,17 @@ jobs:
           # Set LD_LIBRARY_PATH in run block where bash expands ~ properly
           # (GitHub Actions env: block doesn't perform tilde expansion)
           export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
-          
-          cd core/build_uploader_integration
-          
+
+          cd build/axon_uploader
+
           # Run the integration test that's not registered with CTest
           ./test_edge_uploader --gtest_output=xml:test_results.xml
-          
+
           echo "Integration test completed successfully!"
 
       - name: Generate coverage report
         run: |
-          cd core/build_uploader_integration
+          cd build/axon_uploader
           
           # Detect lcov version for compatibility flags
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")

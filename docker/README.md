@@ -28,11 +28,11 @@ docker-compose -f docker-compose.test.yml run test-ros2-humble /bin/bash
 
 ## CI ↔ Local Docker Mapping
 
-Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructure.
+Local Docker testing mirrors CI exactly. Both use unified CMake build system.
 
 | CI Job (`ci.yml`) | Local Docker (`run_integration.sh`) | What it does |
 |-------------------|-------------------------------|--------------|
-| `ros-unit-tests` | Part 1: ROS Tests | `colcon test` / `catkin_make run_tests` |
+| `ros-unit-tests` | Part 1: ROS Tests | `ctest` (unified CMake build) |
 | `ros-integration-tests` | Part 2: E2E Tests | `run_e2e_tests.sh` |
 
 ### Shared Scripts
@@ -47,8 +47,8 @@ Local Docker testing mirrors CI exactly. Both use ROS's native test infrastructu
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Part 1: ROS Tests                                          │
-│    - Build package with colcon/catkin                       │
-│    - Run colcon test / catkin_make run_tests                │
+│    - Build package with unified CMake                       │
+│    - Run ctest for plugin tests                             │
 │    - Executes all GTest-based unit tests                    │
 ├─────────────────────────────────────────────────────────────┤
 │  Part 2: Integration Tests                                  │
@@ -103,14 +103,13 @@ docker compose -f docker-compose.test.yml run --rm test-ros2-humble bash
 
 # Inside container:
 source /opt/ros/humble/setup.bash
-cd /workspace/axon/middlewares
-colcon build \
-  --cmake-args -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON
-source install/setup.bash
-colcon test
+cd /workspace/axon
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DAXON_ENABLE_COVERAGE=ON -DAXON_BUILD_ROS2_PLUGIN=ON
+cmake --build . -j$(nproc)
+ctest --output-on-failure
 
 # Generate coverage
-cd build/axon_recorder
 lcov --capture --directory . --output-file coverage.info --rc lcov_branch_coverage=1
 lcov --list coverage.info
 ```
@@ -141,6 +140,6 @@ docker-compose -f docker-compose.perf.yml run --rm --privileged perf-ros2-humble
 | Build fails | Ensure Docker has 4GB+ memory |
 | Permission issues | Run `chmod +x docker/scripts/*.sh` |
 | Tests fail | Check ROS environment with `printenv \| grep ROS` |
-| No .gcda files | Ensure `-DENABLE_COVERAGE=ON` was passed to cmake |
+| No .gcda files | Ensure `-DAXON_ENABLE_COVERAGE=ON` was passed to cmake |
+| Empty coverage | Check tests actually ran: `ctest --output-on-failure --verbose` |
 | lcov errors | lcov 1.x doesn't support `--ignore-errors mismatch` (lcov 2.0+ only) |
-| Empty coverage | Check tests actually ran: `colcon test-result --verbose` |

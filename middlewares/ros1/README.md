@@ -79,23 +79,17 @@ cd docker
 docker-compose build ros1-noetic
 ```
 
-### Using catkin (Local ROS Noetic Required)
+### Using unified CMake (Local ROS Noetic Required)
 
 ```bash
 # Source ROS1 Noetic
 source /opt/ros/noetic/setup.bash
 
-# Navigate to ros1 middleware directory
-cd middlewares/ros1
-
-# Build with catkin
-catkin build
-
-# Or with catkin_make (if no catkin_tools installed)
+# From project root
 mkdir -p build
 cd build
-cmake ../src/ros1_plugin
-make
+cmake .. -DAXON_BUILD_ROS1_PLUGIN=ON -DAXON_BUILD_ROS2_PLUGIN=OFF
+cmake --build . -j$(nproc)
 ```
 
 ### Using top-level Makefile (Local ROS Noetic Required)
@@ -163,7 +157,7 @@ ros::serialization::serialize(stream, *msg);
 | Serialization | `ros::serialization` | `rclcpp::SerializedMessage` |
 | Timestamp | `ros::Time::now().toNSec()` | `rclcpp::Clock().now().nanoseconds()` |
 | Logging | `ROS_INFO/ERROR/WARN` | `RCUTILS_LOG_INFO/ERROR/WARN` |
-| Build System | catkin | ament_cmake |
+| Build System | CMake (unified) | CMake (unified) |
 
 ## Testing
 

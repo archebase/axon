@@ -27,6 +27,7 @@ set(AXON_CORE_DIR "${AXON_REPO_ROOT}/core")
 set(AXON_LOGGING_DIR "${AXON_CORE_DIR}/axon_logging")
 set(AXON_MCAP_DIR "${AXON_CORE_DIR}/axon_mcap")
 set(AXON_UPLOADER_DIR "${AXON_CORE_DIR}/axon_uploader")
+set(AXON_MIDDLEWARES_DIR "${AXON_REPO_ROOT}/middlewares")
 set(AXON_APPS_DIR "${AXON_REPO_ROOT}/apps")
 set(AXON_CMAKE_MODULES_DIR "${AXON_REPO_ROOT}/cmake/Modules")
 
@@ -36,6 +37,7 @@ set(AXON_CORE_DIR "${AXON_CORE_DIR}" CACHE INTERNAL "")
 set(AXON_LOGGING_DIR "${AXON_LOGGING_DIR}" CACHE INTERNAL "")
 set(AXON_MCAP_DIR "${AXON_MCAP_DIR}" CACHE INTERNAL "")
 set(AXON_UPLOADER_DIR "${AXON_UPLOADER_DIR}" CACHE INTERNAL "")
+set(AXON_MIDDLEWARES_DIR "${AXON_MIDDLEWARES_DIR}" CACHE INTERNAL "")
 set(AXON_APPS_DIR "${AXON_APPS_DIR}" CACHE INTERNAL "")
 set(AXON_CMAKE_MODULES_DIR "${AXON_CMAKE_MODULES_DIR}" CACHE INTERNAL "")
 
@@ -68,6 +70,26 @@ include(AxonStdlib OPTIONAL)
 include(AxonCoverage OPTIONAL)
 
 # =============================================================================
+# Shared Dependencies
+# =============================================================================
+# These dependencies are fetched once and reused by all modules.
+
+# Set CMP0135 policy to NEW behavior for CMake 3.25+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
+    cmake_policy(SET CMP0135 NEW)
+endif()
+
+include(FetchContent)
+
+# nlohmann/json - shared across all modules
+FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# =============================================================================
 # Module Subdirectories
 # =============================================================================
 # Add C++ libraries in dependency order.
@@ -86,6 +108,9 @@ endif()
 if(AXON_BUILD_UPLOADER AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt")
     add_subdirectory(${AXON_UPLOADER_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_uploader)
 endif()
+
+# Middleware plugins (ROS1, ROS2, Zenoh)
+add_subdirectory(${AXON_MIDDLEWARES_DIR})
 
 # =============================================================================
 # Applications
@@ -109,6 +134,7 @@ message(STATUS "")
 message(STATUS "=== Axon Configuration ===")
 message(STATUS "  Repository Root: ${AXON_REPO_ROOT}")
 message(STATUS "  Core Libraries:   ${AXON_CORE_DIR}")
+message(STATUS "  Middlewares:      ${AXON_MIDDLEWARES_DIR}")
 message(STATUS "  Applications:     ${AXON_APPS_DIR}")
 message(STATUS "  Coverage:         ${AXON_ENABLE_COVERAGE}")
 message(STATUS "  Tests:            ${AXON_BUILD_TESTS}")

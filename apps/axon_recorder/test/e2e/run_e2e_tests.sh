@@ -102,7 +102,7 @@ setup() {
             log_error "Recorder binary not found"
             log_info "Searched in: ${BUILD_DIR}"
             log_info "Please build axon_recorder first"
-            log_info "  - For ROS2: cd middlewares/ros2 && colcon build"
+            log_info "  - Build with: make build-core"
             log_info "  - Or check: apps/axon_recorder/build/"
             exit 1
         fi

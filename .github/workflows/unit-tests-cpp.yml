@@ -116,39 +116,46 @@ jobs:
 
       - name: Build and test with coverage
         run: |
-          cd core
-          mkdir -p build_${{ matrix.library }} && cd build_${{ matrix.library }}
-          
-          # Build CMake command with optional AWS SDK path
-          CMAKE_ARGS=(
-            -DCMAKE_BUILD_TYPE=Debug
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-            -DAXON_REPO_ROOT=${{ github.workspace }}
-            -DAXON_ENABLE_COVERAGE=ON
-            -D${{ matrix.cmake_flag }}_BUILD_TESTS=ON
-          )
-          
-          # Add AWS SDK path if needed
-          if [ "${{ matrix.needs_aws_sdk }}" = "true" ]; then
-            CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH=~/aws-sdk-cpp-install)
-            # Also set LD_LIBRARY_PATH for runtime
-            export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+          # Set ccache for faster builds
+          export CCACHE_DIR=~/.ccache
+          ccache -z
+
+          # Build with make
+          if [ "${{ matrix.library }}" = "axon_uploader" ]; then
+            make build-uploader \
+              BUILD_TYPE=Debug \
+              AXON_ENABLE_COVERAGE=ON \
+              AXON_BUILD_UPLOADER=ON
+          elif [ "${{ matrix.library }}" = "axon_mcap" ]; then
+            make build-mcap \
+              BUILD_TYPE=Debug \
+              AXON_ENABLE_COVERAGE=ON
+          elif [ "${{ matrix.library }}" = "axon_logging" ]; then
+            make build-logging \
+              BUILD_TYPE=Debug \
+              AXON_ENABLE_COVERAGE=ON
           fi
-          
-          cmake ../${{ matrix.library }} "${CMAKE_ARGS[@]}"
-          make -j$(nproc)
-          
-          # Set LD_LIBRARY_PATH for tests if using AWS SDK
-          if [ "${{ matrix.needs_aws_sdk }}" = "true" ]; then
-            export LD_LIBRARY_PATH=~/aws-sdk-cpp-install/lib:$LD_LIBRARY_PATH
+
+          # Run tests
+          if [ "${{ matrix.library }}" = "axon_uploader" ]; then
+            cd build/axon_uploader && ctest --output-on-failure
+          elif [ "${{ matrix.library }}" = "axon_mcap" ]; then
+            cd build/axon_mcap && ctest --output-on-failure
+          elif [ "${{ matrix.library }}" = "axon_logging" ]; then
+            cd build/axon_logging && ctest --output-on-failure
           fi
-          ctest --output-on-failure
+
           ccache -s
 
       - name: Generate coverage report
         run: |
-          cd core/build_${{ matrix.library }}
+          if [ "${{ matrix.library }}" = "axon_uploader" ]; then
+            cd build/axon_uploader
+          elif [ "${{ matrix.library }}" = "axon_mcap" ]; then
+            cd build/axon_mcap
+          elif [ "${{ matrix.library }}" = "axon_logging" ]; then
+            cd build/axon_logging
+          fi
           
           # Detect lcov version for compatibility flags
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")

@@ -165,14 +165,16 @@ middlewares/src/axon_recorder/
 
 ### Build Artifacts
 
-Middleware packages use ROS build tools (catkin for ROS1, colcon for ROS2).
-Build artifacts remain within the `middlewares/` directory:
-- `middlewares/ros1/build/` - ROS1 catkin build output
-- `middlewares/ros1/devel/` - ROS1 development workspace
-- `middlewares/ros1/install/` - ROS1 installation directory
-- `middlewares/ros2/build/` - ROS2 colcon build output
-- `middlewares/ros2/install/` - ROS2 installation directory
-- `middlewares/ros2/log/` - ROS2 build logs
+All components use a unified CMake build system.
+Build artifacts are centralized in the project root:
+- `build/` - Unified build output for all components (C++ core, middlewares, apps)
+- `build/axon_mcap/` - MCAP library build
+- `build/axon_logging/` - Logging library build
+- `build/axon_uploader/` - Uploader library build
+- `build/axon_ros1_plugin/` - ROS1 plugin build
+- `build/axon_ros2_plugin/` - ROS2 plugin build
+- `build/axon_zenoh_plugin/` - Zenoh plugin build
+- `build/axon_recorder/` - Main application build
 
 ## Build System
 

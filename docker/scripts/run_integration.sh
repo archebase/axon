@@ -198,9 +198,11 @@ echo "============================================"
 echo "Part 2: Running tests..."
 echo "============================================"
 
+# Source ROS base environment
+source /opt/ros/${ROS_DISTRO}/setup.bash
+
 if [ "$ROS_VERSION" = "1" ]; then
-    echo "Running catkin tests..."
-    cd "${WORKSPACE_ROOT}/middlewares/ros1"
+    echo "Running ROS1 tests..."
 
     # Start roscore in background for ROS1
     echo "Starting roscore..."
@@ -212,21 +214,11 @@ if [ "$ROS_VERSION" = "1" ]; then
     echo "Waiting for roscore to initialize..."
     sleep 3
 
-    # Run tests
-    catkin build --no-notify --catkin-make-args run_tests
-    catkin_test_results --verbose
-
-    # Also run plugin tests directly if they were built
-    if [ -d "${WORKSPACE_ROOT}/middlewares/ros1/build/axon_ros1_plugin" ]; then
-        echo ""
-        echo "============================================"
-        echo "Running ROS1 plugin tests..."
-        echo "============================================"
-        cd "${WORKSPACE_ROOT}/middlewares/ros1/build/axon_ros1_plugin"
-        ctest --output-on-failure || {
-            echo "WARNING: Some plugin tests failed"
-        }
-    fi
+    # Run tests using CTest from unified build directory
+    cd "${WORKSPACE_ROOT}/build"
+    ctest --output-on-failure -L ros1_plugin || {
+        echo "WARNING: Some ROS1 plugin tests failed"
+    }
 
     # Kill roscore
     echo ""
@@ -235,26 +227,13 @@ if [ "$ROS_VERSION" = "1" ]; then
     wait $ROSCORE_PID 2>/dev/null || true
     echo "roscore stopped"
 else
-    echo "Running colcon tests..."
-    cd "${WORKSPACE_ROOT}/middlewares/ros2"
+    echo "Running ROS2 tests..."
 
-    # Run all tests including plugins
-    colcon test \
-        --event-handlers console_direct+
-    colcon test-result --verbose
-
-    # Also run plugin tests specifically to ensure they execute
-    if [ -d "${WORKSPACE_ROOT}/middlewares/ros2/build/axon_ros2_plugin" ]; then
-        echo ""
-        echo "============================================"
-        echo "Running ROS2 plugin tests..."
-        echo "============================================"
-        colcon test \
-            --packages-select axon_ros2_plugin \
-            --event-handlers console_direct+ || {
-            echo "WARNING: Some plugin tests failed"
-        }
-    fi
+    # Run tests using CTest from unified build directory
+    cd "${WORKSPACE_ROOT}/build"
+    ctest --output-on-failure -L ros2_plugin || {
+        echo "WARNING: Some ROS2 plugin tests failed"
+    }
 fi
 
 echo ""

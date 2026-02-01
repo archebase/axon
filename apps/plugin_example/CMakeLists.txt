@@ -48,23 +48,7 @@ target_link_libraries(plugin_loader_test
     pthread
 )
 
-# Build test with ROS2 CLI tools
-add_executable(test_with_ros2_tools
-    test_with_ros2_tools.cpp
-    ../axon_recorder/plugin_loader.cpp
-)
-
-target_include_directories(test_with_ros2_tools PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../axon_recorder
-)
-
-target_link_libraries(test_with_ros2_tools
-    ${CMAKE_DL_LIBS}
-    pthread
-)
-
 # Install
-install(TARGETS simple_load_test plugin_loader_test test_with_ros2_tools
+install(TARGETS simple_load_test plugin_loader_test
     RUNTIME DESTINATION bin
 )

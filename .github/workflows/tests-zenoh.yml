@@ -38,13 +38,16 @@ jobs:
           echo "Running Zenoh plugin tests..."
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
-            -w /workspace/axon/middlewares/zenoh \
             axon:zenoh \
             bash -c "
+              cd /workspace/axon && \
               mkdir -p build && cd build && \
               cmake .. \
                 -DCMAKE_BUILD_TYPE=Release \
-                -DBUILD_TESTING=ON && \
+                -DAXON_BUILD_ZENOH_PLUGIN=ON \
+                -DAXON_BUILD_ROS1_PLUGIN=OFF \
+                -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_TESTS=ON && \
               make -j\$(nproc) && \
               ctest --output-on-failure -V
             "
@@ -55,14 +58,17 @@ jobs:
           echo "Running tests with coverage..."
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
-            -w /workspace/axon/middlewares/zenoh \
             axon:zenoh \
             bash -c "
+              cd /workspace/axon && \
               rm -rf build && mkdir build && cd build && \
               cmake .. \
                 -DCMAKE_BUILD_TYPE=Debug \
                 -DAXON_ENABLE_COVERAGE=ON \
-                -DBUILD_TESTING=ON && \
+                -DAXON_BUILD_ZENOH_PLUGIN=ON \
+                -DAXON_BUILD_ROS1_PLUGIN=OFF \
+                -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_TESTS=ON && \
               make -j\$(nproc) && \
               ctest --output-on-failure && \
               lcov --capture --directory . --output-file coverage_raw.info \
@@ -79,7 +85,7 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
             axon:zenoh \
-            cat /workspace/axon/middlewares/zenoh/build/coverage.info > coverage.info || true
+            cat /workspace/axon/build/coverage.info > coverage.info || true
 
       - name: Upload coverage to Codecov
         if: github.event_name == 'push' || github.event_name == 'pull_request'

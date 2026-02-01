@@ -3,7 +3,7 @@
 # ROS Workspace Library
 # =============================================================================
 # Shared functions for sourcing ROS workspaces and managing ROS environment.
-# Handles both ROS 1 (catkin) and ROS 2 (colcon) workspace paths.
+# Uses unified CMake build system for all components.
 #
 # Functions:
 #   ros_workspace_detect_ros_version - Auto-detect ROS version from ROS_DISTRO
@@ -101,8 +101,7 @@ ros_workspace_source_base() {
 # Source Workspace Setup Files
 # =============================================================================
 #
-# Sources the workspace setup file, checking multiple possible locations.
-# Handles both ROS 1 (catkin devel) and ROS 2 (colcon install) workspaces.
+# Sources the workspace setup file, checking the unified build directory.
 #
 # Arguments:
 #   ROS_VERSION - ROS version (1 or 2, optional - auto-detected if not set)
@@ -119,7 +118,7 @@ ros_workspace_source_base() {
 ros_workspace_source_workspace() {
     local ros_version="${ROS_VERSION:-}"
     local workspace_root="${1:-/workspace/axon}"
-    
+
     # Auto-detect ROS version from ROS_DISTRO if not set
     if [ -z "$ros_version" ] && [ -n "${ROS_DISTRO:-}" ]; then
         ros_version=$(ros_workspace_detect_ros_version)
@@ -127,65 +126,31 @@ ros_workspace_source_workspace() {
             ros_workspace_log "INFO" "Auto-detected ROS_VERSION=$ros_version from ROS_DISTRO=${ROS_DISTRO}"
         fi
     fi
-    
+
     if [ -z "$ros_version" ]; then
         ros_workspace_error "ROS_VERSION must be set or ROS_DISTRO must be set for auto-detection"
     fi
-    
-    # List of workspace paths to check (in order of preference)
-    local workspace_paths=()
-    
-    if [ "$ros_version" = "1" ]; then
-        # ROS 1 - Check catkin devel directories
-        workspace_paths=(
-            "/root/target_ws/devel"
-            "${workspace_root}/middlewares/ros1/devel"
-            "${workspace_root}/middlewares/devel"
-            "${workspace_root}/devel"
-            "/workspace/catkin_ws/devel"
-        )
-    else
-        # ROS 2 - Check colcon install directories
-        workspace_paths=(
-            "/root/target_ws/install"
-            "${workspace_root}/middlewares/ros2/install"
-            "${workspace_root}/middlewares/install"
-            "${workspace_root}/install"
-        )
+
+    # Check unified build directory
+    local build_dir="${workspace_root}/build"
+
+    # Check if build directory exists
+    if [ ! -d "$build_dir" ]; then
+        ros_workspace_log "WARN" "Build directory not found: $build_dir"
+        return 1
     fi
-    
-    # Try to source workspace setup file
-    for ws_path in "${workspace_paths[@]}"; do
-        local setup_file="${ws_path}/setup.bash"
-        if [ -f "$setup_file" ]; then
-            # Temporarily disable error handling for sourcing
-            set +e
-            source "$setup_file" 2>/dev/null
-            local source_result=$?
-            set -e
-            
-            if [ $source_result -eq 0 ]; then
-                export WORKSPACE_INSTALL_DIR="$ws_path"
-                ros_workspace_log "INFO" "Sourced workspace: $setup_file"
 
-                # For ROS 2: Ensure workspace is in AMENT_PREFIX_PATH
-                if [ "$ros_version" = "2" ]; then
-                    local axon_ros2_plugin_path="${ws_path}/axon_ros2_plugin"
-                    if [ -d "$axon_ros2_plugin_path" ]; then
-                        export AMENT_PREFIX_PATH="${axon_ros2_plugin_path}:${ws_path}:${AMENT_PREFIX_PATH:-}"
-                    else
-                        export AMENT_PREFIX_PATH="${ws_path}:${AMENT_PREFIX_PATH:-}"
-                    fi
-                fi
+    # For unified CMake build, the build directory is the workspace
+    export WORKSPACE_INSTALL_DIR="$build_dir"
+    ros_workspace_log "INFO" "Using unified build directory: $build_dir"
 
-                return 0
-            fi
-        fi
-    done
-    
-    ros_workspace_log "WARN" "Workspace setup file not found in any expected location"
-    ros_workspace_log "WARN" "Checked paths: ${workspace_paths[*]}"
-    return 1
+    # For ROS 2: Set AMENT_PREFIX_PATH to include build directory
+    if [ "$ros_version" = "2" ]; then
+        export AMENT_PREFIX_PATH="${build_dir}:${AMENT_PREFIX_PATH:-}"
+        ros_workspace_log "INFO" "Set AMENT_PREFIX_PATH to include $build_dir"
+    fi
+
+    return 0
 }
 
 # =============================================================================

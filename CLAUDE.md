@@ -540,7 +540,7 @@ The `task_config.hpp/cpp` files define the core task configuration that flows th
 ## Key Technologies
 
 - **ROS**: ROS 1 (Noetic) and ROS 2 (Humble/Jazzy/Rolling)
-- **Build Systems**: CMake for C++, catkin for ROS1, colcon for ROS2
+- **Build System**: Unified CMake build system for all components
 - **Threading**: Lock-free SPSC queues, worker thread pools
 - **Message Format**: MCAP (append-only container, Foxglove compatible)
 - **Compression**: Zstd, LZ4
@@ -591,8 +591,9 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | Purpose | Location |
 |---------|----------|
 | Core libraries | `core/axon_*/` |
-| ROS1 plugin | `middlewares/ros1/` (catkin package) |
-| ROS2 plugin | `middlewares/ros2/` (colcon workspace with multiple packages) |
+| ROS1 plugin | `middlewares/ros1/src/ros1_plugin/` (CMake) |
+| ROS2 plugin | `middlewares/ros2/src/ros2_plugin/` (CMake) |
+| Zenoh plugin | `middlewares/zenoh/` (CMake) |
 | Main app (HTTP RPC) | `apps/axon_recorder/` |
 | Plugin example | `apps/plugin_example/` |
 | Plugin ABI interface | `apps/axon_recorder/plugin_loader.hpp` |

@@ -184,29 +184,19 @@ echo "============================================"
 # Clean build directory if requested or if coverage is enabled
 # (coverage requires clean build to ensure flags are applied)
 if [ "$CLEAN_BUILD" = true ] || [ "$ENABLE_COVERAGE" = true ]; then
-    echo "Cleaning build directories..."
-    if [ "$ROS_VERSION" = "1" ]; then
-        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/build"
-        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/devel"
-        rm -rf "${WORKSPACE_ROOT}/middlewares/ros1/logs"
-        rm -rf "${WORKSPACE_ROOT}/build"
-    else
-        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/build"
-        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/install"
-        rm -rf "${WORKSPACE_ROOT}/middlewares/ros2/log"
-        rm -rf "${WORKSPACE_ROOT}/build"
-    fi
+    echo "Cleaning build directory..."
+    rm -rf "${WORKSPACE_ROOT}/build"
 fi
 
 # Build ROS plugin
 if [ "$ENABLE_COVERAGE" = true ]; then
-    ros_build_package "${WORKSPACE_ROOT}" "true" "true" "Debug" || {
+    ros_build_package "${WORKSPACE_ROOT}" "true" "true" "Debug" "-DAXON_BUILD_MOCK_PLUGIN=ON" || {
         ros_build_error "Failed to build ROS plugin with coverage"
     }
     # Note: We don't use WORKSPACE_BUILD_DIR for E2E coverage
     # E2E tests collect coverage from axon_recorder and core libraries, not the plugin
 else
-    ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" || {
+    ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" "-DAXON_BUILD_MOCK_PLUGIN=ON" || {
         ros_build_error "Failed to build ROS plugin"
     }
 fi
@@ -216,78 +206,26 @@ ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
     ros_workspace_error "Failed to source workspace after build"
 }
 
-# Build axon_recorder and mock plugin
+# Verify build artifacts exist
 echo ""
-echo "Building axon_recorder..."
-mkdir -p "${WORKSPACE_ROOT}/build"
-cd "${WORKSPACE_ROOT}/build"
+echo "Verifying build artifacts..."
 
-# Build core libraries first (required by axon_recorder)
-# Note: Only axon_mcap and axon_logging are needed for E2E tests
-# axon_uploader requires AWS SDK and is not needed for HTTP API tests
-echo "Building core libraries..."
-for lib in axon_mcap axon_logging; do
-    echo "Building $lib..."
-    mkdir -p "$lib"
-    cd "$lib"
-    if [ "$ENABLE_COVERAGE" = true ]; then
-        cmake ../../core/$lib \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DAXON_ENABLE_COVERAGE=ON \
-            -DAXON_BUILD_TESTS=OFF \
-            -DAXON_REPO_ROOT="${WORKSPACE_ROOT}" || {
-            echo "ERROR: Failed to configure $lib with coverage"
-            exit 1
-        }
-    else
-        cmake ../../core/$lib \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DAXON_BUILD_TESTS=OFF \
-            -DAXON_REPO_ROOT="${WORKSPACE_ROOT}" || {
-            echo "ERROR: Failed to configure $lib"
-            exit 1
-        }
-    fi
-    make -j$(nproc) || {
-        echo "ERROR: Failed to build $lib"
-        exit 1
-    }
-    cd "${WORKSPACE_ROOT}/build"
-done
-
-# Configure and build axon_recorder
-# Enable AXON_BUILD_WITH_CORE to link against the core libraries we just built
-if [ "$ENABLE_COVERAGE" = true ]; then
-    cmake ../apps/axon_recorder \
-        -DCMAKE_BUILD_TYPE=Debug \
-        -DAXON_ENABLE_COVERAGE=ON \
-        -DAXON_BUILD_MOCK_PLUGIN=ON \
-        -DAXON_BUILD_WITH_CORE=ON || {
-        echo "ERROR: Failed to configure axon_recorder with coverage"
-        exit 1
-    }
-else
-    cmake ../apps/axon_recorder \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DAXON_BUILD_MOCK_PLUGIN=ON \
-        -DAXON_BUILD_WITH_CORE=ON || {
-        echo "ERROR: Failed to configure axon_recorder"
-        exit 1
-    }
-fi
-
-make -j$(nproc) || {
-    echo "ERROR: Failed to build axon_recorder"
+# Check axon_recorder binary
+RECORDER_BIN="${WORKSPACE_ROOT}/build/axon_recorder/axon_recorder"
+if [ ! -f "$RECORDER_BIN" ]; then
+    echo "ERROR: axon_recorder binary not found at ${RECORDER_BIN}"
     exit 1
-}
-
-# Ensure correct binary structure for E2E tests
-# The E2E test script expects: ${BUILD_DIR}/apps/axon_recorder/axon_recorder
-# Or it will search for: ${BUILD_DIR}/axon_recorder
-if [ ! -f "${WORKSPACE_ROOT}/build/axon_recorder" ]; then
-    # Copy the binary to the expected location
-    cp "${WORKSPACE_ROOT}/build/apps/axon_recorder/axon_recorder" "${WORKSPACE_ROOT}/build/axon_recorder"
 fi
+echo "✓ axon_recorder binary found at ${RECORDER_BIN}"
+
+# Check mock plugin
+MOCK_PLUGIN="${WORKSPACE_ROOT}/build/middlewares/axon_mock.so"
+if [ ! -f "$MOCK_PLUGIN" ]; then
+    echo "ERROR: Mock plugin not found at ${MOCK_PLUGIN}"
+    echo "This should have been built with AXON_BUILD_MOCK_PLUGIN=ON"
+    exit 1
+fi
+echo "✓ Mock plugin found at ${MOCK_PLUGIN}"
 
 # =============================================================================
 # Part 2: Run E2E Tests

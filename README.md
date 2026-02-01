@@ -116,15 +116,10 @@ make release
 # Source ROS setup
 source /opt/ros/noetic/setup.bash
 
-# Create catkin workspace
-mkdir -p catkin_ws/src
-cd catkin_ws/src
-ln -s /path/to/axon .
-
-# Build
-cd ..
-catkin_make
-source devel/setup.bash
+# From project root
+mkdir -p build && cd build
+cmake .. -DAXON_BUILD_ROS1_PLUGIN=ON -DAXON_BUILD_ROS2_PLUGIN=OFF
+cmake --build . -j$(nproc)
 ```
 
 #### ROS 2 (Humble/Jazzy/Rolling)
@@ -133,15 +128,10 @@ source devel/setup.bash
 # Source ROS setup
 source /opt/ros/<distro>/setup.bash
 
-# Create colcon workspace
-mkdir -p colcon_ws/src
-cd colcon_ws/src
-ln -s /path/to/axon .
-
-# Build
-cd ..
-colcon build
-source install/setup.bash
+# From project root
+mkdir -p build && cd build
+cmake .. -DAXON_BUILD_ROS2_PLUGIN=ON -DAXON_BUILD_ROS1_PLUGIN=OFF
+cmake --build . -j$(nproc)
 ```
 
 ### Makefile Targets

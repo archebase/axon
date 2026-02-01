@@ -25,22 +25,6 @@ if(AXON_ENABLE_COVERAGE)
   add_link_options(--coverage)
 endif()
 
-# Find nlohmann/json (using FetchContent for portability)
-include(FetchContent)
-
-# Set CMP0135 policy to NEW behavior for CMake 3.25+
-if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
-  cmake_policy(SET CMP0135 NEW)
-endif()
-
-FetchContent_Declare(
-  nlohmann_json
-  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-  URL_HASH
-    SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
-)
-FetchContent_MakeAvailable(nlohmann_json)
-
 # Find Zenoh C++ library
 # First find zenohc (C library), then zenohcxx (C++ wrapper)
 list(APPEND CMAKE_PREFIX_PATH /usr/local /usr/local/lib/cmake /usr/local/lib/x86_64-linux-gnu/cmake /usr/lib/cmake)

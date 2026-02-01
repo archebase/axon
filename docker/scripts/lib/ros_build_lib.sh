@@ -3,7 +3,7 @@
 # ROS Build Library
 # =============================================================================
 # Shared functions for building axon_recorder package in Docker.
-# Handles both ROS 1 (catkin) and ROS 2 (colcon) build systems.
+# Uses unified CMake build system for all components.
 #
 # Functions:
 #   ros_build_package - Build axon_recorder package
@@ -30,7 +30,7 @@ ros_build_error() {
 # Build Package
 # =============================================================================
 #
-# Builds the axon_recorder package using the appropriate build system.
+# Builds the axon_recorder package using unified CMake build system.
 #
 # Arguments:
 #   ROS_VERSION - ROS version (1 or 2)
@@ -54,7 +54,7 @@ ros_build_package() {
     local enable_coverage="${3:-false}"
     local build_type="${4:-}"
     local extra_cmake_args="${5:-}"
-    
+
     # Determine build type
     if [ -z "$build_type" ]; then
         if [ "$enable_coverage" = "true" ]; then
@@ -63,7 +63,7 @@ ros_build_package() {
             build_type="Release"
         fi
     fi
-    
+
     ros_build_log "INFO" "Building axon_recorder package"
     ros_build_log "INFO" "  ROS_VERSION: $ros_version"
     ros_build_log "INFO" "  ROS_DISTRO: $ros_distro"
@@ -71,189 +71,95 @@ ros_build_package() {
     ros_build_log "INFO" "  Clean build: $clean_build"
     ros_build_log "INFO" "  Coverage: $enable_coverage"
     ros_build_log "INFO" "  Build type: $build_type"
-    
+
     # Source ROS base environment
     if [ ! -f "/opt/ros/${ros_distro}/setup.bash" ]; then
         ros_build_error "ROS setup.bash not found at /opt/ros/${ros_distro}/setup.bash"
     fi
     source /opt/ros/${ros_distro}/setup.bash
-    
-    if [ "$ros_version" = "1" ]; then
-        # ROS 1 - Use catkin build
-        ros_build_log "INFO" "Building with catkin (ROS 1)..."
 
-        local catkin_ws="${workspace_root}/middlewares/ros1"
-        if [ ! -d "$catkin_ws" ]; then
-            ros_build_error "Catkin workspace not found at $catkin_ws"
-        fi
-
-        cd "$catkin_ws"
-        
-        # Clean if requested
-        if [ "$clean_build" = "true" ]; then
-            ros_build_log "INFO" "Cleaning previous build artifacts..."
-            rm -rf build devel install log logs
-
-            # Also clean C++ library build artifacts in parent directory
-            # (core/axon_mcap, core/axon_logging may have stale build artifacts)
-            if [ -d "${workspace_root}/core" ]; then
-                ros_build_log "INFO" "Cleaning C++ library build artifacts..."
-                rm -rf "${workspace_root}/core/build"*
-                rm -rf "${workspace_root}/core/*/build"
-                # Clean any CMake caches in core directories
-                find "${workspace_root}/core" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
-                find "${workspace_root}/core" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
-                # Clean coverage data files
-                find "${workspace_root}/core" -type f -name "*.gcda" -delete 2>/dev/null || true
-                find "${workspace_root}/core" -type f -name "*.gcno" -delete 2>/dev/null || true
-            fi
-
-            # Also clean the main project build directory if it exists
-            # (may have stale build artifacts from non-ROS builds)
-            if [ -d "${workspace_root}/build" ] && [ "${workspace_root}/build" != "${PWD}/build" ]; then
-                ros_build_log "INFO" "Cleaning main project build artifacts..."
-                rm -rf "${workspace_root}/build"
-            fi
-
-            # Also remove any CMake cache files that might persist
-            find . -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
-            find . -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
-            # Clean coverage data files in ros directory
-            find . -type f -name "*.gcda" -delete 2>/dev/null || true
-            find . -type f -name "*.gcno" -delete 2>/dev/null || true
-            # Force CMake reconfigure by removing colcon's dependency tracking
-            rm -f .colcon_install_layout 2>/dev/null || true
-        fi
-        
-        # Build with catkin
-        local catkin_args=(
-            --no-notify
-            -DCMAKE_BUILD_TYPE="$build_type"
-        )
-
-        if [ "$enable_coverage" = "true" ]; then
-            catkin_args+=(-DAXON_ENABLE_COVERAGE=ON)
-            catkin_args+=(-DAXON_BUILD_TESTS=ON)
-        else
-            catkin_args+=(-DAXON_ENABLE_COVERAGE=OFF)
-            catkin_args+=(-DAXON_BUILD_TESTS=OFF)
-        fi
-        
-        # Add extra CMake args if provided
-        if [ -n "$extra_cmake_args" ]; then
-            catkin_args+=($extra_cmake_args)
-        fi
-        
-        ros_build_log "INFO" "Running: catkin build ${catkin_args[*]}"
-        catkin build "${catkin_args[@]}" || {
-            ros_build_error "catkin build failed"
-        }
-        
-        # Set workspace directories
-        export WORKSPACE_BUILD_DIR="${PWD}/build/axon_ros1_plugin"
-        export WORKSPACE_INSTALL_DIR="${PWD}/devel"
-        
-        # Source workspace
-        if [ -f "${WORKSPACE_INSTALL_DIR}/setup.bash" ]; then
-            source "${WORKSPACE_INSTALL_DIR}/setup.bash"
-            ros_build_log "INFO" "Sourced workspace: ${WORKSPACE_INSTALL_DIR}/setup.bash"
-        else
-            ros_build_error "Workspace setup.bash not found at ${WORKSPACE_INSTALL_DIR}/setup.bash"
-        fi
-        
-    else
-        # ROS 2 - Use colcon
-        ros_build_log "INFO" "Building with colcon (ROS 2)..."
-
-        if [ ! -d "$workspace_root" ]; then
-            ros_build_error "Workspace root not found at $workspace_root"
-        fi
-
-        # For ROS 2, build from the middlewares/ros2 subdirectory
-        local build_dir="${workspace_root}/middlewares/ros2"
-
-        if [ ! -d "$build_dir" ]; then
-            ros_build_error "ROS 2 workspace not found at $build_dir"
-        fi
-
-        cd "$build_dir"
-        
-        # Clean if requested
-        if [ "$clean_build" = "true" ]; then
-            ros_build_log "INFO" "Cleaning previous build artifacts..."
-            rm -rf build devel install log logs
-
-            # Also clean C++ library build artifacts in parent directory
-            # (core/axon_mcap, core/axon_logging may have stale build artifacts)
-            if [ -d "${workspace_root}/core" ]; then
-                ros_build_log "INFO" "Cleaning C++ library build artifacts..."
-                rm -rf "${workspace_root}/core/build"*
-                rm -rf "${workspace_root}/core/*/build"
-                # Clean any CMake caches in core directories
-                find "${workspace_root}/core" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
-                find "${workspace_root}/core" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
-                # Clean coverage data files
-                find "${workspace_root}/core" -type f -name "*.gcda" -delete 2>/dev/null || true
-                find "${workspace_root}/core" -type f -name "*.gcno" -delete 2>/dev/null || true
-            fi
-
-            # Also clean the main project build directory if it exists
-            # (may have stale build artifacts from non-ROS builds)
-            if [ -d "${workspace_root}/build" ] && [ "${workspace_root}/build" != "${PWD}/build" ]; then
-                ros_build_log "INFO" "Cleaning main project build artifacts..."
-                rm -rf "${workspace_root}/build"
-            fi
-
-            # Also remove any CMake cache files that might persist
-            find . -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
-            find . -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
-            # Clean coverage data files in middlewares directory
-            find . -type f -name "*.gcda" -delete 2>/dev/null || true
-            find . -type f -name "*.gcno" -delete 2>/dev/null || true
-            # Force CMake reconfigure by removing colcon's dependency tracking
-            rm -f .colcon_install_layout 2>/dev/null || true
-        fi
-        
-        # Build with colcon
-        local colcon_args=(
-            --cmake-args
-            -DCMAKE_BUILD_TYPE="$build_type"
-        )
-
-        if [ "$enable_coverage" = "true" ]; then
-            colcon_args+=(-DAXON_ENABLE_COVERAGE=ON)
-            colcon_args+=(-DAXON_BUILD_TESTS=ON)
-        else
-            colcon_args+=(-DAXON_ENABLE_COVERAGE=OFF)
-            colcon_args+=(-DAXON_BUILD_TESTS=OFF)
-        fi
-        
-        # Add extra CMake args if provided
-        if [ -n "$extra_cmake_args" ]; then
-            colcon_args+=($extra_cmake_args)
-        fi
-        
-        ros_build_log "INFO" "Running: colcon build ${colcon_args[*]}"
-        colcon build "${colcon_args[@]}" || {
-            ros_build_error "colcon build failed"
-        }
-        
-        # Set workspace directories (build artifacts are in current directory)
-        export WORKSPACE_BUILD_DIR="${PWD}/build/axon_ros2_plugin"
-        export WORKSPACE_INSTALL_DIR="${PWD}/install"
-        
-        # Source workspace
-        if [ -f "${WORKSPACE_INSTALL_DIR}/setup.bash" ]; then
-            source "${WORKSPACE_INSTALL_DIR}/setup.bash"
-            ros_build_log "INFO" "Sourced workspace: ${WORKSPACE_INSTALL_DIR}/setup.bash"
-            
-            # For ROS 2: Ensure workspace is in AMENT_PREFIX_PATH
-            export AMENT_PREFIX_PATH="${WORKSPACE_INSTALL_DIR}/axon_recorder:${WORKSPACE_INSTALL_DIR}:${AMENT_PREFIX_PATH}"
-        else
-            ros_build_error "Workspace setup.bash not found at ${WORKSPACE_INSTALL_DIR}/setup.bash"
-        fi
+    if [ ! -d "$workspace_root" ]; then
+        ros_build_error "Workspace root not found at $workspace_root"
     fi
-    
+
+    cd "$workspace_root"
+
+    # Build directory
+    local build_dir="${workspace_root}/build"
+
+    # Clean if requested
+    if [ "$clean_build" = "true" ]; then
+        ros_build_log "INFO" "Cleaning previous build artifacts..."
+        rm -rf "$build_dir"
+
+        # Also clean C++ library build artifacts in core directories
+        if [ -d "${workspace_root}/core" ]; then
+            ros_build_log "INFO" "Cleaning C++ library build artifacts..."
+            find "${workspace_root}/core" -type f -name "CMakeCache.txt" -delete 2>/dev/null || true
+            find "${workspace_root}/core" -type d -name "CMakeFiles" -exec rm -rf {} + 2>/dev/null || true
+            find "${workspace_root}/core" -type f -name "*.gcda" -delete 2>/dev/null || true
+            find "${workspace_root}/core" -type f -name "*.gcno" -delete 2>/dev/null || true
+        fi
+
+        # Clean coverage data files
+        find "${workspace_root}" -type f -name "*.gcda" -delete 2>/dev/null || true
+        find "${workspace_root}" -type f -name "*.gcno" -delete 2>/dev/null || true
+    fi
+
+    # Create build directory
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+
+    # Configure CMake
+    local cmake_args=(
+        -DCMAKE_BUILD_TYPE="$build_type"
+        -DAXON_BUILD_TESTS=ON
+    )
+
+    if [ "$enable_coverage" = "true" ]; then
+        cmake_args+=(-DAXON_ENABLE_COVERAGE=ON)
+    else
+        cmake_args+=(-DAXON_ENABLE_COVERAGE=OFF)
+    fi
+
+    # Add ROS plugin based on ROS version
+    if [ "$ros_version" = "1" ]; then
+        cmake_args+=(-DAXON_BUILD_ROS1_PLUGIN=ON)
+        cmake_args+=(-DAXON_BUILD_ROS2_PLUGIN=OFF)
+        ros_build_log "INFO" "Building ROS1 plugin..."
+    else
+        cmake_args+=(-DAXON_BUILD_ROS1_PLUGIN=OFF)
+        cmake_args+=(-DAXON_BUILD_ROS2_PLUGIN=ON)
+        ros_build_log "INFO" "Building ROS2 plugin..."
+    fi
+
+    cmake_args+=(-DAXON_BUILD_ZENOH_PLUGIN=OFF)
+
+    # Add extra CMake args if provided
+    if [ -n "$extra_cmake_args" ]; then
+        cmake_args+=($extra_cmake_args)
+    fi
+
+    ros_build_log "INFO" "Running: cmake ${cmake_args[*]} .."
+    cmake "${cmake_args[@]}" .. || {
+        ros_build_error "CMake configure failed"
+    }
+
+    # Build
+    ros_build_log "INFO" "Building..."
+    cmake --build . -j$(nproc) || {
+        ros_build_error "Build failed"
+    }
+
+    # Set workspace directories
+    export WORKSPACE_BUILD_DIR="$build_dir"
+    export WORKSPACE_INSTALL_DIR="$build_dir"
+
+    # For ROS2, set AMENT_PREFIX_PATH
+    if [ "$ros_version" = "2" ]; then
+        export AMENT_PREFIX_PATH="${build_dir}:${AMENT_PREFIX_PATH}"
+    fi
+
     ros_build_log "INFO" "Build completed successfully"
     ros_build_log "INFO" "  Build directory: ${WORKSPACE_BUILD_DIR}"
     ros_build_log "INFO" "  Install directory: ${WORKSPACE_INSTALL_DIR}"

@@ -1,0 +1,108 @@
+# =============================================================================
+# Axon Middlewares - Plugin Build Configuration
+# =============================================================================
+# This file provides unified CMake configuration for all middleware plugins.
+# Each plugin is built as a standalone shared library that can be loaded
+# dynamically by the main axon_recorder application.
+#
+# Plugins:
+#   - ROS1 (Noetic): libaxon_ros1_plugin.so
+#   - ROS2 (Humble/Jazzy/Rolling): libaxon_ros2_plugin.so
+#   - Zenoh: libaxon_zenoh_plugin.so
+#
+# All plugins are installed to: lib/axon/plugins/
+# =============================================================================
+
+cmake_minimum_required(VERSION 3.14)
+
+# =============================================================================
+# Path Definitions
+# =============================================================================
+get_filename_component(MIDDLEWARES_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
+set(AXON_MIDDLEWARES_DIR "${MIDDLEWARES_ROOT}")
+
+# Make variables available to child CMakeLists
+set(AXON_MIDDLEWARES_DIR "${AXON_MIDDLEWARES_DIR}" CACHE INTERNAL "")
+
+# =============================================================================
+# Plugin Build Options
+# =============================================================================
+
+# Detect ROS environment
+set(ROS1_DIR "/opt/ros/noetic" CACHE PATH "ROS1 installation directory")
+set(ROS2_DIR "/opt/ros/humble" CACHE PATH "ROS2 installation directory (humble/jazzy/rolling)")
+
+# Auto-detect ROS1
+if(EXISTS "${ROS1_DIR}/setup.bash" OR DEFINED ENV{ROS_DISTRO})
+    set(AXON_BUILD_ROS1_DEFAULT ON)
+else()
+    set(AXON_BUILD_ROS1_DEFAULT OFF)
+endif()
+
+# Auto-detect ROS2
+if(EXISTS "${ROS2_DIR}/setup.bash" OR EXISTS "/opt/ros/jazzy/setup.bash" OR EXISTS "/opt/ros/rolling/setup.bash")
+    set(AXON_BUILD_ROS2_DEFAULT ON)
+else()
+    set(AXON_BUILD_ROS2_DEFAULT OFF)
+endif()
+
+option(AXON_BUILD_ROS1_PLUGIN "Build ROS1 (Noetic) plugin" ${AXON_BUILD_ROS1_DEFAULT})
+option(AXON_BUILD_ROS2_PLUGIN "Build ROS2 (Humble/Jazzy/Rolling) plugin" ${AXON_BUILD_ROS2_DEFAULT})
+option(AXON_BUILD_ZENOH_PLUGIN "Build Zenoh plugin" OFF)
+option(AXON_ENABLE_COVERAGE "Enable code coverage for all plugins" ${AXON_ENABLE_COVERAGE})
+option(AXON_BUILD_TESTS "Build tests for all plugins" ${AXON_BUILD_TESTS})
+
+# =============================================================================
+# Plugin Subdirectories
+# =============================================================================
+
+# ROS1 Plugin (pure CMake)
+if(AXON_BUILD_ROS1_PLUGIN)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ros1/src/ros1_plugin/CMakeLists.txt")
+        add_subdirectory(ros1/src/ros1_plugin ${CMAKE_CURRENT_BINARY_DIR}/ros1_plugin)
+        message(STATUS "ROS1 plugin: ENABLED")
+    else()
+        message(WARNING "ROS1 plugin requested but CMakeLists.txt not found")
+    endif()
+else()
+    message(STATUS "ROS1 plugin: DISABLED (enable with -DAXON_BUILD_ROS1_PLUGIN=ON)")
+endif()
+
+# ROS2 Plugin (ament_cmake-based, converted to pure CMake)
+if(AXON_BUILD_ROS2_PLUGIN)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ros2/src/ros2_plugin/CMakeLists.txt")
+        add_subdirectory(ros2/src/ros2_plugin ${CMAKE_CURRENT_BINARY_DIR}/ros2_plugin)
+        message(STATUS "ROS2 plugin: ENABLED")
+    else()
+        message(WARNING "ROS2 plugin requested but CMakeLists.txt not found")
+    endif()
+else()
+    message(STATUS "ROS2 plugin: DISABLED (enable with -DAXON_BUILD_ROS2_PLUGIN=ON)")
+endif()
+
+# Zenoh Plugin (standalone CMake, already pure CMake)
+if(AXON_BUILD_ZENOH_PLUGIN)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/zenoh/CMakeLists.txt")
+        add_subdirectory(zenoh ${CMAKE_CURRENT_BINARY_DIR}/zenoh_plugin)
+        message(STATUS "Zenoh plugin: ENABLED")
+    else()
+        message(WARNING "Zenoh plugin requested but CMakeLists.txt not found")
+    endif()
+else()
+    message(STATUS "Zenoh plugin: DISABLED (enable with -DAXON_BUILD_ZENOH_PLUGIN=ON)")
+endif()
+
+# =============================================================================
+# Summary
+# =============================================================================
+
+message(STATUS "")
+message(STATUS "=== Axon Middlewares Configuration ===")
+message(STATUS "  Middlewares Root: ${AXON_MIDDLEWARES_DIR}")
+message(STATUS "  ROS1 Plugin:      ${AXON_BUILD_ROS1_PLUGIN}")
+message(STATUS "  ROS2 Plugin:      ${AXON_BUILD_ROS2_PLUGIN}")
+message(STATUS "  Zenoh Plugin:     ${AXON_BUILD_ZENOH_PLUGIN}")
+message(STATUS "  Coverage:         ${AXON_ENABLE_COVERAGE}")
+message(STATUS "  Tests:            ${AXON_BUILD_TESTS}")
+message(STATUS "=====================================")
+message(STATUS "")
