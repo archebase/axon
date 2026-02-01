@@ -125,7 +125,8 @@ jobs:
             make build-uploader \
               BUILD_TYPE=Debug \
               AXON_ENABLE_COVERAGE=ON \
-              AXON_BUILD_UPLOADER=ON
+              AXON_BUILD_UPLOADER=ON \
+              CMAKE_PREFIX_PATH=~/aws-sdk-cpp-install
           elif [ "${{ matrix.library }}" = "axon_mcap" ]; then
             make build-mcap \
               BUILD_TYPE=Debug \

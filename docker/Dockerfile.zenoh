@@ -79,7 +79,6 @@ RUN apt-get update && apt-get install -y \
     libgmock-dev \
     lcov \
     wget \
-    nlohmann-json3-dev \
     gnupg2 \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
@@ -90,18 +89,21 @@ ENV LD_LIBRARY_PATH=/usr/local/lib
 # Set working directory
 WORKDIR /workspace
 
-# Pre-build Zenoh plugin to avoid runtime compilation
-# This eliminates race conditions when multiple containers start
-COPY middlewares/zenoh /workspace/axon/middlewares/zenoh
-RUN cd /workspace/axon/middlewares/zenoh && \
+# Pre-build Zenoh plugin using unified build system
+# Copy entire project to build from root with nlohmann_json available
+COPY . /workspace/axon
+RUN cd /workspace/axon && \
     mkdir -p build && \
     cd build && \
-    cmake .. && \
+    cmake .. \
+        -DAXON_BUILD_ZENOH_PLUGIN=ON \
+        -DAXON_BUILD_ROS1_PLUGIN=OFF \
+        -DAXON_BUILD_ROS2_PLUGIN=OFF \
+        -DAXON_BUILD_TESTS=ON && \
     make && \
     echo "Zenoh plugin pre-built successfully"
 
 # Copy test scripts
-COPY docker/scripts/ /usr/local/bin/
-RUN chmod +x /usr/local/bin/*.sh
+RUN chmod +x /workspace/axon/docker/scripts/*.sh
 
 CMD ["/bin/bash"]
