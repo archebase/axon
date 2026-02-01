@@ -34,17 +34,18 @@ endif()
 # Find ROS1 CMake libraries
 find_package(Boost REQUIRED COMPONENTS system)
 
-# ROS1 library directories (hardcoded paths for Noetic)
-set(ROS1_LIB_DIR "${ROS1_DIR}/lib")
+# ROS1 include directory
 set(ROS1_INCLUDE_DIR "${ROS1_DIR}/include")
 
-# Check for required ROS1 libraries
-set(ROS1_REQUIRED_LIBS roscpp roslib topic_tools)
-foreach(lib ${ROS1_REQUIRED_LIBS})
-    if(NOT EXISTS "${ROS1_LIB_DIR}/lib${lib}.so")
-        message(FATAL_ERROR "ROS1 library '${lib}' not found at ${ROS1_LIB_DIR}")
-    endif()
-endforeach()
+# Find ROS1 libraries dynamically
+find_library(ROSCPP_LIB roscpp PATHS "${ROS1_DIR}/lib" NO_DEFAULT_PATH)
+find_library(ROSLIB_LIB roslib PATHS "${ROS1_DIR}/lib" NO_DEFAULT_PATH)
+find_library(TOPIC_TOOLS_LIB topic_tools PATHS "${ROS1_DIR}/lib" NO_DEFAULT_PATH)
+
+# Check that all libraries were found
+if(NOT ROSCPP_LIB OR NOT ROSLIB_LIB OR NOT TOPIC_TOOLS_LIB)
+    message(FATAL_ERROR "Required ROS1 libraries not found in ${ROS1_DIR}/lib")
+endif()
 
 # =============================================================================
 # Build the Plugin Library
@@ -64,9 +65,9 @@ target_include_directories(axon_ros1_plugin PUBLIC
 
 # Link ROS1 libraries
 target_link_libraries(axon_ros1_plugin PUBLIC
-    ${ROS1_LIB_DIR}/libroscpp.so
-    ${ROS1_LIB_DIR}/libroslib.so
-    ${ROS1_LIB_DIR}/libtopic_tools.so
+    ${ROSCPP_LIB}
+    ${ROSLIB_LIB}
+    ${TOPIC_TOOLS_LIB}
     Boost::system
     nlohmann_json::nlohmann_json
 )
@@ -100,9 +101,9 @@ if(AXON_BUILD_TESTS)
 
         target_link_libraries(${test_name}
             axon_ros1_plugin
-            ${ROS1_LIB_DIR}/libroscpp.so
-            ${ROS1_LIB_DIR}/libroslib.so
-            ${ROS1_LIB_DIR}/libtopic_tools.so
+            ${ROSCPP_LIB}
+            ${ROSLIB_LIB}
+            ${TOPIC_TOOLS_LIB}
             GTest::GTest
             pthread
         )

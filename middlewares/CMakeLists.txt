@@ -50,8 +50,8 @@ endif()
 option(AXON_BUILD_ROS1_PLUGIN "Build ROS1 (Noetic) plugin" ${AXON_BUILD_ROS1_DEFAULT})
 option(AXON_BUILD_ROS2_PLUGIN "Build ROS2 (Humble/Jazzy/Rolling) plugin" ${AXON_BUILD_ROS2_DEFAULT})
 option(AXON_BUILD_ZENOH_PLUGIN "Build Zenoh plugin" OFF)
-option(AXON_ENABLE_COVERAGE "Enable code coverage for all plugins" ${AXON_ENABLE_COVERAGE})
-option(AXON_BUILD_TESTS "Build tests for all plugins" ${AXON_BUILD_TESTS})
+option(AXON_ENABLE_COVERAGE "Enable code coverage for all plugins" OFF)
+option(AXON_BUILD_TESTS "Build tests for all plugins" OFF)
 
 # =============================================================================
 # Plugin Subdirectories
