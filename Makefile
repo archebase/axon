@@ -179,27 +179,27 @@ build-core:
 
 # Build individual core libraries
 build-mcap:
-	@printf "%s\n" "$(YELLOW)Building axon_mcap...$(NC)"
+	@printf "%s\n" "$(YELLOW)Building axon_mcap (with tests)...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON && \
-		cmake --build . -j$(NPROC) --target axon_mcap
+		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
 
 build-logging:
-	@printf "%s\n" "$(YELLOW)Building axon_logging...$(NC)"
+	@printf "%s\n" "$(YELLOW)Building axon_logging (with tests)...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON && \
-		cmake --build . -j$(NPROC) --target axon_logging
+		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ axon_logging built$(NC)"
 
 build-uploader:
-	@printf "%s\n" "$(YELLOW)Building axon_uploader...$(NC)"
+	@printf "%s\n" "$(YELLOW)Building axon_uploader (with tests)...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
 		cmake .. \
@@ -207,7 +207,7 @@ build-uploader:
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=ON \
 			$(CMAKE_EXTRA_ARGS) && \
-		cmake --build . -j$(NPROC) --target axon_uploader
+		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ axon_uploader built$(NC)"
 
 # Test axon_mcap

@@ -209,12 +209,12 @@ jobs:
 
       - name: Normalize coverage paths
         run: |
-          cd core/build_uploader_integration
+          cd build/axon_uploader
           chmod +x ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh
           ${{ github.workspace }}/.github/scripts/normalize_coverage_paths.sh coverage.info
           echo "Sample paths after normalization:"
           grep "^SF:" coverage.info | head -10 || true
-          
+
           # Re-detect lcov version for ignore flags (each step runs in new shell)
           LCOV_VERSION=$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9.]+' || echo "1.0")
           LCOV_MAJOR=$(echo "${LCOV_VERSION}" | cut -d. -f1)
@@ -222,14 +222,14 @@ jobs:
           if [ "${LCOV_MAJOR}" -ge 2 ]; then
             LCOV_IGNORE_FLAGS="--ignore-errors mismatch,unused,negative,gcov"
           fi
-          
+
           # Show coverage summary
           echo ""
           echo "=== Integration Test Coverage Summary ==="
           lcov --list coverage.info ${LCOV_IGNORE_FLAGS} || true
 
       - name: Copy coverage to root for artifact upload
-        run: cp core/build_uploader_integration/coverage.info coverage.info
+        run: cp build/axon_uploader/coverage.info coverage.info
 
       - name: Upload coverage to Codecov with flag
         uses: codecov/codecov-action@v5
@@ -259,7 +259,7 @@ jobs:
         if: always()
         with:
           name: integration-test-results
-          path: core/build_uploader_integration/test_results.xml
+          path: build/axon_uploader/test_results.xml
           retention-days: 7
 
       - name: Cleanup MinIO

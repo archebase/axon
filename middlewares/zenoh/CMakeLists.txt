@@ -69,13 +69,13 @@ endif()
 
 # Build the plugin library (direct C interface, no external ABI header)
 add_library(axon_zenoh_plugin SHARED
-  src/zenoh_plugin/src/zenoh_plugin.cpp
-  src/zenoh_plugin/src/zenoh_subscription_wrapper.cpp
-  src/zenoh_plugin/src/zenoh_plugin_export.cpp
+  src/zenoh_plugin.cpp
+  src/zenoh_subscription_wrapper.cpp
+  src/zenoh_plugin_export.cpp
 )
 
 target_include_directories(axon_zenoh_plugin PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/zenoh_plugin/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
@@ -104,7 +104,7 @@ if(BUILD_TESTING)
 
   if(GTest_FOUND)
     # Discover test files automatically
-    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/zenoh_plugin/test/test_*.cpp")
+    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
 
     foreach(test_source ${TEST_SOURCES})
       get_filename_component(test_name ${test_source} NAME_WE)
@@ -156,7 +156,7 @@ install(TARGETS axon_zenoh_plugin
 )
 
 # Install headers
-install(DIRECTORY src/zenoh_plugin/include/
+install(DIRECTORY include/
   DESTINATION include/zenoh_plugin
   FILES_MATCHING PATTERN "*.hpp"
 )
