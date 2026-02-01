@@ -101,21 +101,8 @@ ENV LD_LIBRARY_PATH=/usr/local/lib
 # Set working directory
 WORKDIR /workspace
 
-# Pre-build Zenoh plugin using unified build system
-# Copy entire project to build from root with nlohmann_json available
-COPY . /workspace/axon
-RUN cd /workspace/axon && \
-    mkdir -p build && \
-    cd build && \
-    cmake .. \
-        -DAXON_BUILD_ZENOH_PLUGIN=ON \
-        -DAXON_BUILD_ROS1_PLUGIN=OFF \
-        -DAXON_BUILD_ROS2_PLUGIN=OFF \
-        -DAXON_BUILD_TESTS=ON && \
-    make && \
-    echo "Zenoh plugin pre-built successfully"
-
 # Copy test scripts
-RUN chmod +x /workspace/axon/docker/scripts/*.sh
+COPY docker/scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh
 
 CMD ["/bin/bash"]

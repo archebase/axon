@@ -29,7 +29,6 @@ services:
     container_name: test_publisher
     volumes:
       - ..:/workspace/axon
-      - test-publisher-build:/workspace/axon/build
     working_dir: /workspace/axon
     environment:
       - ZENOH_ROUTER=tcp/127.0.0.1:7447
@@ -39,7 +38,14 @@ services:
     network_mode: host
     command: >
       bash -c "
-      cd /workspace/axon/build &&
+      cd /workspace/axon && \
+      mkdir -p build && cd build && \
+      cmake .. \
+        -DAXON_BUILD_ZENOH_PLUGIN=ON \
+        -DAXON_BUILD_ROS1_PLUGIN=OFF \
+        -DAXON_BUILD_ROS2_PLUGIN=OFF && \
+      make -j\$(nproc) && \
+      echo 'Running test publisher...' &&
       ./test_publisher tcp/127.0.0.1:7447 demo/test/data 10 1000
       "
 
@@ -51,7 +57,6 @@ services:
     container_name: test_subscriber
     volumes:
       - ..:/workspace/axon
-      - test-subscriber-build:/workspace/axon/build
     working_dir: /workspace/axon
     environment:
       - ZENOH_ROUTER=tcp/127.0.0.1:7447
@@ -63,12 +68,13 @@ services:
     network_mode: host
     command: >
       bash -c "
-      cd /workspace/axon/build &&
+      cd /workspace/axon && \
+      mkdir -p build && cd build && \
+      cmake .. \
+        -DAXON_BUILD_ZENOH_PLUGIN=ON \
+        -DAXON_BUILD_ROS1_PLUGIN=OFF \
+        -DAXON_BUILD_ROS2_PLUGIN=OFF && \
+      make -j\$(nproc) && \
+      echo 'Running test subscriber...' &&
       ./test_subscriber tcp/127.0.0.1:7447 'demo/test/**' 10 30
       "
-
-volumes:
-  test-publisher-build:
-    driver: local
-  test-subscriber-build:
-    driver: local

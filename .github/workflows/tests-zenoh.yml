@@ -40,7 +40,14 @@ jobs:
             -v ${{ github.workspace }}:/workspace/axon \
             axon:zenoh \
             bash -c "
-              cd /workspace/axon/build && \
+              cd /workspace/axon && \
+              mkdir -p build && cd build && \
+              cmake .. \
+                -DAXON_BUILD_ZENOH_PLUGIN=ON \
+                -DAXON_BUILD_ROS1_PLUGIN=OFF \
+                -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_TESTS=ON && \
+              make -j\$(nproc) && \
               ctest --output-on-failure -V -L zenoh_plugin
             "
 
@@ -52,7 +59,16 @@ jobs:
             -v ${{ github.workspace }}:/workspace/axon \
             axon:zenoh \
             bash -c "
-              cd /workspace/axon/build && \
+              cd /workspace/axon && \
+              mkdir -p build && cd build && \
+              cmake .. \
+                -DCMAKE_BUILD_TYPE=Debug \
+                -DAXON_ENABLE_COVERAGE=ON \
+                -DAXON_BUILD_ZENOH_PLUGIN=ON \
+                -DAXON_BUILD_ROS1_PLUGIN=OFF \
+                -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_TESTS=ON && \
+              make -j\$(nproc) && \
               ctest --output-on-failure -L zenoh_plugin && \
               lcov --capture --directory . --output-file coverage_raw.info \
                 --rc lcov_branch_coverage=1 && \
