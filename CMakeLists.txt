@@ -81,6 +81,9 @@ endif()
 
 include(FetchContent)
 
+# Find Threads (required by Boost::thread)
+find_package(Threads REQUIRED)
+
 # nlohmann/json - shared across all modules
 FetchContent_Declare(
     nlohmann_json

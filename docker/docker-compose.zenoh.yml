@@ -37,7 +37,7 @@ services:
         condition: service_healthy
     network_mode: host
     command: >
-      bash -c "cd /workspace/axon && mkdir -p build && cd build && cmake .. -DAXON_BUILD_ZENOH_PLUGIN=ON -DAXON_BUILD_ROS1_PLUGIN=OFF -DAXON_BUILD_ROS2_PLUGIN=OFF && make -j$(nproc) && echo 'Running test publisher...' && ./test_publisher tcp/127.0.0.1:7447 demo/test/data 10 1000"
+      bash -c "cd /workspace/axon && mkdir -p build && cd build && cmake .. -DAXON_BUILD_ZENOH_PLUGIN=ON -DAXON_BUILD_ROS1_PLUGIN=OFF -DAXON_BUILD_ROS2_PLUGIN=OFF && make -j$(nproc) && echo 'Running test publisher...' && ./middlewares/zenoh_plugin/test_publisher tcp/127.0.0.1:7447 demo/test/data 10 1000"
 
   # Test Subscriber - Verifies message reception
   test-subscriber:
@@ -57,4 +57,4 @@ services:
         condition: service_started
     network_mode: host
     command: >
-      bash -c "cd /workspace/axon && mkdir -p build && cd build && cmake .. -DAXON_BUILD_ZENOH_PLUGIN=ON -DAXON_BUILD_ROS1_PLUGIN=OFF -DAXON_BUILD_ROS2_PLUGIN=OFF && make -j$(nproc) && echo 'Running test subscriber...' && ./test_subscriber tcp/127.0.0.1:7447 'demo/test/**' 10 30"
+      bash -c "cd /workspace/axon && mkdir -p build && cd build && cmake .. -DAXON_BUILD_ZENOH_PLUGIN=ON -DAXON_BUILD_ROS1_PLUGIN=OFF -DAXON_BUILD_ROS2_PLUGIN=OFF && make -j$(nproc) && echo 'Running test subscriber...' && ./middlewares/zenoh_plugin/test_subscriber tcp/127.0.0.1:7447 'demo/test/**' 10 30"
