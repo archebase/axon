@@ -6,7 +6,7 @@
 
 A high-performance, plugin-based data recorder with ROS1/ROS2 compatibility and fleet-ready HTTP RPC control for task-centric recording to MCAP format.
 
-**Current Version:** 0.2.0
+**Current version:** 0.3.0
 
 ## Architecture
 

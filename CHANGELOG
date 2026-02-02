@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [0.3.0] - 2025-02-02
+
+### Added
+- **filters**: Implement depth image compression filter for ROS1 plugin
+  - Add `DepthCompressionFilter` class for ROS1 Noetic
+  - Support `sensor_msgs/Image` to `sensor_msgs/CompressedImage` transformation
+  - Integrate DepthLiteZ compression library with 5-10x compression ratio
+  - Support configurable compression levels: fast, medium, max
+  - Pass-through for non-depth images or compression failures
+
+- **filters**: Add depth compression support to ROS2 plugin
+  - Extend `DepthCompressionFilter` class for ROS2 (Humble/Jazzy/Rolling)
+  - Auto-register `sensor_msgs/msg/CompressedImage` schema in MCAP
+  - Update channel registration to use composite keys (topic + message_type)
+  - Configuration support via YAML with boolean and object syntax
+
+- **middleware**: Add depthlitez submodule for specialized depth compression
+  - Shared compression library used by both ROS1 and ROS2 plugins
+
+### Changed
+- **version**: Update project version to 0.3.0
+
 ## [0.2.0] - 2025-01-22
 
 ### Added
@@ -115,7 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ArcheBase/Axon/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ArcheBase/Axon/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ArcheBase/Axon/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/ArcheBase/Axon/releases/tag/v0.0.1

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(axon_recorder VERSION 0.2.0)
+project(axon_recorder VERSION 0.3.0)
 
 # Use parent project version if available
 if(DEFINED AXON_REPO_ROOT AND EXISTS "${AXON_REPO_ROOT}/CMakeLists.txt")
