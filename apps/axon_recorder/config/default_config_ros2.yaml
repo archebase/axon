@@ -22,9 +22,10 @@ plugin:
 # ============================================================================
 dataset:
   # Output directory for MCAP files
-  # When using HTTP RPC mode, output files are named as: <path>/<task_id>.mcap
-  # The task_id is provided via the /rpc/config endpoint
   path: /data/recordings
+
+  # Output filename (optional, defaults to <path>/recording.mcap)
+  output_file: recording.mcap
 
   # Per-topic queue capacity (number of messages)
   # Recommended: 4096-8192 for high-frequency topics (camera, IMU)
@@ -40,40 +41,40 @@ dataset:
 subscriptions:
   # IMU data - high frequency (5 seconds of data per batch)
   - name: /imu/data
-    message_type: sensor_msgs/Imu
+    message_type: sensor_msgs/msg/Imu
     batch_size: 5000
     flush_interval_ms: 5000
 
   # Camera 0 - RGB and Depth (10 seconds of data per batch at 30fps)
-  - name: /camera/cam_hand_left/image
-    message_type: sensor_msgs/CompressedImage
+  - name: /camera0/rgb
+    message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
 
-  - name: /camera/cam_hand_right/image
-    message_type: sensor_msgs/CompressedImage
+  - name: /camera0/depth
+    message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
 
   # Camera 1 - RGB and Depth
-  - name: /camera/cam_top_head/image
-    message_type: sensor_msgs/CompressedImage
+  - name: /camera1/rgb
+    message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
 
-  - name: /io_teleop/joint_cmd
-    message_type: sensor_msgs/JointState
+  - name: /camera1/depth
+    message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
 
   # Camera 2 - RGB and Depth
-  - name: /io_teleop/joint_states
-    message_type: sensor_msgs/JointState
+  - name: /camera2/rgb
+    message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
 
-  - name: /io_teleop/robot_info
-    message_type: std_msgs/String
+  - name: /camera2/depth
+    message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
 
