@@ -153,6 +153,7 @@ struct HttpServerConfig {
 struct RecorderConfig {
   // Basic recorder settings
   std::string output_file = "output.mcap";
+  bool output_file_is_explicit = false;  // True if set via CLI or config file
   std::string plugin_path;
   std::vector<SubscriptionConfig> subscriptions;
 

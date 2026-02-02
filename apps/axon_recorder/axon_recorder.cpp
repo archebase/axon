@@ -2,11 +2,14 @@
 //
 // SPDX-License-Identifier: MulanPSL-2.0
 
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <thread>
 
 #include "config_parser.hpp"
@@ -47,12 +50,11 @@ void print_usage(const char* program_name) {
     << "Version: " << axon::recorder::get_version() << "\n"
     << "\n"
     << "Options:\n"
+    << "  --simple               Simple mode: start recording immediately without HTTP RPC\n"
+    << "  --output FILE          Output file path (default: auto-generated timestamp)\n"
     << "  --config PATH          Path to YAML configuration file\n"
     << "  --plugin PATH         Path to ROS plugin shared library (.so)\n"
     << "  --path PATH           Output directory path (default: .)\n"
-    << "  --topic NAME          Subscribe to topic (can be used multiple times)\n"
-    << "  --type TYPE           Message type for last --topic (e.g., "
-       "sensor_msgs/msg/Image)\n"
     << "  --profile PROFILE     ROS profile: ros1 or ros2 (default: ros2)\n"
     << "  --compression ALG     Compression: none, zstd, lz4 (default: zstd)\n"
     << "  --level LEVEL         Compression level (default: 3)\n"
@@ -60,8 +62,18 @@ void print_usage(const char* program_name) {
     << "  --version             Show version information\n"
     << "  --help                Show this help message\n"
     << "\n"
+    << "Simple Mode:\n"
+    << "  When --simple is specified, the recorder starts immediately without waiting for\n"
+    << "  HTTP RPC commands. The output filename is either:\n"
+    << "    - Specified via --output FILE\n"
+    << "    - Auto-generated as YYYYMMDD_HHMMSS.mcap (e.g., 20240102_143000.mcap)\n"
+    << "\n"
+    << "  In simple mode, topics must be configured either via config file subscriptions\n"
+    << "  or CLI parameters. No HTTP RPC server is started.\n"
+    << "\n"
     << "HTTP RPC Server:\n"
-    << "  The recorder starts an HTTP RPC server on port 8080 for remote control.\n"
+    << "  Without --simple, the recorder starts an HTTP RPC server on port 8080 for remote "
+       "control.\n"
     << "  The recorder starts in IDLE state and waits for RPC commands.\n"
     << "  Available endpoints:\n"
     << "    POST /rpc/config      - Set task configuration (IDLE->READY)\n"
@@ -95,25 +107,28 @@ void print_usage(const char* program_name) {
     << "    compression_level: 3\n"
     << "\n"
     << "Output File Naming:\n"
-    << "  When using HTTP RPC mode, output files are named as: <dataset.path>/<task_id>.mcap\n"
-    << "  The task_id is provided via the /rpc/config endpoint.\n"
+    << "  Simple mode (--simple):\n"
+    << "    - --output my_recording.mcap  -> Use specified filename\n"
+    << "    - No --output                  -> Auto-generated: YYYYMMDD_HHMMSS.mcap\n"
+    << "  HTTP RPC mode:\n"
+    << "    Output files are named as: <dataset.path>/<task_id>.mcap\n"
+    << "    The task_id is provided via the /rpc/config endpoint.\n"
     << "\n"
     << "Examples:\n"
+    << "  # Simple mode with auto-generated filename\n"
+    << "  " << program_name
+    << " --simple --plugin ./ros2_plugin.so --config config/default_config_ros2.yaml\n"
+    << "\n"
+    << "  # Simple mode with custom filename\n"
+    << "  " << program_name
+    << " --simple --output /data/my_recording.mcap --plugin ./ros2_plugin.so\n"
+    << "\n"
     << "  # Use config file only\n"
     << "  " << program_name << " --config config/default_config_ros2.yaml\n"
     << "\n"
     << "  # Override plugin path from config file\n"
     << "  " << program_name << " --config config/default_config_ros2.yaml \\\n"
     << "    --plugin /custom/path/to/libaxon_ros2_plugin.so\n"
-    << "\n"
-    << "  # Override output directory and compression level\n"
-    << "  " << program_name << " --config config/default_config_ros2.yaml \\\n"
-    << "    --path /tmp/recordings --level 5\n"
-    << "\n"
-    << "  # CLI only (no config file)\n"
-    << "  " << program_name << " --plugin ./ros2_plugin.so \\\n"
-    << "    --path /data/recordings \\\n"
-    << "    --topic /camera/image_raw --type sensor_msgs/msg/Image\n"
     << std::endl;
 }
 
@@ -124,6 +139,26 @@ void print_statistics(const AxonRecorder::Statistics& stats) {
             << "Messages dropped:  " << stats.messages_dropped << "\n"
             << "Bytes written:     " << stats.bytes_written << "\n"
             << std::endl;
+}
+
+/**
+ * Generate timestamp-based filename
+ * Format: YYYYMMDD_HHMMSS.mcap (e.g., 20240102_143000.mcap)
+ */
+std::string generate_timestamp_filename() {
+  auto now = std::chrono::system_clock::now();
+  auto time_t_now = std::chrono::system_clock::to_time_t(now);
+
+  std::tm tm_buf;
+#if defined(_WIN32) || defined(_WIN64)
+  localtime_s(&tm_buf, &time_t_now);
+#else
+  localtime_r(&time_t_now, &tm_buf);
+#endif
+
+  std::stringstream ss;
+  ss << std::put_time(&tm_buf, "%Y%m%d_%H%M%S");
+  return ss.str() + ".mcap";
 }
 
 }  // namespace
@@ -151,13 +186,22 @@ int main(int argc, char* argv[]) {
   std::string cli_dataset_path;
   std::string cli_profile;
   std::string cli_compression;
+  std::string cli_output_file;
   int cli_compression_level = -1;
   size_t cli_queue_capacity = 0;
-  std::vector<SubscriptionConfig> cli_subscriptions;
-  std::string current_topic;
+  bool simple_mode = false;
 
   for (int i = 1; i < argc; ++i) {
-    if (strcmp(argv[i], "--config") == 0) {
+    if (strcmp(argv[i], "--simple") == 0) {
+      simple_mode = true;
+    } else if (strcmp(argv[i], "--output") == 0) {
+      if (i + 1 < argc) {
+        cli_output_file = argv[++i];
+      } else {
+        std::cerr << "Error: --output requires a file argument" << std::endl;
+        return 1;
+      }
+    } else if (strcmp(argv[i], "--config") == 0) {
       if (i + 1 < argc) {
         config_file = argv[++i];
       } else {
@@ -176,26 +220,6 @@ int main(int argc, char* argv[]) {
         cli_dataset_path = argv[++i];
       } else {
         std::cerr << "Error: --path requires a directory argument" << std::endl;
-        return 1;
-      }
-    } else if (strcmp(argv[i], "--topic") == 0) {
-      if (i + 1 < argc) {
-        current_topic = argv[++i];
-      } else {
-        std::cerr << "Error: --topic requires a name argument" << std::endl;
-        return 1;
-      }
-    } else if (strcmp(argv[i], "--type") == 0) {
-      if (i + 1 < argc) {
-        if (current_topic.empty()) {
-          std::cerr << "Error: --type must follow --topic" << std::endl;
-          return 1;
-        }
-        std::string message_type = argv[++i];
-        cli_subscriptions.push_back({current_topic, message_type});
-        current_topic.clear();
-      } else {
-        std::cerr << "Error: --type requires a type argument" << std::endl;
         return 1;
       }
     } else if (strcmp(argv[i], "--profile") == 0) {
@@ -263,8 +287,18 @@ int main(int argc, char* argv[]) {
   if (cli_queue_capacity > 0) {
     config.queue_capacity = cli_queue_capacity;
   }
-  if (!cli_subscriptions.empty()) {
-    config.subscriptions = cli_subscriptions;
+
+  // Handle output filename in simple mode
+  if (simple_mode) {
+    if (!cli_output_file.empty()) {
+      // User specified output file
+      config.output_file = cli_output_file;
+      config.output_file_is_explicit = true;
+    } else {
+      // Auto-generate timestamp-based filename
+      config.output_file = generate_timestamp_filename();
+      config.output_file_is_explicit = true;
+    }
   }
 
   // Validate required arguments
@@ -274,23 +308,25 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  if (config.subscriptions.empty()) {
-    std::cerr << "Error: At least one --topic/--type pair is required" << std::endl;
-    print_usage(argv[0]);
-    return 1;
-  }
-
   // Print configuration
   std::cout << "Axon Recorder Configuration:\n"
+            << "  Mode:        " << (simple_mode ? "Simple (direct recording)" : "HTTP RPC") << "\n"
             << "  Plugin:      " << config.plugin_path << "\n"
+            << "  Output:      " << config.output_file << "\n"
             << "  Dataset:     " << config.dataset.path << "\n"
             << "  Profile:     " << config.profile << "\n"
             << "  Compression: " << config.compression << " level " << config.compression_level
             << "\n"
-            << "  Queue size:  " << config.queue_capacity << "\n"
-            << "  Topics:\n";
-  for (const auto& sub : config.subscriptions) {
-    std::cout << "    - " << sub.topic_name << " (" << sub.message_type << ")\n";
+            << "  Queue size:  " << config.queue_capacity << "\n";
+
+  // Show topics if configured
+  if (!config.subscriptions.empty()) {
+    std::cout << "  Topics:\n";
+    for (const auto& sub : config.subscriptions) {
+      std::cout << "    - " << sub.topic_name << " (" << sub.message_type << ")\n";
+    }
+  } else {
+    std::cout << "  Topics:      (no subscriptions configured)" << std::endl;
   }
   std::cout << std::endl;
 
@@ -307,6 +343,45 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  if (simple_mode) {
+    // Simple mode: start recording immediately without HTTP RPC
+    std::cout << "Starting recording in simple mode..." << std::endl;
+
+    if (!recorder.start()) {
+      std::cerr << "Error: Failed to start recording: " << recorder.get_last_error() << std::endl;
+      return 1;
+    }
+
+    std::cout << "Recording started. Press Ctrl+C to stop." << std::endl;
+
+    // Wait for quit signal
+    while (!g_should_exit.load()) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+
+      // Print statistics if recording is active
+      if (recorder.is_running()) {
+        auto stats = recorder.get_statistics();
+        if (stats.messages_written > 0) {
+          std::cout << "\rMessages: " << stats.messages_written << " written, "
+                    << stats.messages_received << " received, " << stats.messages_dropped
+                    << " dropped   " << std::flush;
+        }
+      }
+    }
+
+    std::cout << "\nStopping recording..." << std::endl;
+
+    // Stop recording
+    recorder.stop();
+
+    // Print final statistics
+    auto final_stats = recorder.get_statistics();
+    print_statistics(final_stats);
+
+    return 0;
+  }
+
+  // HTTP RPC mode: start HTTP server and wait for commands
   // Start HTTP RPC server
   std::cout << "Starting HTTP RPC server on " << config.http_server.host << ":"
             << config.http_server.port << "..." << std::endl;

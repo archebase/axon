@@ -227,20 +227,17 @@ http_server:
 # Display version
 ./build/axon_recorder/axon_recorder --version
 
-# Run with default configuration
+# Run with default configuration (HTTP RPC mode)
 ./build/axon_recorder/axon_recorder
 
 # Run with custom configuration
 ./build/axon_recorder/axon_recorder --config /path/to/config.yaml
 
-# Run with plugin
-./build/axon_recorder/axon_recorder --plugin /path/to/libaxon_ros2.so
+# Simple mode: start recording immediately without HTTP RPC
+./build/axon_recorder/axon_recorder --simple --config /path/to/config.yaml
 
-# Specify output directory
-./build/axon_recorder/axon_recorder --path /data/recordings
-
-# Subscribe to specific topics
-./build/axon_recorder/axon_recorder --topic /camera/image --type sensor_msgs/msg/Image
+# Simple mode: custom output file
+./build/axon_recorder/axon_recorder --simple --output /tmp/recording.mcap --config /path/to/config.yaml
 ```
 
 ### HTTP RPC API

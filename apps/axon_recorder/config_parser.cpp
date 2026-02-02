@@ -51,6 +51,11 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
     // Parse dataset config
     if (node["dataset"]) {
       parse_dataset(node["dataset"], config.dataset);
+      // Copy dataset.output_file to config.output_file for backward compatibility
+      if (node["dataset"]["output_file"]) {
+        config.output_file = node["dataset"]["output_file"].as<std::string>();
+        config.output_file_is_explicit = true;
+      }
     }
 
     // Parse subscriptions
