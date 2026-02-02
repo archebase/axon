@@ -1602,7 +1602,6 @@ add_library(edge_uploader
 target_link_libraries(edge_uploader
     miniocpp::miniocpp
     sqlite3
-    ${catkin_LIBRARIES}  # or ament for ROS2
 )
 
 target_include_directories(edge_uploader PUBLIC

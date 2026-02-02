@@ -62,7 +62,7 @@ to https://docker.m.daocloud.io/...: 403 Forbidden
 - `ros-desktop`: ~2GB+, includes GUI tools and visualization
 
 **We use ros-base because:**
-- We only need build tools (colcon, catkin)
+- We only need build tools (cmake, c++)
 - We install dependencies explicitly
 - Faster builds and pulls
 - Smaller final images

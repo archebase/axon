@@ -142,3 +142,7 @@ core/build_uploader/
 # Serena runtime artifacts
 .serena/cache/
 .serena/memories/
+
+# Cache directories
+.cache/
+core/filters/

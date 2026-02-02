@@ -658,9 +658,11 @@ ctest
 
 ```bash
 # Requires ROS2 environment
-cd middlewares/ros2/src/ros2_plugin
-colcon build
-colcon test
+cd /path/to/axon
+mkdir -p build && cd build
+cmake .. -DAXON_BUILD_ROS2_PLUGIN=ON -DAXON_BUILD_TESTS=ON
+cmake --build . -j$(nproc)
+ctest --output-on-failure -L ros2_plugin
 ```
 
 **Example:** [middlewares/ros2/src/ros2_plugin/test/test_ros2_plugin.cpp](../middlewares/ros2/src/ros2_plugin/test/test_ros2_plugin.cpp)

@@ -38,15 +38,17 @@ jobs:
           echo "Running Zenoh plugin tests..."
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
-            -w /workspace/axon/middlewares/zenoh \
             axon:zenoh \
             bash -c "
+              cd /workspace/axon && \
               mkdir -p build && cd build && \
               cmake .. \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DBUILD_TESTING=ON && \
+                -DAXON_BUILD_ZENOH_PLUGIN=ON \
+                -DAXON_BUILD_ROS1_PLUGIN=OFF \
+                -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_TESTS=ON && \
               make -j\$(nproc) && \
-              ctest --output-on-failure -V
+              ctest --output-on-failure -V -L zenoh_plugin
             "
 
       - name: Generate coverage report (optional)
@@ -55,16 +57,19 @@ jobs:
           echo "Running tests with coverage..."
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
-            -w /workspace/axon/middlewares/zenoh \
             axon:zenoh \
             bash -c "
-              rm -rf build && mkdir build && cd build && \
+              cd /workspace/axon && \
+              mkdir -p build && cd build && \
               cmake .. \
                 -DCMAKE_BUILD_TYPE=Debug \
                 -DAXON_ENABLE_COVERAGE=ON \
-                -DBUILD_TESTING=ON && \
+                -DAXON_BUILD_ZENOH_PLUGIN=ON \
+                -DAXON_BUILD_ROS1_PLUGIN=OFF \
+                -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_TESTS=ON && \
               make -j\$(nproc) && \
-              ctest --output-on-failure && \
+              ctest --output-on-failure -L zenoh_plugin && \
               lcov --capture --directory . --output-file coverage_raw.info \
                 --rc lcov_branch_coverage=1 && \
               lcov --remove coverage_raw.info \
@@ -79,7 +84,7 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace/axon \
             axon:zenoh \
-            cat /workspace/axon/middlewares/zenoh/build/coverage.info > coverage.info || true
+            cat /workspace/axon/build/coverage.info > coverage.info || true
 
       - name: Upload coverage to Codecov
         if: github.event_name == 'push' || github.event_name == 'pull_request'

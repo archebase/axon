@@ -1,8 +1,6 @@
 # Makefile for Axon by ArcheBase
 # Supports both C++ core libraries and ROS (1/2) middlewares
 
-.PHONY: all build test clean install build-ros1 build-ros2 build-zenoh test-libs app app-axon-recorder app-plugin-example help \
-	test-python test-python-models test-python-client test-python-retry test-python-exceptions test-python-zenoh test-python-coverage
 .DEFAULT_GOAL := help
 
 # Use bash as the shell for all recipes (required for ROS setup.bash scripts)
@@ -76,13 +74,18 @@ PRINTF := printf "%s\n"
 # Help Target
 # =============================================================================
 
+.PHONY: all help
+
+all: build-core
+	@printf "%s\n" "$(GREEN)✓ All components built$(NC)"
+
 help:
 	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
 	@printf "%s\n" "$(GREEN)║     Axon by ArcheBase - Build System                     ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Core C++ Libraries:$(NC)"
-	@printf "%s\n" "  $(BLUE)make build-core$(NC)       - Build all C++ libraries"
+	@printf "%s\n" "  $(BLUE)make build-core$(NC)       - Build all C++ libraries and apps"
 	@printf "%s\n" "  $(BLUE)make test-mcap$(NC)       - Build and run axon_mcap tests"
 	@printf "%s\n" "  $(BLUE)make test-uploader$(NC)   - Build and run axon_uploader tests"
 	@printf "%s\n" "  $(BLUE)make test-logging$(NC)    - Build and run axon_logging tests"
@@ -159,6 +162,10 @@ help:
 # Core C++ Library Targets
 # =============================================================================
 
+.PHONY: build-core build-mcap build-logging build-uploader
+.PHONY: test-mcap test-uploader test-logging test-core
+.PHONY: coverage-mcap coverage-uploader coverage-logging coverage-core
+
 # Build all C++ libraries and apps using root CMakeLists.txt
 build-core:
 	@printf "%s\n" "$(YELLOW)Building all C++ libraries and apps...$(NC)"
@@ -170,8 +177,41 @@ build-core:
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ All C++ libraries and apps built$(NC)"
 
+# Build individual core libraries
+build-mcap:
+	@printf "%s\n" "$(YELLOW)Building axon_mcap (with tests)...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
+
+build-logging:
+	@printf "%s\n" "$(YELLOW)Building axon_logging (with tests)...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_logging built$(NC)"
+
+build-uploader:
+	@printf "%s\n" "$(YELLOW)Building axon_uploader (with tests)...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=ON \
+			$(CMAKE_EXTRA_ARGS) && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ axon_uploader built$(NC)"
+
 # Test axon_mcap
-test-mcap: build-core
+test-mcap: build-mcap
 	@printf "%s\n" "$(YELLOW)Running axon_mcap tests...$(NC)"
 	@cd $(BUILD_DIR)/axon_mcap && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_mcap tests passed$(NC)"
@@ -199,6 +239,8 @@ test-core: test-mcap test-uploader test-logging
 # =============================================================================
 # Python Tests
 # =============================================================================
+
+.PHONY: test-python test-python-models test-python-client test-python-retry test-python-exceptions test-python-zenoh test-python-coverage
 
 # Python package directory
 PYTHON_CLIENT_DIR := python/axon_client
@@ -360,6 +402,8 @@ coverage-core: coverage-mcap coverage-uploader coverage-logging
 # Application Targets
 # =============================================================================
 
+.PHONY: app app-axon-recorder app-plugin-example
+
 # Build all applications
 app: build-core
 	@printf "%s\n" "$(GREEN)✓ All applications built$(NC)"
@@ -376,6 +420,8 @@ app-plugin-example: build-core
 # ROS Middleware Targets
 # =============================================================================
 
+.PHONY: build build-ros1 build-ros2 build-zenoh
+
 # Main build target (ROS)
 build:
 	@if [ "$(ROS_VERSION)" = "1" ]; then \
@@ -387,46 +433,48 @@ build:
 
 # Build for ROS1
 build-ros1:
-	@printf "%s\n" "$(YELLOW)Building code for ROS1...$(NC)"
-	@if [ -z "$$ROS_DISTRO" ]; then \
-		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
-		echo "Example: source /opt/ros/noetic/setup.bash"; \
-		exit 1; \
-	fi
-	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-	fi
-	@cd middlewares/ros1 && catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
-	@printf "%s\n" "$(GREEN)✓ Code built for ROS1$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_ROS1_PLUGIN=ON \
+			-DAXON_BUILD_ROS2_PLUGIN=OFF \
+			-DAXON_BUILD_ZENOH_PLUGIN=OFF && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ ROS1 plugin built$(NC)"
 
 # Build for ROS2
 build-ros2:
-	@printf "%s\n" "$(YELLOW)Building code for ROS2...$(NC)"
-	@if [ -z "$$ROS_DISTRO" ]; then \
-		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
-		echo "Example: source /opt/ros/humble/setup.bash"; \
-		exit 1; \
-	fi
-	@if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-		. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-	fi
-	@cd middlewares/ros2 && colcon build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) --event-handlers console_direct+ --executor parallel
-	@printf "%s\n" "$(GREEN)✓ Code built for ROS2$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_ROS1_PLUGIN=OFF \
+			-DAXON_BUILD_ROS2_PLUGIN=ON \
+			-DAXON_BUILD_ZENOH_PLUGIN=OFF && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ ROS2 plugin built$(NC)"
 
 # Build for Zenoh plugin
 build-zenoh:
-	@printf "%s\n" "$(YELLOW)Building Zenoh plugin...$(NC)"
-	@mkdir -p middlewares/zenoh/build
-	@cd middlewares/zenoh/build && \
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_BUILD_TESTS=ON && \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_ROS1_PLUGIN=OFF \
+			-DAXON_BUILD_ROS2_PLUGIN=OFF \
+			-DAXON_BUILD_ZENOH_PLUGIN=ON && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ Zenoh plugin built$(NC)"
 
 # =============================================================================
 # General Targets
 # =============================================================================
+
+.PHONY: test clean install debug release
 
 # Library tests (legacy target - defaults to C++ tests)
 test: test-core
@@ -435,33 +483,13 @@ test: test-core
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
-	@cd middlewares/ros2 && rm -rf build install log 2>/dev/null || true
-	@cd middlewares/ros1 && catkin clean --yes 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target
 install: build
 	@printf "%s\n" "$(YELLOW)Installing package...$(NC)"
-	@if [ -z "$$ROS_DISTRO" ]; then \
-		echo "$(RED)Error: ROS_DISTRO not set$(NC)"; \
-		exit 1; \
-	fi
-	@if [ "$(ROS_VERSION)" = "2" ]; then \
-		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi; \
-		cd middlewares && colcon build --base-paths . \
-			--cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			--install-base install \
-			--event-handlers console_direct+; \
-		printf "%s\n" "$(GREEN)✓ Package installed to middlewares/install/ directory$(NC)"; \
-	else \
-		if [ -f /opt/ros/$(ROS_DISTRO)/setup.bash ]; then \
-			. /opt/ros/$(ROS_DISTRO)/setup.bash; \
-		fi; \
-		cd middlewares && catkin build --cmake-args -DCMAKE_BUILD_TYPE=$(BUILD_TYPE); \
-		printf "%s\n" "$(GREEN)✓ Package installed$(NC)"; \
-	fi
+	@cd $(BUILD_DIR) && cmake --install .
+	@printf "%s\n" "$(GREEN)✓ Package installed$(NC)"
 
 # Debug build
 debug:
@@ -474,6 +502,16 @@ release:
 # =============================================================================
 # Docker Build & Test Targets
 # =============================================================================
+
+.PHONY: docker-build-ros1 docker-test-ros1
+.PHONY: docker-build-ros2-humble docker-test-ros2-humble
+.PHONY: docker-build-ros2-jazzy docker-test-ros2-jazzy
+.PHONY: docker-build-ros2-rolling docker-test-ros2-rolling
+.PHONY: docker-build docker-test-all docker-test docker-test-compose
+.PHONY: docker-build-cpp docker-test-cpp
+.PHONY: docker-build-zenoh docker-test-zenoh docker-test-zenoh-integration
+.PHONY: docker-test-ros docker-test-e2e docker-test-e2e-ros1 docker-test-e2e-ros2-humble docker-test-e2e-ros2-jazzy docker-test-e2e-ros2-rolling docker-test-e2e-all
+.PHONY: docker-coverage
 
 docker-build-ros1:
 	@printf "%s\n" "$(YELLOW)Building Docker image for ROS1...$(NC)"
@@ -568,6 +606,8 @@ docker-test-compose:
 # Code Quality Targets
 # =============================================================================
 
+.PHONY: format lint
+
 # Format code
 format:
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
@@ -624,6 +664,8 @@ lint:
 # Coverage Targets (ROS)
 # =============================================================================
 
+.PHONY: coverage-ros2 coverage-html coverage clean-coverage
+
 # Build with coverage and run tests (ROS 2)
 coverage-ros2:
 	@printf "%s\n" "$(YELLOW)Building with coverage instrumentation (ROS 2)...$(NC)"
@@ -631,31 +673,32 @@ coverage-ros2:
 		echo "$(RED)Error: ROS_DISTRO not set. Source ROS setup.bash first.$(NC)"; \
 		exit 1; \
 	fi
-	@rm -rf middlewares/ros2/build middlewares/ros2/install middlewares/ros2/log
-	@mkdir -p $(COVERAGE_DIR)
+	@rm -rf $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR) $(COVERAGE_DIR)
 	@source /opt/ros/$${ROS_DISTRO}/setup.bash && \
-		cd middlewares/ros2 && \
-		colcon build \
-			--cmake-args -DCMAKE_BUILD_TYPE=Debug -DAXON_ENABLE_COVERAGE=ON && \
-		source install/setup.bash && \
-		colcon test \
-			--event-handlers console_direct+ || true
+		cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=Debug \
+			-DAXON_ENABLE_COVERAGE=ON \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_ROS2_PLUGIN=ON \
+			-DAXON_BUILD_ROS1_PLUGIN=OFF \
+			-DAXON_BUILD_ZENOH_PLUGIN=OFF && \
+		cmake --build . -j$(NPROC) && \
+		ctest --output-on-failure || true
 	@printf "%s\n" "$(GREEN)✓ Tests completed, generating coverage report...$(NC)"
 	@LCOV_MAJOR=$$(lcov --version 2>&1 | grep -oP 'LCOV version \K[0-9]+' || echo "1"); \
 	IGNORE_FLAGS=""; \
 	if [ "$$LCOV_MAJOR" -ge 2 ]; then IGNORE_FLAGS="--ignore-errors mismatch,unused"; fi; \
 	lcov --capture \
-		--directory middlewares/ros2/build \
+		--directory $(BUILD_DIR) \
 		--output-file $(COVERAGE_DIR)/coverage_raw.info \
 		--rc lcov_branch_coverage=1 \
 		$$IGNORE_FLAGS || true; \
 	lcov --remove $(COVERAGE_DIR)/coverage_raw.info \
 		'/usr/*' '/opt/*' '*/_deps/*' '*/generated/*' '*/googletest/*' \
 		'*/gtest/*' '*/gmock/*' \
-		'*/axon_recorder/test/*' \
-		'*/axon_logging/test/*' \
-		'*/axon_mcap/test/*' \
-		'*/axon_uploader/test/*' \
+		'*/test/*' \
 		'*/rosidl_typesupport_cpp/*' \
 		'*/rosidl_typesupport_introspection_cpp/*' \
 		'*/rosidl_generator_cpp/*' \
@@ -694,10 +737,8 @@ docker-coverage: docker-build-ros2-humble
 clean-coverage:
 	@printf "%s\n" "$(YELLOW)Cleaning coverage data...$(NC)"
 	@rm -rf $(COVERAGE_DIR)
-	@find middlewares/ros2/build -name "*.gcda" -delete 2>/dev/null || true
-	@find middlewares/ros2/build -name "*.gcno" -delete 2>/dev/null || true
-	@find middlewares/ros1/build -name "*.gcda" -delete 2>/dev/null || true
-	@find middlewares/ros1/build -name "*.gcno" -delete 2>/dev/null || true
+	@find $(BUILD_DIR) -name "*.gcda" -delete 2>/dev/null || true
+	@find $(BUILD_DIR) -name "*.gcno" -delete 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ Coverage data cleaned$(NC)"
 
 # Default coverage target
@@ -707,6 +748,8 @@ coverage: coverage-ros2
 # =============================================================================
 # Utility Targets
 # =============================================================================
+
+.PHONY: check-ros build-safe test-safe verify
 
 # Check if ROS is sourced
 check-ros:
@@ -731,6 +774,8 @@ verify: build test
 # Convenient Aliases
 # =============================================================================
 
+.PHONY: cov-humble cov cov-html clean-cov
+
 # Coverage shortcuts
 cov-humble: docker-coverage
 cov: docker-coverage
@@ -745,6 +790,9 @@ clean-cov: clean-coverage
 # These targets mirror what CI runs, allowing developers to test locally
 # before pushing. All tests run in Docker to match CI environment exactly.
 # See .github/workflows/ for CI workflow definitions.
+
+.PHONY: ci ci-quick ci-all ci-cpp ci-cpp-unit ci-cpp-integration ci-ros ci-ros1 ci-ros2 ci-e2e ci-docker
+.PHONY: ci-coverage-cpp ci-coverage-ros ci-coverage-recorder ci-coverage
 
 # ci: Quick CI check (format + lint + C++ tests in Docker)
 ci: format-ci lint docker-test-cpp
@@ -937,13 +985,15 @@ ci-coverage: ci-coverage-cpp ci-coverage-ros ci-coverage-recorder
 # E2E Test Targets
 # =============================================================================
 
+.PHONY: e2e
+
 e2e:
 	@printf "%s\n" "$(YELLOW)Running E2E tests locally...$(NC)"
 	@if [ ! -f "$(BUILD_DIR)/axon_recorder/axon_recorder" ] && \
 	   [ ! -f "$(BUILD_DIR)/apps/axon_recorder/axon_recorder" ] && \
 	   [ ! -f "apps/axon_recorder/build/axon_recorder" ]; then \
 		printf "%s\n" "$(RED)Error: axon_recorder not built.$(NC)"; \
-		printf "%s\n" "$(YELLOW)Build with: cd middlewares/ros2 && colcon build$(NC)"; \
+		printf "%s\n" "$(YELLOW)Build with: make build-core$(NC)"; \
 		exit 1; \
 	fi
 	@cd apps/axon_recorder/test/e2e && ./run_e2e_tests.sh
@@ -1076,6 +1126,8 @@ docker-test-e2e-all: docker-test-e2e-ros1 docker-test-e2e-ros2-humble docker-tes
 # =============================================================================
 # Utility Targets for CI Testing
 # =============================================================================
+
+.PHONY: coverage-html-cpp coverage-merge format-ci
 
 # coverage-html-cpp: Generate HTML coverage report for C++
 coverage-html-cpp:

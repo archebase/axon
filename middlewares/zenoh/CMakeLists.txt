@@ -25,21 +25,10 @@ if(AXON_ENABLE_COVERAGE)
   add_link_options(--coverage)
 endif()
 
-# Find nlohmann/json (using FetchContent for portability)
-include(FetchContent)
-
-# Set CMP0135 policy to NEW behavior for CMake 3.25+
-if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
-  cmake_policy(SET CMP0135 NEW)
+find_package(nlohmann_json 3.2.0 QUIET)
+if(NOT nlohmann_json_FOUND)
+  message(FATAL_ERROR "nlohmann_json not found. Please install nlohmann-json3-dev or build from parent project.")
 endif()
-
-FetchContent_Declare(
-  nlohmann_json
-  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-  URL_HASH
-    SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
-)
-FetchContent_MakeAvailable(nlohmann_json)
 
 # Find Zenoh C++ library
 # First find zenohc (C library), then zenohcxx (C++ wrapper)
@@ -85,13 +74,13 @@ endif()
 
 # Build the plugin library (direct C interface, no external ABI header)
 add_library(axon_zenoh_plugin SHARED
-  src/zenoh_plugin/src/zenoh_plugin.cpp
-  src/zenoh_plugin/src/zenoh_subscription_wrapper.cpp
-  src/zenoh_plugin/src/zenoh_plugin_export.cpp
+  src/zenoh_plugin.cpp
+  src/zenoh_subscription_wrapper.cpp
+  src/zenoh_plugin_export.cpp
 )
 
 target_include_directories(axon_zenoh_plugin PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/zenoh_plugin/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
@@ -120,7 +109,7 @@ if(BUILD_TESTING)
 
   if(GTest_FOUND)
     # Discover test files automatically
-    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/zenoh_plugin/test/test_*.cpp")
+    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
 
     foreach(test_source ${TEST_SOURCES})
       get_filename_component(test_name ${test_source} NAME_WE)
@@ -172,7 +161,7 @@ install(TARGETS axon_zenoh_plugin
 )
 
 # Install headers
-install(DIRECTORY src/zenoh_plugin/include/
+install(DIRECTORY include/
   DESTINATION include/zenoh_plugin
   FILES_MATCHING PATTERN "*.hpp"
 )
