@@ -148,4 +148,8 @@ core/build_uploader/
 
 # Cache directories
 .cache/
-core/filters/
+
+# DepthLiteZ private submodule (not included in public releases)
+# Users with access can initialize manually with:
+#   git submodule update --init --recursive middlewares/filters/depthlitez
+middlewares/filters/depthlitez/

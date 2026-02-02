@@ -8,7 +8,9 @@
 #include <ros/serialization.h>
 #include <topic_tools/shape_shifter.h>
 
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
 #include "depth_compression_filter.hpp"
+#endif
 
 namespace ros1_plugin {
 
@@ -94,6 +96,8 @@ bool SubscriptionManager::subscribe(
   }
 }
 
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+
 bool SubscriptionManager::subscribe(
   const std::string& topic_name, const std::string& message_type, uint32_t queue_size,
   MessageCallback callback, const std::optional<DepthCompressionConfig>& depth_compression
@@ -167,6 +171,7 @@ bool SubscriptionManager::subscribe(
     info.subscriber = subscriber;
     info.callback = callback;
     info.message_type = message_type;
+    info.depth_filter = depth_filter;
     subscriptions_[topic_name] = std::move(info);
 
     ROS_INFO("Subscribed to topic: %s (%s)", topic_name.c_str(), message_type.c_str());
@@ -178,6 +183,8 @@ bool SubscriptionManager::subscribe(
     return false;
   }
 }
+
+#endif  // AXON_ENABLE_DEPTH_COMPRESSION
 
 bool SubscriptionManager::unsubscribe(const std::string& topic_name) {
   std::lock_guard<std::mutex> lock(mutex_);

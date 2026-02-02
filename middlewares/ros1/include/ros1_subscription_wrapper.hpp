@@ -17,9 +17,16 @@
 
 namespace ros1_plugin {
 
+// =============================================================================
+// Depth Compression Support (conditional compilation)
+// =============================================================================
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+
 // Forward declarations
 struct DepthCompressionConfig;
 class DepthCompressionFilter;
+
+#endif  // AXON_ENABLE_DEPTH_COMPRESSION
 
 // Message callback type - passes raw serialized message data
 using MessageCallback = std::function<void(
@@ -38,11 +45,15 @@ public:
     MessageCallback callback
   );
 
-  // Subscribe with optional depth compression
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+
+  // Subscribe with optional depth compression (only available when enabled)
   bool subscribe(
     const std::string& topic_name, const std::string& message_type, uint32_t queue_size,
     MessageCallback callback, const std::optional<DepthCompressionConfig>& depth_compression
   );
+
+#endif  // AXON_ENABLE_DEPTH_COMPRESSION
 
   // Unsubscribe from a topic
   bool unsubscribe(const std::string& topic_name);
@@ -52,12 +63,22 @@ public:
 
 private:
   ros::NodeHandlePtr node_handle_;
+
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+  // Forward declarations for conditional members
+  struct DepthCompressionConfig;
+  class DepthCompressionFilter;
+#endif
+
   struct SubscriptionInfo {
     ros::Subscriber subscriber;
     MessageCallback callback;
     std::string message_type;
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
     std::shared_ptr<DepthCompressionFilter> depth_filter;
+#endif
   };
+
   std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
   mutable std::mutex mutex_;
 };

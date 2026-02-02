@@ -7,7 +7,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <depth_compression_filter.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -18,7 +17,24 @@
 
 namespace ros2_plugin {
 
-// DepthCompressionConfig is defined in depth_compression_filter.hpp
+// =============================================================================
+// Depth Compression Support (conditional compilation)
+// =============================================================================
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+
+#include <depth_compression_filter.hpp>
+
+#else
+
+// Forward declarations when depth compression is disabled
+struct DepthCompressionConfig {
+  bool enabled = false;
+  std::string level = "medium";
+};
+
+class DepthCompressionFilter;
+
+#endif  // AXON_ENABLE_DEPTH_COMPRESSION
 
 // Message callback type - passes raw serialized message data
 using MessageCallback = std::function<void(
@@ -60,7 +76,9 @@ private:
   struct SubscriptionInfo {
     rclcpp::GenericSubscription::SharedPtr subscription;
     MessageCallback callback;
-    std::unique_ptr<DepthCompressionFilter> compression_filter;
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+    std::shared_ptr<DepthCompressionFilter> compression_filter;
+#endif
   };
   std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
   mutable std::mutex mutex_;

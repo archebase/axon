@@ -20,6 +20,17 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # =============================================================================
+# Options
+# =============================================================================
+option(AXON_ENABLE_DEPTH_COMPRESSION "Enable depth image compression (requires private DepthLiteZ)" OFF)
+
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    message(STATUS "ROS2 Plugin: Depth compression ENABLED")
+else()
+    message(STATUS "ROS2 Plugin: Depth compression DISABLED")
+endif()
+
+# =============================================================================
 # Find ROS2
 # =============================================================================
 
@@ -66,11 +77,22 @@ endforeach()
 # Build the Plugin Library
 # =============================================================================
 
-add_library(axon_ros2_plugin SHARED
+# Core sources (always built)
+set(CORE_SOURCES
     src/ros2_plugin.cpp
     src/ros2_subscription_wrapper.cpp
     src/ros2_plugin_export.cpp
-    src/depth_compression_filter.cpp
+)
+
+# Depth compression sources (conditional)
+set(DEPTH_SOURCES "")
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    list(APPEND DEPTH_SOURCES src/depth_compression_filter.cpp)
+endif()
+
+add_library(axon_ros2_plugin SHARED
+    ${CORE_SOURCES}
+    ${DEPTH_SOURCES}
 )
 
 target_include_directories(axon_ros2_plugin PUBLIC
@@ -92,12 +114,21 @@ ament_target_dependencies(axon_ros2_plugin PUBLIC
     std_msgs
 )
 
-# Link filters library for depth compression
-if(TARGET axon::filters)
-    target_link_libraries(axon_ros2_plugin PRIVATE axon::filters)
-    target_include_directories(axon_ros2_plugin PRIVATE
-        ${AXON_MIDDLEWARES_DIR}/filters/include
-    )
+# Link filters library for depth compression (conditional)
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    if(TARGET axon::filters)
+        target_link_libraries(axon_ros2_plugin PRIVATE axon::filters)
+        target_include_directories(axon_ros2_plugin PRIVATE
+            ${AXON_MIDDLEWARES_DIR}/filters/include
+            ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
+        )
+        target_compile_definitions(axon_ros2_plugin PRIVATE AXON_ENABLE_DEPTH_COMPRESSION)
+    else()
+        message(FATAL_ERROR
+            "AXON_ENABLE_DEPTH_COMPRESSION is ON but axon::filters target not found. "
+            "Build filters first with AXON_ENABLE_DEPTH_COMPRESSION=ON."
+        )
+    endif()
 endif()
 
 # Export all symbols for dynamic loading
@@ -135,8 +166,8 @@ if(AXON_BUILD_TESTS)
             std_msgs
         )
 
-        # Add filters include directory for tests
-        if(TARGET axon::filters)
+        # Add filters include directory for tests (conditional)
+        if(AXON_ENABLE_DEPTH_COMPRESSION AND TARGET axon::filters)
             target_include_directories(${test_name} PRIVATE
                 ${AXON_MIDDLEWARES_DIR}/filters/include
                 ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
@@ -175,5 +206,6 @@ message(STATUS "Axon ROS2 Plugin Configuration:")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  ROS2 Root: ${ROS2_DIR}")
+message(STATUS "  Depth Compression: ${AXON_ENABLE_DEPTH_COMPRESSION}")
 message(STATUS "  Tests Enabled: ${AXON_BUILD_TESTS}")
 message(STATUS "")

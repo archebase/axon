@@ -6,7 +6,9 @@
 
 #include <rcutils/logging_macros.h>
 
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
 #include "depth_compression_filter.hpp"
+#endif
 
 namespace ros2_plugin {
 
@@ -35,17 +37,27 @@ bool SubscriptionManager::subscribe(
   }
 
   try {
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
     // Create compression filter (if configured)
-    std::unique_ptr<DepthCompressionFilter> compression_filter;
-    if (options.depth_compression.has_value()) {
-      compression_filter = std::make_unique<DepthCompressionFilter>(*options.depth_compression);
+    std::shared_ptr<DepthCompressionFilter> compression_filter;
+    if (options.depth_compression.has_value() && options.depth_compression->enabled) {
+      compression_filter = std::make_shared<DepthCompressionFilter>(*options.depth_compression);
       RCUTILS_LOG_INFO(
-        "Depth compression enabled for topic %s: enabled=%s, level=%s",
+        "Depth compression enabled for topic %s: level=%s",
         topic_name.c_str(),
-        options.depth_compression->enabled ? "true" : "false",
         options.depth_compression->level.c_str()
       );
     }
+#else
+    // Depth compression not available at compile time
+    if (options.depth_compression.has_value() && options.depth_compression->enabled) {
+      RCUTILS_LOG_WARN(
+        "Depth compression requested for topic %s but not enabled at build time. "
+        "Rebuild with -DAXON_ENABLE_DEPTH_COMPRESSION=ON to enable.",
+        topic_name.c_str()
+      );
+    }
+#endif
 
     // Create generic subscription using ROS2's built-in API
     // Capture topic_name by value and lookup filter in subscriptions_ map when message arrives
@@ -69,6 +81,7 @@ bool SubscriptionManager::subscribe(
           // Get current time as timestamp
           rclcpp::Time timestamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
 
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
           // Look up compression filter (if exists)
           auto it = subscriptions_.find(topic_name);
           bool has_filter =
@@ -95,6 +108,10 @@ bool SubscriptionManager::subscribe(
             // Direct callback
             callback(topic_name, message_type, data, timestamp);
           }
+#else
+          // Direct callback (no depth compression support)
+          callback(topic_name, message_type, data, timestamp);
+#endif
 
         } catch (const std::exception& e) {
           RCUTILS_LOG_ERROR(
@@ -113,7 +130,9 @@ bool SubscriptionManager::subscribe(
     SubscriptionInfo info;
     info.subscription = subscription;
     info.callback = callback;
-    info.compression_filter = std::move(compression_filter);
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+    info.compression_filter = compression_filter;
+#endif
     subscriptions_[topic_name] = std::move(info);
 
     RCUTILS_LOG_INFO("Subscribed to topic: %s (%s)", topic_name.c_str(), message_type.c_str());

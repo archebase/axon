@@ -20,6 +20,17 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # =============================================================================
+# Options
+# =============================================================================
+option(AXON_ENABLE_DEPTH_COMPRESSION "Enable depth image compression (requires private DepthLiteZ)" OFF)
+
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    message(STATUS "ROS1 Plugin: Depth compression ENABLED")
+else()
+    message(STATUS "ROS1 Plugin: Depth compression DISABLED")
+endif()
+
+# =============================================================================
 # Find ROS1
 # =============================================================================
 
@@ -51,11 +62,22 @@ endif()
 # Build the Plugin Library
 # =============================================================================
 
-add_library(axon_ros1_plugin SHARED
+# Core sources (always built)
+set(CORE_SOURCES
     src/ros1_plugin.cpp
     src/ros1_subscription_wrapper.cpp
     src/ros1_plugin_export.cpp
-    src/depth_compression_filter.cpp
+)
+
+# Depth compression sources (conditional)
+set(DEPTH_SOURCES "")
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    list(APPEND DEPTH_SOURCES src/depth_compression_filter.cpp)
+endif()
+
+add_library(axon_ros1_plugin SHARED
+    ${CORE_SOURCES}
+    ${DEPTH_SOURCES}
 )
 
 target_include_directories(axon_ros1_plugin PUBLIC
@@ -64,17 +86,20 @@ target_include_directories(axon_ros1_plugin PUBLIC
     ${ROS1_INCLUDE_DIR}
 )
 
-# Add filters include directory for depth compression
-target_include_directories(axon_ros1_plugin PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../filters/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../filters/depthlitez/include
-)
+# Add filters include directory for depth compression (conditional)
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    target_include_directories(axon_ros1_plugin PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../filters/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../filters/depthlitez/include
+    )
+    target_compile_definitions(axon_ros1_plugin PRIVATE AXON_ENABLE_DEPTH_COMPRESSION)
+endif()
 
-# Find and link LZ4 and ZSTD for depth compression
-find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
-    pkg_check_modules(LZ4 liblz4 IMPORTED_TARGET)
-    pkg_check_modules(ZSTD libzstd IMPORTED_TARGET)
+# Find and link LZ4 and ZSTD for depth compression (conditional)
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LZ4 REQUIRED liblz4)
+    pkg_check_modules(ZSTD REQUIRED libzstd)
 endif()
 
 # Link ROS1 libraries
@@ -86,17 +111,11 @@ target_link_libraries(axon_ros1_plugin PUBLIC
     nlohmann_json::nlohmann_json
 )
 
-# Link filters library for depth compression
-target_link_libraries(axon_ros1_plugin PRIVATE
-    axon_filters
-)
-
-# Link LZ4 and ZSTD if found
-if(TARGET PkgConfig::LZ4)
-    target_link_libraries(axon_ros1_plugin PRIVATE PkgConfig::LZ4)
-endif()
-if(TARGET PkgConfig::ZSTD)
-    target_link_libraries(axon_ros1_plugin PRIVATE PkgConfig::ZSTD)
+# Link filters library for depth compression (conditional)
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    target_link_libraries(axon_ros1_plugin PRIVATE axon_filters)
+    target_link_libraries(axon_ros1_plugin PRIVATE ${LZ4_LIBRARIES})
+    target_link_libraries(axon_ros1_plugin PRIVATE ${ZSTD_LIBRARIES})
 endif()
 
 # Export all symbols for dynamic loading
@@ -167,5 +186,6 @@ message(STATUS "Axon ROS1 Plugin Configuration:")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  ROS1 Root: ${ROS1_DIR}")
+message(STATUS "  Depth Compression: ${AXON_ENABLE_DEPTH_COMPRESSION}")
 message(STATUS "  Tests Enabled: ${AXON_BUILD_TESTS}")
 message(STATUS "")
