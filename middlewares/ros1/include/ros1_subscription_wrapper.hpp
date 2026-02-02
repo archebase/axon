@@ -15,18 +15,28 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+// Include depth compression filter for DepthCompressionConfig definition
+// This is safe here because dlz.hpp is only included in .cpp files
+#include "depth_compression_filter.hpp"
+#else
+// When depth compression is disabled, define a minimal config struct
+namespace ros1_plugin {
+struct DepthCompressionConfig {
+  bool enabled = false;
+  std::string level = "medium";
+};
+}  // namespace ros1_plugin
+#endif
+
 namespace ros1_plugin {
 
 // =============================================================================
 // Depth Compression Support (conditional compilation)
 // =============================================================================
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
-
-// Forward declarations
-struct DepthCompressionConfig;
 class DepthCompressionFilter;
-
-#endif  // AXON_ENABLE_DEPTH_COMPRESSION
+#endif
 
 // Message callback type - passes raw serialized message data
 using MessageCallback = std::function<void(
@@ -63,12 +73,6 @@ public:
 
 private:
   ros::NodeHandlePtr node_handle_;
-
-#ifdef AXON_ENABLE_DEPTH_COMPRESSION
-  // Forward declarations for conditional members
-  struct DepthCompressionConfig;
-  class DepthCompressionFilter;
-#endif
 
   struct SubscriptionInfo {
     ros::Subscriber subscriber;

@@ -1,6 +1,10 @@
-#include <depth_compressor.hpp>
+// SPDX-FileCopyrightText: 2026 Copyright (c) 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
 
 #include <gtest/gtest.h>
+
+#include <depth_compressor.hpp>
 
 namespace axon {
 namespace depth {
@@ -64,15 +68,15 @@ TEST_F(DepthCompressorTest, CompressionRatio) {
 
 // Test compression format strings
 TEST_F(DepthCompressorTest, CompressionFormatStrings) {
-  config_.level = dlz::CompressionLevel::kFast;
+  config_.level = axon::depth::CompressionLevel::kFast;
   compressor_.set_config(config_);
   EXPECT_EQ(compressor_.get_compression_format(), "dlz_fast");
 
-  config_.level = dlz::CompressionLevel::kMedium;
+  config_.level = axon::depth::CompressionLevel::kMedium;
   compressor_.set_config(config_);
   EXPECT_EQ(compressor_.get_compression_format(), "dlz_medium");
 
-  config_.level = dlz::CompressionLevel::kMax;
+  config_.level = axon::depth::CompressionLevel::kMax;
   compressor_.set_config(config_);
   EXPECT_EQ(compressor_.get_compression_format(), "dlz_max");
 }
@@ -100,9 +104,10 @@ TEST_F(DepthCompressorTest, DifferentCompressionLevels) {
 
   std::vector<size_t> compressed_sizes;
 
-  for (auto level : {dlz::CompressionLevel::kFast,
-                     dlz::CompressionLevel::kMedium,
-                     dlz::CompressionLevel::kMax}) {
+  for (auto level :
+       {axon::depth::CompressionLevel::kFast,
+        axon::depth::CompressionLevel::kMedium,
+        axon::depth::CompressionLevel::kMax}) {
     config_.level = level;
     compressor_.set_config(config_);
 
@@ -120,10 +125,7 @@ TEST_F(DepthCompressorTest, DifferentCompressionLevels) {
 // Test different image sizes
 TEST_F(DepthCompressorTest, DifferentImageSizes) {
   std::vector<std::pair<size_t, size_t>> sizes = {
-    {320, 240},
-    {640, 480},
-    {1280, 720},
-    {1920, 1080}
+    {320, 240}, {640, 480}, {1280, 720}, {1920, 1080}
   };
 
   for (const auto& [width, height] : sizes) {
@@ -133,28 +135,27 @@ TEST_F(DepthCompressorTest, DifferentImageSizes) {
     ASSERT_TRUE(compressor_.compress(depth_data.data(), width, height, compressed))
       << "Failed for size: " << width << "x" << height;
 
-    EXPECT_GT(compressed.size(), 0)
-      << "Empty output for size: " << width << "x" << height;
+    EXPECT_GT(compressed.size(), 0) << "Empty output for size: " << width << "x" << height;
   }
 }
 
 // Test config getter/setter
 TEST_F(DepthCompressorTest, ConfigGetterSetter) {
   DepthCompressor::Config new_config;
-  new_config.level = dlz::CompressionLevel::kMax;
-  new_config.threading = dlz::Threading::kMulti;
+  new_config.level = axon::depth::CompressionLevel::kMax;
+  new_config.threading = axon::depth::Threading::kMulti;
   new_config.num_threads = 4;
   new_config.encoding = "16UC1";
 
   compressor_.set_config(new_config);
 
   const auto& retrieved_config = compressor_.get_config();
-  EXPECT_EQ(retrieved_config.level, dlz::CompressionLevel::kMax);
-  EXPECT_EQ(retrieved_config.threading, dlz::Threading::kMulti);
+  EXPECT_EQ(retrieved_config.level, axon::depth::CompressionLevel::kMax);
+  EXPECT_EQ(retrieved_config.threading, axon::depth::Threading::kMulti);
   EXPECT_EQ(retrieved_config.num_threads, 4);
   EXPECT_EQ(retrieved_config.encoding, "16UC1");
 }
 
-} // namespace test
-} // namespace depth
-} // namespace axon
+}  // namespace test
+}  // namespace depth
+}  // namespace axon

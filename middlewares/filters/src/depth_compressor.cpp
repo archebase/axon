@@ -1,15 +1,17 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #include "depth_compressor.hpp"
 
 #include <cstring>
+#include <dlz.hpp>
 
 namespace axon {
 namespace depth {
 
 bool DepthCompressor::compress(
-  const uint8_t* depth_data,
-  size_t width,
-  size_t height,
-  std::vector<uint8_t>& compressed_data
+  const uint8_t* depth_data, size_t width, size_t height, std::vector<uint8_t>& compressed_data
 ) {
   if (!depth_data || width == 0 || height == 0) {
     return false;
@@ -29,8 +31,8 @@ bool DepthCompressor::compress(
     compressed_buffer,
     0,
     compressed_size,
-    config_.level,
-    config_.threading,
+    static_cast<dlz::CompressionLevel>(config_.level),
+    static_cast<dlz::Threading>(config_.threading),
     config_.num_threads
   );
 
@@ -39,21 +41,18 @@ bool DepthCompressor::compress(
   }
 
   // Copy to output vector
-  compressed_data.assign(
-    compressed_buffer.begin(),
-    compressed_buffer.begin() + compressed_size
-  );
+  compressed_data.assign(compressed_buffer.begin(), compressed_buffer.begin() + compressed_size);
 
   return true;
 }
 
 std::string DepthCompressor::get_compression_format() const {
   switch (config_.level) {
-    case dlz::CompressionLevel::kFast:
+    case CompressionLevel::kFast:
       return "dlz_fast";
-    case dlz::CompressionLevel::kMedium:
+    case CompressionLevel::kMedium:
       return "dlz_medium";
-    case dlz::CompressionLevel::kMax:
+    case CompressionLevel::kMax:
       return "dlz_max";
     default:
       return "dlz_medium";
@@ -64,5 +63,5 @@ void DepthCompressor::set_config(const Config& config) {
   config_ = config;
 }
 
-} // namespace depth
-} // namespace axon
+}  // namespace depth
+}  // namespace axon

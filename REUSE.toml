@@ -103,6 +103,12 @@ SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
+path = ".gitmodules"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
 path = "codecov.yml"
 precedence = "override"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"

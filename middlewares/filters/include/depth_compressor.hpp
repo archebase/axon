@@ -1,13 +1,25 @@
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+
 #pragma once
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include <dlz.hpp>
-
 namespace axon {
 namespace depth {
+
+/**
+ * @brief Compression level for depth compression
+ */
+enum class CompressionLevel : int { kFast = 0, kMedium = 1, kMax = 2 };
+
+/**
+ * @brief Threading mode for compression
+ */
+enum class Threading : int { kSingle = 0, kMulti = 1, kAuto = 2 };
 
 /**
  * @brief Depth image compressor using DepthLiteZ library
@@ -22,9 +34,9 @@ public:
    * @brief Compression configuration
    */
   struct Config {
-    dlz::CompressionLevel level = dlz::CompressionLevel::kMedium;
-    dlz::Threading threading = dlz::Threading::kAuto;
-    int num_threads = 0;  // 0 = auto-detect
+    CompressionLevel level = CompressionLevel::kMedium;
+    Threading threading = Threading::kAuto;
+    int num_threads = 0;             // 0 = auto-detect
     std::string encoding = "16UC1";  // Input encoding format
   };
 
@@ -38,10 +50,7 @@ public:
    * @return true if compression succeeded
    */
   bool compress(
-    const uint8_t* depth_data,
-    size_t width,
-    size_t height,
-    std::vector<uint8_t>& compressed_data
+    const uint8_t* depth_data, size_t width, size_t height, std::vector<uint8_t>& compressed_data
   );
 
   /**
@@ -60,11 +69,13 @@ public:
   /**
    * @brief Get current configuration
    */
-  const Config& get_config() const { return config_; }
+  const Config& get_config() const {
+    return config_;
+  }
 
 private:
   Config config_;
 };
 
-} // namespace depth
-} // namespace axon
+}  // namespace depth
+}  // namespace axon

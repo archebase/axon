@@ -13,7 +13,7 @@
 namespace ros2_plugin {
 
 /**
- * @brief 深度压缩配置
+ * @brief Depth compression configuration
  */
 struct DepthCompressionConfig {
   bool enabled = false;
@@ -21,15 +21,15 @@ struct DepthCompressionConfig {
 };
 
 /**
- * @brief 深度图像压缩过滤器
+ * @brief Depth image compression filter
  *
- * 在 ROS2 插件中使用，将 sensor_msgs::msg::Image (16UC1) 压缩为
- * sensor_msgs::msg::CompressedImage 格式。
+ * Used in ROS2 plugin to compress sensor_msgs::msg::Image (16UC1) to
+ * sensor_msgs::msg::CompressedImage format.
  */
 class DepthCompressionFilter {
 public:
   /**
-   * @brief 处理后的消息回调类型
+   * @brief Processed message callback type
    */
   using ProcessedCallback = std::function<void(
     const std::string& topic, const std::string& message_type, const std::vector<uint8_t>& data,
@@ -37,19 +37,19 @@ public:
   )>;
 
   /**
-   * @brief 构造函数
-   * @param config 深度压缩配置
+   * @brief Constructor
+   * @param config Depth compression configuration
    */
   explicit DepthCompressionFilter(const DepthCompressionConfig& config);
 
   /**
-   * @brief 过滤并处理消息
+   * @brief Filter and process message
    *
-   * @param topic 主题名称
-   * @param message_type 消息类型
-   * @param data 原始消息数据（CDR 序列化的 sensor_msgs::msg::Image）
-   * @param timestamp_ns 时间戳（纳秒）
-   * @param callback 处理后的消息回调
+   * @param topic Topic name
+   * @param message_type Message type
+   * @param data Raw message data (CDR serialized sensor_msgs::msg::Image)
+   * @param timestamp_ns Timestamp in nanoseconds
+   * @param callback Processed message callback
    */
   void filter_and_process(
     const std::string& topic, const std::string& message_type, const std::vector<uint8_t>& data,
@@ -61,15 +61,15 @@ private:
   axon::depth::DepthCompressor compressor_;
 
   /**
-   * @brief 从 ROS Image 消息中提取深度数据
-   * @return 提取的深度数据指针，宽度，高度
+   * @brief Extract depth data from ROS Image message
+   * @return Tuple of depth data pointer, width, height
    */
   std::tuple<const uint8_t*, size_t, size_t> extract_depth_data(
     const std::vector<uint8_t>& image_msg
   );
 
   /**
-   * @brief 构建 CompressedImage 消息
+   * @brief Build CompressedImage message
    */
   std::vector<uint8_t> build_compressed_image_msg(
     const std::string& format, const std::vector<uint8_t>& compressed_data, uint64_t timestamp_ns

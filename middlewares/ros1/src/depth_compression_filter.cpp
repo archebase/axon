@@ -16,12 +16,12 @@ DepthCompressionFilter::DepthCompressionFilter(const DepthCompressionConfig& con
     : config_(config) {
   // Configure compressor
   axon::depth::DepthCompressor::Config compressor_config;
-  if (config.level == "fast") {
-    compressor_config.level = dlz::CompressionLevel::kFast;
-  } else if (config.level == "max") {
-    compressor_config.level = dlz::CompressionLevel::kMax;
+  if (config_.level == "fast") {
+    compressor_config.level = axon::depth::CompressionLevel::kFast;
+  } else if (config_.level == "max") {
+    compressor_config.level = axon::depth::CompressionLevel::kMax;
   } else {
-    compressor_config.level = dlz::CompressionLevel::kMedium;
+    compressor_config.level = axon::depth::CompressionLevel::kMedium;
   }
   compressor_.set_config(compressor_config);
 }

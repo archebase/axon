@@ -15,26 +15,28 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+// Include depth compression filter for DepthCompressionConfig definition
+// This is safe here because dlz.hpp is only included in .cpp files
+#include "depth_compression_filter.hpp"
+#else
+// When depth compression is disabled, define a minimal config struct
+namespace ros2_plugin {
+struct DepthCompressionConfig {
+  bool enabled = false;
+  std::string level = "medium";
+};
+}  // namespace ros2_plugin
+#endif
+
 namespace ros2_plugin {
 
 // =============================================================================
 // Depth Compression Support (conditional compilation)
 // =============================================================================
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
-
-#include <depth_compression_filter.hpp>
-
-#else
-
-// Forward declarations when depth compression is disabled
-struct DepthCompressionConfig {
-  bool enabled = false;
-  std::string level = "medium";
-};
-
 class DepthCompressionFilter;
-
-#endif  // AXON_ENABLE_DEPTH_COMPRESSION
+#endif
 
 // Message callback type - passes raw serialized message data
 using MessageCallback = std::function<void(
@@ -43,13 +45,13 @@ using MessageCallback = std::function<void(
 )>;
 
 /**
- * 订阅选项
+ * @brief Subscription options
  */
 struct SubscribeOptions {
   rclcpp::QoS qos;
-  std::optional<DepthCompressionConfig> depth_compression;  // 深度压缩配置（可选）
+  std::optional<DepthCompressionConfig> depth_compression;  // Depth compression config (optional)
 
-  // 默认构造函数
+  // Default constructor
   SubscribeOptions()
       : qos(10) {}
 };
