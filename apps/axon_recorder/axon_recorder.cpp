@@ -149,8 +149,15 @@ std::string generate_timestamp_filename() {
   auto now = std::chrono::system_clock::now();
   auto time_t_now = std::chrono::system_clock::to_time_t(now);
 
+  std::tm tm_buf;
+#if defined(_WIN32) || defined(_WIN64)
+  localtime_s(&tm_buf, &time_t_now);
+#else
+  localtime_r(&time_t_now, &tm_buf);
+#endif
+
   std::stringstream ss;
-  ss << std::put_time(std::localtime(&time_t_now), "%Y%m%d_%H%M%S");
+  ss << std::put_time(&tm_buf, "%Y%m%d_%H%M%S");
   return ss.str() + ".mcap";
 }
 
