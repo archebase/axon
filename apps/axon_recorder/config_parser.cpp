@@ -121,6 +121,9 @@ bool ConfigParser::parse_dataset(const YAML::Node& node, DatasetConfig& dataset)
   if (node["path"]) {
     dataset.path = node["path"].as<std::string>();
   }
+  if (node["output_file"]) {
+    dataset.output_file = node["output_file"].as<std::string>();
+  }
   if (node["mode"]) {
     dataset.mode = node["mode"].as<std::string>();
   }
