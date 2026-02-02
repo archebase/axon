@@ -50,6 +50,7 @@ set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};${ROS2_DIR}")
 # Find required ROS2 packages
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 # Check for required ROS2 libraries
 set(ROS2_REQUIRED_LIBS
@@ -69,6 +70,7 @@ add_library(axon_ros2_plugin SHARED
     src/ros2_plugin.cpp
     src/ros2_subscription_wrapper.cpp
     src/ros2_plugin_export.cpp
+    src/depth_compression_filter.cpp
 )
 
 target_include_directories(axon_ros2_plugin PUBLIC
@@ -82,9 +84,20 @@ target_link_libraries(axon_ros2_plugin PUBLIC
     nlohmann_json::nlohmann_json
 )
 
+# Link filters library for depth compression
+if(TARGET axon::filters)
+    target_link_libraries(axon_ros2_plugin PRIVATE axon::filters)
+    target_include_directories(axon_ros2_plugin PRIVATE
+        ${AXON_MIDDLEWARES_DIR}/filters/include
+    )
+endif()
+
 # For ROS2 type support macros - we need to link against message libraries
 if(TARGET std_msgs__rosidl_typesupport_cpp)
     target_link_libraries(axon_ros2_plugin PRIVATE std_msgs__rosidl_typesupport_cpp)
+endif()
+if(TARGET sensor_msgs__rosidl_typesupport_cpp)
+    target_link_libraries(axon_ros2_plugin PRIVATE sensor_msgs__rosidl_typesupport_cpp)
 endif()
 
 # Export all symbols for dynamic loading

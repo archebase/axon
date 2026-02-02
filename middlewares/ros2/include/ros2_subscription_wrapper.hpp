@@ -7,20 +7,36 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <depth_compression_filter.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace ros2_plugin {
 
+// DepthCompressionConfig is defined in depth_compression_filter.hpp
+
 // Message callback type - passes raw serialized message data
 using MessageCallback = std::function<void(
   const std::string& topic_name, const std::string& message_type,
   const std::vector<uint8_t>& message_data, rclcpp::Time timestamp
 )>;
+
+/**
+ * 订阅选项
+ */
+struct SubscribeOptions {
+  rclcpp::QoS qos;
+  std::optional<DepthCompressionConfig> depth_compression;  // 深度压缩配置（可选）
+
+  // 默认构造函数
+  SubscribeOptions()
+      : qos(10) {}
+};
 
 class SubscriptionManager {
 public:
@@ -29,7 +45,7 @@ public:
 
   // Subscribe to any topic with any message type
   bool subscribe(
-    const std::string& topic_name, const std::string& message_type, const rclcpp::QoS& qos,
+    const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
     MessageCallback callback
   );
 
@@ -44,6 +60,7 @@ private:
   struct SubscriptionInfo {
     rclcpp::GenericSubscription::SharedPtr subscription;
     MessageCallback callback;
+    std::unique_ptr<DepthCompressionFilter> compression_filter;
   };
   std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
   mutable std::mutex mutex_;

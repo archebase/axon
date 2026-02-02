@@ -6,6 +6,8 @@
 
 #include <rcutils/logging_macros.h>
 
+#include "depth_compression_filter.hpp"
+
 namespace ros2_plugin {
 
 // =============================================================================
@@ -21,7 +23,7 @@ SubscriptionManager::~SubscriptionManager() {
 }
 
 bool SubscriptionManager::subscribe(
-  const std::string& topic_name, const std::string& message_type, const rclcpp::QoS& qos,
+  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
   MessageCallback callback
 ) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -33,13 +35,27 @@ bool SubscriptionManager::subscribe(
   }
 
   try {
+    // 创建压缩过滤器（如果配置了）
+    std::unique_ptr<DepthCompressionFilter> compression_filter;
+    if (options.depth_compression.has_value()) {
+      compression_filter = std::make_unique<DepthCompressionFilter>(*options.depth_compression);
+      RCUTILS_LOG_INFO(
+        "Depth compression enabled for topic %s: enabled=%s, level=%s",
+        topic_name.c_str(),
+        options.depth_compression->enabled ? "true" : "false",
+        options.depth_compression->level.c_str()
+      );
+    }
+
     // Create generic subscription using ROS2's built-in API
-    // Store callback by value to be used in lambda
+    // Capture topic_name by value and lookup filter in subscriptions_ map when message arrives
     auto subscription = node_->create_generic_subscription(
       topic_name,
       message_type,
-      qos,
-      [topic_name, message_type, callback](std::shared_ptr<rclcpp::SerializedMessage> msg) {
+      options.qos,
+      [this, topic_name, message_type, callback](
+        std::shared_ptr<rclcpp::SerializedMessage> msg
+      ) {
         if (!callback) {
           return;
         }
@@ -55,8 +71,35 @@ bool SubscriptionManager::subscribe(
           // Get current time as timestamp
           rclcpp::Time timestamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
 
-          // Invoke callback with serialized data
-          callback(topic_name, message_type, data, timestamp);
+          // 查找压缩过滤器（如果存在）
+          auto it = subscriptions_.find(topic_name);
+          bool has_filter = (it != subscriptions_.end() && it->second.compression_filter != nullptr);
+
+          if (has_filter) {
+            it->second.compression_filter->filter_and_process(
+              topic_name,
+              message_type,
+              data,
+              timestamp.nanoseconds(),
+              [&](
+                const std::string& filtered_topic,
+                const std::string& filtered_type,
+                const std::vector<uint8_t>& filtered_data,
+                uint64_t filtered_timestamp_ns
+              ) {
+                RCUTILS_LOG_DEBUG(
+                  "Processed message on topic %s with type %s, size %zu bytes",
+                  filtered_topic.c_str(), filtered_type.c_str(), filtered_data.size()
+                );
+                // 将纳秒时间戳转换回 rclcpp::Time
+                rclcpp::Time filtered_timestamp(filtered_timestamp_ns);
+                callback(filtered_topic, filtered_type, filtered_data, filtered_timestamp);
+              }
+            );
+          } else {
+            // 直接调用回调
+            callback(topic_name, message_type, data, timestamp);
+          }
 
         } catch (const std::exception& e) {
           RCUTILS_LOG_ERROR(
@@ -71,10 +114,11 @@ bool SubscriptionManager::subscribe(
       return false;
     }
 
-    // Store subscription info with callback
+    // Store subscription info with callback and filter
     SubscriptionInfo info;
     info.subscription = subscription;
     info.callback = callback;
+    info.compression_filter = std::move(compression_filter);
     subscriptions_[topic_name] = std::move(info);
 
     RCUTILS_LOG_INFO("Subscribed to topic: %s (%s)", topic_name.c_str(), message_type.c_str());

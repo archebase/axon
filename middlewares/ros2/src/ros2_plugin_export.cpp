@@ -8,8 +8,13 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
+#include <vector>
+
+// JSON library
+#include <nlohmann/json.hpp>
 
 // ROS2 headers
 #include <rclcpp/rclcpp.hpp>
@@ -18,6 +23,7 @@
 // Plugin implementation headers
 #include "ros2_plugin.hpp"
 #include "ros2_subscription_wrapper.hpp"
+#include <depth_compressor.hpp>  // For DepthCompressionConfig
 
 using namespace ros2_plugin;
 
@@ -116,9 +122,10 @@ static int32_t axon_stop(void) {
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
-// Subscribe to a topic with callback
+// Subscribe to a topic with callback and optional options (JSON string, can be nullptr)
 static int32_t axon_subscribe(
-  const char* topic_name, const char* message_type, AxonMessageCallback callback, void* user_data
+  const char* topic_name, const char* message_type, const char* options_json,
+  AxonMessageCallback callback, void* user_data
 ) {
   if (!topic_name || !message_type || !callback) {
     return static_cast<int32_t>(AXON_ERROR_INVALID_ARGUMENT);
@@ -129,6 +136,33 @@ static int32_t axon_subscribe(
   if (!g_plugin) {
     RCUTILS_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
+  }
+
+  // Parse options JSON if provided
+  SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  options.qos.reliable();
+  options.qos.durability_volatile();
+
+  if (options_json && strlen(options_json) > 0) {
+    try {
+      nlohmann::json opts = nlohmann::json::parse(options_json);
+      if (opts.contains("depth_compression")) {
+        auto dc = opts["depth_compression"];
+        DepthCompressionConfig dc_config;
+        dc_config.enabled = dc.value("enabled", false);
+        dc_config.level = dc.value("level", "medium");
+        options.depth_compression = dc_config;
+        RCUTILS_LOG_INFO(
+          "Depth compression config for %s: enabled=%s, level=%s",
+          topic_name,
+          dc_config.enabled ? "true" : "false",
+          dc_config.level.c_str()
+        );
+      }
+    } catch (const std::exception& e) {
+      RCUTILS_LOG_WARN("Failed to parse options JSON for %s: %s", topic_name, e.what());
+    }
   }
 
   // Create lambda wrapper for the callback
@@ -143,7 +177,7 @@ static int32_t axon_subscribe(
     );
   };
 
-  if (!g_plugin->subscribe(std::string(topic_name), std::string(message_type), wrapper)) {
+  if (!g_plugin->subscribe(std::string(topic_name), std::string(message_type), options, wrapper)) {
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
 
@@ -167,16 +201,16 @@ static int32_t axon_publish(
 // Plugin descriptor export
 // =============================================================================
 
-// Version information
+// Version information (incremented minor version for subscribe signature change)
 #define AXON_ABI_VERSION_MAJOR 1
-#define AXON_ABI_VERSION_MINOR 0
+#define AXON_ABI_VERSION_MINOR 1
 
 // Plugin vtable structure (matching loader's expectation)
 struct AxonPluginVtable {
   int32_t (*init)(const char*);
   int32_t (*start)(void);
   int32_t (*stop)(void);
-  int32_t (*subscribe)(const char*, const char*, AxonMessageCallback, void*);
+  int32_t (*subscribe)(const char*, const char*, const char*, AxonMessageCallback, void*);
   int32_t (*publish)(const char*, const uint8_t*, size_t, const char*);
   void* reserved[9];
 };

@@ -79,6 +79,9 @@ ros
 *.swp
 *~
 
+# Cache
+.cache/
+
 # Python (if any)
 __pycache__/
 *.py[cod]

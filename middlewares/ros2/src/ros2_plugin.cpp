@@ -148,11 +148,24 @@ bool Ros2Plugin::subscribe(
   }
 
   // Default QoS: keep last 10, reliable, volatile
-  rclcpp::QoS qos(10);
-  qos.reliable();
-  qos.durability_volatile();
+  SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  options.qos.reliable();
+  options.qos.durability_volatile();
 
-  return subscription_manager_->subscribe(topic_name, message_type, qos, callback);
+  return subscription_manager_->subscribe(topic_name, message_type, options, callback);
+}
+
+bool Ros2Plugin::subscribe(
+  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+  MessageCallback callback
+) {
+  if (!initialized_.load()) {
+    RCUTILS_LOG_ERROR("Cannot subscribe: plugin not initialized");
+    return false;
+  }
+
+  return subscription_manager_->subscribe(topic_name, message_type, options, callback);
 }
 
 bool Ros2Plugin::unsubscribe(const std::string& topic_name) {
