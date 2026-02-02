@@ -112,8 +112,12 @@ if(AXON_BUILD_UPLOADER AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt")
     add_subdirectory(${AXON_UPLOADER_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_uploader)
 endif()
 
-# Middleware plugins (ROS1, ROS2, Zenoh)
-add_subdirectory(${AXON_MIDDLEWARES_DIR})
+# Filters (depth compression, no dependencies on other Axon modules)
+set(AXON_FILTERS_DIR "${AXON_MIDDLEWARES_DIR}/filters")
+set(AXON_FILTERS_DIR "${AXON_FILTERS_DIR}" CACHE INTERNAL "")
+if(EXISTS "${AXON_FILTERS_DIR}/CMakeLists.txt")
+    add_subdirectory(${AXON_FILTERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/filters)
+endif()
 
 # =============================================================================
 # Applications
