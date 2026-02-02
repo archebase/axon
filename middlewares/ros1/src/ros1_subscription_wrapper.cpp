@@ -8,6 +8,8 @@
 #include <ros/serialization.h>
 #include <topic_tools/shape_shifter.h>
 
+#include "depth_compression_filter.hpp"
+
 namespace ros1_plugin {
 
 // =============================================================================
@@ -63,6 +65,91 @@ bool SubscriptionManager::subscribe(
 
           // Invoke callback with serialized data
           callback(topic_name, actual_type, data, timestamp);
+
+        } catch (const std::exception& e) {
+          ROS_ERROR("Failed to handle message on topic %s: %s", topic_name.c_str(), e.what());
+        }
+      }
+    );
+
+    if (!subscriber) {
+      ROS_ERROR("Failed to create subscription for: %s", topic_name.c_str());
+      return false;
+    }
+
+    // Store subscription info with callback
+    SubscriptionInfo info;
+    info.subscriber = subscriber;
+    info.callback = callback;
+    info.message_type = message_type;
+    subscriptions_[topic_name] = std::move(info);
+
+    ROS_INFO("Subscribed to topic: %s (%s)", topic_name.c_str(), message_type.c_str());
+
+    return true;
+
+  } catch (const std::exception& e) {
+    ROS_ERROR("Exception subscribing to %s: %s", topic_name.c_str(), e.what());
+    return false;
+  }
+}
+
+bool SubscriptionManager::subscribe(
+  const std::string& topic_name, const std::string& message_type, uint32_t queue_size,
+  MessageCallback callback, const std::optional<DepthCompressionConfig>& depth_compression
+) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  // Check if already subscribed
+  if (subscriptions_.find(topic_name) != subscriptions_.end()) {
+    ROS_WARN("Already subscribed to topic: %s", topic_name.c_str());
+    return true;
+  }
+
+  // Create depth compression filter if enabled
+  std::shared_ptr<DepthCompressionFilter> depth_filter;
+  if (depth_compression && depth_compression->enabled) {
+    depth_filter = std::make_shared<DepthCompressionFilter>(*depth_compression);
+    ROS_INFO(
+      "Depth compression enabled for topic: %s (level: %s)",
+      topic_name.c_str(),
+      depth_compression->level.c_str()
+    );
+  }
+
+  try {
+    // Use topic_tools::ShapeShifter to subscribe to any message type
+    auto subscriber = node_handle_->subscribe<topic_tools::ShapeShifter>(
+      topic_name,
+      queue_size,
+      [topic_name, message_type, callback, depth_filter](
+        const typename topic_tools::ShapeShifter::ConstPtr& msg
+      ) {
+        if (!callback) {
+          return;
+        }
+
+        try {
+          // Get the message definition (type) from the ShapeShifter
+          std::string actual_type = msg->getDataType();
+
+          // Serialize the message to a byte array
+          uint32_t serial_size = ros::serialization::serializationLength(*msg);
+          std::vector<uint8_t> data(serial_size);
+
+          ros::serialization::OStream stream(data.data(), serial_size);
+          ros::serialization::serialize(stream, *msg);
+
+          // Get current time as timestamp (nanoseconds)
+          uint64_t timestamp = static_cast<uint64_t>(ros::Time::now().toNSec());
+
+          // Apply depth compression filter if available
+          if (depth_filter) {
+            depth_filter->filter_and_process(topic_name, actual_type, data, timestamp, callback);
+          } else {
+            // Invoke callback directly with serialized data
+            callback(topic_name, actual_type, data, timestamp);
+          }
 
         } catch (const std::exception& e) {
           ROS_ERROR("Failed to handle message on topic %s: %s", topic_name.c_str(), e.what());

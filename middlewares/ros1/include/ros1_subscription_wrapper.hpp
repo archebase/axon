@@ -10,11 +10,16 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace ros1_plugin {
+
+// Forward declarations
+struct DepthCompressionConfig;
+class DepthCompressionFilter;
 
 // Message callback type - passes raw serialized message data
 using MessageCallback = std::function<void(
@@ -33,6 +38,12 @@ public:
     MessageCallback callback
   );
 
+  // Subscribe with optional depth compression
+  bool subscribe(
+    const std::string& topic_name, const std::string& message_type, uint32_t queue_size,
+    MessageCallback callback, const std::optional<DepthCompressionConfig>& depth_compression
+  );
+
   // Unsubscribe from a topic
   bool unsubscribe(const std::string& topic_name);
 
@@ -45,6 +56,7 @@ private:
     ros::Subscriber subscriber;
     MessageCallback callback;
     std::string message_type;
+    std::shared_ptr<DepthCompressionFilter> depth_filter;
   };
   std::unordered_map<std::string, SubscriptionInfo> subscriptions_;
   mutable std::mutex mutex_;

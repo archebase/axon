@@ -55,6 +55,7 @@ add_library(axon_ros1_plugin SHARED
     src/ros1_plugin.cpp
     src/ros1_subscription_wrapper.cpp
     src/ros1_plugin_export.cpp
+    src/depth_compression_filter.cpp
 )
 
 target_include_directories(axon_ros1_plugin PUBLIC
@@ -62,6 +63,19 @@ target_include_directories(axon_ros1_plugin PUBLIC
     $<INSTALL_INTERFACE:include>
     ${ROS1_INCLUDE_DIR}
 )
+
+# Add filters include directory for depth compression
+target_include_directories(axon_ros1_plugin PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../filters/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../filters/depthlitez/include
+)
+
+# Find and link LZ4 and ZSTD for depth compression
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(LZ4 liblz4 IMPORTED_TARGET)
+    pkg_check_modules(ZSTD libzstd IMPORTED_TARGET)
+endif()
 
 # Link ROS1 libraries
 target_link_libraries(axon_ros1_plugin PUBLIC
@@ -71,6 +85,19 @@ target_link_libraries(axon_ros1_plugin PUBLIC
     Boost::system
     nlohmann_json::nlohmann_json
 )
+
+# Link filters library for depth compression
+target_link_libraries(axon_ros1_plugin PRIVATE
+    axon_filters
+)
+
+# Link LZ4 and ZSTD if found
+if(TARGET PkgConfig::LZ4)
+    target_link_libraries(axon_ros1_plugin PRIVATE PkgConfig::LZ4)
+endif()
+if(TARGET PkgConfig::ZSTD)
+    target_link_libraries(axon_ros1_plugin PRIVATE PkgConfig::ZSTD)
+endif()
 
 # Export all symbols for dynamic loading
 target_compile_options(axon_ros1_plugin PRIVATE -fvisibility=default)
