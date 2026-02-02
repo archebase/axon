@@ -59,7 +59,6 @@ void print_usage(const char* program_name) {
     << "  --compression ALG     Compression: none, zstd, lz4 (default: zstd)\n"
     << "  --level LEVEL         Compression level (default: 3)\n"
     << "  --queue-size SIZE     Message queue capacity (default: 1024)\n"
-    << "  --direct              Start recording immediately (like rosbag record)\n"
     << "  --version             Show version information\n"
     << "  --help                Show this help message\n"
     << "\n"
@@ -88,11 +87,6 @@ void print_usage(const char* program_name) {
     << "    GET  /rpc/state       - Get current state\n"
     << "    GET  /rpc/stats       - Get recording statistics\n"
     << "    GET  / or /health     - Health check\n"
-    << "\n"
-    << "Direct Recording Mode (--direct):\n"
-    << "  When --direct is specified, the recorder starts immediately without HTTP RPC.\n"
-    << "  This mode behaves like 'rosbag record' - recording starts on launch and stops\n"
-    << "  on Ctrl+C. Output file is named with timestamp unless --output is specified.\n"
     << "\n"
     << "Configuration File:\n"
     << "  If --config is provided, most options can be specified in a YAML file.\n"
@@ -193,7 +187,6 @@ int main(int argc, char* argv[]) {
   std::string cli_output_file;
   std::string cli_profile;
   std::string cli_compression;
-  std::string cli_output_file;
   int cli_compression_level = -1;
   size_t cli_queue_capacity = 0;
   bool simple_mode = false;
@@ -257,8 +250,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: --queue-size requires a number argument" << std::endl;
         return 1;
       }
-    } else if (strcmp(argv[i], "--direct") == 0) {
-      direct_mode = true;
     } else {
       std::cerr << "Error: Unknown argument: " << argv[i] << std::endl;
       print_usage(argv[0]);
@@ -313,27 +304,6 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // In --direct mode, generate timestamp-based output file if not specified
-  if (direct_mode && config.output_file.empty() && !config.dataset.path.empty()) {
-    // Generate timestamp-based filename: YYYYMMDD_HHMMSS.mcap
-    std::time_t now = std::time(nullptr);
-    std::tm tm_buf;
-    localtime_r(&now, &tm_buf);
-    char timestamp[32];
-    std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm_buf);
-
-    // Ensure path ends with /
-    std::string path = config.dataset.path;
-    if (!path.empty() && path.back() != '/') {
-      path += '/';
-    }
-
-    config.output_file = path + std::string(timestamp) + ".mcap";
-  } else if (direct_mode && config.output_file.empty()) {
-    // Fallback to default if no dataset path specified
-    config.output_file = "recording_" + std::to_string(std::time(nullptr)) + ".mcap";
-  }
-
   // Validate required arguments
   if (config.plugin_path.empty()) {
     std::cerr << "Error: --plugin (or plugin.path in config file) is required" << std::endl;
@@ -343,11 +313,10 @@ int main(int argc, char* argv[]) {
 
   // Print configuration
   std::cout << "Axon Recorder Configuration:\n"
-            << "  Mode:        " << (simple_mode ? "Simple (direct recording)" : "HTTP RPC") << "\n"
+            << "  Mode:        " << (simple_mode ? "Simple" : "HTTP RPC") << "\n"
             << "  Plugin:      " << config.plugin_path << "\n"
             << "  Output:      " << config.output_file << "\n"
             << "  Dataset:     " << config.dataset.path << "\n"
-            << "  Output:      " << config.output_file << "\n"
             << "  Profile:     " << config.profile << "\n"
             << "  Compression: " << config.compression << " level " << config.compression_level
             << "\n"
@@ -415,42 +384,29 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
-  // HTTP RPC mode: start HTTP server and wait for commands
-  // Start HTTP RPC server
+  // HTTP RPC mode - start server and wait for commands
   std::cout << "Starting HTTP RPC server on " << config.http_server.host << ":"
             << config.http_server.port << "..." << std::endl;
 
-    if (!recorder.start()) {
-      std::cerr << "Error: Failed to start recording: " << recorder.get_last_error() << std::endl;
-      return 1;
-    }
+  // Register shutdown callback to set exit flag when /rpc/quit is called
+  recorder.set_shutdown_callback([]() {
+    std::cout << "\nReceived quit request via HTTP RPC..." << std::endl;
+    g_should_exit.store(true);
+  });
 
-    std::cout << "Recording started. Press Ctrl+C to stop." << std::endl;
-  } else {
-    // HTTP RPC mode - start server and wait for commands
-    std::cout << "Starting HTTP RPC server on " << config.http_server.host << ":"
-              << config.http_server.port << "..." << std::endl;
-
-    // Register shutdown callback to set exit flag when /rpc/quit is called
-    recorder.set_shutdown_callback([]() {
-      std::cout << "\nReceived quit request via HTTP RPC..." << std::endl;
-      g_should_exit.store(true);
-    });
-
-    if (!recorder.start_http_server(config.http_server.host, config.http_server.port)) {
-      std::cerr << "Warning: Failed to start HTTP server: " << recorder.get_last_error()
-                << std::endl;
-      std::cerr << "Continuing without HTTP RPC control..." << std::endl;
-    } else {
-      std::cout << "HTTP RPC server listening on http://" << config.http_server.host << ":"
-                << config.http_server.port << std::endl;
-    }
-
-    // Recorder starts in IDLE state, waiting for RPC commands
-    std::cout << "Recorder ready (current state: " << recorder.get_state_string() << ")"
+  if (!recorder.start_http_server(config.http_server.host, config.http_server.port)) {
+    std::cerr << "Warning: Failed to start HTTP server: " << recorder.get_last_error()
               << std::endl;
-    std::cout << "Waiting for RPC commands. Use Ctrl+C to quit." << std::endl;
+    std::cerr << "Continuing without HTTP RPC control..." << std::endl;
+  } else {
+    std::cout << "HTTP RPC server listening on http://" << config.http_server.host << ":"
+              << config.http_server.port << std::endl;
   }
+
+  // Recorder starts in IDLE state, waiting for RPC commands
+  std::cout << "Recorder ready (current state: " << recorder.get_state_string() << ")"
+            << std::endl;
+  std::cout << "Waiting for RPC commands. Use Ctrl+C to quit." << std::endl;
 
   // Wait for quit signal (recording controlled via RPC)
   while (!g_should_exit.load()) {
