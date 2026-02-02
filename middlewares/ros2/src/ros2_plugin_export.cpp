@@ -20,7 +20,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rcutils/logging_macros.h>
 
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
 #include "depth_compressor.hpp"
+#endif
 #include "ros2_plugin.hpp"
 #include "ros2_subscription_wrapper.hpp"
 
@@ -152,6 +154,7 @@ static int32_t axon_subscribe(
   if (options_json && strlen(options_json) > 0) {
     try {
       nlohmann::json opts = nlohmann::json::parse(options_json);
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
       if (opts.contains("depth_compression")) {
         auto dc = opts["depth_compression"];
         DepthCompressionConfig dc_config;
@@ -165,6 +168,16 @@ static int32_t axon_subscribe(
           dc_config.level.c_str()
         );
       }
+#else
+      (void)options;  // Suppress unused warning when depth compression is disabled
+      if (opts.contains("depth_compression") && opts["depth_compression"].value("enabled", false)) {
+        RCUTILS_LOG_WARN(
+          "Depth compression requested for %s but not enabled at build time. "
+          "Rebuild with -DAXON_ENABLE_DEPTH_COMPRESSION=ON to enable.",
+          topic_name
+        );
+      }
+#endif
     } catch (const std::exception& e) {
       RCUTILS_LOG_WARN("Failed to parse options JSON for %s: %s", topic_name, e.what());
     }
