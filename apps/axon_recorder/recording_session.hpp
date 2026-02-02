@@ -105,14 +105,15 @@ public:
    * Register a channel (topic).
    *
    * @param topic Topic name (e.g., "/camera/image_raw")
+   * @param message_type Message type (e.g., "sensor_msgs/msg/Image")
    * @param message_encoding Message encoding ("ros1", "cdr", etc.)
    * @param schema_id Schema ID from register_schema()
    * @param metadata Optional channel metadata
    * @return Channel ID for use with write(), or 0 on failure
    */
   uint16_t register_channel(
-    const std::string& topic, const std::string& message_encoding, uint16_t schema_id,
-    const std::unordered_map<std::string, std::string>& metadata = {}
+    const std::string& topic, const std::string& message_type, const std::string& message_encoding,
+    uint16_t schema_id, const std::unordered_map<std::string, std::string>& metadata = {}
   );
 
   /**
@@ -139,6 +140,17 @@ public:
    * @return Channel ID, or 0 if not registered
    */
   uint16_t get_channel_id(const std::string& topic) const;
+
+  /**
+   * Get or create a channel ID for a topic with a specific message type.
+   * If the topic+message_type combination doesn't exist, a new channel is created.
+   * This is used for dynamic message type conversion (e.g., depth compression).
+   *
+   * @param topic Topic name
+   * @param message_type Message type name
+   * @return Channel ID, or 0 if failed
+   */
+  uint16_t get_or_create_channel(const std::string& topic, const std::string& message_type);
 
   /**
    * Get the schema ID for a message type.

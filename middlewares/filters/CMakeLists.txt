@@ -53,16 +53,21 @@ endif()
 target_include_directories(axon_filters
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${DEPTHLITEZ_DIR}/include>
     $<INSTALL_INTERFACE:include>
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${DEPTHLITEZ_DIR}/include
 )
 
 target_link_libraries(axon_filters
   PUBLIC
     ${LZ4_LIBRARIES}
     ${ZSTD_LIBRARIES}
+)
+
+# Ensure PIC is used for static library (required when linking into shared library)
+set_target_properties(axon_filters PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_options(axon_filters

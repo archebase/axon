@@ -20,10 +20,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rcutils/logging_macros.h>
 
-// Plugin implementation headers
+#include "depth_compressor.hpp"
 #include "ros2_plugin.hpp"
 #include "ros2_subscription_wrapper.hpp"
-#include <depth_compressor.hpp>  // For DepthCompressionConfig
 
 using namespace ros2_plugin;
 
@@ -128,6 +127,12 @@ static int32_t axon_subscribe(
   AxonMessageCallback callback, void* user_data
 ) {
   if (!topic_name || !message_type || !callback) {
+    RCUTILS_LOG_ERROR(
+      "Invalid argument: topic=%p, type=%p, callback=%p",
+      (void*)topic_name,
+      (void*)message_type,
+      (void*)callback
+    );
     return static_cast<int32_t>(AXON_ERROR_INVALID_ARGUMENT);
   }
 
@@ -228,7 +233,12 @@ struct AxonPluginDescriptor {
 
 // Static vtable
 static AxonPluginVtable ros2_vtable = {
-  axon_init, axon_start, axon_stop, axon_subscribe, axon_publish, {nullptr}
+  axon_init,
+  axon_start,
+  axon_stop,
+  axon_subscribe,
+  axon_publish,
+  {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}
 };
 
 // Exported plugin descriptor

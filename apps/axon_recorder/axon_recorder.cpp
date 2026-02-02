@@ -395,8 +395,7 @@ int main(int argc, char* argv[]) {
   });
 
   if (!recorder.start_http_server(config.http_server.host, config.http_server.port)) {
-    std::cerr << "Warning: Failed to start HTTP server: " << recorder.get_last_error()
-              << std::endl;
+    std::cerr << "Warning: Failed to start HTTP server: " << recorder.get_last_error() << std::endl;
     std::cerr << "Continuing without HTTP RPC control..." << std::endl;
   } else {
     std::cout << "HTTP RPC server listening on http://" << config.http_server.host << ":"
@@ -404,8 +403,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Recorder starts in IDLE state, waiting for RPC commands
-  std::cout << "Recorder ready (current state: " << recorder.get_state_string() << ")"
-            << std::endl;
+  std::cout << "Recorder ready (current state: " << recorder.get_state_string() << ")" << std::endl;
   std::cout << "Waiting for RPC commands. Use Ctrl+C to quit." << std::endl;
 
   // Wait for quit signal (recording controlled via RPC)

@@ -28,12 +28,14 @@ namespace recorder {
  */
 struct MessageItem {
   int64_t timestamp_ns = 0;
+  std::string message_type;       // ROS2 message type (e.g., "sensor_msgs::msg::Image")
   std::vector<uint8_t> raw_data;  // Owned raw message bytes
 
   MessageItem() = default;
 
-  MessageItem(int64_t ts, std::vector<uint8_t>&& data)
+  MessageItem(int64_t ts, const std::string& type, std::vector<uint8_t>&& data)
       : timestamp_ns(ts)
+      , message_type(type)
       , raw_data(std::move(data)) {}
 
   // Move-only for zero-copy
@@ -110,8 +112,8 @@ public:
    * Returns: true if message was processed successfully
    */
   using MessageHandler = std::function<bool(
-    const std::string& topic, int64_t timestamp_ns, const uint8_t* data, size_t data_size,
-    uint32_t sequence
+    const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+    const uint8_t* data, size_t data_size, uint32_t sequence
   )>;
 
   /**

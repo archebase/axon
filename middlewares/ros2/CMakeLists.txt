@@ -76,6 +76,7 @@ add_library(axon_ros2_plugin SHARED
 target_include_directories(axon_ros2_plugin PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+    ${ROS2_INCLUDE_DIR}
 )
 
 # Link ROS2 libraries
@@ -84,20 +85,19 @@ target_link_libraries(axon_ros2_plugin PUBLIC
     nlohmann_json::nlohmann_json
 )
 
+# Use ament_target_dependencies for ROS2 dependencies (handles all includes and linking)
+ament_target_dependencies(axon_ros2_plugin PUBLIC
+    rclcpp
+    sensor_msgs
+    std_msgs
+)
+
 # Link filters library for depth compression
 if(TARGET axon::filters)
     target_link_libraries(axon_ros2_plugin PRIVATE axon::filters)
     target_include_directories(axon_ros2_plugin PRIVATE
         ${AXON_MIDDLEWARES_DIR}/filters/include
     )
-endif()
-
-# For ROS2 type support macros - we need to link against message libraries
-if(TARGET std_msgs__rosidl_typesupport_cpp)
-    target_link_libraries(axon_ros2_plugin PRIVATE std_msgs__rosidl_typesupport_cpp)
-endif()
-if(TARGET sensor_msgs__rosidl_typesupport_cpp)
-    target_link_libraries(axon_ros2_plugin PRIVATE sensor_msgs__rosidl_typesupport_cpp)
 endif()
 
 # Export all symbols for dynamic loading
@@ -127,6 +127,21 @@ if(AXON_BUILD_TESTS)
             rclcpp::rclcpp
             GTest::GTest
         )
+
+        # Use ament_target_dependencies for ROS2 dependencies in tests
+        ament_target_dependencies(${test_name}
+            rclcpp
+            sensor_msgs
+            std_msgs
+        )
+
+        # Add filters include directory for tests
+        if(TARGET axon::filters)
+            target_include_directories(${test_name} PRIVATE
+                ${AXON_MIDDLEWARES_DIR}/filters/include
+                ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
+            )
+        endif()
 
         # Add test labels
         set_target_properties(${test_name} PROPERTIES

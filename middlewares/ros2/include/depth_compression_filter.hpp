@@ -6,7 +6,6 @@
 #define ROS2_DEPTH_COMPRESSION_FILTER_HPP
 
 #include <depth_compressor.hpp>
-
 #include <functional>
 #include <string>
 #include <vector>
@@ -33,9 +32,7 @@ public:
    * @brief 处理后的消息回调类型
    */
   using ProcessedCallback = std::function<void(
-    const std::string& topic,
-    const std::string& message_type,
-    const std::vector<uint8_t>& data,
+    const std::string& topic, const std::string& message_type, const std::vector<uint8_t>& data,
     uint64_t timestamp_ns
   )>;
 
@@ -55,11 +52,8 @@ public:
    * @param callback 处理后的消息回调
    */
   void filter_and_process(
-    const std::string& topic,
-    const std::string& message_type,
-    const std::vector<uint8_t>& data,
-    uint64_t timestamp_ns,
-    ProcessedCallback callback
+    const std::string& topic, const std::string& message_type, const std::vector<uint8_t>& data,
+    uint64_t timestamp_ns, ProcessedCallback callback
   );
 
 private:
@@ -78,9 +72,7 @@ private:
    * @brief 构建 CompressedImage 消息
    */
   std::vector<uint8_t> build_compressed_image_msg(
-    const std::string& format,
-    const std::vector<uint8_t>& compressed_data,
-    uint64_t timestamp_ns
+    const std::string& format, const std::vector<uint8_t>& compressed_data, uint64_t timestamp_ns
   );
 };
 

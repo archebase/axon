@@ -158,14 +158,20 @@ bool ConfigParser::parse_subscriptions(
     if (subscription_node["flush_interval_ms"]) {
       subscription.flush_interval_ms = subscription_node["flush_interval_ms"].as<int>();
     }
-    // Parse depth_compression section
+    // Parse depth_compression section (can be boolean or object)
     if (subscription_node["depth_compression"]) {
       const auto& dc_node = subscription_node["depth_compression"];
-      if (dc_node["enabled"]) {
-        subscription.depth_compression.enabled = dc_node["enabled"].as<bool>();
-      }
-      if (dc_node["level"]) {
-        subscription.depth_compression.level = dc_node["level"].as<std::string>();
+      // Check if it's a boolean (simple form: depth_compression: true)
+      if (dc_node.IsScalar()) {
+        subscription.depth_compression.enabled = dc_node.as<bool>();
+      } else if (dc_node.IsMap()) {
+        // Object form: depth_compression: { enabled: true, level: fast }
+        if (dc_node["enabled"]) {
+          subscription.depth_compression.enabled = dc_node["enabled"].as<bool>();
+        }
+        if (dc_node["level"]) {
+          subscription.depth_compression.level = dc_node["level"].as<std::string>();
+        }
       }
     }
     subscriptions.push_back(subscription);

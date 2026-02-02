@@ -483,8 +483,9 @@ TEST_F(SubscriptionManagerTest, SubscribeToTopic) {
     callback_count++;
   };
 
-  rclcpp::QoS qos(10);
-  bool result = manager_->subscribe("/test_topic", "std_msgs/msg/String", qos, callback);
+  ros2_plugin::SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  bool result = manager_->subscribe("/test_topic", "std_msgs/msg/String", options, callback);
 
   // Subscribe should succeed (creates subscription even if no publisher)
   EXPECT_TRUE(result);
@@ -501,8 +502,9 @@ TEST_F(SubscriptionManagerTest, UnsubscribeFromTopic) {
   auto callback =
     [](const std::string&, const std::string&, const std::vector<uint8_t>&, rclcpp::Time) {};
 
-  rclcpp::QoS qos(10);
-  ASSERT_TRUE(manager_->subscribe("/test_topic", "std_msgs/msg/String", qos, callback));
+  ros2_plugin::SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  ASSERT_TRUE(manager_->subscribe("/test_topic", "std_msgs/msg/String", options, callback));
 
   // Unsubscribe should succeed
   EXPECT_TRUE(manager_->unsubscribe("/test_topic"));
@@ -522,11 +524,14 @@ TEST_F(SubscriptionManagerTest, DoubleSubscribeSameTopic) {
   auto callback =
     [](const std::string&, const std::string&, const std::vector<uint8_t>&, rclcpp::Time) {};
 
-  rclcpp::QoS qos(10);
-  ASSERT_TRUE(manager_->subscribe("/test_topic", "std_msgs/msg/String", qos, callback));
+  ros2_plugin::SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  ASSERT_TRUE(manager_->subscribe("/test_topic", "std_msgs/msg/String", options, callback));
 
   // Second subscribe should return true (already subscribed, but not an error)
-  bool result = manager_->subscribe("/test_topic", "std_msgs/msg/String", qos, callback);
+  ros2_plugin::SubscribeOptions options2;
+  options2.qos = rclcpp::QoS(10);
+  bool result = manager_->subscribe("/test_topic", "std_msgs/msg/String", options2, callback);
   EXPECT_TRUE(result);
 
   // Should still only have one subscription
@@ -543,9 +548,13 @@ TEST_F(SubscriptionManagerTest, SubscribeToMultipleTopics) {
 
   rclcpp::QoS qos(10);
 
-  EXPECT_TRUE(manager_->subscribe("/topic1", "std_msgs/msg/String", qos, callback));
-  EXPECT_TRUE(manager_->subscribe("/topic2", "std_msgs/msg/Int32", qos, callback));
-  EXPECT_TRUE(manager_->subscribe("/topic3", "sensor_msgs/msg/Image", qos, callback));
+  ros2_plugin::SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  EXPECT_TRUE(manager_->subscribe("/topic1", "std_msgs/msg/String", options, callback));
+  options.qos = rclcpp::QoS(10);
+  EXPECT_TRUE(manager_->subscribe("/topic2", "std_msgs/msg/Int32", options, callback));
+  options.qos = rclcpp::QoS(10);
+  EXPECT_TRUE(manager_->subscribe("/topic3", "sensor_msgs/msg/Image", options, callback));
 
   auto topics = manager_->get_subscribed_topics();
   EXPECT_EQ(topics.size(), 3);
@@ -558,10 +567,12 @@ TEST_F(SubscriptionManagerTest, GetSubscribedTopicsReturnsCorrectTopics) {
   auto callback =
     [](const std::string&, const std::string&, const std::vector<uint8_t>&, rclcpp::Time) {};
 
-  rclcpp::QoS qos(10);
+  ros2_plugin::SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
 
-  manager_->subscribe("/topic1", "std_msgs/msg/String", qos, callback);
-  manager_->subscribe("/topic2", "std_msgs/msg/Int32", qos, callback);
+  manager_->subscribe("/topic1", "std_msgs/msg/String", options, callback);
+  options.qos = rclcpp::QoS(10);
+  manager_->subscribe("/topic2", "std_msgs/msg/Int32", options, callback);
 
   auto topics = manager_->get_subscribed_topics();
   EXPECT_EQ(topics.size(), 2);
@@ -589,8 +600,9 @@ TEST_F(SubscriptionManagerTest, CallbackIsStored) {
     callback_count++;
   };
 
-  rclcpp::QoS qos(10);
-  bool result = manager_->subscribe("/test_topic", "std_msgs/msg/String", qos, callback);
+  ros2_plugin::SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  bool result = manager_->subscribe("/test_topic", "std_msgs/msg/String", options, callback);
 
   EXPECT_TRUE(result);
   // We can't verify callback is actually called without publishing,
@@ -604,8 +616,9 @@ TEST_F(SubscriptionManagerTest, DestructorCleansUpSubscriptions) {
   auto callback =
     [](const std::string&, const std::string&, const std::vector<uint8_t>&, rclcpp::Time) {};
 
-  rclcpp::QoS qos(10);
-  ASSERT_TRUE(manager_->subscribe("/test_topic", "std_msgs/msg/String", qos, callback));
+  ros2_plugin::SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  ASSERT_TRUE(manager_->subscribe("/test_topic", "std_msgs/msg/String", options, callback));
 
   // Destroy manager
   manager_.reset();

@@ -4,6 +4,8 @@
 
 #include "recorder.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <cstring>
 #include <ctime>
@@ -11,8 +13,6 @@
 #include <iostream>
 #include <mutex>
 #include <thread>
-
-#include <nlohmann/json.hpp>
 
 #include "mcap_writer_wrapper.hpp"
 
@@ -177,7 +177,7 @@ bool AxonRecorder::start() {
 
   // Setup subscriptions via plugin
   if (!setup_subscriptions()) {
-    set_error_helper("Failed to setup subscriptions");
+    set_error_helper("Failed to setup subscriptions: " + get_last_error());
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     recording_session_.reset();
     return false;
@@ -525,6 +525,7 @@ void AxonRecorder::on_message(
   // Create MessageItem and push to worker pool
   MessageItem item;
   item.timestamp_ns = static_cast<int64_t>(timestamp);
+  item.message_type = message_type;  // Save the message type
   item.raw_data.assign(message_data, message_data + message_size);
 
   // Push to the topic's queue (worker pool handles this)
@@ -536,8 +537,8 @@ void AxonRecorder::on_message(
 }
 
 bool AxonRecorder::message_handler(
-  const std::string& topic, int64_t timestamp_ns, const uint8_t* data, size_t data_size,
-  uint32_t sequence
+  const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+  const uint8_t* data, size_t data_size, uint32_t sequence
 ) {
   if (!recording_session_) {
     return false;  // No active recording session
@@ -545,11 +546,12 @@ bool AxonRecorder::message_handler(
 
   // Note: Depth compression is now handled by the ROS2 plugin
   // The plugin converts Image to CompressedImage if compression is enabled
+  // message_type may differ from the original subscription type
 
-  // Get channel ID for this topic from recording session
-  uint16_t channel_id = recording_session_->get_channel_id(topic);
+  // Get or create channel ID for this topic + message_type combination
+  uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
   if (channel_id == 0) {
-    return false;  // Channel not found
+    return false;  // Channel not found or failed to create
   }
 
   uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
@@ -590,9 +592,10 @@ bool AxonRecorder::register_topics() {
       return false;
     }
 
-    // Register channel
+    // Register channel using composite key (topic + message_type)
+    // This allows the same topic to have different message types (e.g., Image and CompressedImage)
     uint16_t channel_id = recording_session_->register_channel(
-      sub.topic_name, config_.profile == "ros1" ? "ros1" : "cdr", schema_id
+      sub.topic_name, sub.message_type, config_.profile == "ros1" ? "ros1" : "cdr", schema_id
     );
 
     if (channel_id == 0) {
@@ -608,11 +611,12 @@ bool AxonRecorder::register_topics() {
     auto handler = std::bind(
       &AxonRecorder::message_handler,
       this,
-      std::placeholders::_1,
-      std::placeholders::_2,
-      std::placeholders::_3,
-      std::placeholders::_4,
-      std::placeholders::_5
+      std::placeholders::_1,  // topic
+      std::placeholders::_2,  // message_type
+      std::placeholders::_3,  // timestamp_ns
+      std::placeholders::_4,  // data
+      std::placeholders::_5,  // data_size
+      std::placeholders::_6   // sequence
     );
 
     if (!worker_pool_->create_topic_worker(sub.topic_name, handler)) {
@@ -632,8 +636,13 @@ bool AxonRecorder::setup_subscriptions() {
   }
 
   const auto* descriptor = plugin_loader_.get_descriptor(plugins[0]);
-  if (!descriptor || !descriptor->vtable || !descriptor->vtable->subscribe) {
-    set_error_helper("Plugin does not support subscribe");
+  if (!descriptor || !descriptor->vtable) {
+    set_error_helper("Invalid plugin descriptor or vtable");
+    return false;
+  }
+
+  if (!descriptor->vtable->subscribe) {
+    set_error_helper("Plugin does not support subscribe (null function pointer)");
     return false;
   }
 
@@ -649,9 +658,11 @@ bool AxonRecorder::setup_subscriptions() {
     }
 
     AxonStatus status = descriptor->vtable->subscribe(
-      sub.topic_name.c_str(), sub.message_type.c_str(),
+      sub.topic_name.c_str(),
+      sub.message_type.c_str(),
       options_json.empty() ? nullptr : options_json.c_str(),
-      message_callback, this
+      message_callback,
+      this
     );
 
     if (status != AXON_SUCCESS) {

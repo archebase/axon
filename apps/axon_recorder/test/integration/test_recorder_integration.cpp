@@ -160,8 +160,8 @@ static axon::AxonStatus mock_stop() {
 }
 
 static axon::AxonStatus mock_subscribe(
-  const char* topic, const char* type, const char* options_json,
-  axon::AxonMessageCallback callback, void* user_data
+  const char* topic, const char* type, const char* options_json, axon::AxonMessageCallback callback,
+  void* user_data
 ) {
   return MockPlugin::subscribe(topic, type, options_json, callback, user_data);
 }

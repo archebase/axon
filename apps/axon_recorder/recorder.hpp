@@ -336,8 +336,8 @@ private:
    * Called by per-topic worker threads to process messages
    */
   bool message_handler(
-    const std::string& topic, int64_t timestamp_ns, const uint8_t* data, size_t data_size,
-    uint32_t sequence
+    const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+    const uint8_t* data, size_t data_size, uint32_t sequence
   );
 
   /**

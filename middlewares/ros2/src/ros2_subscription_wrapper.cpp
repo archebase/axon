@@ -35,7 +35,7 @@ bool SubscriptionManager::subscribe(
   }
 
   try {
-    // 创建压缩过滤器（如果配置了）
+    // Create compression filter (if configured)
     std::unique_ptr<DepthCompressionFilter> compression_filter;
     if (options.depth_compression.has_value()) {
       compression_filter = std::make_unique<DepthCompressionFilter>(*options.depth_compression);
@@ -53,9 +53,7 @@ bool SubscriptionManager::subscribe(
       topic_name,
       message_type,
       options.qos,
-      [this, topic_name, message_type, callback](
-        std::shared_ptr<rclcpp::SerializedMessage> msg
-      ) {
+      [this, topic_name, message_type, callback](std::shared_ptr<rclcpp::SerializedMessage> msg) {
         if (!callback) {
           return;
         }
@@ -71,9 +69,10 @@ bool SubscriptionManager::subscribe(
           // Get current time as timestamp
           rclcpp::Time timestamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
 
-          // 查找压缩过滤器（如果存在）
+          // Look up compression filter (if exists)
           auto it = subscriptions_.find(topic_name);
-          bool has_filter = (it != subscriptions_.end() && it->second.compression_filter != nullptr);
+          bool has_filter =
+            (it != subscriptions_.end() && it->second.compression_filter != nullptr);
 
           if (has_filter) {
             it->second.compression_filter->filter_and_process(
@@ -87,17 +86,13 @@ bool SubscriptionManager::subscribe(
                 const std::vector<uint8_t>& filtered_data,
                 uint64_t filtered_timestamp_ns
               ) {
-                RCUTILS_LOG_DEBUG(
-                  "Processed message on topic %s with type %s, size %zu bytes",
-                  filtered_topic.c_str(), filtered_type.c_str(), filtered_data.size()
-                );
-                // 将纳秒时间戳转换回 rclcpp::Time
+                // Convert nanosecond timestamp back to rclcpp::Time
                 rclcpp::Time filtered_timestamp(filtered_timestamp_ns);
                 callback(filtered_topic, filtered_type, filtered_data, filtered_timestamp);
               }
             );
           } else {
-            // 直接调用回调
+            // Direct callback
             callback(topic_name, message_type, data, timestamp);
           }
 

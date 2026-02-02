@@ -79,6 +79,7 @@ TEST_F(WorkerThreadPoolTest, CreateTopicWorker) {
   std::atomic<int> message_count{0};
   auto handler = [&](
                    const std::string& /* topic */,
+                   const std::string& /* message_type */,
                    int64_t /* ts */,
                    const uint8_t* /* data */,
                    size_t /* size */,
@@ -97,9 +98,10 @@ TEST_F(WorkerThreadPoolTest, CreateTopicWorker) {
 }
 
 TEST_F(WorkerThreadPoolTest, CannotCreateDuplicateTopic) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   EXPECT_TRUE(pool_->create_topic_worker("/test", handler));
   EXPECT_FALSE(pool_->create_topic_worker("/test", handler));
@@ -107,9 +109,10 @@ TEST_F(WorkerThreadPoolTest, CannotCreateDuplicateTopic) {
 }
 
 TEST_F(WorkerThreadPoolTest, RemoveTopicWorker) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/topic1", handler);
   pool_->create_topic_worker("/topic2", handler);
@@ -124,18 +127,19 @@ TEST_F(WorkerThreadPoolTest, RemoveTopicWorker) {
 }
 
 TEST_F(WorkerThreadPoolTest, TryPush) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
 
   // Push should succeed when pool exists
-  MessageItem item(12345, {0x01, 0x02});
+  MessageItem item(12345, "test_type", {0x01, 0x02});
   EXPECT_TRUE(pool_->try_push("/test", std::move(item)));
 
   // Push to non-existent topic should fail
-  MessageItem item2(12345, {0x01});
+  MessageItem item2(12345, "test_type", {0x01});
   EXPECT_FALSE(pool_->try_push("/nonexistent", std::move(item2)));
 }
 
@@ -146,6 +150,7 @@ TEST_F(WorkerThreadPoolTest, MessageProcessing) {
 
   auto handler = [&](
                    const std::string& topic,
+                   const std::string& /* message_type */,
                    int64_t ts,
                    const uint8_t* /* data */,
                    size_t /* size */,
@@ -165,7 +170,7 @@ TEST_F(WorkerThreadPoolTest, MessageProcessing) {
 
   // Push some messages
   for (int i = 0; i < 10; ++i) {
-    MessageItem item(i * 1000, {static_cast<uint8_t>(i)});
+    MessageItem item(i * 1000, "test_type", {static_cast<uint8_t>(i)});
     EXPECT_TRUE(pool_->try_push("/test", std::move(item)));
   }
 
@@ -193,10 +198,11 @@ TEST_F(WorkerThreadPoolTest, MessageProcessing) {
 TEST_F(WorkerThreadPoolTest, PauseResume) {
   std::atomic<int> processed_count{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed_count.fetch_add(1);
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed_count.fetch_add(1);
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
@@ -208,7 +214,7 @@ TEST_F(WorkerThreadPoolTest, PauseResume) {
 
   // Push messages while paused
   for (int i = 0; i < 5; ++i) {
-    MessageItem item(i, {static_cast<uint8_t>(i)});
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -241,16 +247,17 @@ TEST_F(WorkerThreadPoolTest, PauseResume) {
 TEST_F(WorkerThreadPoolTest, StatsTracking) {
   std::atomic<bool> should_succeed{true};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return should_succeed.load();
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return should_succeed.load();
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push messages
   for (int i = 0; i < 10; ++i) {
-    MessageItem item(i, {static_cast<uint8_t>(i)});
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -267,9 +274,10 @@ TEST_F(WorkerThreadPoolTest, StatsTracking) {
 }
 
 TEST_F(WorkerThreadPoolTest, AggregateStats) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/topic1", handler);
   pool_->create_topic_worker("/topic2", handler);
@@ -277,13 +285,13 @@ TEST_F(WorkerThreadPoolTest, AggregateStats) {
 
   // Push to topic1
   for (int i = 0; i < 5; ++i) {
-    MessageItem item(i, {static_cast<uint8_t>(i)});
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
     pool_->try_push("/topic1", std::move(item));
   }
 
   // Push to topic2
   for (int i = 0; i < 3; ++i) {
-    MessageItem item(i, {static_cast<uint8_t>(i)});
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
     pool_->try_push("/topic2", std::move(item));
   }
 
@@ -301,16 +309,17 @@ TEST_F(WorkerThreadPoolTest, AggregateStats) {
 TEST_F(WorkerThreadPoolTest, QueueDrainOnStop) {
   std::atomic<int> processed{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed.fetch_add(1);
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed.fetch_add(1);
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
 
   // Don't start yet - just queue messages
   for (int i = 0; i < 100; ++i) {
-    MessageItem item(i, {static_cast<uint8_t>(i % 256)});
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i % 256)});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -326,18 +335,19 @@ TEST_F(WorkerThreadPoolTest, SequenceNumbers) {
   std::vector<uint32_t> received_sequences;
   std::mutex seq_mutex;
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t seq) {
-    std::lock_guard<std::mutex> lock(seq_mutex);
-    received_sequences.push_back(seq);
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t seq) {
+      std::lock_guard<std::mutex> lock(seq_mutex);
+      received_sequences.push_back(seq);
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push messages
   for (int i = 0; i < 10; ++i) {
-    MessageItem item(i, {static_cast<uint8_t>(i)});
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -376,9 +386,10 @@ TEST_F(WorkerThreadPoolTest, StopCalledMultipleTimes) {
 }
 
 TEST_F(WorkerThreadPoolTest, TryPushAfterStop) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
@@ -386,7 +397,7 @@ TEST_F(WorkerThreadPoolTest, TryPushAfterStop) {
 
   // Try to push after stop - behavior depends on implementation
   // The queue might still accept items even after stop
-  MessageItem item(12345, {0x01, 0x02});
+  MessageItem item(12345, "test_type", {0x01, 0x02});
   bool result = pool_->try_push("/test", std::move(item));
 
   // Just verify it doesn't crash - result may vary
@@ -404,9 +415,10 @@ TEST_F(WorkerThreadPoolTest, GetTopicStatsNonexistentTopic) {
 }
 
 TEST_F(WorkerThreadPoolTest, CreateTopicWorkerDuplicateName) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   // First creation should succeed
   EXPECT_TRUE(pool_->create_topic_worker("/duplicate", handler));
@@ -422,9 +434,10 @@ TEST_F(WorkerThreadPoolTest, CreateTopicWorkerDuplicateName) {
 }
 
 TEST_F(WorkerThreadPoolTest, RemoveNonexistentTopic) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/exists", handler);
   EXPECT_EQ(pool_->topic_count(), 1);
@@ -456,25 +469,27 @@ TEST_F(WorkerThreadPoolTest, CreateTopicWorkerWhileRunning) {
   pool_->start();
   EXPECT_TRUE(pool_->is_running());
 
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   // Should be able to create topic while running
   EXPECT_TRUE(pool_->create_topic_worker("/new_topic", handler));
   EXPECT_EQ(pool_->topic_count(), 1);
 
   // Push to new topic
-  MessageItem item(12345, {0x01});
+  MessageItem item(12345, "test_type", {0x01});
   EXPECT_TRUE(pool_->try_push("/new_topic", std::move(item)));
 
   pool_->stop();
 }
 
 TEST_F(WorkerThreadPoolTest, RemoveTopicWorkerWhileRunning) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/topic1", handler);
   pool_->create_topic_worker("/topic2", handler);
@@ -487,11 +502,11 @@ TEST_F(WorkerThreadPoolTest, RemoveTopicWorkerWhileRunning) {
   EXPECT_EQ(pool_->topic_count(), 1);
 
   // Push to removed topic should fail
-  MessageItem item(12345, {0x01});
+  MessageItem item(12345, "test_type", {0x01});
   EXPECT_FALSE(pool_->try_push("/topic1", std::move(item)));
 
   // Push to remaining topic should work
-  MessageItem item2(12345, {0x02});
+  MessageItem item2(12345, "test_type", {0x02});
   EXPECT_TRUE(pool_->try_push("/topic2", std::move(item2)));
 
   pool_->stop();
@@ -500,16 +515,17 @@ TEST_F(WorkerThreadPoolTest, RemoveTopicWorkerWhileRunning) {
 TEST_F(WorkerThreadPoolTest, HandlerReturnsFailure) {
   std::atomic<int> call_count{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    call_count.fetch_add(1);
-    return false;  // Always fail
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      call_count.fetch_add(1);
+      return false;  // Always fail
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   for (int i = 0; i < 5; ++i) {
-    MessageItem item(i, {static_cast<uint8_t>(i)});
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -532,17 +548,18 @@ TEST_F(WorkerThreadPoolTest, EmptyMessageData) {
   std::atomic<bool> handler_called{false};
   size_t received_size = 999;
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t size, uint32_t) {
-    handler_called = true;
-    received_size = size;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t size, uint32_t) {
+      handler_called = true;
+      received_size = size;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push empty message
-  MessageItem item(12345, {});  // Empty data
+  MessageItem item(12345, "test_type", {});  // Empty data
   pool_->try_push("/test", std::move(item));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -555,17 +572,18 @@ TEST_F(WorkerThreadPoolTest, EmptyMessageData) {
 TEST_F(WorkerThreadPoolTest, LargeMessageData) {
   size_t received_size = 0;
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t size, uint32_t) {
-    received_size = size;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t size, uint32_t) {
+      received_size = size;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push large message (1MB)
   std::vector<uint8_t> large_data(1024 * 1024, 0xAB);
-  MessageItem item(12345, std::move(large_data));
+  MessageItem item(12345, "test_type", std::move(large_data));
   pool_->try_push("/test", std::move(item));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -575,9 +593,10 @@ TEST_F(WorkerThreadPoolTest, LargeMessageData) {
 }
 
 TEST_F(WorkerThreadPoolTest, ManyTopics) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   // Create many topics
   const int num_topics = 50;
@@ -596,15 +615,16 @@ TEST_F(WorkerThreadPoolTest, ManyTopics) {
 TEST_F(WorkerThreadPoolTest, ZeroTimestamp) {
   int64_t received_ts = -1;
 
-  auto handler = [&](const std::string&, int64_t ts, const uint8_t*, size_t, uint32_t) {
-    received_ts = ts;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t ts, const uint8_t*, size_t, uint32_t) {
+      received_ts = ts;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
-  MessageItem item(0, {0x01});  // Zero timestamp
+  MessageItem item(0, "test_type", {0x01});  // Zero timestamp
   pool_->try_push("/test", std::move(item));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -616,15 +636,16 @@ TEST_F(WorkerThreadPoolTest, ZeroTimestamp) {
 TEST_F(WorkerThreadPoolTest, NegativeTimestamp) {
   int64_t received_ts = 0;
 
-  auto handler = [&](const std::string&, int64_t ts, const uint8_t*, size_t, uint32_t) {
-    received_ts = ts;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t ts, const uint8_t*, size_t, uint32_t) {
+      received_ts = ts;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
-  MessageItem item(-12345, {0x01});  // Negative timestamp
+  MessageItem item(-12345, "test_type", {0x01});  // Negative timestamp
   pool_->try_push("/test", std::move(item));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -652,9 +673,10 @@ TEST_F(WorkerThreadPoolTest, ConfigCustomValues) {
 
   auto custom_pool = std::make_unique<WorkerThreadPool>(config);
 
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   EXPECT_TRUE(custom_pool->create_topic_worker("/test", handler));
   custom_pool->start();
@@ -668,20 +690,21 @@ TEST_F(WorkerThreadPoolTest, ConfigCustomValues) {
 TEST_F(WorkerThreadPoolTest, HandlerThrowsException) {
   std::atomic<int> call_count{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    call_count++;
-    if (call_count == 2) {
-      throw std::runtime_error("Simulated handler error");
-    }
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      call_count++;
+      if (call_count == 2) {
+        throw std::runtime_error("Simulated handler error");
+      }
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push multiple messages
   for (int i = 0; i < 5; ++i) {
-    MessageItem item(1000 + i, {0x01, 0x02});
+    MessageItem item(1000 + i, "test_type", {0x01, 0x02});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -695,16 +718,17 @@ TEST_F(WorkerThreadPoolTest, HandlerThrowsException) {
 TEST_F(WorkerThreadPoolTest, HandlerReturnsFalse) {
   std::atomic<int> call_count{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    call_count++;
-    return false;  // Always return failure
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      call_count++;
+      return false;  // Always return failure
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   for (int i = 0; i < 10; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -716,14 +740,15 @@ TEST_F(WorkerThreadPoolTest, HandlerReturnsFalse) {
 }
 
 TEST_F(WorkerThreadPoolTest, PushWhileStopped) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   // Don't start the pool
 
-  MessageItem item(1000, {0x01});
+  MessageItem item(1000, "test_type", {0x01});
   bool result = pool_->try_push("/test", std::move(item));
 
   // Push might succeed (queued) or fail depending on implementation
@@ -734,7 +759,7 @@ TEST_F(WorkerThreadPoolTest, PushWhileStopped) {
 TEST_F(WorkerThreadPoolTest, PushToNonExistentTopicWhileRunning) {
   pool_->start();
 
-  MessageItem item(1000, {0x01});
+  MessageItem item(1000, "test_type", {0x01});
   bool result = pool_->try_push("/nonexistent", std::move(item));
 
   EXPECT_FALSE(result);
@@ -745,16 +770,17 @@ TEST_F(WorkerThreadPoolTest, PushToNonExistentTopicWhileRunning) {
 TEST_F(WorkerThreadPoolTest, CreateTopicWhileRunning) {
   pool_->start();
 
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   // Creating topic while running should work
   EXPECT_TRUE(pool_->create_topic_worker("/dynamic_topic", handler));
   EXPECT_EQ(pool_->topic_count(), 1);
 
   // Should be able to push to the new topic
-  MessageItem item(1000, {0x01});
+  MessageItem item(1000, "test_type", {0x01});
   EXPECT_TRUE(pool_->try_push("/dynamic_topic", std::move(item)));
 
   pool_->stop();
@@ -764,20 +790,21 @@ TEST_F(WorkerThreadPoolTest, StopWhileProcessing) {
   std::atomic<int> processed{0};
   std::atomic<bool> in_handler{false};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    in_handler = true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    processed++;
-    in_handler = false;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      in_handler = true;
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      processed++;
+      in_handler = false;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push many messages
   for (int i = 0; i < 100; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -796,18 +823,19 @@ TEST_F(WorkerThreadPoolTest, StopWhileProcessing) {
 TEST_F(WorkerThreadPoolTest, PauseResumeWhileProcessing) {
   std::atomic<int> processed{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed++;
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed++;
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push messages
   for (int i = 0; i < 50; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -836,10 +864,11 @@ TEST_F(WorkerThreadPoolTest, QueueOverflow) {
 
   auto small_pool = std::make_unique<WorkerThreadPool>(config);
 
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // Slow
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));  // Slow
+      return true;
+    };
 
   small_pool->create_topic_worker("/test", handler);
   small_pool->start();
@@ -847,7 +876,7 @@ TEST_F(WorkerThreadPoolTest, QueueOverflow) {
   // Try to push more than capacity
   int pushed = 0;
   for (int i = 0; i < 100; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     if (small_pool->try_push("/test", std::move(item))) {
       pushed++;
     }
@@ -863,17 +892,18 @@ TEST_F(WorkerThreadPoolTest, QueueOverflow) {
 TEST_F(WorkerThreadPoolTest, StatsAccumulateCorrectly) {
   std::atomic<int> processed{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed++;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed++;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push and process some messages
   for (int i = 0; i < 10; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -892,9 +922,10 @@ TEST_F(WorkerThreadPoolTest, StatsAccumulateCorrectly) {
 }
 
 TEST_F(WorkerThreadPoolTest, EmptyTopicName) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   // Empty topic name
   bool result = pool_->create_topic_worker("", handler);
@@ -905,9 +936,10 @@ TEST_F(WorkerThreadPoolTest, EmptyTopicName) {
 }
 
 TEST_F(WorkerThreadPoolTest, SpecialCharacterTopicName) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   // Topics with special characters
   EXPECT_TRUE(pool_->create_topic_worker("/topic/with/slashes", handler));
@@ -918,9 +950,10 @@ TEST_F(WorkerThreadPoolTest, SpecialCharacterTopicName) {
 }
 
 TEST_F(WorkerThreadPoolTest, ConcurrentTopicCreation) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   std::vector<std::thread> threads;
   std::atomic<int> success_count{0};
@@ -950,17 +983,18 @@ TEST_F(WorkerThreadPoolTest, ConcurrentTopicCreation) {
 // ============================================================================
 
 TEST_F(WorkerThreadPoolTest, ConcurrentStopCalls) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push some messages to keep workers busy
   for (int i = 0; i < 50; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -980,9 +1014,10 @@ TEST_F(WorkerThreadPoolTest, ConcurrentStopCalls) {
 }
 
 TEST_F(WorkerThreadPoolTest, ConcurrentStartCalls) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
 
@@ -1005,10 +1040,11 @@ TEST_F(WorkerThreadPoolTest, ConcurrentStartCalls) {
 TEST_F(WorkerThreadPoolTest, ConcurrentPushDuringStop) {
   std::atomic<int> processed{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed++;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed++;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
@@ -1020,7 +1056,7 @@ TEST_F(WorkerThreadPoolTest, ConcurrentPushDuringStop) {
   for (int t = 0; t < 4; ++t) {
     push_threads.emplace_back([this, &stop_started, t]() {
       for (int i = 0; i < 100 && !stop_started.load(); ++i) {
-        MessageItem item(1000 + t * 100 + i, {0x01});
+        MessageItem item(1000 + t * 100 + i, "test_type", {0x01});
         pool_->try_push("/test", std::move(item));
         std::this_thread::sleep_for(std::chrono::microseconds(100));
       }
@@ -1046,11 +1082,12 @@ TEST_F(WorkerThreadPoolTest, ConcurrentPushDuringStop) {
 TEST_F(WorkerThreadPoolTest, RemoveTopicWhileRunningDoesNotCrash) {
   std::atomic<int> processed{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed++;
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed++;
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      return true;
+    };
 
   pool_->create_topic_worker("/topic1", handler);
   pool_->create_topic_worker("/topic2", handler);
@@ -1061,9 +1098,9 @@ TEST_F(WorkerThreadPoolTest, RemoveTopicWhileRunningDoesNotCrash) {
   std::thread push_thread([this, &done]() {
     int i = 0;
     while (!done.load()) {
-      MessageItem item1(1000 + i, {0x01});
+      MessageItem item1(1000 + i, "test_type", {0x01});
       pool_->try_push("/topic1", std::move(item1));
-      MessageItem item2(2000 + i, {0x02});
+      MessageItem item2(2000 + i, "test_type", {0x02});
       pool_->try_push("/topic2", std::move(item2));
       i++;
       std::this_thread::sleep_for(std::chrono::microseconds(100));
@@ -1090,17 +1127,18 @@ TEST_F(WorkerThreadPoolTest, PauseResumeWithConditionVariable) {
   std::atomic<int> processed{0};
   std::atomic<bool> in_pause{false};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed++;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed++;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push initial messages
   for (int i = 0; i < 10; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -1114,7 +1152,7 @@ TEST_F(WorkerThreadPoolTest, PauseResumeWithConditionVariable) {
 
   // Push more messages while paused
   for (int i = 0; i < 10; ++i) {
-    MessageItem item(2000 + i, {0x01});
+    MessageItem item(2000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -1146,17 +1184,18 @@ TEST_F(WorkerThreadPoolTest, PauseResumeWithConditionVariable) {
 TEST_F(WorkerThreadPoolTest, StopWhilePaused) {
   std::atomic<int> processed{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed++;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed++;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push messages
   for (int i = 0; i < 20; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -1179,21 +1218,22 @@ TEST_F(WorkerThreadPoolTest, SharedPtrContextPreventsUseAfterFree) {
   std::atomic<bool> handler_running{false};
   std::atomic<bool> can_exit{false};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    handler_running = true;
-    // Simulate slow processing
-    while (!can_exit.load()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    handler_running = false;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      handler_running = true;
+      // Simulate slow processing
+      while (!can_exit.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+      handler_running = false;
+      return true;
+    };
 
   pool_->create_topic_worker("/test", handler);
   pool_->start();
 
   // Push a message that will be processed slowly
-  MessageItem item(1000, {0x01});
+  MessageItem item(1000, "test_type", {0x01});
   pool_->try_push("/test", std::move(item));
 
   // Wait for handler to start
@@ -1222,10 +1262,11 @@ TEST_F(WorkerThreadPoolTest, SharedPtrContextPreventsUseAfterFree) {
 TEST_F(WorkerThreadPoolTest, YieldInsteadOfBusySpin) {
   std::atomic<int> processed{0};
 
-  auto handler = [&](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    processed++;
-    return true;
-  };
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      processed++;
+      return true;
+    };
 
   WorkerThreadPool::Config config;
   config.queue_capacity_per_topic = 1024;
@@ -1240,7 +1281,7 @@ TEST_F(WorkerThreadPoolTest, YieldInsteadOfBusySpin) {
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Push a message
-  MessageItem item(1000, {0x01});
+  MessageItem item(1000, "test_type", {0x01});
   test_pool->try_push("/test", std::move(item));
 
   // Wait for processing
@@ -1252,9 +1293,10 @@ TEST_F(WorkerThreadPoolTest, YieldInsteadOfBusySpin) {
 }
 
 TEST_F(WorkerThreadPoolTest, SharedLockForConcurrentReads) {
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
-    return true;
-  };
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
 
   // Create multiple topics
   for (int i = 0; i < 10; ++i) {
@@ -1277,7 +1319,7 @@ TEST_F(WorkerThreadPoolTest, SharedLockForConcurrentReads) {
         read_count++;
 
         // Push operations
-        MessageItem item(1000 + t * 100 + i, {0x01});
+        MessageItem item(1000 + t * 100 + i, "test_type", {0x01});
         if (pool_->try_push("/topic" + std::to_string(t % 10), std::move(item))) {
           push_count++;
         }
@@ -1305,7 +1347,8 @@ TEST_F(WorkerThreadPoolTest, SharedLockForConcurrentReads) {
 TEST_F(WorkerThreadPoolTest, StdExceptionDuringDrain) {
   // Handler that always throws std::exception
   // Covers: catch (const std::exception& e) branch in drain loop
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) -> bool {
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) -> bool {
     throw std::runtime_error("Simulated drain exception");
   };
 
@@ -1313,7 +1356,7 @@ TEST_F(WorkerThreadPoolTest, StdExceptionDuringDrain) {
 
   // Queue messages without starting - they will be processed during drain
   for (int i = 0; i < 5; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 
@@ -1329,7 +1372,8 @@ TEST_F(WorkerThreadPoolTest, StdExceptionDuringDrain) {
 TEST_F(WorkerThreadPoolTest, UnknownExceptionDuringDrain) {
   // Handler that throws a non-std::exception (e.g., int)
   // Covers: catch (...) branch in drain loop
-  auto handler = [](const std::string&, int64_t, const uint8_t*, size_t, uint32_t) -> bool {
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) -> bool {
     throw 42;  // Non-std::exception type
   };
 
@@ -1337,7 +1381,7 @@ TEST_F(WorkerThreadPoolTest, UnknownExceptionDuringDrain) {
 
   // Queue messages without starting
   for (int i = 0; i < 5; ++i) {
-    MessageItem item(1000 + i, {0x01});
+    MessageItem item(1000 + i, "test_type", {0x01});
     pool_->try_push("/test", std::move(item));
   }
 

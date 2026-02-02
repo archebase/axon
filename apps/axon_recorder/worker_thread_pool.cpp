@@ -283,7 +283,12 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
       bool success = false;
       try {
         success = context->handler(
-          topic, item.timestamp_ns, item.raw_data.data(), item.raw_data.size(), seq
+          topic,
+          item.message_type,
+          item.timestamp_ns,
+          item.raw_data.data(),
+          item.raw_data.size(),
+          seq
         );
       } catch (const std::exception& e) {
         AXON_LOG_ERROR(
@@ -324,7 +329,12 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
     uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
     try {
       if (context->handler(
-            topic, item.timestamp_ns, item.raw_data.data(), item.raw_data.size(), seq
+            topic,
+            item.message_type,
+            item.timestamp_ns,
+            item.raw_data.data(),
+            item.raw_data.size(),
+            seq
           )) {
         context->stats.written.fetch_add(1, std::memory_order_relaxed);
       }

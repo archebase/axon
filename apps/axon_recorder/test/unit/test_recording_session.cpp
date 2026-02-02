@@ -225,7 +225,8 @@ TEST_F(RecordingSessionTest, RegisterChannel) {
 
   std::string topic = "/test/topic";
   std::string encoding = "cdr";
-  uint16_t channel_id = session.register_channel(topic, encoding, schema_id);
+  std::string message_type = "std_msgs/msg/String";
+  uint16_t channel_id = session.register_channel(topic, message_type, encoding, schema_id);
 
   EXPECT_NE(channel_id, 0);
   EXPECT_EQ(session.get_channel_id(topic), channel_id);
@@ -234,7 +235,7 @@ TEST_F(RecordingSessionTest, RegisterChannel) {
 TEST_F(RecordingSessionTest, RegisterChannelFailsWhenNotOpen) {
   RecordingSession session;
 
-  uint16_t channel_id = session.register_channel("/test", "cdr", 1);
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", 1);
 
   EXPECT_EQ(channel_id, 0);
 }
@@ -249,8 +250,8 @@ TEST_F(RecordingSessionTest, RegisterChannelReturnsSameIdForDuplicate) {
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
 
   std::string topic = "/test/topic";
-  uint16_t id1 = session.register_channel(topic, "cdr", schema_id);
-  uint16_t id2 = session.register_channel(topic, "cdr", schema_id);
+  uint16_t id1 = session.register_channel(topic, "std_msgs/msg/String", "cdr", schema_id);
+  uint16_t id2 = session.register_channel(topic, "std_msgs/msg/String", "cdr", schema_id);
 
   EXPECT_EQ(id1, id2);
 }
@@ -268,7 +269,8 @@ TEST_F(RecordingSessionTest, RegisterChannelWithMetadata) {
     {"qos_depth", "10"}, {"qos_reliable", "true"}
   };
 
-  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id, metadata);
+  uint16_t channel_id =
+    session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id, metadata);
 
   EXPECT_NE(channel_id, 0);
 }
@@ -282,9 +284,9 @@ TEST_F(RecordingSessionTest, RegisterMultipleChannels) {
 
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
 
-  uint16_t id1 = session.register_channel("/topic1", "cdr", schema_id);
-  uint16_t id2 = session.register_channel("/topic2", "cdr", schema_id);
-  uint16_t id3 = session.register_channel("/topic3", "cdr", schema_id);
+  uint16_t id1 = session.register_channel("/topic1", "std_msgs/msg/String", "cdr", schema_id);
+  uint16_t id2 = session.register_channel("/topic2", "std_msgs/msg/String", "cdr", schema_id);
+  uint16_t id3 = session.register_channel("/topic3", "std_msgs/msg/String", "cdr", schema_id);
 
   EXPECT_NE(id1, 0);
   EXPECT_NE(id2, 0);
@@ -305,7 +307,7 @@ TEST_F(RecordingSessionTest, WriteMessage) {
   ASSERT_TRUE(session.open(path, options));
 
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
-  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id);
 
   std::string data = "test message";
   uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -338,7 +340,7 @@ TEST_F(RecordingSessionTest, WriteMultipleMessages) {
   ASSERT_TRUE(session.open(path, options));
 
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
-  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id);
 
   uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
                          std::chrono::system_clock::now().time_since_epoch()
@@ -389,8 +391,8 @@ TEST_F(RecordingSessionTest, StatisticsAfterRegistrations) {
   session.register_schema("sensor_msgs/msg/Image", "ros2msg", "uint32 height");
 
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
-  session.register_channel("/topic1", "cdr", schema_id);
-  session.register_channel("/topic2", "cdr", schema_id);
+  session.register_channel("/topic1", "std_msgs/msg/String", "cdr", schema_id);
+  session.register_channel("/topic2", "std_msgs/msg/String", "cdr", schema_id);
 
   auto stats = session.get_stats();
 
@@ -406,7 +408,7 @@ TEST_F(RecordingSessionTest, StatisticsAfterWriting) {
   session.open(path, options);
 
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
-  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id);
 
   uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
                          std::chrono::system_clock::now().time_since_epoch()
@@ -468,7 +470,7 @@ TEST_F(RecordingSessionTest, FlushWhenOpen) {
   session.open(path, options);
 
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
-  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id);
 
   std::string data = "test message";
   uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -547,7 +549,7 @@ TEST_F(RecordingSessionTest, SidecarContainsChecksum) {
 
   // Write some data
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
-  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id);
 
   std::string data = "test message for checksum";
   uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -632,7 +634,7 @@ TEST_F(RecordingSessionTest, ConcurrentWrites) {
   ASSERT_TRUE(session.open(path, options));
 
   uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
-  uint16_t channel_id = session.register_channel("/test", "cdr", schema_id);
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id);
 
   constexpr int num_threads = 4;
   constexpr int messages_per_thread = 50;
