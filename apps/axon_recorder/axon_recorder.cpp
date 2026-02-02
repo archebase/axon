@@ -293,9 +293,11 @@ int main(int argc, char* argv[]) {
     if (!cli_output_file.empty()) {
       // User specified output file
       config.output_file = cli_output_file;
+      config.output_file_is_explicit = true;
     } else {
       // Auto-generate timestamp-based filename
       config.output_file = generate_timestamp_filename();
+      config.output_file_is_explicit = true;
     }
   }
 

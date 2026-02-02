@@ -51,6 +51,11 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
     // Parse dataset config
     if (node["dataset"]) {
       parse_dataset(node["dataset"], config.dataset);
+      // Copy dataset.output_file to config.output_file for backward compatibility
+      if (node["dataset"]["output_file"]) {
+        config.output_file = node["dataset"]["output_file"].as<std::string>();
+        config.output_file_is_explicit = true;
+      }
     }
 
     // Parse subscriptions
@@ -120,9 +125,6 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
 bool ConfigParser::parse_dataset(const YAML::Node& node, DatasetConfig& dataset) {
   if (node["path"]) {
     dataset.path = node["path"].as<std::string>();
-  }
-  if (node["output_file"]) {
-    dataset.output_file = node["output_file"].as<std::string>();
   }
   if (node["mode"]) {
     dataset.mode = node["mode"].as<std::string>();

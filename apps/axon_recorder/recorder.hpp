@@ -70,7 +70,6 @@ struct SubscriptionConfig {
  */
 struct DatasetConfig {
   std::string path;
-  std::string output_file = "output.mcap";                                // Output filename
   std::string mode = "append";                                           // "create" or "append"
   std::string stats_file_path = "/data/recordings/recorder_stats.json";  // Stats output file
 };
@@ -154,6 +153,7 @@ struct HttpServerConfig {
 struct RecorderConfig {
   // Basic recorder settings
   std::string output_file = "output.mcap";
+  bool output_file_is_explicit = false;  // True if set via CLI or config file
   std::string plugin_path;
   std::vector<SubscriptionConfig> subscriptions;
 

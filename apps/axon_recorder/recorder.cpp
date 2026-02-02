@@ -126,8 +126,8 @@ bool AxonRecorder::start() {
   // Construct output file path: dataset.path/task_id.mcap
   std::string output_file;
 
-  // If user specified a custom output file (via --output in simple mode), use it
-  if (!config_.output_file.empty() && config_.output_file != "output.mcap") {
+  // If user specified a custom output file (via --output or config file), use it
+  if (config_.output_file_is_explicit) {
     output_file = config_.output_file;
   } else if (!config_.dataset.path.empty()) {
     // Ensure path ends with /
