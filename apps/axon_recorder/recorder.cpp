@@ -12,6 +12,8 @@
 #include <mutex>
 #include <thread>
 
+#include <nlohmann/json.hpp>
+
 #include "mcap_writer_wrapper.hpp"
 
 namespace axon {
@@ -541,6 +543,9 @@ bool AxonRecorder::message_handler(
     return false;  // No active recording session
   }
 
+  // Note: Depth compression is now handled by the ROS2 plugin
+  // The plugin converts Image to CompressedImage if compression is enabled
+
   // Get channel ID for this topic from recording session
   uint16_t channel_id = recording_session_->get_channel_id(topic);
   if (channel_id == 0) {
@@ -634,8 +639,19 @@ bool AxonRecorder::setup_subscriptions() {
 
   // Setup subscriptions via plugin
   for (const auto& sub : config_.subscriptions) {
+    // Build options JSON for depth compression (if enabled)
+    std::string options_json;
+    if (sub.depth_compression.enabled) {
+      nlohmann::json opts;
+      opts["depth_compression"]["enabled"] = sub.depth_compression.enabled;
+      opts["depth_compression"]["level"] = sub.depth_compression.level;
+      options_json = opts.dump();
+    }
+
     AxonStatus status = descriptor->vtable->subscribe(
-      sub.topic_name.c_str(), sub.message_type.c_str(), message_callback, this
+      sub.topic_name.c_str(), sub.message_type.c_str(),
+      options_json.empty() ? nullptr : options_json.c_str(),
+      message_callback, this
     );
 
     if (status != AXON_SUCCESS) {

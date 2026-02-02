@@ -63,6 +63,12 @@ struct SubscriptionConfig {
   // Batch writing configuration
   size_t batch_size = 1;        // Number of messages to batch before writing (1 = immediate)
   int flush_interval_ms = 100;  // Maximum time to wait before flushing (ms)
+
+  // Depth compression configuration
+  struct DepthCompression {
+    bool enabled = false;
+    std::string level = "medium";  // fast, medium, max
+  } depth_compression;
 };
 
 /**

@@ -89,8 +89,10 @@ public:
 
   // Simulate message subscription
   static axon::AxonStatus subscribe(
-    const char* topic, const char* type, axon::AxonMessageCallback callback, void* user_data
+    const char* topic, const char* type, const char* options_json,
+    axon::AxonMessageCallback callback, void* user_data
   ) {
+    (void)options_json;  // Ignore options in mock
     if (MockPlugin::instance && callback) {
       MockPlugin::instance->topics.push_back(topic);
       MockPlugin::instance->types.push_back(type);
@@ -158,9 +160,10 @@ static axon::AxonStatus mock_stop() {
 }
 
 static axon::AxonStatus mock_subscribe(
-  const char* topic, const char* type, axon::AxonMessageCallback callback, void* user_data
+  const char* topic, const char* type, const char* options_json,
+  axon::AxonMessageCallback callback, void* user_data
 ) {
-  return MockPlugin::subscribe(topic, type, callback, user_data);
+  return MockPlugin::subscribe(topic, type, options_json, callback, user_data);
 }
 
 static axon::AxonStatus mock_publish(

@@ -141,6 +141,7 @@ bool test_subscribe(PluginLoader& loader, const std::string& plugin_name) {
     AxonStatus status = descriptor->vtable->subscribe(
       topic.c_str(),
       type.c_str(),
+      nullptr,  // options_json (none for this test)
       message_callback,
       nullptr  // user_data
     );
