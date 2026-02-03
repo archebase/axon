@@ -60,12 +60,20 @@ bool SubscriptionManager::subscribe(
 #endif
 
     // Create generic subscription using ROS2's built-in API
-    // Capture topic_name by value and lookup filter in subscriptions_ map when message arrives
+    // Capture compression_filter by value to avoid race condition with subscriptions_ map
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+    auto* captured_filter = compression_filter.get();
+#else
+    auto* captured_filter = nullptr;
+#endif
+
     auto subscription = node_->create_generic_subscription(
       topic_name,
       message_type,
       options.qos,
-      [this, topic_name, message_type, callback](std::shared_ptr<rclcpp::SerializedMessage> msg) {
+      [this, topic_name, message_type, callback, captured_filter](
+        std::shared_ptr<rclcpp::SerializedMessage> msg
+      ) {
         if (!callback) {
           return;
         }
@@ -82,13 +90,9 @@ bool SubscriptionManager::subscribe(
           rclcpp::Time timestamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
 
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
-          // Look up compression filter (if exists)
-          auto it = subscriptions_.find(topic_name);
-          bool has_filter =
-            (it != subscriptions_.end() && it->second.compression_filter != nullptr);
-
-          if (has_filter) {
-            it->second.compression_filter->filter_and_process(
+          // Use captured filter pointer instead of accessing subscriptions_ map
+          if (captured_filter) {
+            captured_filter->filter_and_process(
               topic_name,
               message_type,
               data,
