@@ -105,13 +105,8 @@ target_include_directories(axon_ros2_plugin PUBLIC
 target_link_libraries(axon_ros2_plugin PUBLIC
     rclcpp::rclcpp
     nlohmann_json::nlohmann_json
-)
-
-# Use ament_target_dependencies for ROS2 dependencies (handles all includes and linking)
-ament_target_dependencies(axon_ros2_plugin PUBLIC
-    rclcpp
-    sensor_msgs
-    std_msgs
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
 )
 
 # Link filters library for depth compression (conditional)

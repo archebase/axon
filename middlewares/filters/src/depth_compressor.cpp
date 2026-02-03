@@ -22,6 +22,8 @@ bool DepthCompressor::compress(
   int num_pixels = static_cast<int>(width * height);
 
   // Compress using dlz library
+  // Note: dlz::CompressEx takes non-const pointer but doesn't modify input (verified by inspection)
+  // The const_cast is safe here - dlz only reads from the input buffer
   std::vector<char> compressed_buffer;
   size_t compressed_size;
 

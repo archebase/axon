@@ -64,7 +64,7 @@ bool SubscriptionManager::subscribe(
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
     auto* captured_filter = compression_filter.get();
 #else
-    auto* captured_filter = nullptr;
+    void* captured_filter = nullptr;  // No compression filter available
 #endif
 
     auto subscription = node_->create_generic_subscription(
@@ -92,22 +92,23 @@ bool SubscriptionManager::subscribe(
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
           // Use captured filter pointer instead of accessing subscriptions_ map
           if (captured_filter) {
-            captured_filter->filter_and_process(
-              topic_name,
-              message_type,
-              data,
-              timestamp.nanoseconds(),
-              [&](
-                const std::string& filtered_topic,
-                const std::string& filtered_type,
-                const std::vector<uint8_t>& filtered_data,
-                uint64_t filtered_timestamp_ns
-              ) {
-                // Convert nanosecond timestamp back to rclcpp::Time
-                rclcpp::Time filtered_timestamp(filtered_timestamp_ns);
-                callback(filtered_topic, filtered_type, filtered_data, filtered_timestamp);
-              }
-            );
+            static_cast<DepthCompressionFilter*>(captured_filter)
+              ->filter_and_process(
+                topic_name,
+                message_type,
+                data,
+                timestamp.nanoseconds(),
+                [&](
+                  const std::string& filtered_topic,
+                  const std::string& filtered_type,
+                  const std::vector<uint8_t>& filtered_data,
+                  uint64_t filtered_timestamp_ns
+                ) {
+                  // Convert nanosecond timestamp back to rclcpp::Time
+                  rclcpp::Time filtered_timestamp(filtered_timestamp_ns);
+                  callback(filtered_topic, filtered_type, filtered_data, filtered_timestamp);
+                }
+              );
           } else {
             // Direct callback
             callback(topic_name, message_type, data, timestamp);
