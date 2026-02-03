@@ -1,0 +1,4 @@
+[submodule "middlewares/filters/depthlitez"]
+	path = middlewares/filters/depthlitez
+	url = ../depthlitez.git
+	branch = main

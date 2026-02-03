@@ -41,9 +41,15 @@ public:
     return spinning_;
   }
 
-  // Subscribe to a topic with a callback
+  // Subscribe to a topic with a callback (default QoS)
   bool subscribe(
     const std::string& topic_name, const std::string& message_type, MessageCallback callback
+  );
+
+  // Subscribe to a topic with options (for depth compression)
+  bool subscribe(
+    const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+    MessageCallback callback
   );
 
   // Unsubscribe from a topic

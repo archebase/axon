@@ -40,7 +40,8 @@ using AxonMessageCallback = void (*)(
 using AxonInitFn = AxonStatus (*)(const char*);
 using AxonStartFn = AxonStatus (*)();
 using AxonStopFn = AxonStatus (*)();
-using AxonSubscribeFn = AxonStatus (*)(const char*, const char*, AxonMessageCallback, void*);
+using AxonSubscribeFn =
+  AxonStatus (*)(const char*, const char*, const char*, AxonMessageCallback, void*);
 using AxonPublishFn = AxonStatus (*)(const char*, const uint8_t*, size_t, const char*);
 
 // Plugin vtable structure

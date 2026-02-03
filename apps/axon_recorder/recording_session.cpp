@@ -13,6 +13,10 @@
 namespace axon {
 namespace recorder {
 
+// ROS topic names cannot contain null characters (per ROS naming rules)
+// Using '\0' as separator ensures no collision with valid topic/message_type names
+static constexpr char COMPOSITE_KEY_SEPARATOR = '\0';
+
 RecordingSession::RecordingSession()
     : writer_(std::make_unique<mcap_wrapper::McapWriterWrapper>()) {}
 
@@ -153,18 +157,21 @@ uint16_t RecordingSession::register_schema(
 }
 
 uint16_t RecordingSession::register_channel(
-  const std::string& topic, const std::string& message_encoding, uint16_t schema_id,
-  const std::unordered_map<std::string, std::string>& metadata
+  const std::string& topic, const std::string& message_type, const std::string& message_encoding,
+  uint16_t schema_id, const std::unordered_map<std::string, std::string>& metadata
 ) {
   if (!is_open()) {
     AXON_LOG_WARN("Cannot register channel, session not open");
     return 0;
   }
 
+  // Create a composite key for topic+message_type
+  std::string composite_key = topic + COMPOSITE_KEY_SEPARATOR + message_type;
+
   // Check if already registered
   {
     std::lock_guard<std::mutex> lock(registry_mutex_);
-    auto it = topic_channel_ids_.find(topic);
+    auto it = topic_channel_ids_.find(composite_key);
     if (it != topic_channel_ids_.end()) {
       return it->second;
     }
@@ -172,13 +179,16 @@ uint16_t RecordingSession::register_channel(
 
   uint16_t channel_id = writer_->register_channel(topic, message_encoding, schema_id, metadata);
   if (channel_id == 0) {
-    AXON_LOG_ERROR("Failed to register channel" << axon::logging::kv("topic", topic));
+    AXON_LOG_ERROR(
+      "Failed to register channel" << axon::logging::kv("topic", topic)
+                                   << axon::logging::kv("message_type", message_type)
+    );
     return 0;
   }
 
   {
     std::lock_guard<std::mutex> lock(registry_mutex_);
-    topic_channel_ids_[topic] = channel_id;
+    topic_channel_ids_[composite_key] = channel_id;
   }
 
   return channel_id;
@@ -201,10 +211,68 @@ bool RecordingSession::write(
   return success;
 }
 
-uint16_t RecordingSession::get_channel_id(const std::string& topic) const {
+uint16_t RecordingSession::get_channel_id(
+  const std::string& topic, const std::string& message_type
+) const {
+  std::string composite_key = topic + COMPOSITE_KEY_SEPARATOR + message_type;
   std::lock_guard<std::mutex> lock(registry_mutex_);
-  auto it = topic_channel_ids_.find(topic);
+  auto it = topic_channel_ids_.find(composite_key);
   return (it != topic_channel_ids_.end()) ? it->second : 0;
+}
+
+uint16_t RecordingSession::get_or_create_channel(
+  const std::string& topic, const std::string& message_type
+) {
+  // Create a composite key for topic+message_type
+  std::string composite_key = topic + COMPOSITE_KEY_SEPARATOR + message_type;
+
+  // Check if channel already exists for this topic+type combination
+  {
+    std::lock_guard<std::mutex> lock(registry_mutex_);
+    auto it = topic_channel_ids_.find(composite_key);
+    if (it != topic_channel_ids_.end()) {
+      return it->second;
+    }
+  }
+
+  // Get or create schema for this message type
+  uint16_t schema_id = get_schema_id(message_type);
+  if (schema_id == 0) {
+    // Schema not registered, auto-register it
+    // This can happen when depth compression filter creates CompressedImage messages
+    AXON_LOG_DEBUG("Auto-registering schema for message type: " << message_type);
+    schema_id = register_schema(message_type, "ros2msg", "");
+    if (schema_id == 0) {
+      AXON_LOG_ERROR(
+        "Failed to auto-register schema for: " << message_type
+                                               << ", cannot create channel for topic: " << topic
+      );
+      return 0;
+    }
+    AXON_LOG_DEBUG(
+      "Successfully auto-registered schema for: " << message_type
+                                                  << " with schema_id: " << schema_id
+    );
+  }
+
+  // Register new channel
+  uint16_t channel_id = register_channel(topic, message_type, "cdr", schema_id, {});
+  if (channel_id == 0) {
+    return 0;
+  }
+
+  // Store with composite key
+  {
+    std::lock_guard<std::mutex> lock(registry_mutex_);
+    topic_channel_ids_[composite_key] = channel_id;
+  }
+
+  AXON_LOG_INFO(
+    "Created new channel for compressed topic: " << topic << " with type: " << message_type
+                                                 << " channel_id: " << channel_id
+  );
+
+  return channel_id;
 }
 
 uint16_t RecordingSession::get_schema_id(const std::string& message_type) const {

@@ -11,7 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Lock-free: Per-topic SPSC queues for zero-copy message handling
 - Fleet-ready: Server-controlled recording via HTTP RPC API (see [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md))
 - Crash-resilient: S3 uploader with SQLite state persistence and recovery
-- Plugin-based: Middleware-agnostic core with ROS1/ROS2 plugins
+- Plugin-based: Middleware-agnostic core with ROS1/ROS2/Zenoh plugins
+- Filter-ready: Extensible data processing pipeline for compression and transformation
 
 ## Build and Test Commands
 
@@ -133,17 +134,21 @@ Axon/
 │   ├── axon_logging/         # Logging infrastructure (no ROS dependencies)
 │   └── axon_uploader/        # S3 uploader (no ROS dependencies)
 │
-├── middlewares/              # Middleware-specific plugins
+├── middlewares/              # Middleware-specific plugins and filters
 │   ├── ros1/                 # ROS1 (Noetic) plugin → libaxon_ros1.so
-│   └── ros2/                 # ROS2 (Humble/Jazzy/Rolling) plugin → libaxon_ros2.so
-│       └── src/ros2_plugin/  # ROS2 plugin implementation
+│   ├── ros2/                 # ROS2 (Humble/Jazzy/Rolling) plugin → libaxon_ros2.so
+│   │   └── src/ros2_plugin/  # ROS2 plugin implementation
+│   ├── zenoh/                # Zenoh plugin → libaxon_zenoh.so
+│   └── filters/              # Data processing filters (shared across plugins)
+│       └── depthlitez/       # Depth image compression library
 │
 ├── apps/                     # Main applications
 │   ├── axon_recorder/        # Plugin loader and HTTP RPC server
 │   └── plugin_example/       # Example plugin implementation
 │
 └── docs/designs/             # Design documents
-    └── rpc-api-design.md     # HTTP RPC API specification
+    ├── rpc-api-design.md     # HTTP RPC API specification
+    └── depth-compression-filter.md  # Depth compression design
 ```
 
 **Plugin ABI Interface:**
@@ -158,6 +163,7 @@ The plugin interface is defined in [apps/axon_recorder/plugin_loader.hpp](apps/a
 3. Core libraries can be tested independently of ROS
 4. Only required middleware plugins need to be deployed
 5. Middleware-specific bugs are isolated to plugin code
+6. Filters in `middlewares/filters/` can be shared across plugins
 
 ### State Machine
 
@@ -206,6 +212,13 @@ IDLE → READY → RECORDING ↔ PAUSED
    - Boost.Log with async sinks
    - Console, file, and ROS sinks
    - Severity filtering and rotation
+
+**5. Depth Compression Filter** ([middlewares/filters/depthlitez/](middlewares/filters/depthlitez/))
+   - Specialized compression for 16-bit depth images
+   - 5-10x compression ratio using DepthLiteZ algorithm
+   - Configurable compression levels (fast/medium/max)
+   - Integrates with ROS2 plugin via `DepthCompressionFilter`
+   - See [docs/designs/depth-compression-filter.md](docs/designs/depth-compression-filter.md)
 
 ### Threading Model
 
@@ -594,6 +607,8 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | ROS1 plugin | `middlewares/ros1/src/ros1_plugin/` (CMake) |
 | ROS2 plugin | `middlewares/ros2/src/ros2_plugin/` (CMake) |
 | Zenoh plugin | `middlewares/zenoh/` (CMake) |
+| Filters | `middlewares/filters/` (shared data processing) |
+| Depth compression | `middlewares/filters/depthlitez/` |
 | Main app (HTTP RPC) | `apps/axon_recorder/` |
 | Plugin example | `apps/plugin_example/` |
 | Plugin ABI interface | `apps/axon_recorder/plugin_loader.hpp` |

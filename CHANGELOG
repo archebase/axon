@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [0.2.1] - 2025-02-03
+
+### Added
+- **filters**: Implement depth image compression filter (opt-in feature)
+  - Add `DepthCompressionFilter` class for ROS1 Noetic and ROS2 (Humble/Jazzy/Rolling)
+  - Support `sensor_msgs/Image` to `sensor_msgs/CompressedImage` transformation
+  - Integrate DepthLiteZ compression library with 5-10x compression ratio
+  - Support configurable compression levels: fast, medium, max
+  - Pass-through for non-depth images or compression failures
+  - **Note**: Depth compression is **disabled by default** for open-source builds
+    - Requires private DepthLiteZ submodule access
+    - Enable with: `cmake -DAXON_ENABLE_DEPTH_COMPRESSION=ON`
+    - See documentation for setup instructions
+
+- **middleware**: Add depthlitez submodule reference for specialized depth compression
+  - Shared compression library used by both ROS1 and ROS2 plugins
+  - Submodule is listed in `.gitmodules` but excluded from public builds
+  - Users with access can initialize: `git submodule update --init --recursive middlewares/filters/depthlitez`
+
+### Changed
+- **version**: Update project version to 0.2.1
+- **build**: Make depth compression an opt-in feature via `AXON_ENABLE_DEPTH_COMPRESSION` CMake option
+  - Default OFF for open-source compatibility
+  - When OFF, depth compression code is excluded from build
+  - ROS1/ROS2 plugins build successfully without DepthLiteZ dependency
+
 ## [0.2.0] - 2025-01-22
 
 ### Added
@@ -115,7 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ArcheBase/Axon/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ArcheBase/Axon/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ArcheBase/Axon/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/ArcheBase/Axon/releases/tag/v0.0.1

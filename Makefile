@@ -625,10 +625,11 @@ format:
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
-	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ros1/, ros2/, and zenoh/ code...$(NC)"
-	@find middlewares/ros1 middlewares/ros2 middlewares/zenoh \
+	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ code...$(NC)"
+	@find middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
-		! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" -print0 2>/dev/null | \
+		! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" \
+		! -path "*/depthlitez/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
 	@printf "%s\n" "$(YELLOW)  Formatting apps/ code...$(NC)"
 	@find apps \
@@ -641,12 +642,13 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find core middlewares/ros1 middlewares/ros2 middlewares/zenoh apps \
+		find core middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters apps \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \
 			! -path "*/install/*" \
 			! -path "*/devel/*" \
+			! -path "*/depthlitez/*" \
 			-print0 2>/dev/null | \
 		xargs -0 cppcheck --enable=all \
 			--suppress=missingInclude \
@@ -1161,9 +1163,10 @@ format-ci:
 	fi
 	@printf "%s\n" "$(YELLOW)Checking code formatting...$(NC)"
 	@printf "%s\n" "$(YELLOW)  Using: $(CLANG_FORMAT)$(NC)"
-	@find core middlewares/ros1 middlewares/ros2 apps \
+	@find core middlewares/ros1 middlewares/ros2 middlewares/filters apps \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/build_*/*" ! -path "*/install/*" ! -path "*/devel/*" \
+		! -path "*/depthlitez/*" \
 		-print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) --dry-run --Werror > /dev/null 2>&1 || \
 		(printf "%s\n" "$(RED)✗ Code formatting check failed$(NC)" && \

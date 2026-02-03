@@ -22,7 +22,9 @@ plugin:
 # ============================================================================
 dataset:
   # Output directory for MCAP files
-  path: /data/recordings
+  # When using HTTP RPC mode, output files are named as: <path>/<task_id>.mcap
+  # The task_id is provided via the /rpc/config endpoint
+  path: /tmp/axon
 
   # Output filename (optional, defaults to <path>/recording.mcap)
   output_file: recording.mcap
@@ -77,6 +79,13 @@ subscriptions:
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+
+  # Depth image with compression (16UC1 -> CompressedImage)
+  - name: /camera/camera/depth/image_rect_raw
+    message_type: sensor_msgs/msg/Image
+    batch_size: 300
+    flush_interval_ms: 10000
+    depth_compression: true
 
 # ============================================================================
 # Recording Configuration

@@ -20,6 +20,17 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 # =============================================================================
+# Options
+# =============================================================================
+option(AXON_ENABLE_DEPTH_COMPRESSION "Enable depth image compression (requires private DepthLiteZ)" OFF)
+
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    message(STATUS "ROS2 Plugin: Depth compression ENABLED")
+else()
+    message(STATUS "ROS2 Plugin: Depth compression DISABLED")
+endif()
+
+# =============================================================================
 # Find ROS2
 # =============================================================================
 
@@ -50,6 +61,7 @@ set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};${ROS2_DIR}")
 # Find required ROS2 packages
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 # Check for required ROS2 libraries
 set(ROS2_REQUIRED_LIBS
@@ -65,26 +77,53 @@ endforeach()
 # Build the Plugin Library
 # =============================================================================
 
-add_library(axon_ros2_plugin SHARED
+# Core sources (always built)
+set(CORE_SOURCES
     src/ros2_plugin.cpp
     src/ros2_subscription_wrapper.cpp
     src/ros2_plugin_export.cpp
 )
 
+# Depth compression sources (conditional)
+set(DEPTH_SOURCES "")
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    list(APPEND DEPTH_SOURCES src/depth_compression_filter.cpp)
+endif()
+
+add_library(axon_ros2_plugin SHARED
+    ${CORE_SOURCES}
+    ${DEPTH_SOURCES}
+)
+
 target_include_directories(axon_ros2_plugin PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
+    ${ROS2_INCLUDE_DIR}
 )
 
 # Link ROS2 libraries
 target_link_libraries(axon_ros2_plugin PUBLIC
     rclcpp::rclcpp
     nlohmann_json::nlohmann_json
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
 )
 
-# For ROS2 type support macros - we need to link against message libraries
-if(TARGET std_msgs__rosidl_typesupport_cpp)
-    target_link_libraries(axon_ros2_plugin PRIVATE std_msgs__rosidl_typesupport_cpp)
+# Link filters library for depth compression (conditional)
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    if(TARGET axon::filters)
+        target_link_libraries(axon_ros2_plugin PRIVATE axon::filters)
+        target_include_directories(axon_ros2_plugin PRIVATE
+            ${AXON_MIDDLEWARES_DIR}/filters/include
+            ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
+        )
+        target_compile_definitions(axon_ros2_plugin PRIVATE AXON_ENABLE_DEPTH_COMPRESSION)
+    else()
+        message(FATAL_ERROR
+            "AXON_ENABLE_DEPTH_COMPRESSION is ON but axon::filters target not found. "
+            "Build filters first with AXON_ENABLE_DEPTH_COMPRESSION=ON."
+        )
+    endif()
 endif()
 
 # Export all symbols for dynamic loading
@@ -114,6 +153,21 @@ if(AXON_BUILD_TESTS)
             rclcpp::rclcpp
             GTest::GTest
         )
+
+        # Use ament_target_dependencies for ROS2 dependencies in tests
+        ament_target_dependencies(${test_name}
+            rclcpp
+            sensor_msgs
+            std_msgs
+        )
+
+        # Add filters include directory for tests (conditional)
+        if(AXON_ENABLE_DEPTH_COMPRESSION AND TARGET axon::filters)
+            target_include_directories(${test_name} PRIVATE
+                ${AXON_MIDDLEWARES_DIR}/filters/include
+                ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
+            )
+        endif()
 
         # Add test labels
         set_target_properties(${test_name} PROPERTIES
@@ -147,5 +201,6 @@ message(STATUS "Axon ROS2 Plugin Configuration:")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  ROS2 Root: ${ROS2_DIR}")
+message(STATUS "  Depth Compression: ${AXON_ENABLE_DEPTH_COMPRESSION}")
 message(STATUS "  Tests Enabled: ${AXON_BUILD_TESTS}")
 message(STATUS "")

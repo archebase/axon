@@ -184,9 +184,9 @@ int main(int argc, char* argv[]) {
   std::string config_file;
   std::string cli_plugin_path;
   std::string cli_dataset_path;
+  std::string cli_output_file;
   std::string cli_profile;
   std::string cli_compression;
-  std::string cli_output_file;
   int cli_compression_level = -1;
   size_t cli_queue_capacity = 0;
   bool simple_mode = false;
@@ -275,6 +275,9 @@ int main(int argc, char* argv[]) {
   if (!cli_dataset_path.empty()) {
     config.dataset.path = cli_dataset_path;
   }
+  if (!cli_output_file.empty()) {
+    config.output_file = cli_output_file;
+  }
   if (!cli_profile.empty()) {
     config.profile = cli_profile;
   }
@@ -310,7 +313,7 @@ int main(int argc, char* argv[]) {
 
   // Print configuration
   std::cout << "Axon Recorder Configuration:\n"
-            << "  Mode:        " << (simple_mode ? "Simple (direct recording)" : "HTTP RPC") << "\n"
+            << "  Mode:        " << (simple_mode ? "Simple" : "HTTP RPC") << "\n"
             << "  Plugin:      " << config.plugin_path << "\n"
             << "  Output:      " << config.output_file << "\n"
             << "  Dataset:     " << config.dataset.path << "\n"
@@ -381,8 +384,7 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
-  // HTTP RPC mode: start HTTP server and wait for commands
-  // Start HTTP RPC server
+  // HTTP RPC mode - start server and wait for commands
   std::cout << "Starting HTTP RPC server on " << config.http_server.host << ":"
             << config.http_server.port << "..." << std::endl;
 

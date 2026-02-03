@@ -22,7 +22,7 @@ plugin:
 # ============================================================================
 dataset:
   # Output directory for MCAP files
-  path: /data/recordings
+  path: /tmp/axon
 
   # Output filename (optional, defaults to <path>/recording.mcap)
   output_file: recording.mcap
