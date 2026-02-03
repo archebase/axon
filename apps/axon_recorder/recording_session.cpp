@@ -13,6 +13,10 @@
 namespace axon {
 namespace recorder {
 
+// ROS topic names cannot contain null characters (per ROS naming rules)
+// Using '\0' as separator ensures no collision with valid topic/message_type names
+static constexpr char COMPOSITE_KEY_SEPARATOR = '\0';
+
 RecordingSession::RecordingSession()
     : writer_(std::make_unique<mcap_wrapper::McapWriterWrapper>()) {}
 
@@ -162,7 +166,7 @@ uint16_t RecordingSession::register_channel(
   }
 
   // Create a composite key for topic+message_type
-  std::string composite_key = topic + "\n" + message_type;
+  std::string composite_key = topic + COMPOSITE_KEY_SEPARATOR + message_type;
 
   // Check if already registered
   {
@@ -217,7 +221,7 @@ uint16_t RecordingSession::get_or_create_channel(
   const std::string& topic, const std::string& message_type
 ) {
   // Create a composite key for topic+message_type
-  std::string composite_key = topic + "\n" + message_type;
+  std::string composite_key = topic + COMPOSITE_KEY_SEPARATOR + message_type;
 
   // Check if channel already exists for this topic+type combination
   {
