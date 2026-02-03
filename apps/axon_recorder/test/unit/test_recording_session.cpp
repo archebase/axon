@@ -224,12 +224,15 @@ TEST_F(RecordingSessionTest, RegisterChannel) {
   ASSERT_NE(schema_id, 0);
 
   std::string topic = "/test/topic";
-  std::string encoding = "cdr";
   std::string message_type = "std_msgs/msg/String";
-  uint16_t channel_id = session.register_channel(topic, message_type, encoding, schema_id);
+
+  // Use get_or_create_channel which handles composite key lookup
+  uint16_t channel_id = session.get_or_create_channel(topic, message_type);
 
   EXPECT_NE(channel_id, 0);
-  EXPECT_EQ(session.get_channel_id(topic), channel_id);
+  // Verify it returns the same ID on second call
+  uint16_t channel_id2 = session.get_or_create_channel(topic, message_type);
+  EXPECT_EQ(channel_id2, channel_id);
 }
 
 TEST_F(RecordingSessionTest, RegisterChannelFailsWhenNotOpen) {
