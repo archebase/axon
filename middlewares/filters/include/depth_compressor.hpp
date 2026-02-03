@@ -25,8 +25,6 @@ enum class Threading : int { kSingle = 0, kMulti = 1, kAuto = 2 };
  * @brief Depth image compressor using DepthLiteZ library
  *
  * Provides compression for 16-bit depth images with configurable quality levels.
- * Supports RVL (Run-Length Variable Length) encoding with optional LZ4/ZSTD
- * secondary compression.
  */
 class DepthCompressor {
 public:

@@ -80,7 +80,7 @@ subscriptions:
     batch_size: 300
     flush_interval_ms: 10000
 
-  # Depth image with compression (16UC1 -> CompressedImage with RVL+LZ4)
+  # Depth image with compression (16UC1 -> CompressedImage)
   - name: /camera/camera/depth/image_rect_raw
     message_type: sensor_msgs/msg/Image
     batch_size: 300
