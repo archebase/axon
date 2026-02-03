@@ -608,7 +608,7 @@ TEST_F(RecordingSessionTest, GetChannelIdForUnregisteredTopic) {
   McapWriterOptions options;
   session.open(path, options);
 
-  uint16_t channel_id = session.get_channel_id("/unregistered/topic");
+  uint16_t channel_id = session.get_channel_id("/unregistered/topic", "std_msgs/msg/String");
 
   EXPECT_EQ(channel_id, 0);
 }

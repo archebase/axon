@@ -134,12 +134,13 @@ public:
   );
 
   /**
-   * Get the channel ID for a topic.
+   * Get the channel ID for a topic with a specific message type.
    *
    * @param topic Topic name
+   * @param message_type Message type name
    * @return Channel ID, or 0 if not registered
    */
-  uint16_t get_channel_id(const std::string& topic) const;
+  uint16_t get_channel_id(const std::string& topic, const std::string& message_type) const;
 
   /**
    * Get or create a channel ID for a topic with a specific message type.
