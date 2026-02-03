@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
-## [0.3.0] - 2025-02-02
+## [0.2.1] - 2025-02-03
 
 ### Added
 - **filters**: Implement depth image compression filter (opt-in feature)
@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Users with access can initialize: `git submodule update --init --recursive middlewares/filters/depthlitez`
 
 ### Changed
-- **version**: Update project version to 0.3.0
+- **version**: Update project version to 0.2.1
 - **build**: Make depth compression an opt-in feature via `AXON_ENABLE_DEPTH_COMPRESSION` CMake option
   - Default OFF for open-source compatibility
   - When OFF, depth compression code is excluded from build
@@ -141,8 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/ArcheBase/Axon/compare/v0.2.0...v0.3.0
+[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ArcheBase/Axon/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ArcheBase/Axon/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ArcheBase/Axon/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/ArcheBase/Axon/releases/tag/v0.0.1
