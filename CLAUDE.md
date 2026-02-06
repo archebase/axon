@@ -103,17 +103,115 @@ make coverage-html
 make clean-coverage
 ```
 
+### Web Control Panel Development
+
+```bash
+# Build and run axon_panel web interface
+cd apps/axon_panel
+npm install              # Install dependencies (first time only)
+npm run dev             # Start development server (http://localhost:5173)
+npm run build           # Build for production (outputs to dist/)
+npm run preview         # Preview production build
+```
+
+## Application Architecture
+
+Axon consists of four main components that work together:
+
+| Component | Purpose | Technology | Location |
+|-----------|---------|------------|----------|
+| **axon_recorder** | Core recording engine with HTTP RPC API | C++17 | [apps/axon_recorder/](apps/axon_recorder/) |
+| **axon_transfer** | S3 transfer daemon (standalone) | C++17 | [apps/axon_transfer/](apps/axon_transfer/) |
+| **axon_panel** | Web-based control UI (frontend only) | Vue 3 + Vite | [apps/axon_panel/](apps/axon_panel/) |
+| **axon_config** | Robot initialization and config collection | C++17 | [apps/axon_config/](apps/axon_config/) |
+
+### Application Interaction
+
+```
+┌─────────────────────┐
+│  axon_config        │  Robot initialization (one-time setup)
+│  (CLI Tool)         │  → Collects robot type, SN, sensor config, URDF
+└─────────────────────┘
+            │
+            │ Config files
+            ▼
+┌─────────────────────┐      HTTP RPC      ┌─────────────────────┐
+│  axon_panel         │◄──────────────────►│  axon_recorder      │
+│  (Vue 3 Web UI)     │   State Control    │  (C++ Backend)      │
+│  - Monitor state    │   - config         │  - HTTP RPC Server  │
+│  - Control buttons  │   - begin          │  - Plugin Loader    │
+│  - View stats       │   - pause/resume   │  - MCAP Writer      │
+│  - Activity log     │   - finish/cancel  │  - Worker Threads   │
+└─────────────────────┘                     └──────────┬──────────┘
+                                                       │
+                                                       │ Upload requests
+                                                       ▼
+                                                ┌─────────────────────┐
+                                                │  axon_transfer      │
+                                                │  (Transfer Daemon)  │
+                                                │  - S3 multipart     │
+                                                │  - Retry logic      │
+                                                │  - State recovery   │
+                                                └──────────┬──────────┘
+                                                           │
+                                                           ▼
+                                                    ┌─────────────────────┐
+                                                    │  S3 Storage         │
+                                                    └─────────────────────┘
+```
+
+**Panel Control Flow:** `axon_panel` (Vue 3 frontend) sends HTTP RPC commands to `axon_recorder` to control state transitions:
+- `POST /rpc/config` → IDLE → READY
+- `POST /rpc/begin` → READY → RECORDING
+- `POST /rpc/pause` → RECORDING → PAUSED
+- `POST /rpc/resume` → PAUSED → RECORDING
+- `POST /rpc/finish` → RECORDING/PAUSED → IDLE
+
+**Note on Current Status:**
+- `axon_recorder`: Fully implemented C++ application
+- `axon_transfer`: Standalone daemon pending design; currently uses [core/axon_uploader/](core/axon_uploader/) library integrated into recorder
+- `axon_panel`: Fully implemented Vue 3 SPA at [apps/axon_panel/](apps/axon_panel/)
+- `axon_config`: Placeholder only; CLI interface and functionality pending design
+
+### axon_panel - Web Control Panel
+
+**Location:** [apps/axon_panel/](apps/axon_panel/)
+
+**Purpose:** Browser-based interface for monitoring and controlling the recorder
+
+**Features:**
+- Real-time state monitoring and statistics
+- Visual state machine diagram with Vue Flow
+- Recording control (config/begin/pause/resume/finish/cancel)
+- Activity logging with color-coded messages
+- Responsive design (desktop + mobile)
+
+**Development:**
+```bash
+cd apps/axon_panel
+npm install
+npm run dev      # Development server (http://localhost:5173)
+npm run build    # Production build to dist/
+```
+
+**Key Files:**
+- `apps/axon_panel/src/App.vue` - Root component with state management
+- `apps/axon_panel/src/api/rpc.js` - RPC API client
+- `apps/axon_panel/src/components/` - Vue components (StatePanel, ControlPanel, etc.)
+
+**See:** [docs/designs/frontend-design.md](docs/designs/frontend-design.md) for complete architecture
+
 ## High-Level Architecture
 
 The system follows a layered architecture with a 4-state task-centric FSM and a plugin-based middleware integration layer:
 
 ```
-Server/Fleet Manager (ros-bridge) → Recording Services → State Machine → MCAP Writer
-                                     ↓                    ↓            ↓
-                              HTTP Callbacks       Worker Threads   SPSC Queues
-                                     ↓                    ↓            ↓
-                           CachedRecordingConfig   Start/Finish   Lock-free
-                              (YAML Configuration)   Notify      Message Transfer
+Server/Fleet Manager → Recording Services → State Machine → MCAP Writer
+         ↓                    ↓                 ↓            ↓
+   HTTP RPC API         HTTP Callbacks   Worker Threads  SPSC Queues
+         ↓                    ↓                 ↓            ↓
+   Task Config          Start/Finish      Lock-free     Message Transfer
+   (YAML)               Notify            Transfer
 ```
 
 ### Plugin-Based Middleware Architecture
@@ -132,7 +230,7 @@ Axon/
 ├── core/                      # Middleware-agnostic core libraries
 │   ├── axon_mcap/            # MCAP writer (no ROS dependencies)
 │   ├── axon_logging/         # Logging infrastructure (no ROS dependencies)
-│   └── axon_uploader/        # S3 uploader (no ROS dependencies)
+│   └── axon_uploader/        # S3 uploader library (no ROS dependencies)
 │
 ├── middlewares/              # Middleware-specific plugins and filters
 │   ├── ros1/                 # ROS1 (Noetic) plugin → libaxon_ros1.so
@@ -146,8 +244,12 @@ Axon/
 │   ├── axon_recorder/        # Plugin loader and HTTP RPC server
 │   └── plugin_example/       # Example plugin implementation
 │
+├── tools/                    # Utility tools and web applications
+│   └── axon_panel/           # Vue 3 web control panel
+│
 └── docs/designs/             # Design documents
     ├── rpc-api-design.md     # HTTP RPC API specification
+    ├── frontend-design.md    # AxonPanel web UI architecture
     └── depth-compression-filter.md  # Depth compression design
 ```
 
@@ -609,8 +711,10 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | Zenoh plugin | `middlewares/zenoh/` (CMake) |
 | Filters | `middlewares/filters/` (shared data processing) |
 | Depth compression | `middlewares/filters/depthlitez/` |
-| Main app (HTTP RPC) | `apps/axon_recorder/` |
-| Plugin example | `apps/plugin_example/` |
+| Recorder app (HTTP RPC) | `apps/axon_recorder/` |
+| Transfer daemon | `apps/axon_transfer/` |
+| Web control panel | `apps/axon_panel/` (Vue 3) |
+| Config tool CLI | `apps/axon_config/` |
 | Plugin ABI interface | `apps/axon_recorder/plugin_loader.hpp` |
 | Tests | `*/test/` or `*/test_*.cpp` |
 | CMake modules | `cmake/` |
@@ -629,3 +733,22 @@ To create a new middleware plugin:
 - `AxonPluginDescriptor` contains `abi_version_major` and `abi_version_minor`
 - Always verify compatibility before loading plugins
 - Reserve space in vtable for future extensions
+
+### Application Development Workflows
+
+**Current Status:**
+- `axon_panel`: Fully implemented Vue 3 SPA at [apps/axon_panel/](apps/axon_panel/)
+- `axon_transfer`: Standalone daemon pending design; currently uses [core/axon_uploader/](core/axon_uploader/) library integrated into recorder
+- `axon_config`: Placeholder only; CLI interface and functionality pending design
+
+**axon_panel Development:**
+```bash
+# Terminal 1: Start recorder
+./build/axon_recorder/axon_recorder --plugin ./build/middlewares/libaxon_ros2.so
+
+# Terminal 2: Start panel dev server
+cd apps/axon_panel
+npm run dev      # Starts at http://localhost:5173
+```
+
+**See:** [docs/designs/frontend-design.md](docs/designs/frontend-design.md) for complete panel architecture
