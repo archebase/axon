@@ -185,6 +185,23 @@ public:
   );
 
   /**
+   * Write an attachment to the MCAP file
+   *
+   * Attachments are used to store arbitrary binary data (e.g., sidecar JSON, calibration files,
+   * URDF, thumbnails). Multiple attachments can be added to a single MCAP file.
+   * Thread-safe: uses mutex_ for synchronization.
+   *
+   * @param name Attachment name (e.g., "sidecar.json", "calibration.yaml", "urdf.xml")
+   * @param content_type MIME type (e.g., "application/json", "text/plain", "application/xml")
+   * @param data Pointer to attachment data
+   * @param size Size of attachment data in bytes
+   * @return true on success, false on failure (check get_last_error())
+   */
+  bool write_attachment(
+    const std::string& name, const std::string& content_type, const void* data, size_t size
+  );
+
+  /**
    * Get the last error message
    */
   std::string get_last_error() const;
