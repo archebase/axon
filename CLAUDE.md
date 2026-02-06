@@ -252,6 +252,9 @@ Axon/
 ├── python/                   # Python client library
 │   └── axon_client/          # Async/sync HTTP client
 │
+├── tools/                    # Utility tools and web applications
+│   └── axon_panel/           # Vue 3 web control panel
+│
 └── docs/designs/             # Design documents
     ├── rpc-api-design.md     # HTTP RPC API specification
     ├── frontend-design.md    # AxonPanel web UI architecture
