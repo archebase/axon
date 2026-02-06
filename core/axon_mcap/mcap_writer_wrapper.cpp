@@ -322,9 +322,13 @@ public:
     // Create attachment with current timestamp
     mcap::Attachment attachment;
     attachment.name = name;
-    attachment.contentType = content_type;
-    attachment.logTime = mcap::Timestamp::now();
-    attachment.createTime = attachment.logTime;
+    attachment.mediaType = content_type;
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::system_clock::now().time_since_epoch()
+    )
+                          .count();
+    attachment.logTime = now_ns;
+    attachment.createTime = now_ns;
     attachment.data = reinterpret_cast<const std::byte*>(data);
     attachment.dataSize = size;
 
@@ -339,8 +343,7 @@ public:
     }
 
     AXON_LOG_DEBUG(
-      "Attachment written" << axon::logging::kv("name", name)
-                           << axon::logging::kv("size", size)
+      "Attachment written" << axon::logging::kv("name", name) << axon::logging::kv("size", size)
                            << axon::logging::kv("content_type", content_type)
     );
     return true;

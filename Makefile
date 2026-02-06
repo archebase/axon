@@ -671,12 +671,12 @@ format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@printf "%s\n" "$(YELLOW)  Using: $(CLANG_FORMAT)$(NC)"
 	@printf "%s\n" "$(YELLOW)  Formatting core/ libraries...$(NC)"
-	@find core/axon_mcap core/axon_uploader core/axon_logging \
+	@find core \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
 	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ code...$(NC)"
-	@find middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters \
+	@find middlewares \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" \
 		! -path "*/depthlitez/*" -print0 2>/dev/null | \
@@ -692,7 +692,7 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find core middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters apps \
+		find core middlewares apps \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \

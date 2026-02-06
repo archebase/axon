@@ -115,20 +115,29 @@ SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
-path = ".vscode/**"
+path = "apps/axon_panel/**"
 precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "middlewares/mock/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = ".vscode/**"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
 path = ".claude/**"
-precedence = "override"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
 path = ".serena/**"
-precedence = "override"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 

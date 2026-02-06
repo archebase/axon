@@ -360,7 +360,9 @@ TEST_F(McapWriterTest, WriteAttachment) {
 
   // Write a JSON attachment
   std::string json_data = R"({"task_id": "12345", "device_id": "robot_001"})";
-  EXPECT_TRUE(writer.write_attachment("sidecar.json", "application/json", json_data.data(), json_data.size()));
+  EXPECT_TRUE(
+    writer.write_attachment("sidecar.json", "application/json", json_data.data(), json_data.size())
+  );
 
   writer.close();
 
@@ -378,17 +380,25 @@ TEST_F(McapWriterTest, WriteMultipleAttachments) {
 
   // Write multiple attachments with different content types
   std::string json_data = R"({"version": "1.0"})";
-  EXPECT_TRUE(writer.write_attachment("metadata.json", "application/json", json_data.data(), json_data.size()));
+  EXPECT_TRUE(
+    writer.write_attachment("metadata.json", "application/json", json_data.data(), json_data.size())
+  );
 
   std::string yaml_data = "robot_type: agv\nsensors:\n  - camera\n  - lidar";
-  EXPECT_TRUE(writer.write_attachment("config.yaml", "text/yaml", yaml_data.data(), yaml_data.size()));
+  EXPECT_TRUE(
+    writer.write_attachment("config.yaml", "text/yaml", yaml_data.data(), yaml_data.size())
+  );
 
   std::string text_data = "This is a plain text attachment.";
-  EXPECT_TRUE(writer.write_attachment("notes.txt", "text/plain", text_data.data(), text_data.size()));
+  EXPECT_TRUE(
+    writer.write_attachment("notes.txt", "text/plain", text_data.data(), text_data.size())
+  );
 
   // Write binary attachment
   std::vector<uint8_t> binary_data = {0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD};
-  EXPECT_TRUE(writer.write_attachment("binary.bin", "application/octet-stream", binary_data.data(), binary_data.size()));
+  EXPECT_TRUE(writer.write_attachment(
+    "binary.bin", "application/octet-stream", binary_data.data(), binary_data.size()
+  ));
 
   writer.close();
 
@@ -420,7 +430,9 @@ TEST_F(McapWriterTest, WriteAttachmentWithMessages) {
 
   // Write attachment interleaved with messages
   std::string attachment_data = R"({"summary": "10 messages recorded"})";
-  EXPECT_TRUE(writer.write_attachment("summary.json", "application/json", attachment_data.data(), attachment_data.size()));
+  EXPECT_TRUE(writer.write_attachment(
+    "summary.json", "application/json", attachment_data.data(), attachment_data.size()
+  ));
 
   // Write more messages after attachment
   for (int i = 10; i < 20; ++i) {
@@ -492,7 +504,9 @@ TEST_F(McapWriterTest, WriteLargeAttachment) {
     large_data[i] = '\n';
   }
 
-  EXPECT_TRUE(writer.write_attachment("robot.urdf", "text/xml", large_data.data(), large_data.size()));
+  EXPECT_TRUE(
+    writer.write_attachment("robot.urdf", "text/xml", large_data.data(), large_data.size())
+  );
 
   writer.close();
 
@@ -510,8 +524,11 @@ TEST_F(McapWriterTest, AttachmentWithCompression) {
   ASSERT_TRUE(writer.open(test_file_, options));
 
   // Write attachments with compression enabled
-  std::string json_data = R"({"task_id": "12345", "device_id": "robot_001", "metadata": {"key": "value"}})";
-  EXPECT_TRUE(writer.write_attachment("sidecar.json", "application/json", json_data.data(), json_data.size()));
+  std::string json_data =
+    R"({"task_id": "12345", "device_id": "robot_001", "metadata": {"key": "value"}})";
+  EXPECT_TRUE(
+    writer.write_attachment("sidecar.json", "application/json", json_data.data(), json_data.size())
+  );
 
   std::string text_data(10000, 'A');  // 10KB of repetitive data (compressible)
   EXPECT_TRUE(writer.write_attachment("log.txt", "text/plain", text_data.data(), text_data.size()));

@@ -281,6 +281,10 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     return j;
   };
 
+  callbacks.get_task_config = [this]() -> const TaskConfig* {
+    return this->get_task_config();
+  };
+
   callbacks.set_config =
     [this](const std::string& task_id, const nlohmann::json& config_json) -> bool {
     try {
