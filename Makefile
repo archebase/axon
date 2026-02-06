@@ -227,17 +227,10 @@ test-mcap: build-mcap
 test-uploader: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
 	@if [ -d "$(BUILD_DIR)/axon_uploader" ]; then \
-<<<<<<< HEAD
 		cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure && \
 		printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"; \
 	else \
 		printf "%s\n" "$(YELLOW)⚠ axon_uploader not built (requires AWS SDK, enable with -DAXON_BUILD_UPLOADER=ON)$(NC)"; \
-=======
-		cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure; \
-		printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"; \
-	else \
-		printf "%s\n" "$(YELLOW)⚠ axon_uploader not built, skipping tests$(NC)"; \
->>>>>>> 5bf3c1b (feat(mock_plugin): Implement mock plugin with C ABI interface and E2E tests)
 	fi
 
 # Test axon_logging
@@ -537,12 +530,9 @@ test: test-core
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
-<<<<<<< HEAD
-=======
 	@cd middlewares/ros2 && rm -rf build install log 2>/dev/null || true
 	@cd middlewares/ros1 && catkin clean --yes 2>/dev/null || true
 	@rm -rf middlewares/mock/src/mock_plugin/build middlewares/mock/install 2>/dev/null || true
->>>>>>> 5bf3c1b (feat(mock_plugin): Implement mock plugin with C ABI interface and E2E tests)
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target
@@ -681,12 +671,12 @@ format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@printf "%s\n" "$(YELLOW)  Using: $(CLANG_FORMAT)$(NC)"
 	@printf "%s\n" "$(YELLOW)  Formatting core/ libraries...$(NC)"
-	@find core/axon_mcap core/axon_uploader core/axon_logging \
+	@find core \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
 	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ code...$(NC)"
-	@find middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters \
+	@find middlewares \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" \
 		! -path "*/depthlitez/*" -print0 2>/dev/null | \
@@ -702,7 +692,7 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find core middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters apps \
+		find core middlewares apps \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \

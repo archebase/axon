@@ -115,20 +115,29 @@ SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
-path = ".vscode/**"
+path = "apps/axon_panel/**"
 precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "middlewares/mock/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = ".vscode/**"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
 path = ".claude/**"
-precedence = "override"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
 path = ".serena/**"
-precedence = "override"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
@@ -156,11 +165,6 @@ SPDX-License-Identifier = "NO-COPYRIGHT"
 # Ignore test data and mocks
 [[annotations]]
 path = "**/test/**/mocks/**"
-SPDX-FileCopyrightText = "NO-COPYRIGHT"
-SPDX-License-Identifier = "NO-COPYRIGHT"
-
-[[annotations]]
-path = "**/*_mock.*"
 SPDX-FileCopyrightText = "NO-COPYRIGHT"
 SPDX-License-Identifier = "NO-COPYRIGHT"
 

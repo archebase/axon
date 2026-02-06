@@ -15,6 +15,7 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "task_config.hpp"
 #include "version.hpp"
 
 // Logging infrastructure
