@@ -364,6 +364,24 @@ The recorder exposes an HTTP RPC server (default port 8080) for remote control:
 
 See [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md) for complete API specification including request/response formats.
 
+### Simple Mode (Direct Recording)
+
+For quick testing or standalone use without the HTTP RPC server, the recorder supports simple mode:
+
+```bash
+# Simple mode: start recording immediately without HTTP RPC
+./build/axon_recorder/axon_recorder --simple --output /tmp/recording.mcap --config /path/to/config.yaml
+
+# Simple mode with default output path (recording.mcap in current directory)
+./build/axon_recorder/axon_recorder --simple --config /path/to/config.yaml
+```
+
+In simple mode, the recorder:
+- Bypasses the HTTP RPC server and state machine
+- Starts recording immediately to the specified output file
+- Uses topics and settings from the config file
+- Terminates on SIGINT (Ctrl+C) or when all subscriptions end
+
 ## Running Individual Tests
 
 ```bash
