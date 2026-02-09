@@ -133,6 +133,11 @@ if(EXISTS "${AXON_APPS_DIR}/axon_recorder/CMakeLists.txt")
     add_subdirectory(${AXON_APPS_DIR}/axon_recorder ${CMAKE_CURRENT_BINARY_DIR}/axon_recorder)
 endif()
 
+# axon_config (robot configuration management)
+if(EXISTS "${AXON_APPS_DIR}/axon_config/CMakeLists.txt")
+    add_subdirectory(${AXON_APPS_DIR}/axon_config ${CMAKE_CURRENT_BINARY_DIR}/axon_config)
+endif()
+
 # plugin_example
 if(EXISTS "${AXON_APPS_DIR}/plugin_example/CMakeLists.txt")
     add_subdirectory(${AXON_APPS_DIR}/plugin_example ${CMAKE_CURRENT_BINARY_DIR}/plugin_example)
