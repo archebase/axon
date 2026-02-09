@@ -145,6 +145,7 @@ if(TARGET axon_mcap)
         state_machine.cpp
         recording_session.cpp
         metadata_injector.cpp
+        config_injector.cpp
         worker_thread_pool.cpp
         plugin_loader.cpp
         config_parser.cpp

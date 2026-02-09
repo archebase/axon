@@ -226,6 +226,8 @@ add_axon_test(test_recording_session
         # Add required source files
         ../recording_session.cpp
         ../metadata_injector.cpp
+        ../config_injector.cpp
+        ${CPP_MCAP_DIR}/mcap_writer_wrapper.cpp
 )
 target_include_directories(test_recording_session PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/..)
 target_link_libraries(test_recording_session OpenSSL::Crypto)
@@ -247,6 +249,14 @@ add_axon_test(test_plugin_loader_thread_safety
         ../plugin_loader.cpp
 )
 target_link_libraries(test_plugin_loader_thread_safety ${CMAKE_DL_LIBS})
+
+# test_config_injector.cpp
+add_axon_test(test_config_injector
+    SOURCES
+        ${TEST_SOURCE_DIR}/test_config_injector.cpp
+        # Add required source files
+        ../config_injector.cpp
+)
 
 
 
@@ -281,6 +291,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
             ../state_machine.cpp
             ../recording_session.cpp
             ../metadata_injector.cpp
+            ../config_injector.cpp
             ../worker_thread_pool.cpp
             ../plugin_loader.cpp
             ../config_parser.cpp
@@ -386,6 +397,7 @@ set_property(TEST test_worker_thread_pool PROPERTY LABELS "unit;thread")
 set_property(TEST test_message_factory_standalone PROPERTY LABELS "unit;factory")
 set_property(TEST test_metadata_injector PROPERTY LABELS "unit;metadata")
 set_property(TEST test_recording_session PROPERTY LABELS "unit;session")
+set_property(TEST test_config_injector PROPERTY LABELS "unit;config")
 
 if(TARGET test_recorder_integration)
     set_property(TEST test_recorder_integration PROPERTY LABELS "integration;recorder")
