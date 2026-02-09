@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 ArcheBase
+ *
+ * SPDX-License-Identifier: MulanPSL-2.0
+ */
+
 #ifndef MOCK_PLUGIN_HPP
 #define MOCK_PLUGIN_HPP
 

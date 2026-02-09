@@ -227,17 +227,10 @@ test-mcap: build-mcap
 test-uploader: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_uploader tests...$(NC)"
 	@if [ -d "$(BUILD_DIR)/axon_uploader" ]; then \
-<<<<<<< HEAD
 		cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure && \
 		printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"; \
 	else \
 		printf "%s\n" "$(YELLOW)⚠ axon_uploader not built (requires AWS SDK, enable with -DAXON_BUILD_UPLOADER=ON)$(NC)"; \
-=======
-		cd $(BUILD_DIR)/axon_uploader && ctest --output-on-failure; \
-		printf "%s\n" "$(GREEN)✓ axon_uploader tests passed$(NC)"; \
-	else \
-		printf "%s\n" "$(YELLOW)⚠ axon_uploader not built, skipping tests$(NC)"; \
->>>>>>> 5bf3c1b (feat(mock_plugin): Implement mock plugin with C ABI interface and E2E tests)
 	fi
 
 # Test axon_logging
@@ -537,12 +530,9 @@ test: test-core
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
-<<<<<<< HEAD
-=======
 	@cd middlewares/ros2 && rm -rf build install log 2>/dev/null || true
 	@cd middlewares/ros1 && catkin clean --yes 2>/dev/null || true
 	@rm -rf middlewares/mock/src/mock_plugin/build middlewares/mock/install 2>/dev/null || true
->>>>>>> 5bf3c1b (feat(mock_plugin): Implement mock plugin with C ABI interface and E2E tests)
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target
