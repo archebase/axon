@@ -32,19 +32,8 @@ else
     RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon_recorder"
 fi
 
-# Mock plugin path - use the newly created mock middleware
+# Mock plugin path - built in-place by mock middleware's own build system
 MOCK_PLUGIN="${PROJECT_ROOT}/middlewares/mock/src/mock_plugin/build/libmock_plugin.so"
-if [[ ! -f "${MOCK_PLUGIN}" ]]; then
-    # Fallback to build directory
-    MOCK_PLUGIN="${BUILD_DIR}/middlewares/mock/src/mock_plugin/build/libmock_plugin.so"
-fi
-if [[ ! -f "${MOCK_PLUGIN}" ]]; then
-    # Another fallback for backward compatibility
-    MOCK_PLUGIN="${BUILD_DIR}/middlewares/axon_mock.so"
-fi
-if [[ ! -f "${MOCK_PLUGIN}" ]]; then
-    MOCK_PLUGIN="${PROJECT_ROOT}/apps/axon_recorder/build/axon_mock.so"
-fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -121,8 +110,8 @@ setup() {
     if [[ ! -f "${MOCK_PLUGIN}" ]]; then
         log_warn "Mock plugin not found at ${MOCK_PLUGIN}"
         log_info "E2E tests will attempt to run without mock middleware"
-        log_info "Build mock middleware with: make build-mock"
-        log_info "Or from project root: cd middlewares/mock/src/mock_plugin/build && cmake .. && make"
+        log_info "Build mock middleware with:"
+        log_info "  cd middlewares/mock/src/mock_plugin/build && cmake .. && make"
         MOCK_PLUGIN=""
     fi
 
