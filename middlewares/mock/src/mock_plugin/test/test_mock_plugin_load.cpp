@@ -128,8 +128,9 @@ int main(int argc, char* argv[]) {
     std::cout << std::endl;
   };
 
-  if (descriptor->vtable->subscribe("/test_topic", "std_msgs/String", callback, &message_count) !=
-      0) {
+  if (descriptor->vtable->subscribe(
+        "/test_topic", "std_msgs/String", "{}", callback, &message_count
+      ) != 0) {
     std::cerr << "[FAIL] Could not subscribe to topic" << std::endl;
     return 1;
   }

@@ -235,22 +235,29 @@ Axon/
 ├── middlewares/              # Middleware-specific plugins and filters
 │   ├── ros1/                 # ROS1 (Noetic) plugin → libaxon_ros1.so
 │   ├── ros2/                 # ROS2 (Humble/Jazzy/Rolling) plugin → libaxon_ros2.so
-│   │   └── src/ros2_plugin/  # ROS2 plugin implementation
 │   ├── zenoh/                # Zenoh plugin → libaxon_zenoh.so
+│   ├── mock/                 # Mock plugin for testing (no ROS required)
+│   │   └── src/mock_plugin/  # Mock plugin implementation
 │   └── filters/              # Data processing filters (shared across plugins)
-│       └── depthlitez/       # Depth image compression library
+│       ├── include/          # Depth compressor header
+│       ├── src/              # Depth compressor implementation
+│       └── depthlitez/       # DepthLiteZ library (private submodule)
 │
 ├── apps/                     # Main applications
 │   ├── axon_recorder/        # Plugin loader and HTTP RPC server
-│   └── plugin_example/       # Example plugin implementation
+│   ├── axon_panel/           # Vue 3 web control panel
+│   ├── axon_config/          # Robot configuration CLI tool (placeholder)
+│   └── axon_transfer/        # S3 transfer daemon (placeholder)
 │
-├── tools/                    # Utility tools and web applications
-│   └── axon_panel/           # Vue 3 web control panel
+├── python/                   # Python client library
+│   └── axon_client/          # Async/sync HTTP client
 │
 └── docs/designs/             # Design documents
     ├── rpc-api-design.md     # HTTP RPC API specification
     ├── frontend-design.md    # AxonPanel web UI architecture
-    └── depth-compression-filter.md  # Depth compression design
+    ├── middleware-plugin-architecture-design.md  # Plugin architecture
+    ├── license-management-design.md              # REUSE licensing
+    └── depth-compression-filter.md              # Depth compression design
 ```
 
 **Plugin ABI Interface:**
@@ -266,6 +273,13 @@ The plugin interface is defined in [apps/axon_recorder/plugin_loader.hpp](apps/a
 4. Only required middleware plugins need to be deployed
 5. Middleware-specific bugs are isolated to plugin code
 6. Filters in `middlewares/filters/` can be shared across plugins
+
+**Mock Plugin for Testing:**
+The mock plugin ([middlewares/mock/src/mock_plugin/](middlewares/mock/src/mock_plugin/)) provides a reference implementation for E2E testing without ROS dependencies:
+- Simulates message publishing and subscription
+- Implements the full plugin C ABI interface
+- Enables CI testing without requiring ROS installation
+- Test scripts: [test_e2e_with_mock.sh](middlewares/mock/test_e2e_with_mock.sh), [test_full_workflow.sh](middlewares/mock/test_full_workflow.sh)
 
 ### State Machine
 
@@ -550,6 +564,34 @@ Keep descriptions under 72 characters. Use imperative mood ("add" not "added").
 
 **Note**: With the new plugin architecture, most ROS-specific code is isolated within `middlewares/ros1/` and `middlewares/ros2/` plugins. Core code in `core/` and `apps/` should remain middleware-agnostic.
 
+### License Management (REUSE)
+
+This project uses [REUSE](https://reuse.software/) for license compliance. All source files must include SPDX headers:
+
+```c
+/*
+ * SPDX-FileCopyrightText: 2026 ArcheBase
+ *
+ * SPDX-License-Identifier: MulanPSL-2.0
+ */
+```
+
+**Adding licenses to new files:**
+```bash
+# Auto-add headers to C/C++ files
+reuse annotate --year 2026 --copyright "ArcheBase" --license "MulanPSL-2.0" --style c <files>
+
+# Check compliance
+reuse lint
+```
+
+**Project-wide rules in [REUSE.toml](REUSE.toml):**
+- Frontend assets (`apps/axon_panel/**`) are covered by a single annotation
+- Mock files follow the pattern `**/*_mock.*`
+- Dependencies and build artifacts are excluded
+
+**Note**: With the new plugin architecture, most ROS-specific code is isolated within `middlewares/ros1/` and `middlewares/ros2/` plugins. Core code in `core/` and `apps/` should remain middleware-agnostic.
+
 ## Refactoring Guidelines
 
 **When refactoring code in this codebase, follow these principles:**
@@ -706,11 +748,12 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | Purpose | Location |
 |---------|----------|
 | Core libraries | `core/axon_*/` |
-| ROS1 plugin | `middlewares/ros1/src/ros1_plugin/` (CMake) |
-| ROS2 plugin | `middlewares/ros2/src/ros2_plugin/` (CMake) |
-| Zenoh plugin | `middlewares/zenoh/` (CMake) |
+| ROS1 plugin | `middlewares/ros1/` |
+| ROS2 plugin | `middlewares/ros2/` |
+| Zenoh plugin | `middlewares/zenoh/` |
+| Mock plugin (testing) | `middlewares/mock/src/mock_plugin/` |
 | Filters | `middlewares/filters/` (shared data processing) |
-| Depth compression | `middlewares/filters/depthlitez/` |
+| Depth compression | `middlewares/filters/depthlitez/` (private) |
 | Recorder app (HTTP RPC) | `apps/axon_recorder/` |
 | Transfer daemon | `apps/axon_transfer/` |
 | Web control panel | `apps/axon_panel/` (Vue 3) |
@@ -719,6 +762,7 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | Tests | `*/test/` or `*/test_*.cpp` |
 | CMake modules | `cmake/` |
 | Design docs | `docs/designs/` |
+| Python client | `python/axon_client/` |
 
 ### Plugin Development
 
@@ -727,7 +771,7 @@ To create a new middleware plugin:
 1. **Define the plugin ABI** - Implement the C interface in [apps/axon_recorder/plugin_loader.hpp](apps/axon_recorder/plugin_loader.hpp)
 2. **Export descriptor function** - Each plugin must export `axon_get_plugin_descriptor()`
 3. **Compile as shared library** - Build as `.so` with C linkage for ABI functions
-4. **Example reference** - See [apps/plugin_example/](apps/plugin_example/) and [middlewares/ros2/src/ros2_plugin/](middlewares/ros2/src/ros2_plugin/)
+4. **Example reference** - See [middlewares/mock/src/mock_plugin/](middlewares/mock/src/mock_plugin/) for a minimal plugin, or [middlewares/ros2/](middlewares/ros2/) for a full ROS2 implementation
 
 **ABI Versioning:**
 - `AxonPluginDescriptor` contains `abi_version_major` and `abi_version_minor`

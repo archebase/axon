@@ -115,8 +115,11 @@ static int32_t axon_stop(void) {
 
 // Subscribe to a topic with callback
 static int32_t axon_subscribe(
-  const char* topic_name, const char* message_type, AxonMessageCallback callback, void* user_data
+  const char* topic_name, const char* message_type, const char* options_json,
+  AxonMessageCallback callback, void* user_data
 ) {
+  (void)options_json;  // Ignore options for mock plugin
+
   if (!topic_name || !message_type || !callback) {
     return static_cast<int32_t>(AXON_ERROR_INVALID_ARGUMENT);
   }
@@ -184,7 +187,7 @@ struct AxonPluginVtable {
   int32_t (*init)(const char*);
   int32_t (*start)(void);
   int32_t (*stop)(void);
-  int32_t (*subscribe)(const char*, const char*, AxonMessageCallback, void*);
+  int32_t (*subscribe)(const char*, const char*, const char*, AxonMessageCallback, void*);
   int32_t (*publish)(const char*, const uint8_t*, size_t, const char*);
   void* reserved[9];
 };
