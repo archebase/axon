@@ -201,6 +201,23 @@ else
     }
 fi
 
+# Build the mock plugin separately (it has its own CMakeLists.txt)
+echo ""
+echo "Building mock plugin..."
+MOCK_PLUGIN_BUILD_DIR="${WORKSPACE_ROOT}/middlewares/mock/src/mock_plugin/build"
+mkdir -p "${MOCK_PLUGIN_BUILD_DIR}"
+cd "${MOCK_PLUGIN_BUILD_DIR}"
+
+cmake -DCMAKE_BUILD_TYPE=Release .. || {
+    echo "ERROR: Failed to configure mock plugin"
+    exit 1
+}
+
+cmake --build . -j$(nproc) || {
+    echo "ERROR: Failed to build mock plugin"
+    exit 1
+}
+
 # Re-source workspace after build
 ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
     ros_workspace_error "Failed to source workspace after build"
@@ -218,11 +235,10 @@ if [ ! -f "$RECORDER_BIN" ]; then
 fi
 echo "✓ axon_recorder binary found at ${RECORDER_BIN}"
 
-# Check mock plugin
-MOCK_PLUGIN="${WORKSPACE_ROOT}/build/middlewares/axon_mock.so"
+# Check mock plugin - it's built in its own build directory
+MOCK_PLUGIN="${MOCK_PLUGIN_BUILD_DIR}/libmock_plugin.so"
 if [ ! -f "$MOCK_PLUGIN" ]; then
     echo "ERROR: Mock plugin not found at ${MOCK_PLUGIN}"
-    echo "This should have been built with AXON_BUILD_MOCK_PLUGIN=ON"
     exit 1
 fi
 echo "✓ Mock plugin found at ${MOCK_PLUGIN}"

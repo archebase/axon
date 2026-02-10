@@ -440,6 +440,10 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     return this->transition_to(RecorderState::IDLE, error_msg);
   };
 
+  callbacks.get_task_config = [this]() -> const TaskConfig* {
+    return this->get_task_config();
+  };
+
   callbacks.quit = [this]() -> void {
     this->request_shutdown();
   };

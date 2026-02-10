@@ -24,8 +24,7 @@ test/
 └── e2e/                     # End-to-end tests (full workflow)
     ├── run_e2e_tests.sh    # Main E2E test script
     ├── run_docker_e2e.sh   # Docker-based E2E tests
-    ├── mock_middleware.cpp # Mock middleware plugin
-    ├── CMakeLists.txt      # Mock plugin build config
+    ├── CMakeLists.txt      # E2E test config
     └── README.md           # E2E test documentation
 ```
 

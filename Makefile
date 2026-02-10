@@ -97,6 +97,13 @@ help:
 	@printf "%s\n" "  $(BLUE)make app-axon-recorder$(NC) - Build axon_recorder plugin loader"
 	@printf "%s\n" "  $(BLUE)make app-plugin-example$(NC) - Build plugin example"
 	@echo ""
+	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
+	@printf "%s\n" "  $(BLUE)make build-mock$(NC)           - Build mock middleware plugin"
+	@printf "%s\n" "  $(BLUE)make test-mock-e2e$(NC)        - Run mock plugin E2E test (standalone)"
+	@printf "%s\n" "  $(BLUE)make test-mock-load$(NC)       - Run mock plugin load test"
+	@printf "%s\n" "  $(BLUE)make test-mock-integration$(NC) - Run mock middleware integration E2E test"
+	@printf "%s\n" "  $(BLUE)make test-mock-all$(NC)         - Run all mock middleware tests"
+	@echo ""
 	@printf "%s\n" "$(YELLOW)ROS Middlewares:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build (auto-detects ROS1/ROS2)"
 	@printf "%s\n" "  $(BLUE)make build-ros1$(NC)        - Build ROS1 (Noetic)"
@@ -417,6 +424,46 @@ app-plugin-example: build-core
 	@printf "%s\n" "$(GREEN)✓ plugin example built$(NC)"
 
 # =============================================================================
+# Mock Middleware Targets
+# =============================================================================
+
+# Build mock middleware
+build-mock:
+	@printf "%s\n" "$(YELLOW)Building mock middleware...$(NC)"
+	@mkdir -p middlewares/mock/src/mock_plugin/build
+	@cd middlewares/mock/src/mock_plugin/build && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DCMAKE_INSTALL_PREFIX=$(PROJECT_ROOT)/middlewares/mock/install && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ Mock middleware built$(NC)"
+
+# Test mock plugin E2E
+test-mock-e2e: build-mock
+	@printf "%s\n" "$(YELLOW)Running mock plugin E2E test...$(NC)"
+	@cd middlewares/mock/src/mock_plugin/build && ./test_mock_plugin_e2e
+	@printf "%s\n" "$(GREEN)✓ Mock plugin E2E test passed$(NC)"
+
+# Test mock plugin load
+test-mock-load: build-mock
+	@printf "%s\n" "$(YELLOW)Running mock plugin load test...$(NC)"
+	@cd middlewares/mock/src/mock_plugin/build && \
+		./test_mock_plugin_load ./libmock_plugin.so
+	@printf "%s\n" "$(GREEN)✓ Mock plugin load test passed$(NC)"
+
+# Test mock middleware integration with axon_recorder
+test-mock-integration: build-mock build-core
+	@printf "%s\n" "$(YELLOW)Running mock middleware integration E2E test...$(NC)"
+	@cd middlewares/mock && ./test_e2e_with_mock.sh
+	@printf "%s\n" "$(GREEN)✓ Mock middleware integration test passed$(NC)"
+
+# Run all mock middleware tests
+test-mock-all: build-mock
+	@printf "%s\n" "$(YELLOW)Running all mock middleware tests...$(NC)"
+	@cd middlewares/mock && ./test_full_workflow.sh
+	@printf "%s\n" "$(GREEN)✓ All mock middleware tests passed$(NC)"
+
+# =============================================================================
 # ROS Middleware Targets
 # =============================================================================
 
@@ -483,6 +530,9 @@ test: test-core
 clean:
 	@printf "%s\n" "$(YELLOW)Cleaning build artifacts...$(NC)"
 	@rm -rf $(BUILD_DIR) $(COVERAGE_DIR)
+	@cd middlewares/ros2 && rm -rf build install log 2>/dev/null || true
+	@cd middlewares/ros1 && catkin clean --yes 2>/dev/null || true
+	@rm -rf middlewares/mock/src/mock_plugin/build middlewares/mock/install 2>/dev/null || true
 	@printf "%s\n" "$(GREEN)✓ All build artifacts cleaned$(NC)"
 
 # Install target
@@ -1174,4 +1224,3 @@ format-ci:
 			printf "%s\n" "$(YELLOW)Or format files individually: $(CLANG_FORMAT) -i <file>$(NC)" && \
 			exit 1)
 	@printf "%s\n" "$(GREEN)✓ Code formatting check passed$(NC)"
-

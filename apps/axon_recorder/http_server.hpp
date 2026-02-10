@@ -21,6 +21,11 @@ namespace axon {
 namespace recorder {
 
 /**
+ * Forward declaration
+ */
+struct TaskConfig;
+
+/**
  * HTTP RPC Server for AxonRecorder
  *
  * Provides RESTful JSON API for controlling the recorder remotely.
@@ -40,6 +45,7 @@ public:
   using PauseRecordingCallback = std::function<bool()>;
   using ResumeRecordingCallback = std::function<bool()>;
   using ClearConfigCallback = std::function<bool()>;
+  using GetTaskConfigCallback = std::function<const TaskConfig*()>;
   using QuitCallback = std::function<void()>;
 
   /**
@@ -74,6 +80,7 @@ public:
     PauseRecordingCallback pause_recording;
     ResumeRecordingCallback resume_recording;
     ClearConfigCallback clear_config;
+    GetTaskConfigCallback get_task_config;
     QuitCallback quit;
   };
 
