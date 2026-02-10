@@ -48,7 +48,6 @@ public:
   using PauseRecordingCallback = std::function<bool()>;
   using ResumeRecordingCallback = std::function<bool()>;
   using ClearConfigCallback = std::function<bool()>;
-  using GetTaskConfigCallback = std::function<const TaskConfig*()>;
   using QuitCallback = std::function<void()>;
 
   /**
@@ -84,7 +83,6 @@ public:
     PauseRecordingCallback pause_recording;
     ResumeRecordingCallback resume_recording;
     ClearConfigCallback clear_config;
-    GetTaskConfigCallback get_task_config;
     QuitCallback quit;
   };
 
