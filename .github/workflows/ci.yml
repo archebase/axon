@@ -72,7 +72,7 @@ jobs:
   # ===========================================================================
   format-lint-reuse:
     name: Format, Lint & License
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -179,7 +179,7 @@ jobs:
   # ===========================================================================
   ci-success:
     name: CI Success
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests, tests-zenoh]
     if: always()
     steps:
