@@ -128,7 +128,7 @@ public:
    *
    * @return Status code
    */
-  Status load();
+  Status load() const;  // const: only modifies mutable files_ member
 
   /**
    * Get list of cached files
@@ -200,7 +200,7 @@ private:
   /**
    * Read cache MCAP file
    */
-  Status read_cache();
+  Status read_cache() const;  // const: only modifies mutable files_ member
 
   /**
    * Compare mtime/size to determine changed files

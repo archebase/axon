@@ -67,6 +67,11 @@ axon_set_position_independent_code(axon_config)
 # Link against axon_mcap which includes MCAP implementation
 target_link_libraries(axon_config PRIVATE axon_mcap)
 
+# Apply coverage flags if enabled
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(axon_config)
+endif()
+
 # Include directories
 target_include_directories(axon_config PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}

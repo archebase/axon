@@ -358,7 +358,7 @@ ConfigCache::Status ConfigCache::write_cache() {
   return Status::Ok;
 }
 
-ConfigCache::Status ConfigCache::read_cache() {
+ConfigCache::Status ConfigCache::read_cache() const {
   std::string cache_file = cache_path();
 
   // Check if cache exists
@@ -404,7 +404,7 @@ ConfigCache::Status ConfigCache::read_cache() {
   return Status::Ok;
 }
 
-ConfigCache::Status ConfigCache::load() {
+ConfigCache::Status ConfigCache::load() const {
   Status status_val = read_cache();
   if (status_val == Status::CacheNotFound) {
     return status_val;
