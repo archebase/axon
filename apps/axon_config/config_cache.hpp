@@ -174,7 +174,7 @@ public:
 
 private:
   std::string config_dir_;
-  std::vector<CachedFile> files_;
+  mutable std::vector<CachedFile> files_;  // mutable for lazy loading in const get_status()
 
   /**
    * File metadata for tracking during scan

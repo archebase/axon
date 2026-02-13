@@ -465,8 +465,8 @@ ConfigCache::StatusInfo ConfigCache::get_status() const {
 
   if (info.cache_exists) {
     // Load cache metadata to get file count and size
-    // Note: const_cast is safe here because we're only reading metadata
-    const_cast<ConfigCache*>(this)->load();
+    // (files_ is mutable for lazy loading in const context)
+    load();
 
     info.file_count = files_.size();
     info.total_size = 0;
@@ -475,13 +475,12 @@ ConfigCache::StatusInfo ConfigCache::get_status() const {
     }
 
     // Use cache file modification time as "last scanned" time
-    auto ftime = fs::last_write_time(cache_path());
-    // Convert to system_clock time (file_time_type may use different clock)
-    auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-      ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now()
-    );
-    info.cache_mtime =
-      std::chrono::duration_cast<std::chrono::seconds>(sctp.time_since_epoch()).count();
+    struct stat st{};
+    if (stat(cache_path().c_str(), &st) == 0) {
+      info.cache_mtime = static_cast<uint64_t>(st.st_mtime);
+    } else {
+      info.cache_mtime = 0;
+    }
   } else {
     info.file_count = 0;
     info.total_size = 0;
