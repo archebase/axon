@@ -545,14 +545,13 @@ std::vector<ConfigCache::FileChange> ConfigCache::detect_changes(
 }
 
 bool ConfigCache::get_file_stats(const std::string& path, uint64_t& mtime, uint64_t& size) {
-  try {
-    auto ftime = fs::last_write_time(path);
-    mtime = std::chrono::duration_cast<std::chrono::seconds>(ftime.time_since_epoch()).count();
-    size = fs::file_size(path);
-    return true;
-  } catch (const fs::filesystem_error&) {
+  struct stat st{};
+  if (stat(path.c_str(), &st) != 0) {
     return false;
   }
+  mtime = static_cast<uint64_t>(st.st_mtime);
+  size = static_cast<uint64_t>(st.st_size);
+  return true;
 }
 
 // =============================================================================
