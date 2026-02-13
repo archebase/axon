@@ -162,6 +162,12 @@ bool AxonRecorder::start() {
     return false;
   }
 
+  // Inject config files from cache (if enabled)
+  if (!recording_session_->inject_config()) {
+    // Config injection failure is not fatal, log warning and continue
+    // inject_config() returns true when disabled or successful, false only on error
+  }
+
   // Set task config if available
   if (task_config_.has_value()) {
     recording_session_->set_task_config(task_config_.value());
@@ -279,6 +285,10 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     j["messages_dropped"] = stats.messages_dropped;
     j["bytes_written"] = stats.bytes_written;
     return j;
+  };
+
+  callbacks.get_task_config = [this]() -> const TaskConfig* {
+    return this->get_task_config();
   };
 
   callbacks.set_config =

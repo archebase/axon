@@ -13,6 +13,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "config_injector.hpp"
 #include "mcap_writer_wrapper.hpp"
 #include "metadata_injector.hpp"
 #include "task_config.hpp"
@@ -210,6 +211,17 @@ public:
    * @param message_type Message type string
    */
   void update_topic_stats(const std::string& topic, const std::string& message_type);
+
+  /**
+   * Inject config files from cache into the recording.
+   *
+   * This method checks if config injection is enabled and injects
+   * cached config files as MCAP attachments with "config/" prefix.
+   * Should be called after open() and before any message writing.
+   *
+   * @return true if injection succeeded or was disabled, false on error
+   */
+  bool inject_config();
 
 private:
   std::unique_ptr<mcap_wrapper::McapWriterWrapper> writer_;

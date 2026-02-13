@@ -302,6 +302,53 @@ public:
     return true;
   }
 
+  bool write_attachment(
+    const std::string& name, const std::string& content_type, const void* data, size_t size
+  ) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!is_open_) {
+      last_error_ = "Writer not open";
+      AXON_LOG_WARN("Cannot write attachment - writer not open");
+      return false;
+    }
+
+    if (data == nullptr && size > 0) {
+      last_error_ = "Invalid attachment data (null pointer with non-zero size)";
+      AXON_LOG_ERROR("Cannot write attachment" << axon::logging::kv("name", name));
+      return false;
+    }
+
+    // Create attachment with current timestamp
+    mcap::Attachment attachment;
+    attachment.name = name;
+    attachment.mediaType = content_type;
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::system_clock::now().time_since_epoch()
+    )
+                          .count();
+    attachment.logTime = now_ns;
+    attachment.createTime = now_ns;
+    attachment.data = reinterpret_cast<const std::byte*>(data);
+    attachment.dataSize = size;
+
+    auto status = writer_.write(attachment);
+    if (!status.ok()) {
+      last_error_ = "Failed to write attachment: " + status.message;
+      AXON_LOG_ERROR(
+        "Failed to write attachment" << axon::logging::kv("name", name)
+                                     << axon::logging::kv("error", status.message)
+      );
+      return false;
+    }
+
+    AXON_LOG_DEBUG(
+      "Attachment written" << axon::logging::kv("name", name) << axon::logging::kv("size", size)
+                           << axon::logging::kv("content_type", content_type)
+    );
+    return true;
+  }
+
   std::string get_last_error() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return last_error_;
@@ -401,6 +448,12 @@ bool McapWriterWrapper::write_metadata(
   const std::string& name, const std::unordered_map<std::string, std::string>& metadata
 ) {
   return impl_->write_metadata(name, metadata);
+}
+
+bool McapWriterWrapper::write_attachment(
+  const std::string& name, const std::string& content_type, const void* data, size_t size
+) {
+  return impl_->write_attachment(name, content_type, data, size);
 }
 
 std::string McapWriterWrapper::get_last_error() const {

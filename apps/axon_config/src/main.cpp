@@ -1,8 +1,14 @@
+<<<<<<< HEAD
 /*
  * SPDX-FileCopyrightText: 2026 ArcheBase
  *
  * SPDX-License-Identifier: MulanPSL-2.0
  */
+=======
+// SPDX-FileCopyrightText: 2026 ArcheBase
+//
+// SPDX-License-Identifier: MulanPSL-2.0
+>>>>>>> 360c9de (refactor: clean up Makefile and improve formatting in multiple source files)
 
 // Axon Config - Main Entry Point
 // Placeholder implementation - Design pending

@@ -90,12 +90,13 @@ help:
 	@printf "%s\n" "  $(BLUE)make test-uploader$(NC)   - Build and run axon_uploader tests"
 	@printf "%s\n" "  $(BLUE)make test-logging$(NC)    - Build and run axon_logging tests"
 	@printf "%s\n" "  $(BLUE)make test-core$(NC)       - Run all C++ library tests"
+	@printf "%s\n" "  $(BLUE)make test-axon-config$(NC) - Build and run axon_config tests"
 	@printf "%s\n" "  $(BLUE)make coverage-core$(NC)   - Run all C++ tests with coverage"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Applications:$(NC)"
 	@printf "%s\n" "  $(BLUE)make app$(NC)              - Build all applications"
 	@printf "%s\n" "  $(BLUE)make app-axon-recorder$(NC) - Build axon_recorder plugin loader"
-	@printf "%s\n" "  $(BLUE)make app-plugin-example$(NC) - Build plugin example"
+	@printf "%s\n" "  $(BLUE)make app-axon-config$(NC)  - Build axon_config tool"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
 	@printf "%s\n" "  $(BLUE)make build-mock$(NC)           - Build mock middleware plugin"
@@ -173,16 +174,20 @@ help:
 .PHONY: test-mcap test-uploader test-logging test-core
 .PHONY: coverage-mcap coverage-uploader coverage-logging coverage-core
 
-# Build all C++ libraries and apps using root CMakeLists.txt
+# Build core libraries (axon_logging, axon_mcap, axon_uploader)
 build-core:
-	@printf "%s\n" "$(YELLOW)Building all C++ libraries and apps...$(NC)"
+	@printf "%s\n" "$(YELLOW)Building core libraries...$(NC)"
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_BUILD_TESTS=ON && \
-		cmake --build . -j$(NPROC)
-	@printf "%s\n" "$(GREEN)✓ All C++ libraries and apps built$(NC)"
+			-DAXON_BUILD_TESTS=ON \
+			--log-level=ERROR >/dev/null 2>&1 || \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_logging axon_mcap
+	@printf "%s\n" "$(GREEN)✓ Core libraries built$(NC)"
 
 # Build individual core libraries
 build-mcap:
@@ -409,19 +414,48 @@ coverage-core: coverage-mcap coverage-uploader coverage-logging
 # Application Targets
 # =============================================================================
 
-.PHONY: app app-axon-recorder app-plugin-example
+.PHONY: app app-axon-recorder app-axon-config
+.PHONY: test-axon-config
 
 # Build all applications
 app: build-core
+	@printf "%s\n" "$(YELLOW)Building applications...$(NC)"
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder axon_config
 	@printf "%s\n" "$(GREEN)✓ All applications built$(NC)"
 
 # Build axon_recorder (plugin loader library)
-app-axon-recorder: build-core
-	@printf "%s\n" "$(GREEN)✓ axon_recorder plugin loader built$(NC)"
+app-axon-recorder:
+	@printf "%s\n" "$(YELLOW)Building axon_recorder...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON >/dev/null 2>&1 || \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON
+	@cmake --build $(BUILD_DIR)/axon_recorder -j$(NPROC) --target axon_recorder
+	@printf "%s\n" "$(GREEN)✓ axon_recorder built$(NC)"
 
-# Build plugin_example
-app-plugin-example: build-core
-	@printf "%s\n" "$(GREEN)✓ plugin example built$(NC)"
+# Build axon_config (robot configuration tool)
+app-axon-config:
+	@printf "%s\n" "$(YELLOW)Building axon_config...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON >/dev/null 2>&1 || \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON
+	@cmake --build $(BUILD_DIR)/axon_config -j$(NPROC) --target axon_config
+	@printf "%s\n" "$(GREEN)✓ axon_config built$(NC)"
+
+# Test axon_config
+test-axon-config: build-core
+	@printf "%s\n" "$(YELLOW)Running axon_config tests...$(NC)"
+	@cd build/axon_config && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_config tests passed$(NC)"
 
 # =============================================================================
 # Mock Middleware Targets
@@ -671,12 +705,12 @@ format:
 	@printf "%s\n" "$(YELLOW)Formatting C/C++ code...$(NC)"
 	@printf "%s\n" "$(YELLOW)  Using: $(CLANG_FORMAT)$(NC)"
 	@printf "%s\n" "$(YELLOW)  Formatting core/ libraries...$(NC)"
-	@find core/axon_mcap core/axon_uploader core/axon_logging \
+	@find core \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/build_*/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
 	@printf "%s\n" "$(YELLOW)  Formatting middlewares/ code...$(NC)"
-	@find middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters \
+	@find middlewares \
 		\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 		! -path "*/build/*" ! -path "*/install/*" ! -path "*/devel/*" \
 		! -path "*/depthlitez/*" -print0 2>/dev/null | \
@@ -692,7 +726,7 @@ format:
 lint:
 	@printf "%s\n" "$(YELLOW)Linting C++ code...$(NC)"
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		find core middlewares/ros1 middlewares/ros2 middlewares/zenoh middlewares/filters apps \
+		find core middlewares apps \
 			\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
 			! -path "*/build/*" \
 			! -path "*/test/*" \

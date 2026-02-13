@@ -350,6 +350,198 @@ TEST_F(McapWriterTest, LargeMessages) {
 // Metadata Tests
 // =============================================================================
 
+TEST_F(McapWriterTest, WriteAttachment) {
+  McapWriterWrapper writer;
+
+  McapWriterOptions options;
+  options.compression = Compression::None;
+
+  ASSERT_TRUE(writer.open(test_file_, options));
+
+  // Write a JSON attachment
+  std::string json_data = R"({"task_id": "12345", "device_id": "robot_001"})";
+  EXPECT_TRUE(
+    writer.write_attachment("sidecar.json", "application/json", json_data.data(), json_data.size())
+  );
+
+  writer.close();
+
+  // Verify file was created
+  EXPECT_TRUE(fs::exists(test_file_));
+}
+
+TEST_F(McapWriterTest, WriteMultipleAttachments) {
+  McapWriterWrapper writer;
+
+  McapWriterOptions options;
+  options.compression = Compression::None;
+
+  ASSERT_TRUE(writer.open(test_file_, options));
+
+  // Write multiple attachments with different content types
+  std::string json_data = R"({"version": "1.0"})";
+  EXPECT_TRUE(
+    writer.write_attachment("metadata.json", "application/json", json_data.data(), json_data.size())
+  );
+
+  std::string yaml_data = "robot_type: agv\nsensors:\n  - camera\n  - lidar";
+  EXPECT_TRUE(
+    writer.write_attachment("config.yaml", "text/yaml", yaml_data.data(), yaml_data.size())
+  );
+
+  std::string text_data = "This is a plain text attachment.";
+  EXPECT_TRUE(
+    writer.write_attachment("notes.txt", "text/plain", text_data.data(), text_data.size())
+  );
+
+  // Write binary attachment
+  std::vector<uint8_t> binary_data = {0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD};
+  EXPECT_TRUE(writer.write_attachment(
+    "binary.bin", "application/octet-stream", binary_data.data(), binary_data.size()
+  ));
+
+  writer.close();
+
+  // Verify file was created
+  EXPECT_TRUE(fs::exists(test_file_));
+  EXPECT_GT(fs::file_size(test_file_), 0);
+}
+
+TEST_F(McapWriterTest, WriteAttachmentWithMessages) {
+  McapWriterWrapper writer;
+
+  McapWriterOptions options;
+  options.compression = Compression::None;
+
+  ASSERT_TRUE(writer.open(test_file_, options));
+
+  // Register schema and channel
+  uint16_t schema_id = writer.register_schema("test/msg/Data", "ros2msg", "uint32 value");
+  uint16_t channel_id = writer.register_channel("/test/data", "cdr", schema_id);
+
+  // Write some messages
+  std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0x04};
+  uint64_t timestamp = 1000000000ULL;
+
+  for (int i = 0; i < 10; ++i) {
+    uint64_t t = timestamp + i * 1000000ULL;
+    EXPECT_TRUE(writer.write(channel_id, t, t, payload.data(), payload.size()));
+  }
+
+  // Write attachment interleaved with messages
+  std::string attachment_data = R"({"summary": "10 messages recorded"})";
+  EXPECT_TRUE(writer.write_attachment(
+    "summary.json", "application/json", attachment_data.data(), attachment_data.size()
+  ));
+
+  // Write more messages after attachment
+  for (int i = 10; i < 20; ++i) {
+    uint64_t t = timestamp + i * 1000000ULL;
+    EXPECT_TRUE(writer.write(channel_id, t, t, payload.data(), payload.size()));
+  }
+
+  auto stats = writer.get_statistics();
+  EXPECT_EQ(stats.messages_written, 20);
+
+  writer.close();
+
+  EXPECT_TRUE(fs::exists(test_file_));
+}
+
+TEST_F(McapWriterTest, WriteEmptyAttachment) {
+  McapWriterWrapper writer;
+
+  McapWriterOptions options;
+  options.compression = Compression::None;
+
+  ASSERT_TRUE(writer.open(test_file_, options));
+
+  // Write empty attachment (valid use case)
+  EXPECT_TRUE(writer.write_attachment("empty.txt", "text/plain", nullptr, 0));
+
+  writer.close();
+
+  EXPECT_TRUE(fs::exists(test_file_));
+}
+
+TEST_F(McapWriterTest, WriteAttachmentNullDataWithSize) {
+  McapWriterWrapper writer;
+
+  McapWriterOptions options;
+  options.compression = Compression::None;
+
+  ASSERT_TRUE(writer.open(test_file_, options));
+
+  // Null data pointer with non-zero size should fail
+  EXPECT_FALSE(writer.write_attachment("invalid.bin", "application/octet-stream", nullptr, 100));
+  EXPECT_FALSE(writer.get_last_error().empty());
+
+  writer.close();
+}
+
+TEST_F(McapWriterTest, WriteAttachmentToClosedWriter) {
+  McapWriterWrapper writer;
+
+  // Writer is not open
+  std::string data = "test data";
+  EXPECT_FALSE(writer.write_attachment("test.txt", "text/plain", data.data(), data.size()));
+  EXPECT_FALSE(writer.get_last_error().empty());
+}
+
+TEST_F(McapWriterTest, WriteLargeAttachment) {
+  McapWriterWrapper writer;
+
+  McapWriterOptions options;
+  options.compression = Compression::Zstd;
+  options.compression_level = 3;
+
+  ASSERT_TRUE(writer.open(test_file_, options));
+
+  // Write a large attachment (e.g., URDF file)
+  std::string large_data(1024 * 100, 'X');  // 100KB of data
+  // Add some variation to make it more realistic
+  for (size_t i = 0; i < large_data.size(); i += 100) {
+    large_data[i] = '\n';
+  }
+
+  EXPECT_TRUE(
+    writer.write_attachment("robot.urdf", "text/xml", large_data.data(), large_data.size())
+  );
+
+  writer.close();
+
+  EXPECT_TRUE(fs::exists(test_file_));
+  EXPECT_GT(fs::file_size(test_file_), 0);
+}
+
+TEST_F(McapWriterTest, AttachmentWithCompression) {
+  McapWriterWrapper writer;
+
+  McapWriterOptions options;
+  options.compression = Compression::Zstd;
+  options.compression_level = 5;
+
+  ASSERT_TRUE(writer.open(test_file_, options));
+
+  // Write attachments with compression enabled
+  std::string json_data =
+    R"({"task_id": "12345", "device_id": "robot_001", "metadata": {"key": "value"}})";
+  EXPECT_TRUE(
+    writer.write_attachment("sidecar.json", "application/json", json_data.data(), json_data.size())
+  );
+
+  std::string text_data(10000, 'A');  // 10KB of repetitive data (compressible)
+  EXPECT_TRUE(writer.write_attachment("log.txt", "text/plain", text_data.data(), text_data.size()));
+
+  writer.close();
+
+  EXPECT_TRUE(fs::exists(test_file_));
+}
+
+// =============================================================================
+// Metadata Tests
+// =============================================================================
+
 TEST_F(McapWriterTest, WriteMetadata) {
   McapWriterWrapper writer;
 

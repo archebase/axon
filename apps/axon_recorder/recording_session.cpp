@@ -340,5 +340,32 @@ void RecordingSession::update_topic_stats(
   }
 }
 
+bool RecordingSession::inject_config() {
+  if (!is_open()) {
+    AXON_LOG_WARN("Cannot inject config, session not open");
+    return false;
+  }
+
+  ConfigInjector injector;
+  auto result = injector.inject(*writer_);
+
+  if (!result.success) {
+    AXON_LOG_WARN("Config injection failed" << axon::logging::kv("error", result.error_message));
+    return false;
+  }
+
+  if (result.files_injected > 0) {
+    AXON_LOG_INFO(
+      "Config injected" << axon::logging::kv("files", result.files_injected)
+                        << axon::logging::kv("bytes", result.total_bytes)
+                        << axon::logging::kv("cache", result.cache_path)
+    );
+  } else {
+    AXON_LOG_DEBUG("Config injection enabled but no files injected");
+  }
+
+  return true;
+}
+
 }  // namespace recorder
 }  // namespace axon

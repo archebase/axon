@@ -168,10 +168,10 @@ Axon consists of four main components that work together:
 - `POST /rpc/finish` → RECORDING/PAUSED → IDLE
 
 **Note on Current Status:**
-- `axon_recorder`: Fully implemented C++ application
+- `axon_recorder`: Fully implemented C++ application with config injection support
 - `axon_transfer`: Standalone daemon pending design; currently uses [core/axon_uploader/](core/axon_uploader/) library integrated into recorder
 - `axon_panel`: Fully implemented Vue 3 SPA at [apps/axon_panel/](apps/axon_panel/)
-- `axon_config`: Placeholder only; CLI interface and functionality pending design
+- `axon_config`: Fully implemented CLI tool for robot configuration management (see [docs/designs/axon-config-design.md](docs/designs/axon-config-design.md))
 
 ### axon_panel - Web Control Panel
 
@@ -246,11 +246,14 @@ Axon/
 ├── apps/                     # Main applications
 │   ├── axon_recorder/        # Plugin loader and HTTP RPC server
 │   ├── axon_panel/           # Vue 3 web control panel
-│   ├── axon_config/          # Robot configuration CLI tool (placeholder)
+│   ├── axon_config/          # Robot configuration CLI tool
 │   └── axon_transfer/        # S3 transfer daemon (placeholder)
 │
 ├── python/                   # Python client library
 │   └── axon_client/          # Async/sync HTTP client
+│
+├── tools/                    # Utility tools and web applications
+│   └── axon_panel/           # Vue 3 web control panel
 │
 └── docs/designs/             # Design documents
     ├── rpc-api-design.md     # HTTP RPC API specification
@@ -336,6 +339,13 @@ IDLE → READY → RECORDING ↔ PAUSED
    - Integrates with ROS2 plugin via `DepthCompressionFilter`
    - See [docs/designs/depth-compression-filter.md](docs/designs/depth-compression-filter.md)
 
+**6. Config Injector** ([apps/axon_recorder/config_injector.cpp](apps/axon_recorder/config_injector.cpp))
+   - Injects robot configuration from cache into MCAP recordings as attachments
+   - Reads from `/axon/config/cache.mcap` when `/axon/config/.enabled` exists
+   - Preserves directory structure with `config/` prefix in attachment names
+   - Zero per-file I/O: single cache read loads all config data
+   - See [docs/designs/axon-config-design.md](docs/designs/axon-config-design.md)
+
 ### Threading Model
 
 | Thread | Responsibility |
@@ -360,6 +370,24 @@ The recorder exposes an HTTP RPC server (default port 8080) for remote control:
 - `GET /rpc/status` - Query current status and metrics
 
 See [docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md) for complete API specification including request/response formats.
+
+### Simple Mode (Direct Recording)
+
+For quick testing or standalone use without the HTTP RPC server, the recorder supports simple mode:
+
+```bash
+# Simple mode: start recording immediately without HTTP RPC
+./build/axon_recorder/axon_recorder --simple --output /tmp/recording.mcap --config /path/to/config.yaml
+
+# Simple mode with default output path (recording.mcap in current directory)
+./build/axon_recorder/axon_recorder --simple --config /path/to/config.yaml
+```
+
+In simple mode, the recorder:
+- Bypasses the HTTP RPC server and state machine
+- Starts recording immediately to the specified output file
+- Uses topics and settings from the config file
+- Terminates on SIGINT (Ctrl+C) or when all subscriptions end
 
 ## Running Individual Tests
 
@@ -758,6 +786,7 @@ grep -r "AXON_ROS1\|AXON_ROS2" build/
 | Transfer daemon | `apps/axon_transfer/` |
 | Web control panel | `apps/axon_panel/` (Vue 3) |
 | Config tool CLI | `apps/axon_config/` |
+| Config cache directory | `/axon/config/` (managed by axon_config) |
 | Plugin ABI interface | `apps/axon_recorder/plugin_loader.hpp` |
 | Tests | `*/test/` or `*/test_*.cpp` |
 | CMake modules | `cmake/` |
@@ -783,7 +812,7 @@ To create a new middleware plugin:
 **Current Status:**
 - `axon_panel`: Fully implemented Vue 3 SPA at [apps/axon_panel/](apps/axon_panel/)
 - `axon_transfer`: Standalone daemon pending design; currently uses [core/axon_uploader/](core/axon_uploader/) library integrated into recorder
-- `axon_config`: Placeholder only; CLI interface and functionality pending design
+- `axon_config`: Fully implemented CLI tool at [apps/axon_config/](apps/axon_config/) - manages robot configuration injection into MCAP recordings
 
 **axon_panel Development:**
 ```bash
@@ -795,4 +824,23 @@ cd apps/axon_panel
 npm run dev      # Starts at http://localhost:5173
 ```
 
-**See:** [docs/designs/frontend-design.md](docs/designs/frontend-design.md) for complete panel architecture
+**axon_config CLI:**
+```bash
+# Initialize config directory structure
+./build/axon_config/axon_config init
+
+# Scan and cache config files
+./build/axon_config/axon_config scan
+
+# Enable config injection for recordings
+./build/axon_config/axon_config enable
+
+# Show current status
+./build/axon_config/axon_config status
+```
+
+Config files are stored in `/axon/config/` and cached as MCAP attachments at `/axon/config/cache.mcap`. When enabled, the recorder injects all cached config as attachments into recordings.
+
+**See:**
+- [docs/designs/frontend-design.md](docs/designs/frontend-design.md) for panel architecture
+- [docs/designs/axon-config-design.md](docs/designs/axon-config-design.md) for config tool specification

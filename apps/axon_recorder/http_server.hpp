@@ -17,6 +17,8 @@
 #include <string>
 #include <thread>
 
+#include "task_config.hpp"
+
 namespace axon {
 namespace recorder {
 
@@ -38,6 +40,7 @@ public:
    */
   using GetStateCallback = std::function<std::string()>;
   using GetStatsCallback = std::function<nlohmann::json()>;
+  using GetTaskConfigCallback = std::function<const TaskConfig*()>;
   using SetConfigCallback = std::function<bool(const std::string&, const nlohmann::json&)>;
   using BeginRecordingCallback = std::function<bool(const std::string&)>;
   using FinishRecordingCallback = std::function<bool(const std::string&)>;
@@ -45,7 +48,6 @@ public:
   using PauseRecordingCallback = std::function<bool()>;
   using ResumeRecordingCallback = std::function<bool()>;
   using ClearConfigCallback = std::function<bool()>;
-  using GetTaskConfigCallback = std::function<const TaskConfig*()>;
   using QuitCallback = std::function<void()>;
 
   /**
@@ -73,6 +75,7 @@ public:
   struct Callbacks {
     GetStateCallback get_state;
     GetStatsCallback get_stats;
+    GetTaskConfigCallback get_task_config;
     SetConfigCallback set_config;
     BeginRecordingCallback begin_recording;
     FinishRecordingCallback finish_recording;
@@ -80,7 +83,6 @@ public:
     PauseRecordingCallback pause_recording;
     ResumeRecordingCallback resume_recording;
     ClearConfigCallback clear_config;
-    GetTaskConfigCallback get_task_config;
     QuitCallback quit;
   };
 
