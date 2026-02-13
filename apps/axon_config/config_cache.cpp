@@ -6,6 +6,7 @@
 
 #include <mcap/mcap.hpp>
 #include <mcap/reader.hpp>
+#include <sys/stat.h>
 
 #include <chrono>
 #include <cstring>
@@ -291,16 +292,13 @@ ConfigCache::Status ConfigCache::scan_directory(
         std::string full_path = entry.path().string();
         std::string rel_path = full_path.substr(config_dir_.size() + 1);
 
-        // Get modification time and size
-        auto ftime = entry.last_write_time();
-
-        // Convert to system_clock time (file_time_type may use different clock)
-        auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-          ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now()
-        );
-        uint64_t mtime =
-          std::chrono::duration_cast<std::chrono::seconds>(sctp.time_since_epoch()).count();
-        uint64_t size = fs::file_size(entry.path());
+        // Get modification time and size (use stat for portable epoch time)
+        struct stat st{};
+        if (stat(full_path.c_str(), &st) != 0) {
+          continue;  // Skip files we can't stat
+        }
+        uint64_t mtime = static_cast<uint64_t>(st.st_mtime);
+        uint64_t size = static_cast<uint64_t>(st.st_size);
 
         FileMeta meta;
         meta.mtime = mtime;
