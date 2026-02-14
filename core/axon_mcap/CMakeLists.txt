@@ -97,30 +97,6 @@ else()
 endif()
 
 # =============================================================================
-# axon_uploader Library (for S3 upload, optional)
-# =============================================================================
-
-# Only build uploader if explicitly requested
-if(AXON_BUILD_UPLOADER)
-    # Use centralized AXON_UPLOADER_DIR from parent
-    if(
-        DEFINED AXON_UPLOADER_DIR
-        AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt"
-    )
-        message(STATUS "Found axon_uploader at: ${AXON_UPLOADER_DIR}")
-        add_subdirectory(
-            ${AXON_UPLOADER_DIR}
-            ${CMAKE_CURRENT_BINARY_DIR}/axon_uploader
-        )
-    else()
-        message(
-            WARNING
-            "AXON_BUILD_UPLOADER is ON but axon_uploader not found at: ${AXON_UPLOADER_DIR}"
-        )
-    endif()
-endif()
-
-# =============================================================================
 # axon_mcap Wrapper Library
 # =============================================================================
 

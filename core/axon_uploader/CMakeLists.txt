@@ -49,35 +49,6 @@ message(STATUS "axon_uploader: Found SQLite3 ${SQLite3_VERSION}")
 message(STATUS "axon_uploader: Found AWS SDK")
 
 # =============================================================================
-# Find axon_mcap (sibling module - for MCAP validation)
-# =============================================================================
-# Use centralized AXON_MCAP_DIR if available, otherwise use relative path
-if(DEFINED AXON_MCAP_DIR AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
-    # Use parent's path (built from repo root)
-    set(MCAP_BUILD_DIR "${AXON_MCAP_DIR}")
-elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../axon_mcap/CMakeLists.txt")
-    # Fallback to sibling directory
-    set(MCAP_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../axon_mcap")
-else()
-    message(
-        STATUS
-        "axon_mcap not found - MCAP validation will not be available"
-    )
-    set(MCAP_BUILD_DIR "")
-endif()
-
-if(MCAP_BUILD_DIR)
-    message(STATUS "Found axon_mcap at: ${MCAP_BUILD_DIR}")
-    # Only add subdirectory if not already added
-    if(NOT TARGET axon_mcap)
-        add_subdirectory(
-            ${MCAP_BUILD_DIR}
-            ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap
-        )
-    endif()
-endif()
-
-# =============================================================================
 # axon_uploader Library
 # =============================================================================
 
@@ -102,12 +73,6 @@ target_link_libraries(
     axon_uploader
     PUBLIC ${AWSSDK_LINK_LIBRARIES} SQLite::SQLite3 OpenSSL::Crypto OpenSSL::SSL
 )
-
-# Link axon_mcap if available (for validation)
-if(TARGET axon_mcap)
-    target_link_libraries(axon_uploader PUBLIC axon_mcap)
-    target_compile_definitions(axon_uploader PRIVATE AXON_HAS_MCAP)
-endif()
 
 # =============================================================================
 # Coverage Support
