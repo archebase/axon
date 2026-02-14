@@ -1,8 +1,5 @@
-cmake_minimum_required(VERSION 3.14)  # FetchContent requires 3.14+
+cmake_minimum_required(VERSION 3.14) # FetchContent requires 3.14+
 project(axon_mcap)
-
-# Export compile commands for clangd/IDE support
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # =============================================================================
 # Centralized CMake Modules
@@ -11,25 +8,21 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # This ensures consistent configuration across the codebase.
 if(DEFINED AXON_CMAKE_MODULES_DIR)
     list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
+elseif(DEFINED AXON_REPO_ROOT)
+    list(APPEND CMAKE_MODULE_PATH "${AXON_REPO_ROOT}/cmake/Modules")
 else()
-    # Use AXON_REPO_ROOT if set, otherwise compute relative path
-    if(DEFINED AXON_REPO_ROOT)
-        set(_AXON_CMAKE_MODULES_DIR "${AXON_REPO_ROOT}/cmake/Modules")
-    else()
-        set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules")
+    # Compute relative path to cmake/Modules
+    set(_AXON_CMAKE_MODULES_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules"
+    )
+    if(EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdLib.cmake")
+        list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
     endif()
-    if(NOT EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdlib.cmake")
-        message(FATAL_ERROR
-            "Axon CMake modules not found at: ${_AXON_CMAKE_MODULES_DIR}\n"
-            "Please ensure you're building from the Axon repository root."
-        )
-    endif()
-    list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
 endif()
 
-# Include required modules (fail if not found)
-include(AxonStdlib REQUIRED)
-include(AxonCoverage REQUIRED)
+# Include required modules (AxonStdLib provides standard helpers)
+include(AxonStdLib REQUIRED)
+include(AxonCoverage OPTIONAL)
 
 # =============================================================================
 # Fetch MCAP Library from Foxglove (Header-only)
@@ -39,8 +32,12 @@ include(AxonCoverage REQUIRED)
 include(FetchContent)
 
 # Pin to a specific commit for reproducibility
-# releases/cpp/v2.1.1 -> commit b2953496735e7b89d5b2ea58be73abed85317c5f
-set(MCAP_COMMIT "b2953496735e7b89d5b2ea58be73abed85317c5f" CACHE STRING "MCAP commit hash")
+# releases/cpp/v2.1.2 -> commit a7eeff1383cc95a29dd9c5cac94104d277b5414e
+set(MCAP_COMMIT
+    "a7eeff1383cc95a29dd9c5cac94104d277b5414e"
+    CACHE STRING
+    "MCAP commit hash"
+)
 
 # Use URL-based FetchContent (more reliable in CI than GIT_REPOSITORY)
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
@@ -63,7 +60,6 @@ message(STATUS "MCAP library located at: ${mcap_SOURCE_DIR}")
 # =============================================================================
 # Find compression libraries (optional but recommended)
 # =============================================================================
-
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(ZSTD QUIET IMPORTED_TARGET libzstd)
@@ -75,9 +71,12 @@ endif()
 # =============================================================================
 
 add_library(mcap_headers INTERFACE)
-target_include_directories(mcap_headers SYSTEM INTERFACE
-    $<BUILD_INTERFACE:${mcap_SOURCE_DIR}/cpp/mcap/include>
-    $<INSTALL_INTERFACE:include>
+target_include_directories(
+    mcap_headers
+    SYSTEM
+    INTERFACE
+        $<BUILD_INTERFACE:${mcap_SOURCE_DIR}/cpp/mcap/include>
+        $<INSTALL_INTERFACE:include>
 )
 
 # Configure compression support
@@ -98,53 +97,22 @@ else()
 endif()
 
 # =============================================================================
-# axon_logging Library (for structured logging)
-# =============================================================================
-# Use centralized AXON_LOGGING_DIR if available, otherwise fall back to sibling
-
-if(DEFINED AXON_LOGGING_DIR AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
-    # Use root's path (built from repo root)
-    set(LOGGING_BUILD_DIR "${AXON_LOGGING_DIR}")
-elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../axon_logging/CMakeLists.txt")
-    # Fallback to sibling directory
-    set(LOGGING_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../axon_logging")
-else()
-    message(STATUS "axon_logging not found - logging support disabled for axon_mcap")
-    set(LOGGING_BUILD_DIR "")
-endif()
-
-if(LOGGING_BUILD_DIR)
-    message(STATUS "Found axon_logging at: ${LOGGING_BUILD_DIR}")
-    # Only add subdirectory if target doesn't already exist
-    # (avoids duplicate target errors when building from repo root)
-    if(NOT TARGET axon_logging)
-        # Propagate coverage flag to axon_logging subdirectory
-        # Must explicitly set OFF to clear cached values from previous builds
-        if(AXON_ENABLE_COVERAGE)
-            set(AXON_LOGGING_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_logging" FORCE)
-        else()
-            set(AXON_LOGGING_ENABLE_COVERAGE OFF CACHE BOOL "Enable coverage for axon_logging" FORCE)
-        endif()
-        add_subdirectory(${LOGGING_BUILD_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
-    endif()
-    # Set for later use
-    set(AXON_LOGGING_DIR "${LOGGING_BUILD_DIR}" CACHE INTERNAL "")
-endif()
-
-# =============================================================================
-# MCAP Writer Wrapper Library
+# axon_mcap Wrapper Library
 # =============================================================================
 
-add_library(axon_mcap
+add_library(
+    axon_mcap
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_writer_wrapper.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_validator.cpp
 )
 
 axon_set_position_independent_code(axon_mcap)
 
-target_include_directories(axon_mcap PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>
+target_include_directories(
+    axon_mcap
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(axon_mcap PUBLIC mcap_headers)
@@ -181,16 +149,24 @@ if(AXON_MCAP_BUILD_TESTS OR AXON_BUILD_TESTS)
     find_package(GTest REQUIRED)
 
     # Auto-discover all test files
-    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+    file(
+        GLOB TEST_SOURCES
+        CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
     )
 
     foreach(TEST_SOURCE ${TEST_SOURCES})
         get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
-        add_executable(${TEST_NAME} ${TEST_SOURCE})
-        target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-        target_link_libraries(${TEST_NAME}
+        add_executable(${TEST_NAME} ${TEST_SOURCE})
+
+        target_include_directories(
+            ${TEST_NAME}
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+
+        target_link_libraries(
+            ${TEST_NAME}
             axon_mcap
             GTest::gtest
             GTest::gtest_main
@@ -204,8 +180,14 @@ if(AXON_MCAP_BUILD_TESTS OR AXON_BUILD_TESTS)
         # Apply coverage flags
         if(COMMAND axon_add_coverage)
             axon_add_coverage(${TEST_NAME})
-        elseif(AXON_MCAP_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(${TEST_NAME} PRIVATE -O0 -g --coverage -fprofile-arcs -ftest-coverage)
+        elseif(
+            AXON_MCAP_ENABLE_COVERAGE
+            AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+        )
+            target_compile_options(
+                ${TEST_NAME}
+                PRIVATE -O0 --coverage -fprofile-arcs -ftest-coverage
+            )
             target_link_options(${TEST_NAME} PRIVATE --coverage)
         endif()
 
@@ -213,6 +195,7 @@ if(AXON_MCAP_BUILD_TESTS OR AXON_BUILD_TESTS)
         if(ZSTD_FOUND)
             target_link_libraries(${TEST_NAME} PkgConfig::ZSTD)
         endif()
+
         if(LZ4_FOUND)
             target_link_libraries(${TEST_NAME} PkgConfig::LZ4)
         endif()
@@ -220,3 +203,17 @@ if(AXON_MCAP_BUILD_TESTS OR AXON_BUILD_TESTS)
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     endforeach()
 endif()
+
+# =============================================================================
+# Summary
+# =============================================================================
+message(STATUS "")
+message(STATUS "=== Axon MCAP Configuration ===")
+message(STATUS "  MCAP Commit: ${MCAP_COMMIT}")
+message(STATUS "  Zstd: ${ZSTD_FOUND}")
+message(STATUS "  LZ4: ${LZ4_FOUND}")
+message(STATUS "  Logging: ${AXON_LOGGING_DIR}")
+message(STATUS "  Uploader: ${AXON_BUILD_UPLOADER}")
+message(STATUS "  Tests: ${AXON_MCAP_BUILD_TESTS}")
+message(STATUS "=====================================")
+message(STATUS "")

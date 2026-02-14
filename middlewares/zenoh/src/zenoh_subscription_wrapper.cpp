@@ -5,8 +5,13 @@
 #include "zenoh_subscription_wrapper.hpp"
 
 #include <chrono>
-#include <iostream>
 #include <zenoh.hxx>
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "zenoh_subscription"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 namespace zenoh_plugin {
 
@@ -25,7 +30,7 @@ bool SubscriptionManager::subscribe(
 
   // Check if already subscribed
   if (subscriptions_.find(keyexpr) != subscriptions_.end()) {
-    std::cout << "[ZenohPlugin] Already subscribed to: " << keyexpr << std::endl;
+    AXON_LOG_WARN("Already subscribed to " << kv("key", keyexpr));
     return true;
   }
 
@@ -69,8 +74,9 @@ bool SubscriptionManager::subscribe(
           captured_callback(keyexpr, captured_type, data, timestamp_ns);
 
         } catch (const std::exception& e) {
-          std::cerr << "[ZenohPlugin] Failed to handle sample on " << keyexpr << ": " << e.what()
-                    << std::endl;
+          AXON_LOG_ERROR(
+            "Failed to handle sample on " << kv("key", keyexpr) << ": " << kv("error", e.what())
+          );
         }
       },
       zenoh::closures::none  // on_drop callback (no-op)
@@ -83,14 +89,16 @@ bool SubscriptionManager::subscribe(
     info.callback = std::move(callback);
     subscriptions_[keyexpr] = std::move(info);
 
-    std::cout << "[ZenohPlugin] Subscribed to: " << keyexpr << " (" << message_type << ")"
-              << std::endl;
+    AXON_LOG_INFO(
+      "Subscribed to: " << kv("key", keyexpr) << " (" << kv("type", message_type) << ")"
+    );
 
     return true;
 
   } catch (const std::exception& e) {
-    std::cerr << "[ZenohPlugin] Exception subscribing to " << keyexpr << ": " << e.what()
-              << std::endl;
+    AXON_LOG_ERROR(
+      "Exception subscribing to " << kv("key", keyexpr) << ": " << kv("error", e.what())
+    );
     return false;
   }
 }
@@ -100,13 +108,13 @@ bool SubscriptionManager::unsubscribe(const std::string& keyexpr) {
 
   auto it = subscriptions_.find(keyexpr);
   if (it == subscriptions_.end()) {
-    std::cout << "[ZenohPlugin] Not subscribed to: " << keyexpr << std::endl;
+    AXON_LOG_INFO("Not subscribed to: " << kv("key", keyexpr));
     return false;
   }
 
   // Subscriber and keyexpr automatically cleaned up when erased
   subscriptions_.erase(it);
-  std::cout << "[ZenohPlugin] Unsubscribed from: " << keyexpr << std::endl;
+  AXON_LOG_INFO("Unsubscribed from: " << kv("key", keyexpr));
   return true;
 }
 

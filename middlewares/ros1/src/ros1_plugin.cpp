@@ -5,7 +5,12 @@
 #include "ros1_plugin.hpp"
 
 #include <nlohmann/json.hpp>
-#include <ros/console.h>
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "ros1_plugin"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 namespace ros1_plugin {
 
@@ -19,7 +24,7 @@ Ros1Plugin::~Ros1Plugin() {
 
 bool Ros1Plugin::init(const char* config_json) {
   if (initialized_.load()) {
-    ROS_ERROR("ROS1 plugin already initialized");
+    AXON_LOG_ERROR("ROS1 plugin already initialized");
     return false;
   }
 
@@ -57,24 +62,24 @@ bool Ros1Plugin::init(const char* config_json) {
     subscription_manager_ = std::make_unique<SubscriptionManager>(node_handle_);
 
     initialized_.store(true);
-    ROS_INFO("ROS1 plugin initialized: %s", node_name_.c_str());
+    AXON_LOG_INFO("ROS1 plugin initialized: " << kv("node", node_name_));
 
     return true;
 
   } catch (const std::exception& e) {
-    ROS_ERROR("Failed to initialize ROS1 plugin: %s", e.what());
+    AXON_LOG_ERROR("Failed to initialize ROS1 plugin: " << kv("error", e.what()));
     return false;
   }
 }
 
 bool Ros1Plugin::start() {
   if (!initialized_.load()) {
-    ROS_ERROR("ROS1 plugin not initialized");
+    AXON_LOG_ERROR("ROS1 plugin not initialized");
     return false;
   }
 
   if (spinning_.load()) {
-    ROS_ERROR("ROS1 plugin already spinning");
+    AXON_LOG_ERROR("ROS1 plugin already spinning");
     return false;
   }
 
@@ -87,11 +92,11 @@ bool Ros1Plugin::start() {
     spinning_.store(true);
     async_spinner_->start();
 
-    ROS_INFO("ROS1 plugin spinning");
+    AXON_LOG_INFO("ROS1 plugin spinning");
     return true;
 
   } catch (const std::exception& e) {
-    ROS_ERROR("Failed to start ROS1 plugin spin: %s", e.what());
+    AXON_LOG_ERROR("Failed to start ROS1 plugin spin: " << kv("error", e.what()));
     spinning_.store(false);
     return false;
   }
@@ -102,7 +107,7 @@ bool Ros1Plugin::stop() {
     return true;
   }
 
-  ROS_INFO("Shutting down ROS1 plugin");
+  AXON_LOG_INFO("Shutting down ROS1 plugin");
 
   // Stop spinning
   if (spinning_.load()) {
@@ -122,7 +127,7 @@ bool Ros1Plugin::stop() {
   node_handle_.reset();
 
   initialized_.store(false);
-  ROS_INFO("ROS1 plugin shut down");
+  AXON_LOG_INFO("ROS1 plugin shut down");
 
   return true;
 }
@@ -131,7 +136,7 @@ bool Ros1Plugin::subscribe(
   const std::string& topic_name, const std::string& message_type, MessageCallback callback
 ) {
   if (!initialized_.load()) {
-    ROS_ERROR("Cannot subscribe: plugin not initialized");
+    AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return false;
   }
 
@@ -143,7 +148,7 @@ bool Ros1Plugin::subscribe(
 
 bool Ros1Plugin::unsubscribe(const std::string& topic_name) {
   if (!initialized_.load()) {
-    ROS_ERROR("Cannot unsubscribe: plugin not initialized");
+    AXON_LOG_ERROR("Cannot unsubscribe: plugin not initialized");
     return false;
   }
 

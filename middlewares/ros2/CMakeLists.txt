@@ -8,12 +8,6 @@
 cmake_minimum_required(VERSION 3.14)
 project(axon_ros2_plugin VERSION 1.0.0 LANGUAGES CXX)
 
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-endif()
-
 # Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -22,7 +16,11 @@ endif()
 # =============================================================================
 # Options
 # =============================================================================
-option(AXON_ENABLE_DEPTH_COMPRESSION "Enable depth image compression (requires private DepthLiteZ)" OFF)
+option(
+    AXON_ENABLE_DEPTH_COMPRESSION
+    "Enable depth image compression (requires private DepthLiteZ)"
+    OFF
+)
 
 if(AXON_ENABLE_DEPTH_COMPRESSION)
     message(STATUS "ROS2 Plugin: Depth compression ENABLED")
@@ -34,47 +32,39 @@ endif()
 # Find ROS2
 # =============================================================================
 
-# Try to detect ROS2 automatically
-set(ROS2_DIR "/opt/ros/humble" CACHE PATH "ROS2 installation directory")
-
-# Try alternative ROS2 distributions if humble not found
-if(NOT EXISTS "${ROS2_DIR}")
-    if(EXISTS "/opt/ros/jazzy")
-        set(ROS2_DIR "/opt/ros/jazzy" CACHE PATH "ROS2 installation directory" FORCE)
-    elseif(EXISTS "/opt/ros/rolling")
-        set(ROS2_DIR "/opt/ros/rolling" CACHE PATH "ROS2 installation directory" FORCE)
+# Auto-detect ROS2 installation from environment
+# Priority: CMake variable > Environment variable > Default
+if(NOT DEFINED ROS2_DIR OR ROS2_DIR STREQUAL "")
+    if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+        set(ROS2_DIR
+            "/opt/ros/$ENV{ROS_DISTRO}"
+            CACHE PATH
+            "ROS2 installation directory (auto-detected from ROS_DISTRO)"
+        )
+        message(STATUS "ROS2: Auto-detected from ROS_DISTRO=$ENV{ROS_DISTRO}")
+    else()
+        set(ROS2_DIR "/opt/ros/humble" CACHE PATH "ROS2 installation directory")
+        message(STATUS "ROS2: Using default path (ROS_DISTRO not set)")
     endif()
 endif()
 
 if(NOT EXISTS "${ROS2_DIR}")
-    message(FATAL_ERROR "ROS2 not found. "
-                        "Install ROS2 (Humble/Jazzy/Rolling) or set ROS2_DIR to your ROS installation.")
+    message(
+        FATAL_ERROR
+        "ROS2 not found at ${ROS2_DIR}. "
+        "Set ROS_DISTRO environment variable or pass -DROS2_DIR=/path/to/ros."
+    )
 endif()
 
-# ROS2 library and include directories
-set(ROS2_LIB_DIR "${ROS2_DIR}/lib")
+# Find ROS2 libraries
+find_package(rclcpp REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system)
+
+# ROS2 include directory
 set(ROS2_INCLUDE_DIR "${ROS2_DIR}/include")
 
-# Find ROS2 CMake config files
-set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};${ROS2_DIR}")
-
-# Find required ROS2 packages
-find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
-
-# Check for required ROS2 libraries
-set(ROS2_REQUIRED_LIBS
-    "${ROS2_LIB_DIR}/librclcpp.so"
-)
-foreach(lib ${ROS2_REQUIRED_LIBS})
-    if(NOT EXISTS "${lib}")
-        message(FATAL_ERROR "ROS2 library not found: ${lib}")
-    endif()
-endforeach()
-
 # =============================================================================
-# Build the Plugin Library
+# Build Plugin Library
 # =============================================================================
 
 # Core sources (always built)
@@ -90,40 +80,50 @@ if(AXON_ENABLE_DEPTH_COMPRESSION)
     list(APPEND DEPTH_SOURCES src/depth_compression_filter.cpp)
 endif()
 
-add_library(axon_ros2_plugin SHARED
-    ${CORE_SOURCES}
-    ${DEPTH_SOURCES}
+add_library(axon_ros2_plugin SHARED ${CORE_SOURCES} ${DEPTH_SOURCES})
+
+target_include_directories(
+    axon_ros2_plugin
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+        ${ROS2_INCLUDE_DIR}
+        ${AXON_LOGGING_DIR}/include
 )
 
-target_include_directories(axon_ros2_plugin PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-    ${ROS2_INCLUDE_DIR}
+# Add filters include directory for depth compression (conditional)
+if(AXON_ENABLE_DEPTH_COMPRESSION)
+    target_include_directories(
+        axon_ros2_plugin
+        PRIVATE
+            ${AXON_MIDDLEWARES_DIR}/filters/include
+            ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
+    )
+    target_compile_definitions(
+        axon_ros2_plugin
+        PRIVATE AXON_ENABLE_DEPTH_COMPRESSION
+    )
+endif()
+
+# Set library properties
+set_target_properties(
+    axon_ros2_plugin
+    PROPERTIES VERSION 1.0.0 SOVERSION 1 VISIBILITY_INLINES_HIDDEN ON
 )
 
 # Link ROS2 libraries
-target_link_libraries(axon_ros2_plugin PUBLIC
-    rclcpp::rclcpp
-    nlohmann_json::nlohmann_json
-    ${sensor_msgs_TARGETS}
-    ${std_msgs_TARGETS}
+target_link_libraries(
+    axon_ros2_plugin
+    PUBLIC
+        rclcpp::rclcpp
+        Boost::system
+        nlohmann_json::nlohmann_json
+        axon_logging
 )
 
 # Link filters library for depth compression (conditional)
 if(AXON_ENABLE_DEPTH_COMPRESSION)
-    if(TARGET axon::filters)
-        target_link_libraries(axon_ros2_plugin PRIVATE axon::filters)
-        target_include_directories(axon_ros2_plugin PRIVATE
-            ${AXON_MIDDLEWARES_DIR}/filters/include
-            ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
-        )
-        target_compile_definitions(axon_ros2_plugin PRIVATE AXON_ENABLE_DEPTH_COMPRESSION)
-    else()
-        message(FATAL_ERROR
-            "AXON_ENABLE_DEPTH_COMPRESSION is ON but axon::filters target not found. "
-            "Build filters first with AXON_ENABLE_DEPTH_COMPRESSION=ON."
-        )
-    endif()
+    target_link_libraries(axon_ros2_plugin PRIVATE axon_filters)
 endif()
 
 # Export all symbols for dynamic loading
@@ -133,65 +133,68 @@ target_compile_options(axon_ros2_plugin PRIVATE -fvisibility=default)
 target_compile_definitions(axon_ros2_plugin PRIVATE AXON_ROS2)
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(axon_ros2_plugin)
+endif()
+
+# =============================================================================
 # Tests
 # =============================================================================
 option(AXON_BUILD_TESTS "Build tests" OFF)
+
 if(AXON_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
 
     # Discover test files automatically
-    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
+    file(
+        GLOB TEST_SOURCES
+        CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
+    )
 
     foreach(test_source ${TEST_SOURCES})
         get_filename_component(test_name ${test_source} NAME_WE)
 
         add_executable(${test_name} ${test_source})
 
-        target_link_libraries(${test_name}
+        target_include_directories(
+            ${test_name}
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${ROS2_INCLUDE_DIR}
+        )
+
+        target_link_libraries(
+            ${test_name}
             axon_ros2_plugin
             rclcpp::rclcpp
-            GTest::GTest
+            GTest::gtest
+            GTest::gtest_main
+            pthread
         )
 
-        # Use ament_target_dependencies for ROS2 dependencies in tests
-        ament_target_dependencies(${test_name}
-            rclcpp
-            sensor_msgs
-            std_msgs
-        )
-
-        # Add filters include directory for tests (conditional)
-        if(AXON_ENABLE_DEPTH_COMPRESSION AND TARGET axon::filters)
-            target_include_directories(${test_name} PRIVATE
-                ${AXON_MIDDLEWARES_DIR}/filters/include
-                ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
-            )
+        # Apply coverage flags
+        if(COMMAND axon_add_coverage)
+            axon_add_coverage(${test_name})
         endif()
 
-        # Add test labels
-        set_target_properties(${test_name} PROPERTIES
-            LABELS "unit;ros2_plugin"
-        )
-
-        # Register with CTest
+        # Register with CTest first, then set properties
         add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES LABELS "unit;ros2_plugin")
     endforeach()
 endif()
 
 # =============================================================================
 # Install
 # =============================================================================
-install(TARGETS axon_ros2_plugin
+install(
+    TARGETS axon_ros2_plugin
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib/axon/plugins
-    RUNTIME DESTINATION bin
 )
 
-install(DIRECTORY include/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.hpp"
-)
+install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")
 
 # =============================================================================
 # Summary

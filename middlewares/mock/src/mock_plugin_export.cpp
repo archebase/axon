@@ -10,9 +10,14 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <memory>
 #include <mutex>
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "mock_plugin_export"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 #include "mock_plugin.hpp"
 
@@ -56,7 +61,7 @@ static int32_t axon_init(const char* config_json) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (g_plugin) {
-    std::cerr << "Mock plugin already initialized" << std::endl;
+    AXON_LOG_ERROR("Mock plugin already initialized");
     return static_cast<int32_t>(AXON_ERROR_ALREADY_INITIALIZED);
   }
 
@@ -68,11 +73,11 @@ static int32_t axon_init(const char* config_json) {
       return static_cast<int32_t>(AXON_ERROR_INTERNAL);
     }
 
-    std::cout << "Mock plugin initialized via C API" << std::endl;
+    AXON_LOG_INFO("Mock plugin initialized via C API");
     return static_cast<int32_t>(AXON_SUCCESS);
 
   } catch (const std::exception& e) {
-    std::cerr << "Failed to initialize mock plugin: " << e.what() << std::endl;
+    AXON_LOG_ERROR("Failed to initialize mock plugin: " << kv("error", e.what()));
     g_plugin.reset();
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
@@ -83,7 +88,7 @@ static int32_t axon_start(void) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    std::cerr << "Mock plugin not initialized" << std::endl;
+    AXON_LOG_ERROR("Mock plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -91,7 +96,7 @@ static int32_t axon_start(void) {
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
 
-  std::cout << "Mock plugin started via C API" << std::endl;
+  AXON_LOG_INFO("Mock plugin started via C API");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -109,7 +114,7 @@ static int32_t axon_stop(void) {
 
   g_plugin.reset();
 
-  std::cout << "Mock plugin stopped via C API" << std::endl;
+  AXON_LOG_INFO("Mock plugin stopped via C API");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -127,7 +132,7 @@ static int32_t axon_subscribe(
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    std::cerr << "Cannot subscribe: mock plugin not initialized" << std::endl;
+    AXON_LOG_ERROR("Cannot subscribe: mock plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -161,7 +166,7 @@ static int32_t axon_publish(
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    std::cerr << "Cannot publish: mock plugin not initialized" << std::endl;
+    AXON_LOG_ERROR("Cannot publish: mock plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 

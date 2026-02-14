@@ -8,12 +8,6 @@
 cmake_minimum_required(VERSION 3.14)
 project(axon_ros1_plugin VERSION 1.0.0 LANGUAGES CXX)
 
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-endif()
-
 # Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -22,7 +16,11 @@ endif()
 # =============================================================================
 # Options
 # =============================================================================
-option(AXON_ENABLE_DEPTH_COMPRESSION "Enable depth image compression (requires private DepthLiteZ)" OFF)
+option(
+    AXON_ENABLE_DEPTH_COMPRESSION
+    "Enable depth image compression (requires private DepthLiteZ)"
+    OFF
+)
 
 if(AXON_ENABLE_DEPTH_COMPRESSION)
     message(STATUS "ROS1 Plugin: Depth compression ENABLED")
@@ -34,12 +32,28 @@ endif()
 # Find ROS1
 # =============================================================================
 
-# Find ROS1 installation
-set(ROS1_DIR "/opt/ros/noetic" CACHE PATH "ROS1 installation directory")
+# Auto-detect ROS1 installation from environment
+# Priority: CMake variable > Environment variable > Default
+if(NOT DEFINED ROS1_DIR OR ROS1_DIR STREQUAL "")
+    if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+        set(ROS1_DIR
+            "/opt/ros/$ENV{ROS_DISTRO}"
+            CACHE PATH
+            "ROS1 installation directory (auto-detected from ROS_DISTRO)"
+        )
+        message(STATUS "ROS1: Auto-detected from ROS_DISTRO=$ENV{ROS_DISTRO}")
+    else()
+        set(ROS1_DIR "/opt/ros/noetic" CACHE PATH "ROS1 installation directory")
+        message(STATUS "ROS1: Using default path (ROS_DISTRO not set)")
+    endif()
+endif()
 
 if(NOT EXISTS "${ROS1_DIR}")
-    message(FATAL_ERROR "ROS1 not found at ${ROS1_DIR}. "
-                        "Install ROS1 Noetic or set ROS1_DIR to your ROS installation.")
+    message(
+        FATAL_ERROR
+        "ROS1 not found at ${ROS1_DIR}. "
+        "Set ROS_DISTRO environment variable or pass -DROS1_DIR=/path/to/ros."
+    )
 endif()
 
 # Find ROS1 CMake libraries
@@ -51,7 +65,12 @@ set(ROS1_INCLUDE_DIR "${ROS1_DIR}/include")
 # Find ROS1 libraries dynamically
 find_library(ROSCPP_LIB roscpp PATHS "${ROS1_DIR}/lib" NO_DEFAULT_PATH)
 find_library(ROSLIB_LIB roslib PATHS "${ROS1_DIR}/lib" NO_DEFAULT_PATH)
-find_library(TOPIC_TOOLS_LIB topic_tools PATHS "${ROS1_DIR}/lib" NO_DEFAULT_PATH)
+find_library(
+    TOPIC_TOOLS_LIB
+    topic_tools
+    PATHS "${ROS1_DIR}/lib"
+    NO_DEFAULT_PATH
+)
 
 # Check that all libraries were found
 if(NOT ROSCPP_LIB OR NOT ROSLIB_LIB OR NOT TOPIC_TOOLS_LIB)
@@ -59,7 +78,7 @@ if(NOT ROSCPP_LIB OR NOT ROSLIB_LIB OR NOT TOPIC_TOOLS_LIB)
 endif()
 
 # =============================================================================
-# Build the Plugin Library
+# Build Plugin Library
 # =============================================================================
 
 # Core sources (always built)
@@ -75,24 +94,29 @@ if(AXON_ENABLE_DEPTH_COMPRESSION)
     list(APPEND DEPTH_SOURCES src/depth_compression_filter.cpp)
 endif()
 
-add_library(axon_ros1_plugin SHARED
-    ${CORE_SOURCES}
-    ${DEPTH_SOURCES}
-)
+add_library(axon_ros1_plugin SHARED ${CORE_SOURCES} ${DEPTH_SOURCES})
 
-target_include_directories(axon_ros1_plugin PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-    ${ROS1_INCLUDE_DIR}
+target_include_directories(
+    axon_ros1_plugin
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+        ${ROS1_INCLUDE_DIR}
+        ${AXON_LOGGING_DIR}/include
 )
 
 # Add filters include directory for depth compression (conditional)
 if(AXON_ENABLE_DEPTH_COMPRESSION)
-    target_include_directories(axon_ros1_plugin PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../filters/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../filters/depthlitez/include
+    target_include_directories(
+        axon_ros1_plugin
+        PRIVATE
+            ${AXON_MIDDLEWARES_DIR}/filters/include
+            ${AXON_MIDDLEWARES_DIR}/filters/depthlitez/include
     )
-    target_compile_definitions(axon_ros1_plugin PRIVATE AXON_ENABLE_DEPTH_COMPRESSION)
+    target_compile_definitions(
+        axon_ros1_plugin
+        PRIVATE AXON_ENABLE_DEPTH_COMPRESSION
+    )
 endif()
 
 # Find and link LZ4 and ZSTD for depth compression (conditional)
@@ -103,12 +127,15 @@ if(AXON_ENABLE_DEPTH_COMPRESSION)
 endif()
 
 # Link ROS1 libraries
-target_link_libraries(axon_ros1_plugin PUBLIC
-    ${ROSCPP_LIB}
-    ${ROSLIB_LIB}
-    ${TOPIC_TOOLS_LIB}
-    Boost::system
-    nlohmann_json::nlohmann_json
+target_link_libraries(
+    axon_ros1_plugin
+    PUBLIC
+        ${ROSCPP_LIB}
+        ${ROSLIB_LIB}
+        ${TOPIC_TOOLS_LIB}
+        Boost::system
+        nlohmann_json::nlohmann_json
+        axon_logging
 )
 
 # Link filters library for depth compression (conditional)
@@ -125,58 +152,70 @@ target_compile_options(axon_ros1_plugin PRIVATE -fvisibility=default)
 target_compile_definitions(axon_ros1_plugin PRIVATE AXON_ROS1)
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(axon_ros1_plugin)
+endif()
+
+# =============================================================================
 # Tests
 # =============================================================================
 option(AXON_BUILD_TESTS "Build tests" OFF)
+
 if(AXON_BUILD_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
 
     # Discover test files automatically
-    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
+    file(
+        GLOB TEST_SOURCES
+        CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
+    )
 
     foreach(test_source ${TEST_SOURCES})
         get_filename_component(test_name ${test_source} NAME_WE)
 
         add_executable(${test_name} ${test_source})
 
-        target_include_directories(${test_name} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-            ${ROS1_INCLUDE_DIR}
+        target_include_directories(
+            ${test_name}
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${ROS1_INCLUDE_DIR}
         )
 
-        target_link_libraries(${test_name}
+        target_link_libraries(
+            ${test_name}
             axon_ros1_plugin
             ${ROSCPP_LIB}
             ${ROSLIB_LIB}
             ${TOPIC_TOOLS_LIB}
-            GTest::GTest
+            GTest::gtest
+            GTest::gtest_main
             pthread
         )
 
-        # Add test labels
-        set_target_properties(${test_name} PROPERTIES
-            LABELS "unit;ros1_plugin"
-        )
+        # Apply coverage flags
+        if(COMMAND axon_add_coverage)
+            axon_add_coverage(${test_name})
+        endif()
 
-        # Register with CTest
+        # Register with CTest first, then set properties
         add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES LABELS "unit;ros1_plugin")
     endforeach()
 endif()
 
 # =============================================================================
 # Install
 # =============================================================================
-install(TARGETS axon_ros1_plugin
+install(
+    TARGETS axon_ros1_plugin
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib/axon/plugins
-    RUNTIME DESTINATION bin
 )
 
-install(DIRECTORY include/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.hpp"
-)
+install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")
 
 # =============================================================================
 # Summary

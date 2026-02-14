@@ -8,8 +8,13 @@
 
 #include <chrono>
 #include <cstring>
-#include <iostream>
 #include <random>
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "mock_plugin"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 namespace mock_plugin {
 
@@ -27,12 +32,12 @@ bool MockPlugin::init(const char* config_json) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (initialized_) {
-    std::cerr << "MockPlugin: Already initialized" << std::endl;
+    AXON_LOG_ERROR("Already initialized");
     return false;
   }
 
   initialized_ = true;
-  std::cout << "MockPlugin: Initialized" << std::endl;
+  AXON_LOG_INFO("Initialized");
   return true;
 }
 
@@ -40,12 +45,12 @@ bool MockPlugin::start() {
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (!initialized_) {
-    std::cerr << "MockPlugin: Not initialized" << std::endl;
+    AXON_LOG_ERROR("Not initialized");
     return false;
   }
 
   if (running_) {
-    std::cerr << "MockPlugin: Already running" << std::endl;
+    AXON_LOG_ERROR("Already running");
     return false;
   }
 
@@ -54,7 +59,7 @@ bool MockPlugin::start() {
   // Start publisher thread
   publisher_thread_ = std::thread(&MockPlugin::publisher_loop, this);
 
-  std::cout << "MockPlugin: Started" << std::endl;
+  AXON_LOG_INFO("Started");
   return true;
 }
 
@@ -72,7 +77,7 @@ bool MockPlugin::stop() {
     publisher_thread_.join();
   }
 
-  std::cout << "MockPlugin: Stopped" << std::endl;
+  AXON_LOG_INFO("Stopped");
   return true;
 }
 
@@ -83,7 +88,7 @@ bool MockPlugin::subscribe(
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (subscriptions_.find(topic_name) != subscriptions_.end()) {
-    std::cerr << "MockPlugin: Already subscribed to " << topic_name << std::endl;
+    AXON_LOG_WARN("Already subscribed to " << kv("topic", topic_name));
     return false;
   }
 
@@ -96,8 +101,9 @@ bool MockPlugin::subscribe(
 
   subscriptions_[topic_name] = sub;
 
-  std::cout << "MockPlugin: Subscribed to " << topic_name << " (" << message_type << ")"
-            << std::endl;
+  AXON_LOG_INFO(
+    "Subscribed to " << kv("topic", topic_name) << " (" << kv("type", message_type) << ")"
+  );
   return true;
 }
 
@@ -108,7 +114,7 @@ bool MockPlugin::publish(
 
   auto it = subscriptions_.find(topic_name);
   if (it == subscriptions_.end()) {
-    std::cerr << "MockPlugin: No subscription for " << topic_name << std::endl;
+    AXON_LOG_ERROR("No subscription for " << kv("topic", topic_name));
     return false;
   }
 
@@ -149,7 +155,7 @@ void MockPlugin::publish_mock_messages() {
 }
 
 void MockPlugin::publisher_loop() {
-  std::cout << "MockPlugin: Publisher thread started" << std::endl;
+  AXON_LOG_INFO("Publisher thread started");
 
   while (running_) {
     // Publish mock messages every 100ms
@@ -160,7 +166,7 @@ void MockPlugin::publisher_loop() {
     }
   }
 
-  std::cout << "MockPlugin: Publisher thread stopped" << std::endl;
+  AXON_LOG_INFO("Publisher thread stopped");
 }
 
 std::vector<uint8_t> MockPlugin::generate_mock_message(const std::string& message_type) {

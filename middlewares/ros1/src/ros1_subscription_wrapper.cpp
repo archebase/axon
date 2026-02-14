@@ -4,13 +4,18 @@
 
 #include "ros1_subscription_wrapper.hpp"
 
-#include <ros/console.h>
 #include <ros/serialization.h>
 #include <topic_tools/shape_shifter.h>
 
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
 #include "depth_compression_filter.hpp"
 #endif
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "ros1_subscription"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 namespace ros1_plugin {
 
@@ -34,7 +39,7 @@ bool SubscriptionManager::subscribe(
 
   // Check if already subscribed
   if (subscriptions_.find(topic_name) != subscriptions_.end()) {
-    ROS_WARN("Already subscribed to topic: %s", topic_name.c_str());
+    AXON_LOG_WARN("Already subscribed to topic: " << kv("topic", topic_name));
     return true;
   }
 
@@ -69,13 +74,16 @@ bool SubscriptionManager::subscribe(
           callback(topic_name, actual_type, data, timestamp);
 
         } catch (const std::exception& e) {
-          ROS_ERROR("Failed to handle message on topic %s: %s", topic_name.c_str(), e.what());
+          AXON_LOG_ERROR(
+            "Failed to handle message on topic " << kv("topic", topic_name) << ": "
+                                                 << kv("error", e.what())
+          );
         }
       }
     );
 
     if (!subscriber) {
-      ROS_ERROR("Failed to create subscription for: %s", topic_name.c_str());
+      AXON_LOG_ERROR("Failed to create subscription for: " << kv("topic", topic_name));
       return false;
     }
 
@@ -86,12 +94,16 @@ bool SubscriptionManager::subscribe(
     info.message_type = message_type;
     subscriptions_[topic_name] = std::move(info);
 
-    ROS_INFO("Subscribed to topic: %s (%s)", topic_name.c_str(), message_type.c_str());
+    AXON_LOG_INFO(
+      "Subscribed to topic " << kv("topic", topic_name) << " (" << kv("type", message_type) << ")"
+    );
 
     return true;
 
   } catch (const std::exception& e) {
-    ROS_ERROR("Exception subscribing to %s: %s", topic_name.c_str(), e.what());
+    AXON_LOG_ERROR(
+      "Exception subscribing to " << kv("topic", topic_name) << ": " << kv("error", e.what())
+    );
     return false;
   }
 }
@@ -106,7 +118,7 @@ bool SubscriptionManager::subscribe(
 
   // Check if already subscribed
   if (subscriptions_.find(topic_name) != subscriptions_.end()) {
-    ROS_WARN("Already subscribed to topic: %s", topic_name.c_str());
+    AXON_LOG_WARN("Already subscribed to topic: " << kv("topic", topic_name));
     return true;
   }
 
@@ -114,10 +126,9 @@ bool SubscriptionManager::subscribe(
   std::shared_ptr<DepthCompressionFilter> depth_filter;
   if (depth_compression && depth_compression->enabled) {
     depth_filter = std::make_shared<DepthCompressionFilter>(*depth_compression);
-    ROS_INFO(
-      "Depth compression enabled for topic: %s (level: %s)",
-      topic_name.c_str(),
-      depth_compression->level.c_str()
+    AXON_LOG_INFO(
+      "Depth compression enabled for topic: " << kv("topic", topic_name) << " (level: "
+                                              << kv("level", depth_compression->level) << ")"
     );
   }
 
@@ -156,13 +167,16 @@ bool SubscriptionManager::subscribe(
           }
 
         } catch (const std::exception& e) {
-          ROS_ERROR("Failed to handle message on topic %s: %s", topic_name.c_str(), e.what());
+          AXON_LOG_ERROR(
+            "Failed to handle message on topic " << kv("topic", topic_name) << ": "
+                                                 << kv("error", e.what())
+          );
         }
       }
     );
 
     if (!subscriber) {
-      ROS_ERROR("Failed to create subscription for: %s", topic_name.c_str());
+      AXON_LOG_ERROR("Failed to create subscription for: " << kv("topic", topic_name));
       return false;
     }
 
@@ -174,12 +188,16 @@ bool SubscriptionManager::subscribe(
     info.depth_filter = depth_filter;
     subscriptions_[topic_name] = std::move(info);
 
-    ROS_INFO("Subscribed to topic: %s (%s)", topic_name.c_str(), message_type.c_str());
+    AXON_LOG_INFO(
+      "Subscribed to topic " << kv("topic", topic_name) << " (" << kv("type", message_type) << ")"
+    );
 
     return true;
 
   } catch (const std::exception& e) {
-    ROS_ERROR("Exception subscribing to %s: %s", topic_name.c_str(), e.what());
+    AXON_LOG_ERROR(
+      "Exception subscribing to " << kv("topic", topic_name) << ": " << kv("error", e.what())
+    );
     return false;
   }
 }
@@ -191,12 +209,12 @@ bool SubscriptionManager::unsubscribe(const std::string& topic_name) {
 
   auto it = subscriptions_.find(topic_name);
   if (it == subscriptions_.end()) {
-    ROS_WARN("Not subscribed to topic: %s", topic_name.c_str());
+    AXON_LOG_WARN("Not subscribed to topic: " << kv("topic", topic_name));
     return false;
   }
 
   subscriptions_.erase(it);
-  ROS_INFO("Unsubscribed from topic: %s", topic_name.c_str());
+  AXON_LOG_INFO("Unsubscribed from topic: " << kv("topic", topic_name));
   return true;
 }
 

@@ -721,6 +721,22 @@ format:
 		! -path "*/build/*" -print0 2>/dev/null | \
 		xargs -0 $(CLANG_FORMAT) -i
 	@printf "%s\n" "$(GREEN)✓ C/C++ code formatted$(NC)"
+	@if command -v gersemi >/dev/null 2>&1; then \
+		printf "%s\n" "$(YELLOW)Formatting CMake files...$(NC)"; \
+		gersemi --in-place \
+			CMakeLists.txt \
+			apps/*/CMakeLists.txt \
+			apps/axon_recorder/test/CMakeLists.txt \
+			core/*/CMakeLists.txt \
+			core/axon_logging/test/CMakeLists.txt \
+			middlewares/*/CMakeLists.txt \
+			middlewares/filters/CMakeLists.txt \
+			cmake/Modules/*.cmake 2>/dev/null; \
+		printf "%s\n" "$(GREEN)✓ CMake files formatted$(NC)"; \
+	else \
+		printf "%s\n" "$(YELLOW)⚠ gersemi not found, skipping CMake formatting$(NC)"; \
+		printf "%s\n" "$(YELLOW)  Install with: pip install gersemi$(NC)"; \
+	fi
 
 # Lint code
 lint:

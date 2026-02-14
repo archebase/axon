@@ -32,8 +32,8 @@ else
     RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon_recorder"
 fi
 
-# Mock plugin path - built in-place by mock middleware's own build system
-MOCK_PLUGIN="${PROJECT_ROOT}/middlewares/mock/src/mock_plugin/build/libmock_plugin.so"
+# Mock plugin path - built with main build system
+MOCK_PLUGIN="${BUILD_DIR}/middlewares/mock_plugin/libmock_plugin.so"
 
 # Colors for output
 RED='\033[0;31m'
@@ -111,7 +111,7 @@ setup() {
         log_warn "Mock plugin not found at ${MOCK_PLUGIN}"
         log_info "E2E tests will attempt to run without mock middleware"
         log_info "Build mock middleware with:"
-        log_info "  cd middlewares/mock/src/mock_plugin/build && cmake .. && make"
+        log_info "  make build"
         MOCK_PLUGIN=""
     fi
 

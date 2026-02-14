@@ -6,9 +6,14 @@
 
 #include <cstring>
 #include <exception>
-#include <iostream>
 #include <memory>
 #include <zenoh.hxx>
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "zenoh_plugin"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 namespace zenoh_plugin {
 
@@ -64,7 +69,7 @@ ZenohPlugin::~ZenohPlugin() {
 
 bool ZenohPlugin::init(const char* config_json) {
   if (initialized_.load()) {
-    std::cerr << "[ZenohPlugin] Already initialized" << std::endl;
+    AXON_LOG_ERROR("Already initialized");
     return false;
   }
 
@@ -94,16 +99,16 @@ bool ZenohPlugin::init(const char* config_json) {
     initialized_.store(true);
     running_.store(true);
 
-    std::cout << "[ZenohPlugin] Initialized successfully" << std::endl;
+    AXON_LOG_INFO("Initialized successfully");
     return true;
 
   } catch (const std::exception& e) {
-    std::cerr << "[ZenohPlugin] Initialization failed: " << e.what() << std::endl;
+    AXON_LOG_ERROR("Initialization failed: " << kv("error", e.what()));
     // Clear session (flags not set, so stop() won't try to clear again)
     g_global_session.clear();
     return false;
   } catch (...) {
-    std::cerr << "[ZenohPlugin] Initialization failed: unknown exception" << std::endl;
+    AXON_LOG_ERROR("Initialization failed: unknown exception");
     // Clear session (flags not set, so stop() won't try to clear again)
     g_global_session.clear();
     return false;
@@ -112,25 +117,25 @@ bool ZenohPlugin::init(const char* config_json) {
 
 bool ZenohPlugin::start() {
   if (!initialized_.load()) {
-    std::cerr << "[ZenohPlugin] Cannot start: not initialized" << std::endl;
+    AXON_LOG_ERROR("Cannot start: not initialized");
     return false;
   }
 
   if (running_.load()) {
-    std::cout << "[ZenohPlugin] Already running" << std::endl;
+    AXON_LOG_INFO("Already running");
     return true;
   }
 
   // Zenoh session is already active after init
   running_.store(true);
-  std::cout << "[ZenohPlugin] Started" << std::endl;
+  AXON_LOG_INFO("Started");
   return true;
 }
 
 bool ZenohPlugin::stop() {
   // Always attempt cleanup, even if not fully initialized
   // This handles the case where init() failed after creating the session
-  std::cout << "[ZenohPlugin] Stopping..." << std::endl;
+  AXON_LOG_INFO("Stopping...");
 
   // Clear global session (includes subscription manager)
   g_global_session.clear();
@@ -138,7 +143,7 @@ bool ZenohPlugin::stop() {
   initialized_.store(false);
   running_.store(false);
 
-  std::cout << "[ZenohPlugin] Stopped" << std::endl;
+  AXON_LOG_INFO("Stopped");
   return true;
 }
 
@@ -146,13 +151,13 @@ bool ZenohPlugin::subscribe(
   const std::string& keyexpr, const std::string& message_type, MessageCallback callback
 ) {
   if (!initialized_.load()) {
-    std::cerr << "[ZenohPlugin] Cannot subscribe: not initialized" << std::endl;
+    AXON_LOG_ERROR("Cannot subscribe: not initialized");
     return false;
   }
 
   SubscriptionManager* manager = get_subscription_manager();
   if (!manager) {
-    std::cerr << "[ZenohPlugin] Subscription manager not available" << std::endl;
+    AXON_LOG_ERROR("Subscription manager not available");
     return false;
   }
 
@@ -161,7 +166,7 @@ bool ZenohPlugin::subscribe(
 
 bool ZenohPlugin::unsubscribe(const std::string& keyexpr) {
   if (!initialized_.load()) {
-    std::cerr << "[ZenohPlugin] Cannot unsubscribe: not initialized" << std::endl;
+    AXON_LOG_ERROR("Cannot unsubscribe: not initialized");
     return false;
   }
 

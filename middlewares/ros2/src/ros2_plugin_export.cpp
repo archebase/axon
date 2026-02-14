@@ -16,9 +16,11 @@
 // JSON library
 #include <nlohmann/json.hpp>
 
-// ROS2 headers
-#include <rclcpp/rclcpp.hpp>
-#include <rcutils/logging_macros.h>
+// Define component name for logging
+#define AXON_LOG_COMPONENT "ros2_plugin_export"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
 #include "depth_compressor.hpp"
@@ -66,7 +68,7 @@ static int32_t axon_init(const char* config_json) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (g_plugin) {
-    RCUTILS_LOG_ERROR("ROS2 plugin already initialized");
+    AXON_LOG_ERROR("ROS2 plugin already initialized");
     return static_cast<int32_t>(AXON_ERROR_ALREADY_INITIALIZED);
   }
 
@@ -78,11 +80,11 @@ static int32_t axon_init(const char* config_json) {
       return static_cast<int32_t>(AXON_ERROR_INTERNAL);
     }
 
-    RCUTILS_LOG_INFO("ROS2 plugin initialized via C API");
+    AXON_LOG_INFO("ROS2 plugin initialized via C API");
     return static_cast<int32_t>(AXON_SUCCESS);
 
   } catch (const std::exception& e) {
-    RCUTILS_LOG_ERROR("Failed to initialize ROS2 plugin: %s", e.what());
+    AXON_LOG_ERROR("Failed to initialize ROS2 plugin: " << kv("error", e.what()));
     g_plugin.reset();
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
@@ -93,7 +95,7 @@ static int32_t axon_start(void) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    RCUTILS_LOG_ERROR("ROS2 plugin not initialized");
+    AXON_LOG_ERROR("ROS2 plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -101,7 +103,7 @@ static int32_t axon_start(void) {
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
 
-  RCUTILS_LOG_INFO("ROS2 plugin spinning via C API");
+  AXON_LOG_INFO("ROS2 plugin spinning via C API");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -119,7 +121,7 @@ static int32_t axon_stop(void) {
 
   g_plugin.reset();
 
-  RCUTILS_LOG_INFO("ROS2 plugin stopped via C API");
+  AXON_LOG_INFO("ROS2 plugin stopped via C API");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -129,11 +131,10 @@ static int32_t axon_subscribe(
   AxonMessageCallback callback, void* user_data
 ) {
   if (!topic_name || !message_type || !callback) {
-    RCUTILS_LOG_ERROR(
-      "Invalid argument: topic=%p, type=%p, callback=%p",
-      (void*)topic_name,
-      (void*)message_type,
-      (void*)callback
+    AXON_LOG_ERROR(
+      "Invalid argument: topic=" << kv("ptr", (void*)topic_name)
+                                 << ", type=" << kv("ptr", (void*)message_type)
+                                 << ", callback=" << kv("ptr", (void*)callback)
     );
     return static_cast<int32_t>(AXON_ERROR_INVALID_ARGUMENT);
   }
@@ -141,7 +142,7 @@ static int32_t axon_subscribe(
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    RCUTILS_LOG_ERROR("Cannot subscribe: plugin not initialized");
+    AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -161,25 +162,28 @@ static int32_t axon_subscribe(
         dc_config.enabled = dc.value("enabled", false);
         dc_config.level = dc.value("level", "medium");
         options.depth_compression = dc_config;
-        RCUTILS_LOG_INFO(
-          "Depth compression config for %s: enabled=%s, level=%s",
-          topic_name,
-          dc_config.enabled ? "true" : "false",
-          dc_config.level.c_str()
+        AXON_LOG_INFO(
+          "Depth compression config for " << kv("topic", topic_name) << ": enabled="
+                                          << kv("enabled", dc_config.enabled ? "true" : "false")
+                                          << ", level=" << kv("level", dc_config.level)
         );
       }
 #else
       (void)options;  // Suppress unused warning when depth compression is disabled
       if (opts.contains("depth_compression") && opts["depth_compression"].value("enabled", false)) {
-        RCUTILS_LOG_WARN(
-          "Depth compression requested for %s but not enabled at build time. "
-          "Rebuild with -DAXON_ENABLE_DEPTH_COMPRESSION=ON to enable.",
-          topic_name
+        AXON_LOG_WARN(
+          "Depth compression requested for "
+          << kv("topic", topic_name)
+          << " but not enabled at build time. "
+             "Rebuild with -DAXON_ENABLE_DEPTH_COMPRESSION=ON to enable."
         );
       }
 #endif
     } catch (const std::exception& e) {
-      RCUTILS_LOG_WARN("Failed to parse options JSON for %s: %s", topic_name, e.what());
+      AXON_LOG_WARN(
+        "Failed to parse options JSON for " << kv("topic", topic_name) << ": "
+                                            << kv("error", e.what())
+      );
     }
   }
 
@@ -211,7 +215,7 @@ static int32_t axon_publish(
   (void)message_size;
   (void)message_type;
 
-  RCUTILS_LOG_WARN("Publish not yet implemented for ROS2 plugin");
+  AXON_LOG_WARN("Publish not yet implemented for ROS2 plugin");
   return static_cast<int32_t>(AXON_ERROR_INTERNAL);
 }
 
