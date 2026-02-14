@@ -152,6 +152,13 @@ target_compile_options(axon_ros1_plugin PRIVATE -fvisibility=default)
 target_compile_definitions(axon_ros1_plugin PRIVATE AXON_ROS1)
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(axon_ros1_plugin)
+endif()
+
+# =============================================================================
 # Tests
 # =============================================================================
 option(AXON_BUILD_TESTS "Build tests" OFF)
@@ -190,6 +197,11 @@ if(AXON_BUILD_TESTS)
 
         # Add test labels
         set_target_properties(${test_name} PROPERTIES LABELS "unit;ros1_plugin")
+
+        # Apply coverage flags
+        if(COMMAND axon_add_coverage)
+            axon_add_coverage(${test_name})
+        endif()
 
         # Register with CTest
         add_test(NAME ${test_name} COMMAND ${test_name})

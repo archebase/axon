@@ -88,6 +88,14 @@ target_include_directories(
 target_link_libraries(${PROJECT_NAME}_obj PUBLIC axon_logging)
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(${PROJECT_NAME})
+    axon_add_coverage(${PROJECT_NAME}_obj)
+endif()
+
+# =============================================================================
 # Install
 # =============================================================================
 install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)

@@ -133,6 +133,13 @@ target_compile_options(axon_ros2_plugin PRIVATE -fvisibility=default)
 target_compile_definitions(axon_ros2_plugin PRIVATE AXON_ROS2)
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(axon_ros2_plugin)
+endif()
+
+# =============================================================================
 # Tests
 # =============================================================================
 option(AXON_BUILD_TESTS "Build tests" OFF)
@@ -169,6 +176,11 @@ if(AXON_BUILD_TESTS)
 
         # Add test labels
         set_target_properties(${test_name} PROPERTIES LABELS "unit;ros2_plugin")
+
+        # Apply coverage flags
+        if(COMMAND axon_add_coverage)
+            axon_add_coverage(${test_name})
+        endif()
 
         add_test(NAME ${test_name} COMMAND ${test_name})
     endforeach()
