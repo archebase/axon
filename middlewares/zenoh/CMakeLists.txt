@@ -139,9 +139,7 @@ endif()
 # =============================================================================
 # Tests
 # =============================================================================
-option(BUILD_TESTING "Build tests" ON)
-
-if(BUILD_TESTING)
+if(AXON_BUILD_TESTS)
     enable_testing()
     find_package(GTest QUIET)
 
@@ -178,6 +176,9 @@ if(BUILD_TESTING)
             if(COMMAND axon_add_coverage)
                 axon_add_coverage(${test_name})
             endif()
+
+            # Add test labels for filtering
+            set_tests_properties(${test_name} PROPERTIES LABELS "unit;zenoh_plugin")
 
             add_test(NAME ${test_name} COMMAND ${test_name})
         endforeach()

@@ -175,7 +175,7 @@ if(AXON_BUILD_TESTS)
         )
 
         # Add test labels
-        set_target_properties(${test_name} PROPERTIES LABELS "unit;ros2_plugin")
+        set_tests_properties(${test_name} PROPERTIES LABELS "unit;ros2_plugin")
 
         # Apply coverage flags
         if(COMMAND axon_add_coverage)

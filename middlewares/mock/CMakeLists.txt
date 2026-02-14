@@ -143,6 +143,12 @@ target_link_libraries(
     Boost::filesystem
 )
 
+# Apply coverage flags to tests
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(test_mock_plugin_load)
+    axon_add_coverage(test_mock_plugin_e2e)
+endif()
+
 # Install tests
 install(
     TARGETS test_mock_plugin_load test_mock_plugin_e2e
