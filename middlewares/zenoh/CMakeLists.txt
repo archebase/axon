@@ -82,10 +82,12 @@ add_library(axon_zenoh_plugin SHARED
 target_include_directories(axon_zenoh_plugin PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../core/axon_logging/include
 )
 
-# Link nlohmann_json
+# Link nlohmann_json and axon_logging
 target_link_libraries(axon_zenoh_plugin nlohmann_json::nlohmann_json)
+target_link_libraries(axon_zenoh_plugin axon_logging)
 
 # Link Zenoh if found
 if(zenohcxx_FOUND)

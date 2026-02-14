@@ -5,7 +5,12 @@
 #include "ros2_plugin.hpp"
 
 #include <nlohmann/json.hpp>
-#include <rcutils/logging_macros.h>
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "ros2_plugin"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 namespace ros2_plugin {
 
@@ -19,7 +24,7 @@ Ros2Plugin::~Ros2Plugin() {
 
 bool Ros2Plugin::init(const char* config_json) {
   if (initialized_.load()) {
-    RCUTILS_LOG_ERROR("ROS2 plugin already initialized");
+    AXON_LOG_ERROR("ROS2 plugin already initialized");
     return false;
   }
 
@@ -61,24 +66,24 @@ bool Ros2Plugin::init(const char* config_json) {
     subscription_manager_ = std::make_unique<SubscriptionManager>(node_);
 
     initialized_.store(true);
-    RCUTILS_LOG_INFO("ROS2 plugin initialized: %s", node_->get_fully_qualified_name());
+    AXON_LOG_INFO("ROS2 plugin initialized: " << kv("node", node_->get_fully_qualified_name()));
 
     return true;
 
   } catch (const std::exception& e) {
-    RCUTILS_LOG_ERROR("Failed to initialize ROS2 plugin: %s", e.what());
+    AXON_LOG_ERROR("Failed to initialize ROS2 plugin: " << kv("error", e.what()));
     return false;
   }
 }
 
 bool Ros2Plugin::start() {
   if (!initialized_.load()) {
-    RCUTILS_LOG_ERROR("ROS2 plugin not initialized");
+    AXON_LOG_ERROR("ROS2 plugin not initialized");
     return false;
   }
 
   if (spinning_.load()) {
-    RCUTILS_LOG_ERROR("ROS2 plugin already spinning");
+    AXON_LOG_ERROR("ROS2 plugin already spinning");
     return false;
   }
 
@@ -95,11 +100,11 @@ bool Ros2Plugin::start() {
       }
     });
 
-    RCUTILS_LOG_INFO("ROS2 plugin spinning");
+    AXON_LOG_INFO("ROS2 plugin spinning");
     return true;
 
   } catch (const std::exception& e) {
-    RCUTILS_LOG_ERROR("Failed to start ROS2 plugin spin: %s", e.what());
+    AXON_LOG_ERROR("Failed to start ROS2 plugin spin: " << kv("error", e.what()));
     spinning_.store(false);
     return false;
   }
@@ -110,7 +115,7 @@ bool Ros2Plugin::stop() {
     return true;
   }
 
-  RCUTILS_LOG_INFO("Shutting down ROS2 plugin");
+  AXON_LOG_INFO("Shutting down ROS2 plugin");
 
   // Stop spinning
   if (spinning_.load()) {
@@ -134,7 +139,7 @@ bool Ros2Plugin::stop() {
   node_.reset();
 
   initialized_.store(false);
-  RCUTILS_LOG_INFO("ROS2 plugin shut down");
+  AXON_LOG_INFO("ROS2 plugin shut down");
 
   return true;
 }

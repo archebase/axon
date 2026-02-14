@@ -119,7 +119,7 @@ if(EXISTS "${AXON_FILTERS_DIR}/CMakeLists.txt")
     add_subdirectory(${AXON_FILTERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/filters)
 endif()
 
-# Middleware plugins (ROS1, ROS2, Zenoh)
+# Middleware plugins (ROS1, ROS2, Zenoh, Mock)
 if(EXISTS "${AXON_MIDDLEWARES_DIR}/CMakeLists.txt")
     add_subdirectory(${AXON_MIDDLEWARES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/middlewares)
 endif()

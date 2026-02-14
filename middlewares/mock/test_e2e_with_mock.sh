@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/build"
 TEST_DIR="${SCRIPT_DIR}/test_data"
-MOCK_BUILD_DIR="${PROJECT_ROOT}/middlewares/mock/src/mock_plugin/build"
+MOCK_BUILD_DIR="${PROJECT_ROOT}/build/middlewares/mock"
 
 # Mock plugin path
 MOCK_PLUGIN="${MOCK_BUILD_DIR}/libmock_plugin.so"

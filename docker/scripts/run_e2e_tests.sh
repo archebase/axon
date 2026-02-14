@@ -16,7 +16,7 @@
 #   --clean                 Clean build directory before building
 #
 # Arguments:
-#   source_path             Optional path to the source directory (legacy positional arg)
+#   source_path             Optional path to source directory (legacy positional arg)
 #                           Default: auto-detect from script location
 #
 # Environment:
@@ -31,7 +31,6 @@
 #   # Build with coverage, run tests, generate coverage report
 #   ./run_e2e_tests.sh --coverage --coverage-output /coverage_output
 # =============================================================================
-
 set -eo pipefail
 
 # =============================================================================
@@ -68,7 +67,7 @@ while [[ $# -gt 0 ]]; do
         *)
             # Legacy positional argument for source_path
             SOURCE_PATH="$1"
-            shift
+            shift 2
             ;;
     esac
 done
@@ -81,23 +80,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="${SCRIPT_DIR}/lib"
 
 # Source libraries (with error handling for missing files)
-# Note: We can't use library error functions here since libraries aren't loaded yet
 if [ ! -f "${LIB_DIR}/ros_build_lib.sh" ]; then
     echo "ERROR: ros_build_lib.sh not found at ${LIB_DIR}/ros_build_lib.sh" >&2
     exit 1
 fi
+
 source "${LIB_DIR}/ros_build_lib.sh"
 
 if [ ! -f "${LIB_DIR}/ros_workspace_lib.sh" ]; then
     echo "ERROR: ros_workspace_lib.sh not found at ${LIB_DIR}/ros_workspace_lib.sh" >&2
     exit 1
 fi
+
 source "${LIB_DIR}/ros_workspace_lib.sh"
 
 if [ ! -f "${LIB_DIR}/ros_diagnostics_lib.sh" ]; then
     echo "ERROR: ros_diagnostics_lib.sh not found at ${LIB_DIR}/ros_diagnostics_lib.sh" >&2
     exit 1
 fi
+
 source "${LIB_DIR}/ros_diagnostics_lib.sh"
 
 # Source coverage library only if coverage is enabled
@@ -119,7 +120,7 @@ WORKSPACE_ROOT="/workspace/axon"
 
 # Set coverage output directory if coverage is enabled
 if [ "$ENABLE_COVERAGE" = true ]; then
-    COVERAGE_OUTPUT_DIR="${COVERAGE_OUTPUT_DIR:-${COVERAGE_OUTPUT:-/coverage_output}}"
+    COVERAGE_OUTPUT_DIR="${COVERAGE_OUTPUT_DIR:-${COVERAGE_OUTPUT_DIR:-/coverage_output}}"
 fi
 
 # Auto-detect ROS version from ROS_DISTRO if ROS_VERSION not set
@@ -194,49 +195,20 @@ if [ "$ENABLE_COVERAGE" = true ]; then
         ros_build_error "Failed to build ROS plugin with coverage"
     }
     # Note: We don't use WORKSPACE_BUILD_DIR for E2E coverage
-    # E2E tests collect coverage from axon_recorder and core libraries, not the plugin
+    # E2E tests collect coverage from axon_recorder and core libraries, not from plugin
 else
     ros_build_package "${WORKSPACE_ROOT}" "true" "false" "Release" "-DAXON_BUILD_MOCK_PLUGIN=ON" || {
         ros_build_error "Failed to build ROS plugin"
     }
 fi
 
-# Build the mock plugin separately (it has its own CMakeLists.txt)
+# =============================================================================
+# Part 1b: Verify Mock Plugin (built as part of main build)
+# =============================================================================
+
 echo ""
-echo "Building mock plugin..."
-MOCK_PLUGIN_BUILD_DIR="${WORKSPACE_ROOT}/middlewares/mock/src/mock_plugin/build"
-mkdir -p "${MOCK_PLUGIN_BUILD_DIR}"
-cd "${MOCK_PLUGIN_BUILD_DIR}"
-
-cmake -DCMAKE_BUILD_TYPE=Release .. || {
-    echo "ERROR: Failed to configure mock plugin"
-    exit 1
-}
-
-cmake --build . -j$(nproc) || {
-    echo "ERROR: Failed to build mock plugin"
-    exit 1
-}
-
-# Re-source workspace after build
-ros_workspace_source_workspace "${WORKSPACE_ROOT}" || {
-    ros_workspace_error "Failed to source workspace after build"
-}
-
-# Verify build artifacts exist
-echo ""
-echo "Verifying build artifacts..."
-
-# Check axon_recorder binary
-RECORDER_BIN="${WORKSPACE_ROOT}/build/axon_recorder/axon_recorder"
-if [ ! -f "$RECORDER_BIN" ]; then
-    echo "ERROR: axon_recorder binary not found at ${RECORDER_BIN}"
-    exit 1
-fi
-echo "✓ axon_recorder binary found at ${RECORDER_BIN}"
-
-# Check mock plugin - it's built in its own build directory
-MOCK_PLUGIN="${MOCK_PLUGIN_BUILD_DIR}/libmock_plugin.so"
+echo "Verifying mock plugin..."
+MOCK_PLUGIN="${WORKSPACE_ROOT}/build/middlewares/mock_plugin/libmock_plugin.so"
 if [ ! -f "$MOCK_PLUGIN" ]; then
     echo "ERROR: Mock plugin not found at ${MOCK_PLUGIN}"
     exit 1
@@ -261,12 +233,15 @@ fi
 
 chmod +x "$TEST_SCRIPT"
 
-# Run the E2E tests (they handle starting/stopping the recorder)
+# Run E2E tests (they handle starting/stopping recorder)
 TEST_RESULT=0
 if ! "$TEST_SCRIPT"; then
     TEST_RESULT=1
 fi
 
+# =============================================================================
+# Part 3: Generate Coverage Report (if enabled and tests passed)
+# =============================================================================
 # =============================================================================
 # Part 3: Generate Coverage Report (if enabled and tests passed)
 # =============================================================================
@@ -304,7 +279,7 @@ if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
         else
             ros_coverage_log "INFO" "Found ${#gcda_files[@]} .gcda files"
 
-            # Get the directory containing the gcda files for lcov
+            # Get the directory containing gcda files for lcov
             gcda_dirs=()
             for file in "${gcda_files[@]}"; do
                 dir=$(dirname "$file")
@@ -349,7 +324,6 @@ if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
                 '*/minio-cpp/*' \
                 '*/test/*' \
                 '*/rosidl_typesupport_cpp/*' \
-                '*/rosidl_typesupport_introspection_cpp/*' \
                 '*/rosidl_generator_cpp/*' \
                 --output-file "$filtered_file" \
                 2>/dev/null || cp "$raw_file" "$filtered_file"
@@ -360,7 +334,6 @@ if [ "$ENABLE_COVERAGE" = true ] && [ $TEST_RESULT -eq 0 ]; then
             echo "E2E Test Coverage Summary"
             echo "============================================"
             lcov --list "$filtered_file" || true
-
             echo ""
             echo "============================================"
             echo "E2E test coverage collection complete!"

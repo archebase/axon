@@ -84,6 +84,7 @@ target_include_directories(axon_ros1_plugin PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${ROS1_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../core/axon_logging/include
 )
 
 # Add filters include directory for depth compression (conditional)
@@ -109,6 +110,7 @@ target_link_libraries(axon_ros1_plugin PUBLIC
     ${TOPIC_TOOLS_LIB}
     Boost::system
     nlohmann_json::nlohmann_json
+    axon_logging
 )
 
 # Link filters library for depth compression (conditional)

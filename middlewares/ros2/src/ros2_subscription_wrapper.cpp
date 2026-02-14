@@ -4,11 +4,15 @@
 
 #include "ros2_subscription_wrapper.hpp"
 
-#include <rcutils/logging_macros.h>
-
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
 #include "depth_compression_filter.hpp"
 #endif
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "ros2_subscription"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 namespace ros2_plugin {
 
@@ -32,7 +36,7 @@ bool SubscriptionManager::subscribe(
 
   // Check if already subscribed
   if (subscriptions_.find(topic_name) != subscriptions_.end()) {
-    RCUTILS_LOG_WARN("Already subscribed to topic: %s", topic_name.c_str());
+    AXON_LOG_WARN("Already subscribed to topic: " << kv("topic", topic_name));
     return true;
   }
 
@@ -42,19 +46,19 @@ bool SubscriptionManager::subscribe(
     std::shared_ptr<DepthCompressionFilter> compression_filter;
     if (options.depth_compression.has_value() && options.depth_compression->enabled) {
       compression_filter = std::make_shared<DepthCompressionFilter>(*options.depth_compression);
-      RCUTILS_LOG_INFO(
-        "Depth compression enabled for topic %s: level=%s",
-        topic_name.c_str(),
-        options.depth_compression->level.c_str()
+      AXON_LOG_INFO(
+        "Depth compression enabled for topic "
+        << kv("topic", topic_name) << ": level=" << kv("level", options.depth_compression->level)
       );
     }
 #else
     // Depth compression not available at compile time
     if (options.depth_compression.has_value() && options.depth_compression->enabled) {
-      RCUTILS_LOG_WARN(
-        "Depth compression requested for topic %s but not enabled at build time. "
-        "Rebuild with -DAXON_ENABLE_DEPTH_COMPRESSION=ON to enable.",
-        topic_name.c_str()
+      AXON_LOG_WARN(
+        "Depth compression requested for topic "
+        << kv("topic", topic_name)
+        << " but not enabled at build time. "
+           "Rebuild with -DAXON_ENABLE_DEPTH_COMPRESSION=ON to enable."
       );
     }
 #endif
@@ -119,15 +123,16 @@ bool SubscriptionManager::subscribe(
 #endif
 
         } catch (const std::exception& e) {
-          RCUTILS_LOG_ERROR(
-            "Failed to handle message on topic %s: %s", topic_name.c_str(), e.what()
+          AXON_LOG_ERROR(
+            "Failed to handle message on topic " << kv("topic", topic_name) << ": "
+                                                 << kv("error", e.what())
           );
         }
       }
     );
 
     if (!subscription) {
-      RCUTILS_LOG_ERROR("Failed to create subscription for: %s", topic_name.c_str());
+      AXON_LOG_ERROR("Failed to create subscription for: " << kv("topic", topic_name));
       return false;
     }
 
@@ -140,12 +145,16 @@ bool SubscriptionManager::subscribe(
 #endif
     subscriptions_[topic_name] = std::move(info);
 
-    RCUTILS_LOG_INFO("Subscribed to topic: %s (%s)", topic_name.c_str(), message_type.c_str());
+    AXON_LOG_INFO(
+      "Subscribed to topic " << kv("topic", topic_name) << " (" << kv("type", message_type) << ")"
+    );
 
     return true;
 
   } catch (const std::exception& e) {
-    RCUTILS_LOG_ERROR("Exception subscribing to %s: %s", topic_name.c_str(), e.what());
+    AXON_LOG_ERROR(
+      "Exception subscribing to " << kv("topic", topic_name) << ": " << kv("error", e.what())
+    );
     return false;
   }
 }
@@ -155,12 +164,12 @@ bool SubscriptionManager::unsubscribe(const std::string& topic_name) {
 
   auto it = subscriptions_.find(topic_name);
   if (it == subscriptions_.end()) {
-    RCUTILS_LOG_WARN("Not subscribed to topic: %s", topic_name.c_str());
+    AXON_LOG_WARN("Not subscribed to topic: " << kv("topic", topic_name));
     return false;
   }
 
   subscriptions_.erase(it);
-  RCUTILS_LOG_INFO("Unsubscribed from topic: %s", topic_name.c_str());
+  AXON_LOG_INFO("Unsubscribed from topic: " << kv("topic", topic_name));
   return true;
 }
 

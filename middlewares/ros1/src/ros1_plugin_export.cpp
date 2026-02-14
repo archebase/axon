@@ -11,8 +11,11 @@
 #include <memory>
 #include <mutex>
 
-// ROS1 headers
-#include <ros/console.h>
+// Define component name for logging
+#define AXON_LOG_COMPONENT "ros1_plugin_export"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 // Plugin implementation headers
 #include "ros1_plugin.hpp"
@@ -58,7 +61,7 @@ static int32_t axon_init(const char* config_json) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (g_plugin) {
-    ROS_ERROR("ROS1 plugin already initialized");
+    AXON_LOG_ERROR("ROS1 plugin already initialized");
     return static_cast<int32_t>(AXON_ERROR_ALREADY_INITIALIZED);
   }
 
@@ -70,11 +73,11 @@ static int32_t axon_init(const char* config_json) {
       return static_cast<int32_t>(AXON_ERROR_INTERNAL);
     }
 
-    ROS_INFO("ROS1 plugin initialized via C API");
+    AXON_LOG_INFO("ROS1 plugin initialized via C API");
     return static_cast<int32_t>(AXON_SUCCESS);
 
   } catch (const std::exception& e) {
-    ROS_ERROR("Failed to initialize ROS1 plugin: %s", e.what());
+    AXON_LOG_ERROR("Failed to initialize ROS1 plugin: " << kv("error", e.what()));
     g_plugin.reset();
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
@@ -85,7 +88,7 @@ static int32_t axon_start(void) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    ROS_ERROR("ROS1 plugin not initialized");
+    AXON_LOG_ERROR("ROS1 plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -93,7 +96,7 @@ static int32_t axon_start(void) {
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
 
-  ROS_INFO("ROS1 plugin spinning via C API");
+  AXON_LOG_INFO("ROS1 plugin spinning via C API");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -111,7 +114,7 @@ static int32_t axon_stop(void) {
 
   g_plugin.reset();
 
-  ROS_INFO("ROS1 plugin stopped via C API");
+  AXON_LOG_INFO("ROS1 plugin stopped via C API");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -126,7 +129,7 @@ static int32_t axon_subscribe(
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    ROS_ERROR("Cannot subscribe: plugin not initialized");
+    AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -156,7 +159,7 @@ static int32_t axon_publish(
   (void)message_size;
   (void)message_type;
 
-  ROS_WARN("Publish not yet implemented for ROS1 plugin");
+  AXON_LOG_WARN("Publish not yet implemented for ROS1 plugin");
   return static_cast<int32_t>(AXON_ERROR_INTERNAL);
 }
 

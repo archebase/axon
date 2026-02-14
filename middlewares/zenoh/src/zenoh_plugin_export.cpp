@@ -8,9 +8,14 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <memory>
 #include <mutex>
+
+// Define component name for logging
+#define AXON_LOG_COMPONENT "zenoh_plugin_export"
+#include <axon_log_macros.hpp>
+
+using axon::logging::kv;
 
 // Plugin implementation headers
 #include "zenoh_plugin.hpp"
@@ -55,7 +60,7 @@ static int32_t axon_init(const char* config_json) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (g_plugin) {
-    std::cerr << "[ZenohPlugin] Already initialized" << std::endl;
+    AXON_LOG_ERROR("Already initialized");
     return static_cast<int32_t>(AXON_ERROR_ALREADY_INITIALIZED);
   }
 
@@ -67,15 +72,15 @@ static int32_t axon_init(const char* config_json) {
       return static_cast<int32_t>(AXON_ERROR_INTERNAL);
     }
 
-    std::cout << "[ZenohPlugin] Initialized via C ABI" << std::endl;
+    AXON_LOG_INFO("Initialized via C ABI");
     return static_cast<int32_t>(AXON_SUCCESS);
 
   } catch (const std::exception& e) {
-    std::cerr << "[ZenohPlugin] Failed to initialize: " << e.what() << std::endl;
+    AXON_LOG_ERROR("Failed to initialize: " << kv("error", e.what()));
     g_plugin.reset();
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   } catch (...) {
-    std::cerr << "[ZenohPlugin] Failed to initialize: unknown exception" << std::endl;
+    AXON_LOG_ERROR("Failed to initialize: unknown exception");
     g_plugin.reset();
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
@@ -86,7 +91,7 @@ static int32_t axon_start(void) {
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    std::cerr << "[ZenohPlugin] Not initialized" << std::endl;
+    AXON_LOG_ERROR("Not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -94,7 +99,7 @@ static int32_t axon_start(void) {
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
 
-  std::cout << "[ZenohPlugin] Started via C ABI" << std::endl;
+  AXON_LOG_INFO("Started via C ABI");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -112,7 +117,7 @@ static int32_t axon_stop(void) {
 
   g_plugin.reset();
 
-  std::cout << "[ZenohPlugin] Stopped via C ABI" << std::endl;
+  AXON_LOG_INFO("Stopped via C ABI");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -127,7 +132,7 @@ static int32_t axon_subscribe(
   std::lock_guard<std::mutex> lock(g_plugin_mutex);
 
   if (!g_plugin) {
-    std::cerr << "[ZenohPlugin] Cannot subscribe: plugin not initialized" << std::endl;
+    AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
@@ -157,7 +162,7 @@ static int32_t axon_publish(
   (void)message_size;
   (void)message_type;
 
-  std::cerr << "[ZenohPlugin] Publish not yet implemented" << std::endl;
+  AXON_LOG_WARN("Publish not yet implemented");
   return static_cast<int32_t>(AXON_ERROR_INTERNAL);
 }
 

@@ -346,7 +346,7 @@ option(AXON_BUILD_E2E_TESTS "Build E2E test support" ON)
 if(AXON_BUILD_E2E_TESTS)
     message(STATUS "E2E tests configured to use mock middleware from middlewares/mock/")
     message(STATUS "  Build mock plugin with: make build-mock")
-    message(STATUS "  Mock plugin location: middlewares/mock/src/mock_plugin/build/libmock_plugin.so")
+    message(STATUS "  Mock plugin location: middlewares/mock_plugin/libmock_plugin.so")
 endif()
 
 # =============================================================================
