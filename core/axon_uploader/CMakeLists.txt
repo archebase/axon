@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 project(axon_uploader)
 
-# Export compile commands for clangd/IDE support
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
 # =============================================================================
 # Centralized CMake Modules
 # =============================================================================
@@ -11,31 +8,27 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # This ensures consistent configuration across the codebase.
 if(DEFINED AXON_CMAKE_MODULES_DIR)
     list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
+elseif(DEFINED AXON_REPO_ROOT)
+    list(APPEND CMAKE_MODULE_PATH "${AXON_REPO_ROOT}/cmake/Modules")
 else()
-    # Use AXON_REPO_ROOT if set, otherwise compute relative path
-    if(DEFINED AXON_REPO_ROOT)
-        set(_AXON_CMAKE_MODULES_DIR "${AXON_REPO_ROOT}/cmake/Modules")
-    else()
-        set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules")
+    # Compute relative path to cmake/Modules
+    set(_AXON_CMAKE_MODULES_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules"
+    )
+    if(EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdLib.cmake")
+        list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
     endif()
-    if(NOT EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdlib.cmake")
-        message(FATAL_ERROR
-            "Axon CMake modules not found at: ${_AXON_CMAKE_MODULES_DIR}\n"
-            "Please ensure you're building from the Axon repository root."
-        )
-    endif()
-    list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
 endif()
 
-# Include required modules (fail if not found)
-include(AxonStdlib REQUIRED)
-include(AxonCoverage REQUIRED)
+# Include required modules (AxonStdLib provides standard helpers)
+include(AxonStdLib REQUIRED)
+include(AxonCoverage OPTIONAL)
 
 # =============================================================================
 # Check Dependencies
 # =============================================================================
 # The uploader requires AWS SDK (S3), OpenSSL, and SQLite3.
-# If this CMakeLists.txt is being processed, the uploader build was requested,
+# If this CMakeLists.txt is being processed, uploader build was requested,
 # so missing dependencies should fail fast.
 #
 # AWS SDK must be built from source (no apt packages available):
@@ -58,16 +51,18 @@ message(STATUS "axon_uploader: Found AWS SDK")
 # =============================================================================
 # Find axon_mcap (sibling module - for MCAP validation)
 # =============================================================================
-# Use centralized AXON_MCAP_DIR if available, otherwise fall back to sibling
-
+# Use centralized AXON_MCAP_DIR if available, otherwise use relative path
 if(DEFINED AXON_MCAP_DIR AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
-    # Use root's path (built from repo root)
+    # Use parent's path (built from repo root)
     set(MCAP_BUILD_DIR "${AXON_MCAP_DIR}")
 elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../axon_mcap/CMakeLists.txt")
     # Fallback to sibling directory
     set(MCAP_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../axon_mcap")
 else()
-    message(STATUS "axon_mcap not found - MCAP validation will not be available")
+    message(
+        STATUS
+        "axon_mcap not found - MCAP validation will not be available"
+    )
     set(MCAP_BUILD_DIR "")
 endif()
 
@@ -75,14 +70,10 @@ if(MCAP_BUILD_DIR)
     message(STATUS "Found axon_mcap at: ${MCAP_BUILD_DIR}")
     # Only add subdirectory if not already added
     if(NOT TARGET axon_mcap)
-        # Propagate coverage flag
-        # Must explicitly set OFF to clear cached values from previous builds
-        if(AXON_ENABLE_COVERAGE)
-            set(AXON_MCAP_ENABLE_COVERAGE ON CACHE BOOL "Enable coverage for axon_mcap" FORCE)
-        else()
-            set(AXON_MCAP_ENABLE_COVERAGE OFF CACHE BOOL "Enable coverage for axon_mcap" FORCE)
-        endif()
-        add_subdirectory(${MCAP_BUILD_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
+        add_subdirectory(
+            ${MCAP_BUILD_DIR}
+            ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap
+        )
     endif()
 endif()
 
@@ -90,7 +81,8 @@ endif()
 # axon_uploader Library
 # =============================================================================
 
-add_library(axon_uploader
+add_library(
+    axon_uploader
     ${CMAKE_CURRENT_SOURCE_DIR}/upload_queue.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/s3_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/upload_state_manager.cpp
@@ -99,16 +91,16 @@ add_library(axon_uploader
 
 axon_set_position_independent_code(axon_uploader)
 
-target_include_directories(axon_uploader PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>
+target_include_directories(
+    axon_uploader
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(axon_uploader PUBLIC
-    ${AWSSDK_LINK_LIBRARIES}
-    SQLite::SQLite3
-    OpenSSL::SSL
-    OpenSSL::Crypto
+target_link_libraries(
+    axon_uploader
+    PUBLIC ${AWSSDK_LINK_LIBRARIES} SQLite::SQLite3 OpenSSL::Crypto OpenSSL::SSL
 )
 
 # Link axon_mcap if available (for validation)
@@ -134,16 +126,24 @@ if(AXON_UPLOADER_BUILD_TESTS OR AXON_BUILD_TESTS)
     find_package(GTest REQUIRED)
 
     # Auto-discover unit test files in test/ (integration/ tests are built separately)
-    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+    file(
+        GLOB TEST_SOURCES
+        CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
     )
 
     foreach(TEST_SOURCE ${TEST_SOURCES})
         get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
-        add_executable(${TEST_NAME} ${TEST_SOURCE})
-        target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-        target_link_libraries(${TEST_NAME}
+        add_executable(${TEST_NAME} ${TEST_SOURCE})
+
+        target_include_directories(
+            ${TEST_NAME}
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+
+        target_link_libraries(
+            ${TEST_NAME}
             axon_uploader
             GTest::gtest
             GTest::gtest_main
@@ -157,8 +157,14 @@ if(AXON_UPLOADER_BUILD_TESTS OR AXON_BUILD_TESTS)
         # Apply coverage flags
         if(COMMAND axon_add_coverage)
             axon_add_coverage(${TEST_NAME})
-        elseif(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(${TEST_NAME} PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+        elseif(
+            AXON_UPLOADER_ENABLE_COVERAGE
+            AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+        )
+            target_compile_options(
+                ${TEST_NAME}
+                PRIVATE --coverage -fprofile-arcs -ftest-coverage
+            )
             target_link_options(${TEST_NAME} PRIVATE --coverage)
         endif()
 
@@ -166,21 +172,49 @@ if(AXON_UPLOADER_BUILD_TESTS OR AXON_BUILD_TESTS)
     endforeach()
 
     # Integration test (requires MinIO) - not added to CTest by default
-    add_executable(test_edge_uploader
+    add_executable(
+        test_edge_uploader
         ${CMAKE_CURRENT_SOURCE_DIR}/test/integration/test_edge_uploader.cpp
     )
-    target_link_libraries(test_edge_uploader
+
+    target_include_directories(
+        test_edge_uploader
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(
+        test_edge_uploader
         axon_uploader
         GTest::gtest
         GTest::gtest_main
     )
+
     if(COMMAND axon_add_coverage)
         axon_add_coverage(test_edge_uploader)
-    elseif(AXON_UPLOADER_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(test_edge_uploader PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+    elseif(
+        AXON_UPLOADER_ENABLE_COVERAGE
+        AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+    )
+        target_compile_options(
+            test_edge_uploader
+            PRIVATE --coverage -fprofile-arcs -ftest-coverage
+        )
         target_link_options(test_edge_uploader PRIVATE --coverage)
     endif()
+
     # Note: Integration test is not added to CTest by default
     # It requires MinIO to be running. Run manually:
     #   MINIO_ENDPOINT=http://localhost:9000 ./test_edge_uploader
 endif()
+
+# =============================================================================
+# Summary
+# =============================================================================
+message(STATUS "")
+message(STATUS "=== Axon Uploader Configuration ===")
+message(STATUS "  SQLite3: ${SQLite3_VERSION}")
+message(STATUS "  AWS SDK: Found")
+message(STATUS "  MCAP Validation: ${MCAP_BUILD_DIR}")
+message(STATUS "  Tests: ${AXON_UPLOADER_BUILD_TESTS}")
+message(STATUS "=====================================")
+message(STATUS "")

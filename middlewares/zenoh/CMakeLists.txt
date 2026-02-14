@@ -1,101 +1,129 @@
-# SPDX-FileCopyrightText: 2026 ArcheBase
-#
-# SPDX-License-Identifier: MulanPSL-2.0
+# =============================================================================
+# Axon Zenoh Plugin
+# =============================================================================
+# The plugin is built as a shared library that can be dynamically loaded
+# by the main axon_recorder application.
+# =============================================================================
 
 cmake_minimum_required(VERSION 3.12)
 project(axon_zenoh_plugin)
 
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
-
-if(NOT CMAKE_CXX_STANDARD_REQUIRED)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-endif()
-
+# Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+    add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Coverage support
-option(AXON_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
-if(AXON_ENABLE_COVERAGE)
-  add_compile_options(--coverage -g -O0)
-  add_link_options(--coverage)
+# =============================================================================
+# Centralized CMake Modules
+# =============================================================================
+# All Axon modules must use the centralized cmake/Modules directory.
+# This ensures consistent configuration across the codebase.
+if(DEFINED AXON_CMAKE_MODULES_DIR)
+    list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
+elseif(DEFINED AXON_REPO_ROOT)
+    list(APPEND CMAKE_MODULE_PATH "${AXON_REPO_ROOT}/cmake/Modules")
+else()
+    # Compute relative path to cmake/Modules
+    set(_AXON_CMAKE_MODULES_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules"
+    )
+    if(EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdLib.cmake")
+        list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
+    endif()
 endif()
 
+# Include required modules (AxonStdLib provides standard helpers)
+include(AxonStdLib REQUIRED)
+include(AxonCoverage OPTIONAL)
+
+# =============================================================================
+# Find nlohmann/json
+# =============================================================================
 find_package(nlohmann_json 3.2.0 QUIET)
+
 if(NOT nlohmann_json_FOUND)
-  message(FATAL_ERROR "nlohmann_json not found. Please install nlohmann-json3-dev or build from parent project.")
+    message(
+        FATAL_ERROR
+        "nlohmann_json not found. Please install nlohmann-json3-dev or build from parent project."
+    )
 endif()
 
+# =============================================================================
 # Find Zenoh C++ library
+# =============================================================================
 # First find zenohc (C library), then zenohcxx (C++ wrapper)
-list(APPEND CMAKE_PREFIX_PATH /usr/local /usr/local/lib/cmake /usr/local/lib/x86_64-linux-gnu/cmake /usr/lib/cmake)
 
-# Find zenohc first (required by zenohcxx)
+# Try CONFIG first (works if installed with cmake)
 find_package(zenohc CONFIG QUIET)
 
 # Try CONFIG first (works if installed with cmake)
 find_package(zenohcxx CONFIG QUIET)
 
 if(NOT zenohcxx_FOUND)
-  message(STATUS "zenohcxx not found via CONFIG, trying manual search...")
-  # Try to find manually in /usr/local
-  if(EXISTS "/usr/local/lib/cmake/zenohcxx/zenohcxxConfig.cmake" OR
-     EXISTS "/usr/local/lib/x86_64-linux-gnu/cmake/zenohcxx/zenohcxxConfig.cmake")
-    # Load the config file directly
-    if(EXISTS "/usr/local/lib/cmake/zenohcxx/zenohcxxConfig.cmake")
-      set(zenohcxx_DIR /usr/local/lib/cmake/zenohcxx)
-    else()
-      set(zenohcxx_DIR /usr/local/lib/x86_64-linux-gnu/cmake/zenohcxx)
-    endif()
-    include(${zenohcxx_DIR}/zenohcxxConfig.cmake)
-    message(STATUS "Found zenohcxx cmake config at ${zenohcxx_DIR}")
-    set(zenohcxx_FOUND TRUE)
-  elseif(EXISTS "/usr/local/lib/libzenohcxx.a" OR EXISTS "/usr/local/lib/libzenohcxx.so")
-    # Create imported target if library exists but no cmake config
-    add_library(zenohcxx_zenohc INTERFACE IMPORTED)
-    set_target_properties(zenohcxx_zenohc PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "/usr/local/include"
-    )
-    add_library(zenohcxx::zenohc ALIAS zenohcxx_zenohc)
-    set(zenohcxx_FOUND TRUE)
-    message(STATUS "Found zenohcxx library in /usr/local/lib, created imported target")
-  else()
-    set(zenohcxx_FOUND FALSE)
     message(
-      WARNING
-      "Zenoh C++ library not found. Please install zenoh-cpp or set CMAKE_PREFIX_PATH."
+        STATUS
+        "zenohcxx not found via CONFIG, trying manual search in /usr/local..."
     )
-  endif()
+    # Try to find manually in /usr/local
+    if(
+        EXISTS "/usr/local/lib/cmake/zenohcxx/zenohcxxConfig.cmake"
+        OR EXISTS
+            "/usr/local/lib/x86_64-linux-gnu/cmake/zenohcxx/zenohcxxConfig.cmake"
+    )
+        set(zenohcxx_DIR "/usr/local/lib/cmake/zenohcxx")
+    elseif(
+        EXISTS "/usr/local/lib/zenohcxx.a"
+        OR EXISTS "/usr/local/lib/x86_64-linux-gnu/lib/zenohcxx.a"
+    )
+        # Create imported target if library exists but no cmake config
+        if(NOT TARGET zenohcxx::zenohc)
+            add_library(zenohcxx::zenohc INTERFACE IMPORTED)
+            set_target_properties(
+                zenohcxx::zenohc
+                PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "/usr/local/include"
+            )
+        endif()
+        set(zenohcxx_FOUND TRUE)
+        message(
+            STATUS
+            "Found zenohcxx library in /usr/local/lib, created imported target"
+        )
+    else()
+        set(zenohcxx_FOUND FALSE)
+        message(
+            WARNING
+            "Zenoh C++ library not found. Please install zenoh-cpp or set CMAKE_PREFIX_PATH."
+        )
+    endif()
 endif()
 
-# Build the plugin library (direct C interface, no external ABI header)
-add_library(axon_zenoh_plugin SHARED
-  src/zenoh_plugin.cpp
-  src/zenoh_subscription_wrapper.cpp
-  src/zenoh_plugin_export.cpp
+# =============================================================================
+# Build Plugin Library
+# =============================================================================
+
+add_library(
+    axon_zenoh_plugin
+    SHARED
+    src/zenoh_plugin.cpp
+    src/zenoh_subscription_wrapper.cpp
+    src/zenoh_plugin_export.cpp
 )
 
-target_include_directories(axon_zenoh_plugin PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../core/axon_logging/include
+target_include_directories(
+    axon_zenoh_plugin
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+        ${AXON_LOGGING_DIR}/include
 )
 
-# Link nlohmann_json and axon_logging
-target_link_libraries(axon_zenoh_plugin nlohmann_json::nlohmann_json)
-target_link_libraries(axon_zenoh_plugin axon_logging)
+target_link_libraries(
+    axon_zenoh_plugin
+    PUBLIC nlohmann_json::nlohmann_json axon_logging
+)
 
-# Link Zenoh if found
 if(zenohcxx_FOUND)
-  target_link_libraries(axon_zenoh_plugin zenohcxx::zenohc)
-  target_compile_definitions(axon_zenoh_plugin PRIVATE
-    ZENOHCPP_FOUND
-    ZENOHCXX_ZENOHC  # Required for zenoh-cpp to include zenoh.h
-  )
+    target_link_libraries(axon_zenoh_plugin PUBLIC zenohcxx::zenohc)
 endif()
 
 # Export all symbols for dynamic loading
@@ -105,70 +133,67 @@ target_compile_options(axon_zenoh_plugin PRIVATE -fvisibility=default)
 # Tests
 # =============================================================================
 option(BUILD_TESTING "Build tests" ON)
+
 if(BUILD_TESTING)
-  enable_testing()
-  find_package(GTest QUIET)
+    enable_testing()
+    find_package(GTest QUIET)
 
-  if(GTest_FOUND)
-    # Discover test files automatically
-    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp")
+    if(GTest_FOUND)
+        # Discover test files automatically
+        file(
+            GLOB TEST_SOURCES
+            CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/test/test_*.cpp"
+        )
 
-    foreach(test_source ${TEST_SOURCES})
-      get_filename_component(test_name ${test_source} NAME_WE)
+        foreach(test_source ${TEST_SOURCES})
+            get_filename_component(test_name ${test_source} NAME_WE)
 
-      add_executable(${test_name} ${test_source})
+            add_executable(${test_name} ${test_source})
 
-      target_link_libraries(${test_name} axon_zenoh_plugin GTest::GTest)
+            target_include_directories(
+                ${test_name}
+                PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+            )
 
-      if(zenohcxx_FOUND)
-        target_link_libraries(${test_name} zenohcxx::zenohc)
-        target_compile_definitions(${test_name} PRIVATE ZENOHCXX_ZENOHC)
-      endif()
+            target_link_libraries(
+                ${test_name}
+                axon_zenoh_plugin
+                GTest::gtest
+                GTest::gtest_main
+            )
 
-      # Add test labels
-      set_target_properties(${test_name} PROPERTIES LABELS "unit;zenoh_plugin")
+            if(zenohcxx_FOUND)
+                target_link_libraries(${test_name} zenohcxx::zenohc)
+            endif()
 
-      # Register with CTest
-      add_test(NAME ${test_name} COMMAND ${test_name})
-    endforeach()
-  else()
-    message(STATUS "GTest not found, skipping Zenoh plugin tests")
-  endif()
-endif()
-
-# =============================================================================
-# Examples (Integration Test Programs)
-# =============================================================================
-if(zenohcxx_FOUND)
-  # Test Publisher
-  add_executable(test_publisher examples/test_publisher.cpp)
-  target_link_libraries(test_publisher zenohcxx::zenohc)
-  target_compile_definitions(test_publisher PRIVATE ZENOHCXX_ZENOHC)
-
-  # Test Subscriber
-  add_executable(test_subscriber examples/test_subscriber.cpp)
-  target_link_libraries(test_subscriber zenohcxx::zenohc)
-  target_compile_definitions(test_subscriber PRIVATE ZENOHCXX_ZENOHC)
-
-  message(STATUS "Building integration test programs (test_publisher, test_subscriber)")
+            add_test(NAME ${test_name} COMMAND ${test_name})
+        endforeach()
+    else()
+        message(STATUS "GTest not found, skipping Zenoh plugin tests")
+    endif()
 endif()
 
 # =============================================================================
 # Install
 # =============================================================================
-install(TARGETS axon_zenoh_plugin
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib/axon/plugins
-  RUNTIME DESTINATION bin
+install(
+    TARGETS axon_zenoh_plugin
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib/axon/plugins
+    RUNTIME DESTINATION bin
 )
 
-# Install headers
-install(DIRECTORY include/
-  DESTINATION include/zenoh_plugin
-  FILES_MATCHING PATTERN "*.hpp"
+install(
+    DIRECTORY include/
+    DESTINATION include/axon
+    FILES_MATCHING
+    PATTERN "*.hpp"
 )
 
-# Print summary
+# =============================================================================
+# Summary
+# =============================================================================
 message(STATUS "")
 message(STATUS "Axon Zenoh Plugin Configuration:")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")

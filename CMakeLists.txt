@@ -47,7 +47,7 @@ set(AXON_CMAKE_MODULES_DIR "${AXON_CMAKE_MODULES_DIR}" CACHE INTERNAL "")
 # These policies apply to all Axon modules.
 
 # Suppress CMP0167 warning (FindBoost module removed in CMake 3.30+)
-# Use the new BoostConfig.cmake instead of FindBoost.cmake
+# Use modern BoostConfig.cmake instead of FindBoost.cmake
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
@@ -66,7 +66,8 @@ option(AXON_BUILD_UPLOADER "Build axon_uploader (requires AWS SDK)" OFF)
 # =============================================================================
 list(APPEND CMAKE_MODULE_PATH "${AXON_CMAKE_MODULES_DIR}")
 
-include(AxonStdlib OPTIONAL)
+# Include standard library utilities FIRST (required by all modules)
+include(AxonStdLib REQUIRED)
 include(AxonCoverage OPTIONAL)
 
 # =============================================================================
@@ -88,7 +89,8 @@ find_package(Threads REQUIRED)
 FetchContent_Declare(
     nlohmann_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+    URL_HASH
+        SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
@@ -97,56 +99,70 @@ FetchContent_MakeAvailable(nlohmann_json)
 # =============================================================================
 # Add C++ libraries in dependency order.
 
+# =============================================================================
 # Logging (no dependencies)
+# =============================================================================
 if(EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
-    add_subdirectory(${AXON_LOGGING_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
+    add_subdirectory(
+        ${AXON_LOGGING_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_logging
+    )
 endif()
 
+# =============================================================================
 # MCAP (depends on logging)
+# =============================================================================
 if(EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
     add_subdirectory(${AXON_MCAP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
 endif()
 
+# =============================================================================
 # Uploader (depends on MCAP, logging, AWS SDK)
+# =============================================================================
 if(AXON_BUILD_UPLOADER AND EXISTS "${AXON_UPLOADER_DIR}/CMakeLists.txt")
-    add_subdirectory(${AXON_UPLOADER_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_uploader)
+    add_subdirectory(
+        ${AXON_UPLOADER_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_uploader
+    )
 endif()
 
-# Filters (depth compression, no dependencies on other Axon modules)
-set(AXON_FILTERS_DIR "${AXON_MIDDLEWARES_DIR}/filters")
-set(AXON_FILTERS_DIR "${AXON_FILTERS_DIR}" CACHE INTERNAL "")
-if(EXISTS "${AXON_FILTERS_DIR}/CMakeLists.txt")
-    add_subdirectory(${AXON_FILTERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/filters)
-endif()
-
-# Middleware plugins (ROS1, ROS2, Zenoh, Mock)
+# =============================================================================
+# Middlewares (ROS1, ROS2, Zenoh, Mock)
+# =============================================================================
 if(EXISTS "${AXON_MIDDLEWARES_DIR}/CMakeLists.txt")
-    add_subdirectory(${AXON_MIDDLEWARES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/middlewares)
+    add_subdirectory(
+        ${AXON_MIDDLEWARES_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/middlewares
+    )
 endif()
 
 # =============================================================================
 # Applications
 # =============================================================================
-
-# axon_recorder (plugin loader)
 if(EXISTS "${AXON_APPS_DIR}/axon_recorder/CMakeLists.txt")
-    add_subdirectory(${AXON_APPS_DIR}/axon_recorder ${CMAKE_CURRENT_BINARY_DIR}/axon_recorder)
+    add_subdirectory(
+        ${AXON_APPS_DIR}/axon_recorder
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_recorder
+    )
 endif()
 
-# axon_config (robot configuration management)
 if(EXISTS "${AXON_APPS_DIR}/axon_config/CMakeLists.txt")
-    add_subdirectory(${AXON_APPS_DIR}/axon_config ${CMAKE_CURRENT_BINARY_DIR}/axon_config)
+    add_subdirectory(
+        ${AXON_APPS_DIR}/axon_config
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_config
+    )
 endif()
 
-# plugin_example
 if(EXISTS "${AXON_APPS_DIR}/plugin_example/CMakeLists.txt")
-    add_subdirectory(${AXON_APPS_DIR}/plugin_example ${CMAKE_CURRENT_BINARY_DIR}/plugin_example)
+    add_subdirectory(
+        ${AXON_APPS_DIR}/plugin_example
+        ${CMAKE_CURRENT_BINARY_DIR}/plugin_example
+    )
 endif()
 
 # =============================================================================
 # Summary
 # =============================================================================
-
 message(STATUS "")
 message(STATUS "=== Axon Configuration ===")
 message(STATUS "  Repository Root: ${AXON_REPO_ROOT}")
@@ -156,5 +172,5 @@ message(STATUS "  Applications:     ${AXON_APPS_DIR}")
 message(STATUS "  Coverage:         ${AXON_ENABLE_COVERAGE}")
 message(STATUS "  Tests:            ${AXON_BUILD_TESTS}")
 message(STATUS "  Uploader:         ${AXON_BUILD_UPLOADER}")
-message(STATUS "========================")
+message(STATUS "=====================================")
 message(STATUS "")
