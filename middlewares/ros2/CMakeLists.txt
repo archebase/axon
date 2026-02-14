@@ -32,14 +32,27 @@ endif()
 # Find ROS2
 # =============================================================================
 
-# Find ROS2 installation
-set(ROS2_DIR "/opt/ros/humble" CACHE PATH "ROS2 installation directory")
+# Auto-detect ROS2 installation from environment
+# Priority: CMake variable > Environment variable > Default
+if(NOT DEFINED ROS2_DIR OR ROS2_DIR STREQUAL "")
+    if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+        set(ROS2_DIR
+            "/opt/ros/$ENV{ROS_DISTRO}"
+            CACHE PATH
+            "ROS2 installation directory (auto-detected from ROS_DISTRO)"
+        )
+        message(STATUS "ROS2: Auto-detected from ROS_DISTRO=$ENV{ROS_DISTRO}")
+    else()
+        set(ROS2_DIR "/opt/ros/humble" CACHE PATH "ROS2 installation directory")
+        message(STATUS "ROS2: Using default path (ROS_DISTRO not set)")
+    endif()
+endif()
 
 if(NOT EXISTS "${ROS2_DIR}")
     message(
         FATAL_ERROR
         "ROS2 not found at ${ROS2_DIR}. "
-        "Install ROS2 Humble or set ROS2_DIR to your ROS installation."
+        "Set ROS_DISTRO environment variable or pass -DROS2_DIR=/path/to/ros."
     )
 endif()
 

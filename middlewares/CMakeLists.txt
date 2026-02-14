@@ -29,12 +29,29 @@ set(AXON_MIDDLEWARES_DIR "${AXON_MIDDLEWARES_DIR}" CACHE INTERNAL "")
 # =============================================================================
 
 # Detect ROS environment
-set(ROS1_DIR "/opt/ros/noetic" CACHE PATH "ROS1 installation directory")
-set(ROS2_DIR
-    "/opt/ros/humble"
-    CACHE PATH
-    "ROS2 installation directory (humble/jazzy/rolling)"
-)
+# Auto-detect ROS1_DIR from environment if not already set
+if(NOT DEFINED ROS1_DIR OR ROS1_DIR STREQUAL "")
+    if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+        set(ROS1_DIR "/opt/ros/$ENV{ROS_DISTRO}" CACHE PATH
+            "ROS1 installation directory (auto-detected from ROS_DISTRO)"
+        )
+    else()
+        set(ROS1_DIR "/opt/ros/noetic" CACHE PATH "ROS1 installation directory")
+    endif()
+endif()
+
+# Auto-detect ROS2_DIR from environment if not already set
+if(NOT DEFINED ROS2_DIR OR ROS2_DIR STREQUAL "")
+    if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+        set(ROS2_DIR "/opt/ros/$ENV{ROS_DISTRO}" CACHE PATH
+            "ROS2 installation directory (auto-detected from ROS_DISTRO)"
+        )
+    else()
+        set(ROS2_DIR "/opt/ros/humble" CACHE PATH
+            "ROS2 installation directory (humble/jazzy/rolling)"
+        )
+    endif()
+endif()
 
 # Auto-detect ROS1
 # Check for ROS1-specific files (not just ROS_DISTRO which exists for ROS2 too)

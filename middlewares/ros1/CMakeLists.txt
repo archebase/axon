@@ -31,13 +31,28 @@ endif()
 # =============================================================================
 # Find ROS1
 # =============================================================================
-set(ROS1_DIR "/opt/ros/noetic" CACHE PATH "ROS1 installation directory")
+
+# Auto-detect ROS1 installation from environment
+# Priority: CMake variable > Environment variable > Default
+if(NOT DEFINED ROS1_DIR OR ROS1_DIR STREQUAL "")
+    if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+        set(ROS1_DIR
+            "/opt/ros/$ENV{ROS_DISTRO}"
+            CACHE PATH
+            "ROS1 installation directory (auto-detected from ROS_DISTRO)"
+        )
+        message(STATUS "ROS1: Auto-detected from ROS_DISTRO=$ENV{ROS_DISTRO}")
+    else()
+        set(ROS1_DIR "/opt/ros/noetic" CACHE PATH "ROS1 installation directory")
+        message(STATUS "ROS1: Using default path (ROS_DISTRO not set)")
+    endif()
+endif()
 
 if(NOT EXISTS "${ROS1_DIR}")
     message(
         FATAL_ERROR
         "ROS1 not found at ${ROS1_DIR}. "
-        "Install ROS1 Noetic or set ROS1_DIR to your ROS installation."
+        "Set ROS_DISTRO environment variable or pass -DROS1_DIR=/path/to/ros."
     )
 endif()
 
