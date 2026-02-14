@@ -195,16 +195,14 @@ if(AXON_BUILD_TESTS)
             pthread
         )
 
-        # Add test labels
-        set_tests_properties(${test_name} PROPERTIES LABELS "unit;ros1_plugin")
-
         # Apply coverage flags
         if(COMMAND axon_add_coverage)
             axon_add_coverage(${test_name})
         endif()
 
-        # Register with CTest
+        # Register with CTest first, then set properties
         add_test(NAME ${test_name} COMMAND ${test_name})
+        set_tests_properties(${test_name} PROPERTIES LABELS "unit;ros1_plugin")
     endforeach()
 endif()
 

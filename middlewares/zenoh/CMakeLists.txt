@@ -177,10 +177,9 @@ if(AXON_BUILD_TESTS)
                 axon_add_coverage(${test_name})
             endif()
 
-            # Add test labels for filtering
-            set_tests_properties(${test_name} PROPERTIES LABELS "unit;zenoh_plugin")
-
+            # Register with CTest first, then set properties
             add_test(NAME ${test_name} COMMAND ${test_name})
+            set_tests_properties(${test_name} PROPERTIES LABELS "unit;zenoh_plugin")
         endforeach()
     else()
         message(STATUS "GTest not found, skipping Zenoh plugin tests")
