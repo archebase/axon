@@ -187,6 +187,29 @@ if(AXON_BUILD_TESTS)
 endif()
 
 # =============================================================================
+# Examples (Integration Test Tools)
+# =============================================================================
+# These are standalone executables for manual testing and CI integration tests.
+# They are NOT unit tests and are not registered with CTest.
+if(zenohcxx_FOUND)
+    # Build test_publisher example
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_publisher.cpp")
+        add_executable(test_publisher "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_publisher.cpp")
+        target_link_libraries(test_publisher PRIVATE axon_zenoh_plugin zenohcxx::zenohc)
+        message(STATUS "Zenoh examples: test_publisher ENABLED")
+    endif()
+
+    # Build test_subscriber example
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_subscriber.cpp")
+        add_executable(test_subscriber "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_subscriber.cpp")
+        target_link_libraries(test_subscriber PRIVATE axon_zenoh_plugin zenohcxx::zenohc)
+        message(STATUS "Zenoh examples: test_subscriber ENABLED")
+    endif()
+else()
+    message(STATUS "Zenoh examples: DISABLED (zenohcxx not found)")
+endif()
+
+# =============================================================================
 # Install
 # =============================================================================
 install(
