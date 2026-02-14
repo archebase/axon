@@ -130,6 +130,13 @@ endif()
 target_compile_options(axon_zenoh_plugin PRIVATE -fvisibility=default)
 
 # =============================================================================
+# Coverage Support
+# =============================================================================
+if(COMMAND axon_add_coverage)
+    axon_add_coverage(axon_zenoh_plugin)
+endif()
+
+# =============================================================================
 # Tests
 # =============================================================================
 option(BUILD_TESTING "Build tests" ON)
@@ -165,6 +172,11 @@ if(BUILD_TESTING)
 
             if(zenohcxx_FOUND)
                 target_link_libraries(${test_name} zenohcxx::zenohc)
+            endif()
+
+            # Apply coverage flags
+            if(COMMAND axon_add_coverage)
+                axon_add_coverage(${test_name})
             endif()
 
             add_test(NAME ${test_name} COMMAND ${test_name})
