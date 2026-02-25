@@ -84,16 +84,17 @@ function formatBytes(bytes) {
 
 <style scoped>
 .panel {
-  background: white;
+  background: var(--surface-color);
   border-radius: 8px;
   padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 10px 30px rgba(7, 51, 140, 0.08);
+  border: 1px solid rgba(7, 51, 140, 0.08);
 }
 
 h3, h4 {
   margin: 0 0 1rem 0;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--primary-color);
 }
 
 h4 {
@@ -104,7 +105,7 @@ h4 {
 .task-info, .stats {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid rgba(7, 51, 140, 0.15);
 }
 
 .info-grid {
@@ -125,12 +126,12 @@ h4 {
 
 .key {
   font-weight: 500;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 0.875rem;
 }
 
 .value {
-  color: #1f2937;
+  color: var(--text-primary);
   font-family: monospace;
   font-size: 0.875rem;
   word-break: break-all;
@@ -144,8 +145,8 @@ h4 {
 }
 
 .topic-tag {
-  background: #f3f4f6;
-  color: #1f2937;
+  background: rgba(7, 51, 140, 0.08);
+  color: var(--primary-color);
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   font-family: monospace;
@@ -159,7 +160,7 @@ h4 {
 }
 
 .stat-item {
-  background: #f9fafb;
+  background: rgba(7, 51, 140, 0.04);
   padding: 1rem;
   border-radius: 6px;
   text-align: center;
@@ -168,13 +169,13 @@ h4 {
 .stat-value {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--primary-color);
   margin-bottom: 0.25rem;
 }
 
 .stat-label {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 
@@ -182,8 +183,9 @@ h4 {
   margin-top: 1rem;
   width: 100%;
   padding: 0.75rem;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
+  background: rgba(7, 51, 140, 0.08);
+  border: 1px solid rgba(7, 51, 140, 0.2);
+  color: var(--primary-color);
   border-radius: 6px;
   cursor: pointer;
   font-weight: 500;
@@ -191,7 +193,7 @@ h4 {
 }
 
 .refresh-btn:hover {
-  background: #e5e7eb;
+  background: rgba(7, 51, 140, 0.12);
 }
 
 /* Mobile responsive */

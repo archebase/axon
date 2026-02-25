@@ -106,16 +106,17 @@ defineEmits(['command'])
 
 <style scoped>
 .panel {
-  background: white;
+  background: var(--surface-color);
   border-radius: 8px;
   padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 10px 30px rgba(7, 51, 140, 0.08);
+  border: 1px solid rgba(7, 51, 140, 0.08);
 }
 
 h3, h4 {
   margin: 0 0 1rem 0;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--primary-color);
 }
 
 h4 {
@@ -135,8 +136,9 @@ h4 {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.875rem 1rem;
-  background: #f9fafb;
-  border: 2px solid #e5e7eb;
+  background: rgba(7, 51, 140, 0.04);
+  border: 2px solid rgba(7, 51, 140, 0.12);
+  color: var(--text-primary);
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
@@ -145,8 +147,8 @@ h4 {
 }
 
 .control-buttons button:hover:not(:disabled) {
-  background: #f3f4f6;
-  border-color: #d1d5db;
+  background: rgba(7, 51, 140, 0.08);
+  border-color: rgba(7, 51, 140, 0.2);
 }
 
 .control-buttons button:disabled {
@@ -155,20 +157,20 @@ h4 {
 }
 
 .control-buttons button.active {
-  background: #dbeafe;
-  border-color: #3b82f6;
-  color: #1e40af;
+  background: rgba(7, 51, 140, 0.12);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 .control-buttons button.danger {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #991b1b;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #b91c1c;
 }
 
 .control-buttons button.danger:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .icon {
@@ -178,7 +180,7 @@ h4 {
 .task-id-display {
   margin-top: 1rem;
   padding: 0.75rem;
-  background: #f9fafb;
+  background: rgba(7, 51, 140, 0.04);
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -187,13 +189,13 @@ h4 {
 
 .label {
   font-weight: 500;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 0.875rem;
 }
 
 .task-id {
   font-family: monospace;
-  color: #1f2937;
+  color: var(--text-primary);
   word-break: break-all;
 }
 

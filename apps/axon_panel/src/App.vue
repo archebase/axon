@@ -243,25 +243,46 @@ onUnmounted(() => {
 </script>
 
 <style>
+ :root {
+   --primary-color: #07338c;
+   --secondary-color: #079dd9;
+   --accent-color: #27def2;
+   --highlight-color: #d97706;
+   --success-color: #10b981;
+   --warning-color: #f59e0b;
+   --error-color: #ef4444;
+   --neutral-color: #64748b;
+   --surface-color: #ffffff;
+   --surface-tint: #f0f7ff;
+   --surface-muted: #e0f2fe;
+   --text-primary: #0f172a;
+   --text-secondary: #334155;
+   --border-color: #cbd5e1;
+ }
+
+ body {
+   background: var(--surface-tint);
+   color: var(--text-primary);
+ }
 /* Global styles to ensure edge labels are black */
 .vue-flow__edgeLabel text,
 .vue-flow__edgeLabel tspan,
 .vue-flow__edge-textwrapper text,
 .vue-flow__edge-textwrapper tspan {
-  fill: #000000 !important;
-  color: #000000 !important;
+  fill: var(--text-primary) !important;
+  color: var(--text-primary) !important;
 }
 </style>
 
 <style scoped>
 #app {
   min-height: 100vh;
-  background: #f5f5f5;
+  background: var(--surface-tint);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 .header {
-  background: #4f46e5;
+  background: var(--primary-color);
   color: white;
   padding: 1.5rem 2rem;
   display: flex;
@@ -283,8 +304,8 @@ onUnmounted(() => {
 }
 
 .log-toggle-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   color: white;
   padding: 0;
   border-radius: 6px;
@@ -309,20 +330,20 @@ onUnmounted(() => {
 }
 
 .log-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.26);
   transform: translateY(-1px);
 }
 
 .log-toggle-btn:active {
   transform: translateY(0);
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .log-badge {
   position: absolute;
   top: -4px;
   right: -4px;
-  background: #ef4444;
+  background: var(--error-color);
   color: white;
   font-size: 0.65rem;
   padding: 0.125rem 0.375rem;
@@ -335,7 +356,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.35);
 }
 
 .log-panel-floating {
@@ -344,7 +365,7 @@ onUnmounted(() => {
   right: 2rem;
   width: 600px;
   height: 500px;
-  background: white;
+  background: var(--surface-color);
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.2);
   display: flex;
@@ -393,13 +414,13 @@ onUnmounted(() => {
 }
 
 .log-panel-header {
-  background: #4f46e5;
+  background: var(--primary-color);
   color: white;
   padding: 1rem 1.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255,255,255,0.18);
 }
 
 .log-panel-header h3 {
@@ -415,7 +436,7 @@ onUnmounted(() => {
 }
 
 .clear-btn {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.16);
   border: none;
   color: white;
   font-size: 1.1rem;
@@ -435,15 +456,15 @@ onUnmounted(() => {
 }
 
 .clear-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.26);
 }
 
 .clear-btn:active {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .close-btn {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.16);
   border: none;
   color: white;
   font-size: 1.5rem;
@@ -464,11 +485,11 @@ onUnmounted(() => {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.26);
 }
 
 .close-btn:active {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* Slide animation */

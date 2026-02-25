@@ -33,7 +33,7 @@ const props = defineProps({
 
 .log-container {
   flex: 1;
-  background: #1f2937;
+  background: #0f172a;
   padding: 1rem;
   overflow-y: auto;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -44,7 +44,7 @@ const props = defineProps({
   display: flex;
   gap: 0.75rem;
   padding: 0.375rem 0;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 .log-entry:last-child {
@@ -52,32 +52,32 @@ const props = defineProps({
 }
 
 .log-time {
-  color: #9ca3af;
+  color: #94a3b8;
   flex-shrink: 0;
 }
 
 .log-message {
-  color: #e5e7eb;
+  color: #e2e8f0;
 }
 
 .log-info .log-message {
-  color: #60a5fa;
+  color: var(--accent-color);
 }
 
 .log-success .log-message {
-  color: #34d399;
+  color: var(--success-color);
 }
 
 .log-warning .log-message {
-  color: #fbbf24;
+  color: var(--warning-color);
 }
 
 .log-error .log-message {
-  color: #f87171;
+  color: var(--error-color);
 }
 
 .log-empty {
-  color: #6b7280;
+  color: var(--neutral-color);
   text-align: center;
   padding: 2rem;
   font-style: italic;

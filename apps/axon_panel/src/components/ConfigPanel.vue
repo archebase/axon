@@ -190,7 +190,7 @@ function handleSubmit() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(7, 51, 140, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -199,9 +199,9 @@ function handleSubmit() {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-color);
   border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  box-shadow: 0 20px 60px rgba(7, 51, 140, 0.2);
   max-width: 600px;
   width: 100%;
   max-height: 90vh;
@@ -211,13 +211,13 @@ function handleSubmit() {
 }
 
 .modal-header {
-  background: #4f46e5;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
   color: white;
   padding: 1rem 1.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255,255,255,0.18);
 }
 
 .modal-header h3 {
