@@ -40,7 +40,7 @@ defineEmits(['refresh'])
 
 .label {
   font-weight: 500;
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
 .badge {
@@ -49,25 +49,26 @@ defineEmits(['refresh'])
   font-size: 0.875rem;
   font-weight: 600;
   text-transform: uppercase;
+  color: white;
 }
 
 .badge.connected {
-  background: #10b981;
+  background: var(--success-color);
 }
 
 .badge.disconnected {
-  background: #ef4444;
+  background: var(--error-color);
 }
 
 .value {
   font-family: monospace;
-  background: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.18);
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
 }
 
 .refresh-btn {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.16);
   border: none;
   color: white;
   width: 36px;
@@ -79,7 +80,7 @@ defineEmits(['refresh'])
 }
 
 .refresh-btn:hover {
-  background: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.26);
 }
 
 .refresh-btn:active {
