@@ -19,7 +19,7 @@
 #include <fstream>
 #include <string>
 
-#include "../../config_injector.hpp"
+#include "../src/config/config_injector.hpp"
 #include "mcap_writer_wrapper.hpp"
 
 namespace fs = std::filesystem;

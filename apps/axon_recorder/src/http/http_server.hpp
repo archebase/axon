@@ -17,8 +17,8 @@
 #include <string>
 #include <thread>
 
+#include "../config/task_config.hpp"
 #include "event_broadcaster.hpp"
-#include "task_config.hpp"
 #include "websocket_server.hpp"
 
 namespace axon {

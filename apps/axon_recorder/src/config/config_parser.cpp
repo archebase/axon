@@ -7,7 +7,7 @@
 #include <fstream>
 #include <sstream>
 
-#include "recorder.hpp"
+#include "../core/recorder.hpp"
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "config_parser"

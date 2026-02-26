@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "task_config.hpp"
+#include "../config/task_config.hpp"
 
 // Forward declaration
 namespace axon {

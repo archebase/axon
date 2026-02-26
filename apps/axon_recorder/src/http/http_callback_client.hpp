@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#include "task_config.hpp"
+#include "../config/task_config.hpp"
 
 namespace axon {
 namespace recorder {

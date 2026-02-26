@@ -16,11 +16,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "http_server.hpp"
-#include "plugin_loader.hpp"
+#include "../config/task_config.hpp"
+#include "../http/http_server.hpp"
+#include "../plugin/plugin_loader.hpp"
+#include "../state/state_machine.hpp"
 #include "recording_session.hpp"
-#include "state_machine.hpp"
-#include "task_config.hpp"
 #include "worker_thread_pool.hpp"
 
 namespace axon {

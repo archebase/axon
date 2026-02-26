@@ -18,7 +18,7 @@
 #include <string>
 #include <thread>
 
-#include "../../metadata_injector.hpp"
+#include "../src/metadata/metadata_injector.hpp"
 
 namespace fs = std::filesystem;
 using namespace axon::recorder;

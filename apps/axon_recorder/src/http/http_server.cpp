@@ -15,8 +15,8 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "../config/task_config.hpp"
 #include "event_broadcaster.hpp"
-#include "task_config.hpp"
 #include "version.hpp"
 
 // Logging infrastructure

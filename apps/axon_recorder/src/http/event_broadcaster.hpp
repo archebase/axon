@@ -17,8 +17,8 @@
 #include <string>
 #include <thread>
 
-#include "state_machine.hpp"
-#include "task_config.hpp"
+#include "../config/task_config.hpp"
+#include "../state/state_machine.hpp"
 #include "websocket_server.hpp"
 
 namespace axon {

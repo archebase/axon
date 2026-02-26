@@ -16,8 +16,8 @@
 #include <mutex>
 #include <thread>
 
-#include "../../websocket_server.hpp"
-#include "../../websocket_session.hpp"
+#include "../src/http/websocket_server.hpp"
+#include "../src/http/websocket_session.hpp"
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;

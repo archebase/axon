@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-#include "../../worker_thread_pool.hpp"
+#include "../src/core/worker_thread_pool.hpp"
 
 namespace axon {
 namespace recorder {
