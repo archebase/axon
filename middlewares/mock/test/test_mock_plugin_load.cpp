@@ -13,7 +13,7 @@
 #include <iostream>
 #include <thread>
 
-#include "plugin_loader.hpp"
+#include "plugin/plugin_loader.hpp"
 
 using namespace axon;
 
