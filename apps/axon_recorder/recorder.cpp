@@ -125,30 +125,45 @@ bool AxonRecorder::start() {
 
   mcap_options.compression_level = config_.compression_level;
 
-  // Construct output file path: dataset.path/task_id.mcap
+  // Construct output file path
+  // Priority:
+  // 1. HTTP RPC mode with task_id: {dataset.path}/{task_id}.mcap
+  // 2. Explicit output file (CLI --output): use as-is (with dataset.path if relative)
+  // 3. Fallback: {dataset.path}/recording.mcap or default output_file
   std::string output_file;
 
-  // If user specified a custom output file (via --output or config file), use it
-  if (config_.output_file_is_explicit) {
-    output_file = config_.output_file;
-  } else if (!config_.dataset.path.empty()) {
-    // Ensure path ends with /
+  bool has_task_id = task_config_.has_value() && !task_config_.value().task_id.empty();
+
+  if (has_task_id && !config_.dataset.path.empty()) {
+    // HTTP RPC mode: always use task_id as filename
     std::string path = config_.dataset.path;
     if (!path.empty() && path.back() != '/') {
       path += '/';
     }
-
-    // Use task_id as filename if available, otherwise use default
-    std::string filename;
-    if (task_config_.has_value() && !task_config_.value().task_id.empty()) {
-      filename = task_config_.value().task_id + ".mcap";
+    output_file = path + task_config_.value().task_id + ".mcap";
+  } else if (config_.output_file_is_explicit) {
+    // Explicit output file (from CLI --output)
+    bool is_absolute = !config_.output_file.empty() && config_.output_file[0] == '/';
+    if (is_absolute) {
+      output_file = config_.output_file;
+    } else if (!config_.dataset.path.empty()) {
+      std::string path = config_.dataset.path;
+      if (!path.empty() && path.back() != '/') {
+        path += '/';
+      }
+      output_file = path + config_.output_file;
     } else {
-      filename = "recording.mcap";
+      output_file = config_.output_file;
     }
-
-    output_file = path + filename;
+  } else if (!config_.dataset.path.empty()) {
+    // Fallback with dataset path but no task_id
+    std::string path = config_.dataset.path;
+    if (!path.empty() && path.back() != '/') {
+      path += '/';
+    }
+    output_file = path + "recording.mcap";
   } else {
-    // Fallback to default output_file
+    // Final fallback
     output_file = config_.output_file;
   }
 
