@@ -163,6 +163,7 @@ add_axon_test(test_metadata_injector
     SOURCES unit/test_metadata_injector.cpp
             ../metadata_injector.cpp
 )
+target_link_libraries(test_metadata_injector OpenSSL::Crypto)
 
 # test_worker_thread_pool.cpp
 add_axon_test(test_worker_thread_pool
@@ -238,6 +239,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
         axon_mcap
         axon_logging
         yaml-cpp
+        OpenSSL::Crypto
         pthread
         ${CMAKE_DL_LIBS}
     )
@@ -272,6 +274,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
         axon_mcap
         axon_logging
         yaml-cpp
+        OpenSSL::Crypto
         pthread
         ${CMAKE_DL_LIBS}
     )
@@ -285,12 +288,19 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../metadata_injector.cpp
                 ../config_injector.cpp
                 ../plugin_loader.cpp
+                ../http_server.cpp
+                ../worker_thread_pool.cpp
+                ../websocket_server.cpp
+                ../websocket_session.cpp
+                ../event_broadcaster.cpp
     )
     target_link_libraries(
         test_recorder_integration
         axon_mcap
         axon_logging
         yaml-cpp
+        OpenSSL::Crypto
+        OpenSSL::SSL
         pthread
         ${CMAKE_DL_LIBS}
     )

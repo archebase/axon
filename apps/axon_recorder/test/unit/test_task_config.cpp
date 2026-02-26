@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#include "../task_config.hpp"
+#include "../../task_config.hpp"
 
 using namespace axon::recorder;
 

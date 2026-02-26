@@ -20,7 +20,7 @@
 #include <thread>
 #include <vector>
 
-#include "../spsc_queue.hpp"
+#include "../../spsc_queue.hpp"
 
 using namespace axon::recorder;
 

@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-#include "../state_machine.hpp"
+#include "../../state_machine.hpp"
 
 using namespace axon::recorder;
 

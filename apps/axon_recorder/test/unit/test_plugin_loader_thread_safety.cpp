@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-#include "../plugin_loader.hpp"
+#include "../../plugin_loader.hpp"
 
 using namespace axon;
 

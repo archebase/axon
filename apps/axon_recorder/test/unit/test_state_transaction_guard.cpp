@@ -11,7 +11,7 @@
 
 #include <string>
 
-#include "../state_machine.hpp"
+#include "../../state_machine.hpp"
 
 namespace axon {
 namespace recorder {

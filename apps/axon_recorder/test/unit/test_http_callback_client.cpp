@@ -15,8 +15,8 @@
 #include <thread>
 #include <vector>
 
-#include "../http_callback_client.hpp"
-#include "../task_config.hpp"
+#include "../../http_callback_client.hpp"
+#include "../../task_config.hpp"
 
 using namespace axon::recorder;
 
