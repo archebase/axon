@@ -17,7 +17,9 @@
 #include <string>
 #include <thread>
 
+#include "event_broadcaster.hpp"
 #include "task_config.hpp"
+#include "websocket_server.hpp"
 
 namespace axon {
 namespace recorder {
@@ -136,6 +138,41 @@ public:
    */
   std::string get_last_error() const;
 
+  /**
+   * Get the WebSocket server instance
+   */
+  WebSocketServer* get_websocket_server() {
+    return ws_server_.get();
+  }
+
+  /**
+   * Get the EventBroadcaster instance
+   */
+  EventBroadcaster* get_event_broadcaster() {
+    return event_broadcaster_.get();
+  }
+
+  /**
+   * Broadcast state change via WebSocket
+   * @param from Previous state
+   * @param to New state
+   * @param task_id Current task ID
+   */
+  void broadcast_state_change(RecorderState from, RecorderState to, const std::string& task_id);
+
+  /**
+   * Broadcast config change via WebSocket
+   * @param config Task configuration (nullptr to indicate clear)
+   */
+  void broadcast_config_change(const TaskConfig* config);
+
+  /**
+   * Broadcast log event via WebSocket
+   * @param level Log level (debug/info/warning/error)
+   * @param message Log message
+   */
+  void broadcast_log(const std::string& level, const std::string& message);
+
 private:
   /**
    * Server thread main function
@@ -187,6 +224,14 @@ private:
   // Error handling
   mutable std::mutex error_mutex_;
   std::string last_error_;
+
+  // WebSocket server
+  std::shared_ptr<WebSocketServer> ws_server_;
+  boost::asio::io_context ws_io_context_;
+  std::thread ws_server_thread_;
+
+  // Event broadcaster for WebSocket push notifications
+  std::unique_ptr<EventBroadcaster> event_broadcaster_;
 };
 
 }  // namespace recorder

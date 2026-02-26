@@ -28,7 +28,11 @@ include(AxonCoverage OPTIONAL)
 # Dependencies
 # =============================================================================
 # Find required components first
-find_package(Boost REQUIRED COMPONENTS log log_setup thread filesystem)
+find_package(
+    Boost
+    REQUIRED
+    COMPONENTS log log_setup thread filesystem system
+)
 find_package(yaml-cpp REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -104,6 +108,9 @@ add_executable(
     config_parser.cpp
     http_server.cpp
     http_callback_client.cpp
+    websocket_server.cpp
+    websocket_session.cpp
+    event_broadcaster.cpp
 )
 
 target_include_directories(
@@ -124,6 +131,7 @@ target_link_libraries(
         OpenSSL::Crypto
         OpenSSL::SSL
         Boost::thread
+        Boost::system
         pthread
 )
 
@@ -146,6 +154,22 @@ install(TARGETS axon_recorder RUNTIME DESTINATION bin)
 
 # Install plugin loader header for external plugins
 install(FILES plugin_loader.hpp DESTINATION include)
+
+# Install WebSocket server headers
+install(
+    FILES websocket_server.hpp websocket_session.hpp event_broadcaster.hpp
+    DESTINATION include
+)
+
+# =============================================================================
+# Tests
+# =============================================================================
+if(AXON_BUILD_TESTS)
+    add_subdirectory(
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+        ${CMAKE_CURRENT_BINARY_DIR}/test
+    )
+endif()
 
 # =============================================================================
 # Summary

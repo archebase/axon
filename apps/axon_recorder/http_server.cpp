@@ -15,6 +15,7 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "event_broadcaster.hpp"
 #include "task_config.hpp"
 #include "version.hpp"
 
@@ -54,6 +55,62 @@ bool HttpServer::start() {
 
   try {
     stop_requested_.store(false);
+
+    // Create and start WebSocket server on port (HTTP port + 1)
+    WebSocketServer::Config ws_config;
+    ws_config.host = host_;
+    ws_config.port = static_cast<uint16_t>(port_ + 1);  // WebSocket port = HTTP port + 1
+    ws_server_ = std::make_shared<WebSocketServer>(ws_io_context_, ws_config);
+    ws_server_->start();
+    ws_server_thread_ = std::thread([this]() {
+      ws_io_context_.run();
+    });
+
+    AXON_LOG_INFO(
+      std::string("WebSocket server started on ws://0.0.0.0:") + std::to_string(ws_config.port) +
+      "/ws"
+    );
+
+    // Create and start EventBroadcaster
+    event_broadcaster_ = std::make_unique<EventBroadcaster>(*ws_server_);
+
+    // Set up stats callback for periodic broadcasting
+    event_broadcaster_->set_stats_callback([this]() -> nlohmann::json {
+      if (callbacks_.get_stats) {
+        return callbacks_.get_stats();
+      }
+      return nlohmann::json::object();
+    });
+
+    // Set up state callback for broadcasting state changes
+    event_broadcaster_->set_state_callback([this]() -> std::pair<RecorderState, std::string> {
+      if (callbacks_.get_state) {
+        std::string state_str = callbacks_.get_state();
+        RecorderState state = RecorderState::IDLE;
+        if (state_str == "ready")
+          state = RecorderState::READY;
+        else if (state_str == "recording")
+          state = RecorderState::RECORDING;
+        else if (state_str == "paused")
+          state = RecorderState::PAUSED;
+        return {state, state_str};
+      }
+      return {RecorderState::IDLE, "idle"};
+    });
+
+    // Set up config callback for broadcasting config changes
+    event_broadcaster_->set_config_callback([this]() -> const TaskConfig* {
+      if (callbacks_.get_task_config) {
+        return callbacks_.get_task_config();
+      }
+      return nullptr;
+    });
+
+    // Start periodic stats broadcast (every 1 second)
+    event_broadcaster_->start_stats_broadcast(std::chrono::milliseconds(1000));
+
+    AXON_LOG_INFO("EventBroadcaster started with 1s stats interval");
+
     server_thread_ = std::make_unique<std::thread>(&HttpServer::server_thread_func, this);
     running_.store(true);
     return true;
@@ -73,6 +130,20 @@ void HttpServer::stop() {
   }
 
   stop_requested_.store(true);
+
+  // Stop EventBroadcaster first
+  if (event_broadcaster_) {
+    event_broadcaster_->stop_stats_broadcast();
+    event_broadcaster_.reset();
+  }
+
+  // Stop WebSocket server
+  if (ws_server_) {
+    ws_server_->stop();
+  }
+  if (ws_server_thread_.joinable()) {
+    ws_server_thread_.join();
+  }
 
   if (server_thread_ && server_thread_->joinable()) {
     server_thread_->join();
@@ -311,7 +382,7 @@ void HttpServer::handle_request(
     nlohmann::json health;
     health["status"] = "ok";
     health["service"] = "AxonRecorder";
-    health["version"] = "0.1.0";
+    health["version"] = "0.0.0";
     health["running"] = running_.load();
     health["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
     response_body = health.dump();
@@ -695,6 +766,26 @@ std::string HttpServer::format_response(
 void HttpServer::set_error_helper(const std::string& error) {
   std::lock_guard<std::mutex> lock(error_mutex_);
   last_error_ = error;
+}
+
+void HttpServer::broadcast_state_change(
+  RecorderState from, RecorderState to, const std::string& task_id
+) {
+  if (event_broadcaster_) {
+    event_broadcaster_->broadcast_state_change(from, to, task_id);
+  }
+}
+
+void HttpServer::broadcast_config_change(const TaskConfig* config) {
+  if (event_broadcaster_) {
+    event_broadcaster_->broadcast_config_change(config);
+  }
+}
+
+void HttpServer::broadcast_log(const std::string& level, const std::string& message) {
+  if (event_broadcaster_) {
+    event_broadcaster_->broadcast_log(level, message);
+  }
 }
 
 }  // namespace recorder

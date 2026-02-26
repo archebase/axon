@@ -377,10 +377,6 @@ int main(int argc, char* argv[]) {
     // Stop recording
     recorder.stop();
 
-    // Print final statistics
-    auto final_stats = recorder.get_statistics();
-    print_statistics(final_stats);
-
     return 0;
   }
 
@@ -431,10 +427,6 @@ int main(int argc, char* argv[]) {
     std::cout << "Stopping HTTP RPC server..." << std::endl;
     recorder.stop_http_server();
   }
-
-  // Print final statistics
-  auto final_stats = recorder.get_statistics();
-  print_statistics(final_stats);
 
   return 0;
 }

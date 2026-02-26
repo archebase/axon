@@ -9,7 +9,7 @@
           @refresh="fetchHealth"
         />
         <button class="log-toggle-btn" @click="showLogs = !showLogs" :title="showLogs ? 'Hide logs' : 'Show logs'">
-          <span v-if="logs.length > 0" class="log-badge">{{ logs.length }}</span>
+          <span v-if="errorCount > 0" class="log-badge">{{ errorCount }}</span>
           <span class="log-icon">{{ showLogs ? '📋' : '📝' }}</span>
         </button>
       </div>
@@ -59,8 +59,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { rpcApi } from './api/rpc'
+import { getWebSocketClient } from './api/websocket'
 import ConnectionStatus from './components/ConnectionStatus.vue'
 import StatePanel from './components/StatePanel.vue'
 import ControlPanel from './components/ControlPanel.vue'
@@ -77,7 +78,12 @@ const showConfigPanel = ref(false)
 const showLogs = ref(true)
 const logs = ref([])
 
-let pollInterval = null
+const errorCount = computed(() => logs.value.filter(log => log.type === 'error').length)
+
+// WebSocket client
+let wsClient = null
+let unsubscribers = []
+let healthCheckInterval = null
 
 function addLog(message, type = 'info') {
   const timestamp = new Date().toLocaleTimeString()
@@ -91,20 +97,44 @@ function addLog(message, type = 'info') {
 async function fetchHealth() {
   try {
     const data = await rpcApi.health()
+    const wasDisconnected = !connected.value
     health.value = data
     connected.value = true
+    if (wasDisconnected) {
+      // Reconnected - refresh all state from server
+      addLog('Connection restored', 'success')
+      await refreshAll()
+    }
   } catch (error) {
+    if (connected.value) {
+      // Only log when losing connection
+      addLog(`Connection lost: ${error.message}`, 'error')
+    }
     connected.value = false
-    addLog(`Health check failed: ${error.message}`, 'error')
   }
 }
 
 async function fetchState() {
+  if (import.meta.env.DEV) {
+    console.log('[App] fetchState() - calling /rpc/state API')
+  }
   try {
     const data = await rpcApi.getState()
+    if (import.meta.env.DEV) {
+      console.log('[App] fetchState() - response:', data)
+    }
     if (data.success) {
       const previousState = currentState.value
       currentState.value = data.data.state
+
+      // Update task config from server response if available
+      if (data.data.task_config) {
+        taskConfig.value = data.data.task_config
+        // Extract task_id from task_config
+        if (data.data.task_config.task_id) {
+          currentTaskId.value = data.data.task_config.task_id
+        }
+      }
 
       // Clear local task config when transitioning to IDLE
       if (currentState.value === 'idle' && previousState !== 'idle') {
@@ -114,6 +144,9 @@ async function fetchState() {
       }
     }
   } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[App] fetchState() - error:', error)
+    }
     addLog(`Failed to fetch state: ${error.message}`, 'error')
   }
 }
@@ -126,6 +159,136 @@ async function fetchStats() {
     }
   } catch (error) {
     // Don't log stats errors as they're less critical
+  }
+}
+
+// Refresh all page state from server
+async function refreshAll() {
+  if (import.meta.env.DEV) {
+    console.log('[App] refreshAll() called - fetching state from server')
+  }
+  try {
+    await fetchState()
+    if (import.meta.env.DEV) {
+      console.log('[App] fetchState() completed')
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[App] fetchState() failed:', error)
+    }
+  }
+  try {
+    await fetchStats()
+  } catch (error) {
+    // Stats errors are less critical
+  }
+}
+
+function setupWebSocket() {
+  wsClient = getWebSocketClient()
+  
+  // Handle connection established (also called on reconnection)
+  unsubscribers.push(wsClient.on('connected', async (data) => {
+    if (import.meta.env.DEV) {
+      console.log('[App] WebSocket connected event received:', data)
+    }
+    connected.value = true
+    health.value = { version: data.version }
+    if (data.state) {
+      currentState.value = data.state
+    }
+    addLog('WebSocket connected', 'success')
+    
+    // On reconnection, refresh all page state from server via HTTP
+    if (import.meta.env.DEV) {
+      console.log('[App] Calling refreshAll() to fetch state from server...')
+    }
+    try {
+      await refreshAll()
+      if (import.meta.env.DEV) {
+        console.log('[App] refreshAll() completed successfully')
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('[App] refreshAll() failed:', error)
+      }
+      addLog(`Failed to refresh state: ${error.message}`, 'error')
+    }
+  }))
+  
+  // Handle state changes pushed from server
+  unsubscribers.push(wsClient.on('state', (data) => {
+    const previousState = currentState.value
+    if (data.current) {
+      currentState.value = data.current
+    }
+
+    // Update task_id if provided
+    if (data.task_id !== undefined) {
+      currentTaskId.value = data.task_id
+    }
+
+    // Clear local task config and stats when transitioning to IDLE
+    if (currentState.value === 'idle' && previousState !== 'idle') {
+      taskConfig.value = null
+      currentTaskId.value = ''
+      stats.value = {}  // Clear statistics
+      addLog('Recording finished. Local task config cleared.', 'info')
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('[App] State update:', data)
+    }
+  }))
+  
+  // Handle stats updates pushed from server
+  unsubscribers.push(wsClient.on('stats', (data) => {
+    stats.value = data
+  }))
+  
+  // Handle config updates pushed from server
+  unsubscribers.push(wsClient.on('config', (data) => {
+    if (data.action === 'set' && data.task_config) {
+      taskConfig.value = data.task_config
+      currentTaskId.value = data.task_config.task_id
+      addLog('Configuration updated from server', 'info')
+    } else if (data.action === 'clear') {
+      taskConfig.value = null
+      currentTaskId.value = ''
+      addLog('Configuration cleared from server', 'info')
+    }
+  }))
+  
+  // Handle log events pushed from server
+  unsubscribers.push(wsClient.on('log', (data) => {
+    const level = data.level || 'info'
+    addLog(data.message, level)
+  }))
+  
+  // Handle error events pushed from server
+  unsubscribers.push(wsClient.on('error', (data) => {
+    addLog(data.message, 'error')
+  }))
+  
+  // Handle disconnection
+  unsubscribers.push(wsClient.on('disconnected', () => {
+    connected.value = false
+    addLog('WebSocket disconnected', 'warning')
+  }))
+  
+  // Connect WebSocket
+  wsClient.connect()
+}
+
+function cleanupWebSocket() {
+  // Unsubscribe all handlers
+  unsubscribers.forEach(unsub => unsub())
+  unsubscribers = []
+  
+  // Disconnect WebSocket
+  if (wsClient) {
+    wsClient.disconnect()
+    wsClient = null
   }
 }
 
@@ -217,28 +380,39 @@ async function handleConfigSubmit(config) {
 }
 
 function startPolling() {
-  // Poll state every second
-  pollInterval = setInterval(async () => {
-    await fetchState()
-    await fetchStats()
-  }, 1000)
+  // Polling disabled - using WebSocket for all real-time updates
 }
 
 function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
-  }
+  // Polling disabled - using WebSocket for all real-time updates
 }
 
 onMounted(async () => {
+  // Initial fetch via HTTP for health check and stats
   await fetchHealth()
-  await fetchState()
-  startPolling()
+  await fetchStats()
+  
+  // Setup WebSocket for real-time state/config/stats/log updates
+  setupWebSocket()
+  
+  // Fallback: periodic health check via HTTP when WebSocket is disconnected
+  healthCheckInterval = setInterval(async () => {
+    if (!wsClient || !wsClient.isConnected()) {
+      await fetchHealth()
+      // Also fetch stats via HTTP as fallback when WebSocket is disconnected
+      await fetchStats()
+    } else {
+      connected.value = true
+    }
+  }, 5000)
 })
 
 onUnmounted(() => {
-  stopPolling()
+  cleanupWebSocket()
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval)
+    healthCheckInterval = null
+  }
 })
 </script>
 

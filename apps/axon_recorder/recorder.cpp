@@ -245,6 +245,11 @@ void AxonRecorder::stop() {
   // Unload plugins
   plugin_loader_.unload_all();
 
+  // Reset worker pool statistics for next session
+  if (worker_pool_) {
+    worker_pool_->reset_stats();
+  }
+
   // Transition back to IDLE
   state_manager_.transition_to(RecorderState::IDLE, error_msg);
 
@@ -343,6 +348,11 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
 
       // Set the task config
       this->set_task_config(config);
+
+      // Broadcast config change via WebSocket
+      if (http_server_) {
+        http_server_->broadcast_config_change(&config);
+      }
 
       // Transition state from IDLE to READY
       auto current_state = this->get_state();
@@ -729,9 +739,27 @@ void AxonRecorder::set_error_helper(const std::string& error) {
 }
 
 void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
-  // Handle state transitions
-  // This callback is invoked after each successful state transition
-  // Can be used for logging, metrics, or triggering side effects
+  // Broadcast state change via WebSocket
+  if (http_server_) {
+    std::string task_id;
+    if (task_config_.has_value()) {
+      task_id = task_config_->task_id;
+    }
+    http_server_->broadcast_state_change(from, to, task_id);
+
+    // Broadcast log for important state transitions
+    if (to == RecorderState::RECORDING) {
+      http_server_->broadcast_log("info", "Recording started");
+    } else if (to == RecorderState::PAUSED) {
+      http_server_->broadcast_log("info", "Recording paused");
+    } else if (to == RecorderState::IDLE && from == RecorderState::RECORDING) {
+      http_server_->broadcast_log("info", "Recording finished");
+    } else if (to == RecorderState::IDLE && from == RecorderState::PAUSED) {
+      http_server_->broadcast_log("info", "Recording cancelled");
+    } else if (to == RecorderState::READY) {
+      http_server_->broadcast_log("info", "Configuration set, ready to record");
+    }
+  }
 }
 
 void AxonRecorder::request_shutdown() {
