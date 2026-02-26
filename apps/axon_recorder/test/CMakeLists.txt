@@ -135,8 +135,9 @@ endfunction()
 
 message(STATUS "Configuring unit tests...")
 
-# test_helper.cpp - Header-only library for test utilities
-add_library(test_helper INTERFACE unit/test_helpers.hpp)
+# test_helper - Header-only library for test utilities
+add_library(test_helper INTERFACE)
+target_include_directories(test_helper INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/unit)
 
 # test_state_machine.cpp
 add_axon_test(test_state_machine
