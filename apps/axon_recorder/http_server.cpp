@@ -141,6 +141,8 @@ void HttpServer::stop() {
   if (ws_server_) {
     ws_server_->stop();
   }
+  // Stop io_context to unblock the WebSocket thread
+  ws_io_context_.stop();
   if (ws_server_thread_.joinable()) {
     ws_server_thread_.join();
   }
