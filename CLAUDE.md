@@ -450,7 +450,7 @@ make ci-coverage-ros       # ROS2 coverage (Humble only)
 touch core/axon_mcap/test/test_my_new_feature.cpp
 ```
 
-The CMake files use `GLOB_CONFIGURE_DEPENDS` to auto-discover `test_*.cpp` files, so new tests are automatically registered without modifying CMakeLists.txt.
+The CMake files use `GLOB CONFIGURE_DEPENDS` to auto-discover `test_*.cpp` files, so new tests are automatically registered without modifying CMakeLists.txt.
 
 ### Header Include Requirements
 

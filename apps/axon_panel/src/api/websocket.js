@@ -83,22 +83,18 @@ export class WebSocketClient {
     
     this.isConnecting = true
     this.shouldReconnect = true
-    
+
     try {
       if (import.meta.env.DEV) {
         console.log('[WebSocket] Connecting to', this.url)
       }
-      
-      console.log('[WebSocket] Connecting to', this.url)
-      
+
       this.ws = new WebSocket(this.url)
       
       this.ws.onopen = () => {
         if (import.meta.env.DEV) {
-          console.log('[WebSocket] Connected')
+          console.log('[WebSocket] Connected to', this.url)
         }
-        
-        console.log('[WebSocket] Connected to', this.url)
         this.isConnecting = false
         this.currentReconnectInterval = this.reconnectInterval
         
@@ -136,7 +132,6 @@ export class WebSocketClient {
           console.log('[WebSocket] Closed:', event.code, event.reason)
         }
         
-        console.log('[WebSocket] Disconnected:', event.code, event.reason)
         this.isConnecting = false
         this.stopPing()
         
@@ -154,7 +149,6 @@ export class WebSocketClient {
           console.error('[WebSocket] Error:', error)
         }
         
-        console.error('[WebSocket] Connection error:', error)
         this.isConnecting = false
       }
       

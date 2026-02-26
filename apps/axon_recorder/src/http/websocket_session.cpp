@@ -105,6 +105,10 @@ void WebSocketSession::on_read(beast::error_code ec, std::size_t bytes_transferr
       "Read error from client" << axon::logging::kv("client_id", client_id_)
                                << axon::logging::kv("error", ec.message())
     );
+    // Notify server about disconnection on error
+    if (close_handler_) {
+      close_handler_(client_id_);
+    }
     return;
   }
 
@@ -178,13 +182,17 @@ void WebSocketSession::send(const std::string& message) {
     return;
   }
 
+  bool should_write = false;
   {
     std::lock_guard lock(write_mutex_);
     write_queue_.push(message);
+    // Check and set writing atomically under lock to prevent race
+    if (!writing_.exchange(true)) {
+      should_write = true;
+    }
   }
 
-  // Start writing if not already
-  if (!writing_.load()) {
+  if (should_write) {
     do_write();
   }
 }
@@ -199,21 +207,21 @@ void WebSocketSession::do_write() {
     return;
   }
 
-  std::string message;
+  std::shared_ptr<std::string> message;
   {
     std::lock_guard lock(write_mutex_);
     if (write_queue_.empty()) {
       writing_.store(false);
       return;
     }
-    message = write_queue_.front();
+    message = std::make_shared<std::string>(std::move(write_queue_.front()));
     write_queue_.pop();
   }
 
-  writing_.store(true);
-
+  // Capture message shared_ptr to extend lifetime through async operation
   ws_.async_write(
-    net::buffer(message), [self = shared_from_this()](beast::error_code ec, std::size_t bytes) {
+    net::buffer(*message),
+    [self = shared_from_this(), message](beast::error_code ec, std::size_t bytes) {
       self->on_write(ec, bytes);
     }
   );
@@ -231,6 +239,10 @@ void WebSocketSession::on_write(beast::error_code ec, std::size_t /*bytes_transf
                     << axon::logging::kv("error", ec.message())
     );
     writing_.store(false);
+    // Notify server about disconnection on error
+    if (close_handler_) {
+      close_handler_(client_id_);
+    }
     return;
   }
 
@@ -305,8 +317,12 @@ std::string WebSocketSession::build_message(const std::string& type, const nlohm
   auto time_t_now = std::chrono::system_clock::to_time_t(now);
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
+  // Use thread-safe localtime_r (POSIX)
+  std::tm tm_buf;
+  localtime_r(&time_t_now, &tm_buf);
+
   std::ostringstream oss;
-  oss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%dT%H:%M:%S");
+  oss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%S");
   oss << "." << std::setfill('0') << std::setw(3) << ms.count() << "Z";
 
   nlohmann::json msg;

@@ -7,7 +7,11 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 
+#include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
 #define AXON_LOG_COMPONENT "websocket_server"
 #include <axon_log_macros.hpp>
@@ -18,6 +22,24 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 namespace websocket = beast::websocket;
 namespace net = boost::asio;
+
+namespace {
+
+std::string iso8601_now() {
+  auto now = std::chrono::system_clock::now();
+  auto time_t_now = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+  std::tm tm_buf;
+  localtime_r(&time_t_now, &tm_buf);
+
+  std::ostringstream oss;
+  oss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%S");
+  oss << "." << std::setfill('0') << std::setw(3) << ms.count() << "Z";
+  return oss.str();
+}
+
+}  // namespace
 
 using tcp = boost::asio::ip::tcp;
 
@@ -81,15 +103,14 @@ void WebSocketServer::stop() {
 
   // Disconnect all sessions
   {
-    std::shared_lock lock(sessions_mutex_);
+    std::unique_lock lock(sessions_mutex_);
     for (auto& [id, weak_session] : sessions_) {
       if (auto session = weak_session.lock()) {
         session->close(1000, "Server shutdown");
       }
     }
+    sessions_.clear();
   }
-
-  sessions_.clear();
   AXON_LOG_INFO("WebSocket server stopped");
 }
 
@@ -126,8 +147,9 @@ void WebSocketServer::on_accept(beast::error_code ec, tcp::socket&& socket) {
       << axon::logging::kv("current", conn_count)
       << axon::logging::kv("max", config_.max_connections)
     );
+    // Close the client socket, not the acceptor
     boost::system::error_code ec;
-    acceptor_.close(ec);
+    socket.close(ec);
     do_accept();
     return;
   }
@@ -224,11 +246,8 @@ bool WebSocketServer::check_rate_limit(const std::string& client_id) {
 }
 
 void WebSocketServer::broadcast(const std::string& type, const nlohmann::json& data) {
-  auto message = nlohmann::json{
-    {"type", type},
-    {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()},
-    {"data", data}
-  }.dump();
+  auto message =
+    nlohmann::json{{"type", type}, {"timestamp", iso8601_now()}, {"data", data}}.dump();
 
   std::shared_lock lock(sessions_mutex_);
   for (auto& [id, weak_session] : sessions_) {
@@ -243,11 +262,8 @@ void WebSocketServer::broadcast(const std::string& type, const nlohmann::json& d
 void WebSocketServer::broadcast_to_subscribers(
   const std::string& event_type, const std::string& type, const nlohmann::json& data
 ) {
-  auto message = nlohmann::json{
-    {"type", type},
-    {"timestamp", std::chrono::system_clock::now().time_since_epoch().count()},
-    {"data", data}
-  }.dump();
+  auto message =
+    nlohmann::json{{"type", type}, {"timestamp", iso8601_now()}, {"data", data}}.dump();
 
   std::shared_lock lock(sessions_mutex_);
   for (auto& [id, weak_session] : sessions_) {

@@ -233,7 +233,7 @@ WorkerThreadPool::AggregateStats WorkerThreadPool::get_aggregate_stats() const {
 }
 
 void WorkerThreadPool::reset_stats() {
-  std::shared_lock<std::shared_mutex> lock(contexts_mutex_);
+  std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
 
   for (auto& [topic, context] : topic_contexts_) {
     context->stats.received.store(0, std::memory_order_relaxed);
