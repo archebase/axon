@@ -179,7 +179,10 @@ if(AXON_BUILD_TESTS)
 
             # Register with CTest first, then set properties
             add_test(NAME ${test_name} COMMAND ${test_name})
-            set_tests_properties(${test_name} PROPERTIES LABELS "unit;zenoh_plugin")
+            set_tests_properties(
+                ${test_name}
+                PROPERTIES LABELS "unit;zenoh_plugin"
+            )
         endforeach()
     else()
         message(STATUS "GTest not found, skipping Zenoh plugin tests")
@@ -194,15 +197,27 @@ endif()
 if(zenohcxx_FOUND)
     # Build test_publisher example
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_publisher.cpp")
-        add_executable(test_publisher "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_publisher.cpp")
-        target_link_libraries(test_publisher PRIVATE axon_zenoh_plugin zenohcxx::zenohc)
+        add_executable(
+            test_publisher
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_publisher.cpp"
+        )
+        target_link_libraries(
+            test_publisher
+            PRIVATE axon_zenoh_plugin zenohcxx::zenohc
+        )
         message(STATUS "Zenoh examples: test_publisher ENABLED")
     endif()
 
     # Build test_subscriber example
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_subscriber.cpp")
-        add_executable(test_subscriber "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_subscriber.cpp")
-        target_link_libraries(test_subscriber PRIVATE axon_zenoh_plugin zenohcxx::zenohc)
+        add_executable(
+            test_subscriber
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/test_subscriber.cpp"
+        )
+        target_link_libraries(
+            test_subscriber
+            PRIVATE axon_zenoh_plugin zenohcxx::zenohc
+        )
         message(STATUS "Zenoh examples: test_subscriber ENABLED")
     endif()
 else()

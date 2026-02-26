@@ -125,30 +125,45 @@ bool AxonRecorder::start() {
 
   mcap_options.compression_level = config_.compression_level;
 
-  // Construct output file path: dataset.path/task_id.mcap
+  // Construct output file path
+  // Priority:
+  // 1. HTTP RPC mode with task_id: {dataset.path}/{task_id}.mcap
+  // 2. Explicit output file (CLI --output): use as-is (with dataset.path if relative)
+  // 3. Fallback: {dataset.path}/recording.mcap or default output_file
   std::string output_file;
 
-  // If user specified a custom output file (via --output or config file), use it
-  if (config_.output_file_is_explicit) {
-    output_file = config_.output_file;
-  } else if (!config_.dataset.path.empty()) {
-    // Ensure path ends with /
+  bool has_task_id = task_config_.has_value() && !task_config_.value().task_id.empty();
+
+  if (has_task_id && !config_.dataset.path.empty()) {
+    // HTTP RPC mode: always use task_id as filename
     std::string path = config_.dataset.path;
     if (!path.empty() && path.back() != '/') {
       path += '/';
     }
-
-    // Use task_id as filename if available, otherwise use default
-    std::string filename;
-    if (task_config_.has_value() && !task_config_.value().task_id.empty()) {
-      filename = task_config_.value().task_id + ".mcap";
+    output_file = path + task_config_.value().task_id + ".mcap";
+  } else if (config_.output_file_is_explicit) {
+    // Explicit output file (from CLI --output)
+    bool is_absolute = !config_.output_file.empty() && config_.output_file[0] == '/';
+    if (is_absolute) {
+      output_file = config_.output_file;
+    } else if (!config_.dataset.path.empty()) {
+      std::string path = config_.dataset.path;
+      if (!path.empty() && path.back() != '/') {
+        path += '/';
+      }
+      output_file = path + config_.output_file;
     } else {
-      filename = "recording.mcap";
+      output_file = config_.output_file;
     }
-
-    output_file = path + filename;
+  } else if (!config_.dataset.path.empty()) {
+    // Fallback with dataset path but no task_id
+    std::string path = config_.dataset.path;
+    if (!path.empty() && path.back() != '/') {
+      path += '/';
+    }
+    output_file = path + "recording.mcap";
   } else {
-    // Fallback to default output_file
+    // Final fallback
     output_file = config_.output_file;
   }
 
@@ -244,6 +259,11 @@ void AxonRecorder::stop() {
 
   // Unload plugins
   plugin_loader_.unload_all();
+
+  // Reset worker pool statistics for next session
+  if (worker_pool_) {
+    worker_pool_->reset_stats();
+  }
 
   // Transition back to IDLE
   state_manager_.transition_to(RecorderState::IDLE, error_msg);
@@ -343,6 +363,11 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
 
       // Set the task config
       this->set_task_config(config);
+
+      // Broadcast config change via WebSocket
+      if (http_server_) {
+        http_server_->broadcast_config_change(&config);
+      }
 
       // Transition state from IDLE to READY
       auto current_state = this->get_state();
@@ -729,9 +754,27 @@ void AxonRecorder::set_error_helper(const std::string& error) {
 }
 
 void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
-  // Handle state transitions
-  // This callback is invoked after each successful state transition
-  // Can be used for logging, metrics, or triggering side effects
+  // Broadcast state change via WebSocket
+  if (http_server_) {
+    std::string task_id;
+    if (task_config_.has_value()) {
+      task_id = task_config_->task_id;
+    }
+    http_server_->broadcast_state_change(from, to, task_id);
+
+    // Broadcast log for important state transitions
+    if (to == RecorderState::RECORDING) {
+      http_server_->broadcast_log("info", "Recording started");
+    } else if (to == RecorderState::PAUSED) {
+      http_server_->broadcast_log("info", "Recording paused");
+    } else if (to == RecorderState::IDLE && from == RecorderState::RECORDING) {
+      http_server_->broadcast_log("info", "Recording finished");
+    } else if (to == RecorderState::IDLE && from == RecorderState::PAUSED) {
+      http_server_->broadcast_log("info", "Recording cancelled");
+    } else if (to == RecorderState::READY) {
+      http_server_->broadcast_log("info", "Configuration set, ready to record");
+    }
+  }
 }
 
 void AxonRecorder::request_shutdown() {

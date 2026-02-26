@@ -221,7 +221,7 @@ Axon uses a **plugin-based middleware integration** that cleanly separates middl
 **Key Design Principles:**
 - **Middleware Isolation**: Each middleware (ROS1, ROS2) resides in `middlewares/{name}/` and compiles independently into a dynamic library
 - **Core Independence**: All components outside `middlewares/` are middleware-agnostic with no ROS dependencies
-- **Unified C API**: Middlewares expose a unified C API interface for integration with the main application
+- **Unified C ABI**: Middlewares expose a unified C API interface for integration with the main application
 - **Dynamic Plugin Loading**: The main program loads middleware plugins as dynamic libraries at runtime via `dlopen/dlsym`
 
 **Directory Structure:**
@@ -527,6 +527,21 @@ private:
 
 **This codebase MUST support both ROS1 and ROS2.** All changes to ROS code must maintain compatibility.
 
+**CMake ROS Auto-Detection:**
+The build system auto-detects ROS installation from the `ROS_DISTRO` environment variable:
+```cmake
+# middlewares/CMakeLists.txt uses this pattern:
+if(NOT DEFINED ROS2_DIR OR ROS2_DIR STREQUAL "")
+    if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+        set(ROS2_DIR "/opt/ros/$ENV{ROS_DISTRO}" CACHE PATH ...)
+    else()
+        set(ROS2_DIR "/opt/ros/humble" CACHE PATH ...)  # fallback
+    endif()
+endif()
+```
+- Priority: CMake variable `-DROS2_DIR=...` > `$ROS_DISTRO` env > default
+- When adding new ROS-related CMake, use `$ENV{ROS_DISTRO}` with quotes for string comparison
+
 **Conditional Compilation:**
 ```cpp
 #if defined(AXON_ROS1)
@@ -618,8 +633,6 @@ reuse lint
 - Mock files follow the pattern `**/*_mock.*`
 - Dependencies and build artifacts are excluded
 
-**Note**: With the new plugin architecture, most ROS-specific code is isolated within `middlewares/ros1/` and `middlewares/ros2/` plugins. Core code in `core/` and `apps/` should remain middleware-agnostic.
-
 ## Refactoring Guidelines
 
 **When refactoring code in this codebase, follow these principles:**
@@ -632,7 +645,7 @@ reuse lint
    - Memory access patterns and cache locality
    - Throughput requirements (messages/sec, bytes/sec)
 
-3. **Understand Plugin Architecture**: When refactoring middleware code, remember the plugin-based design. Changes should maintain the clean separation between middleware-specific plugins and middleware-agnostic core.
+3. **Understand Plugin Architecture**: When refactoring middleware code, remember the plugin-based design. Changes should maintain a clean separation between middleware-specific plugins and middleware-agnostic core.
 
 4. **Minimal Scope**: Make the smallest change that solves the problem. Avoid refactoring unrelated code or adding infrastructure unless explicitly needed.
 

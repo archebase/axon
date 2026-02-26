@@ -110,7 +110,7 @@ install(FILES include/mock_plugin.hpp DESTINATION include)
 add_executable(
     test_mock_plugin_load
     test/test_mock_plugin_load.cpp
-    ${AXON_APPS_DIR}/axon_recorder/plugin_loader.cpp
+    ${AXON_APPS_DIR}/axon_recorder/src/plugin/plugin_loader.cpp
 )
 
 target_include_directories(
@@ -118,6 +118,7 @@ target_include_directories(
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/axon_recorder
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/axon_recorder/src
 )
 
 target_link_libraries(test_mock_plugin_load ${CMAKE_DL_LIBS})

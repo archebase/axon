@@ -94,8 +94,9 @@ endif()
 # =============================================================================
 set(TEST_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/unit)
 set(TEST_INCLUDE_DIRS
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
     ${CMAKE_CURRENT_BINARY_DIR}/..
+    ${nlohmann_json_SOURCE_DIR}/single_include
 )
 
 function(add_axon_test test_name)
@@ -134,55 +135,73 @@ endfunction()
 
 message(STATUS "Configuring unit tests...")
 
-# test_helper.cpp - Header-only library for test utilities
-add_library(test_helper INTERFACE test/test_helper.hpp)
+# test_helper - Header-only library for test utilities
+add_library(test_helper INTERFACE)
+target_include_directories(
+    test_helper
+    INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/unit
+)
 
 # test_state_machine.cpp
 add_axon_test(test_state_machine
-    SOURCES test/test_state_machine.cpp
-            ../state_machine.cpp
+    SOURCES unit/test_state_machine.cpp
+            ../src/state/state_machine.cpp
 )
 
 # test_task_config.cpp
 add_axon_test(test_task_config
-    SOURCES test/test_task_config.cpp
-            ../config_parser.cpp
+    SOURCES unit/test_task_config.cpp
+            ../src/config/config_parser.cpp
 )
 target_link_libraries(test_task_config yaml-cpp)
 
 # test_config_injector.cpp
 add_axon_test(test_config_injector
-    SOURCES test/test_config_injector.cpp
-            ../config_injector.cpp
+    SOURCES unit/test_config_injector.cpp
+            ../src/config/config_injector.cpp
 )
 target_link_libraries(test_config_injector axon_mcap)
 
 # test_metadata_injector.cpp
 add_axon_test(test_metadata_injector
-    SOURCES test/test_metadata_injector.cpp
-            ../metadata_injector.cpp
+    SOURCES unit/test_metadata_injector.cpp
+            ../src/metadata/metadata_injector.cpp
 )
+target_link_libraries(test_metadata_injector OpenSSL::Crypto)
 
 # test_worker_thread_pool.cpp
 add_axon_test(test_worker_thread_pool
-    SOURCES test/test_worker_thread_pool.cpp
-            ../worker_thread_pool.cpp
+    SOURCES unit/test_worker_thread_pool.cpp
+            ../src/core/worker_thread_pool.cpp
 )
 target_link_libraries(test_worker_thread_pool axon_mcap pthread)
 
 # test_plugin_loader.cpp - Test the plugin loader ABI
 add_axon_test(test_plugin_loader
-    SOURCES test/test_plugin_loader.cpp
-            ../plugin_loader.cpp
+    SOURCES unit/test_plugin_loader_thread_safety.cpp
+            ../src/plugin/plugin_loader.cpp
 )
 target_link_libraries(test_plugin_loader ${CMAKE_DL_LIBS})
 
 # test_spsc_queue.cpp - Uses mock plugin
 add_axon_test(test_spsc_queue
-    SOURCES test/test_spsc_queue.cpp
-            ../upload_queue.cpp
+    SOURCES unit/test_spsc_queue.cpp
+            ../src/core/spsc_queue.hpp
 )
 target_link_libraries(test_spsc_queue axon_mcap)
+
+# test_websocket_server.cpp - WebSocket server and session tests
+add_axon_test(test_websocket_server
+    SOURCES unit/test_websocket_server.cpp
+            ../src/http/websocket_server.cpp
+            ../src/http/websocket_session.cpp
+)
+target_link_libraries(
+    test_websocket_server
+    OpenSSL::Crypto
+    OpenSSL::SSL
+    pthread
+)
 
 # =============================================================================
 # Integration Tests
@@ -193,8 +212,8 @@ if(AXON_BUILD_INTEGRATION_TESTS)
 
     # test_http_callback_client.cpp
     add_axon_test(test_http_callback_client
-        SOURCES test/test_http_callback_client.cpp
-                ../http_callback_client.cpp
+        SOURCES unit/test_http_callback_client.cpp
+                ../src/http/http_callback_client.cpp
     )
     target_link_libraries(
         test_http_callback_client
@@ -206,34 +225,35 @@ if(AXON_BUILD_INTEGRATION_TESTS)
 
     # test_psc_queue.cpp - Integration tests for S3 uploader
     add_axon_test(test_psc_queue
-        SOURCES test/test_psc_queue.cpp
-                ../upload_queue.cpp
+        SOURCES unit/test_spsc_queue.cpp
+                ../src/core/spsc_queue.hpp
     )
     target_link_libraries(test_psc_queue axon_mcap pthread)
 
     # test_recording_session.cpp
     add_axon_test(test_recording_session
-        SOURCES test/test_recording_session.cpp
-                ../recording_session.cpp
-                ../metadata_injector.cpp
-                ../config_injector.cpp
-                ../plugin_loader.cpp
+        SOURCES unit/test_recording_session.cpp
+                ../src/core/recording_session.cpp
+                ../src/metadata/metadata_injector.cpp
+                ../src/config/config_injector.cpp
+                ../src/plugin/plugin_loader.cpp
     )
     target_link_libraries(
         test_recording_session
         axon_mcap
         axon_logging
         yaml-cpp
+        OpenSSL::Crypto
         pthread
         ${CMAKE_DL_LIBS}
     )
 
     # test_config_parser_integration.cpp
     add_axon_test(test_config_parser_integration
-        SOURCES test/test_config_parser_integration.cpp
-                ../config_parser.cpp
-                ../state_machine.cpp
-                ../plugin_loader.cpp
+        SOURCES unit/test_config_parser.cpp
+                ../src/config/config_parser.cpp
+                ../src/state/state_machine.cpp
+                ../src/plugin/plugin_loader.cpp
     )
     target_link_libraries(
         test_config_parser_integration
@@ -246,37 +266,45 @@ if(AXON_BUILD_INTEGRATION_TESTS)
 
     # test_worker_thread_pool_integration.cpp - With full recorder context
     add_axon_test(test_worker_thread_pool_integration
-        SOURCES test/test_worker_thread_pool.cpp
-                ../worker_thread_pool.cpp
-                ../recording_session.cpp
-                ../metadata_injector.cpp
-                ../config_injector.cpp
-                ../plugin_loader.cpp
+        SOURCES unit/test_worker_thread_pool.cpp
+                ../src/core/worker_thread_pool.cpp
+                ../src/core/recording_session.cpp
+                ../src/metadata/metadata_injector.cpp
+                ../src/config/config_injector.cpp
+                ../src/plugin/plugin_loader.cpp
     )
     target_link_libraries(
         test_worker_thread_pool_integration
         axon_mcap
         axon_logging
         yaml-cpp
+        OpenSSL::Crypto
         pthread
         ${CMAKE_DL_LIBS}
     )
 
     # test_recorder_integration.cpp - Full workflow with mock plugin
     add_axon_test(test_recorder_integration
-        SOURCES test/test_recorder_integration.cpp
-                ../recorder.cpp
-                ../state_machine.cpp
-                ../recording_session.cpp
-                ../metadata_injector.cpp
-                ../config_injector.cpp
-                ../plugin_loader.cpp
+        SOURCES integration/test_recorder_integration.cpp
+                ../src/core/recorder.cpp
+                ../src/state/state_machine.cpp
+                ../src/core/recording_session.cpp
+                ../src/metadata/metadata_injector.cpp
+                ../src/config/config_injector.cpp
+                ../src/plugin/plugin_loader.cpp
+                ../src/http/http_server.cpp
+                ../src/core/worker_thread_pool.cpp
+                ../src/http/websocket_server.cpp
+                ../src/http/websocket_session.cpp
+                ../src/http/event_broadcaster.cpp
     )
     target_link_libraries(
         test_recorder_integration
         axon_mcap
         axon_logging
         yaml-cpp
+        OpenSSL::Crypto
+        OpenSSL::SSL
         pthread
         ${CMAKE_DL_LIBS}
     )
@@ -295,18 +323,21 @@ if(NOT DEFINED AXON_BUILD_E2E_TESTS)
     option(AXON_BUILD_E2E_TESTS "Build E2E tests" ON)
 endif()
 
-if(AXON_BUILD_E2E_TESTS)
+if(
+    AXON_BUILD_E2E_TESTS
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_e2e_full_workflow.cpp"
+)
     message(STATUS "Configuring E2E tests...")
 
     # test_e2e_full_workflow.cpp
     add_axon_test(test_e2e_full_workflow
-        SOURCES test/test_e2e_full_workflow.cpp
-                ../recorder.cpp
-                ../state_machine.cpp
-                ../recording_session.cpp
-                ../metadata_injector.cpp
-                ../config_injector.cpp
-                ../plugin_loader.cpp
+        SOURCES e2e/test_e2e_full_workflow.cpp
+                ../src/core/recorder.cpp
+                ../src/state/state_machine.cpp
+                ../src/core/recording_session.cpp
+                ../src/metadata/metadata_injector.cpp
+                ../src/config/config_injector.cpp
+                ../src/plugin/plugin_loader.cpp
     )
     target_link_libraries(
         test_e2e_full_workflow

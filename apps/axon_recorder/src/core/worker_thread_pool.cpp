@@ -232,6 +232,16 @@ WorkerThreadPool::AggregateStats WorkerThreadPool::get_aggregate_stats() const {
   return aggregate;
 }
 
+void WorkerThreadPool::reset_stats() {
+  std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
+
+  for (auto& [topic, context] : topic_contexts_) {
+    context->stats.received.store(0, std::memory_order_relaxed);
+    context->stats.dropped.store(0, std::memory_order_relaxed);
+    context->stats.written.store(0, std::memory_order_relaxed);
+  }
+}
+
 std::vector<std::string> WorkerThreadPool::get_topics() const {
   std::shared_lock<std::shared_mutex> lock(contexts_mutex_);
 

@@ -29,9 +29,9 @@
 #include <thread>
 #include <vector>
 
-#include "../recorder.hpp"
-#include "../state_machine.hpp"
-#include "../task_config.hpp"
+#include "../src/config/task_config.hpp"
+#include "../src/core/recorder.hpp"
+#include "../src/state/state_machine.hpp"
 
 using namespace axon::recorder;
 

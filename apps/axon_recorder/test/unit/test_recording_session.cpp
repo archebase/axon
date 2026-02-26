@@ -19,7 +19,7 @@
 #include <thread>
 #include <vector>
 
-#include "../recording_session.hpp"
+#include "../src/core/recording_session.hpp"
 #include "mcap_writer_wrapper.hpp"
 
 namespace fs = std::filesystem;

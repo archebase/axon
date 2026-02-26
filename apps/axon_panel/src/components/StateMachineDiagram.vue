@@ -250,7 +250,7 @@ const allEdges = [
       fillOpacity: 0
     },
     animated: false,
-    type: 'smoothstep',
+    type: 'straight',
     class: 'return-edge',
     style: { stroke: '#9ca3af', strokeWidth: 2 }
   },

@@ -13,10 +13,10 @@
 #include <string>
 #include <unordered_map>
 
-#include "config_injector.hpp"
+#include "../config/config_injector.hpp"
+#include "../config/task_config.hpp"
+#include "../metadata/metadata_injector.hpp"
 #include "mcap_writer_wrapper.hpp"
-#include "metadata_injector.hpp"
-#include "task_config.hpp"
 
 namespace axon {
 namespace recorder {

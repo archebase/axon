@@ -15,7 +15,8 @@
 #include <string>
 #include <vector>
 
-#include "../src/recorder_adapter.hpp"
+#include "../../recorder.hpp"
+#include "../../task_config.hpp"
 
 namespace axon {
 namespace recorder {

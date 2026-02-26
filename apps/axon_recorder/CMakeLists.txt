@@ -28,7 +28,11 @@ include(AxonCoverage OPTIONAL)
 # Dependencies
 # =============================================================================
 # Find required components first
-find_package(Boost REQUIRED COMPONENTS log log_setup thread filesystem)
+find_package(
+    Boost
+    REQUIRED
+    COMPONENTS log log_setup thread filesystem system
+)
 find_package(yaml-cpp REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -58,9 +62,9 @@ endif()
 # Plugin Loader Library
 # =============================================================================
 
-set(PLUGIN_LOADER_SOURCES plugin_loader.cpp)
+set(PLUGIN_LOADER_SOURCES src/plugin/plugin_loader.cpp)
 
-set(PLUGIN_LOADER_HEADERS plugin_loader.hpp)
+set(PLUGIN_LOADER_HEADERS src/plugin/plugin_loader.hpp)
 
 # Create plugin loader library
 add_library(axon_plugin_loader ${PLUGIN_LOADER_SOURCES})
@@ -68,6 +72,7 @@ add_library(axon_plugin_loader ${PLUGIN_LOADER_SOURCES})
 target_include_directories(
     axon_plugin_loader
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 # Enable C++17
@@ -94,22 +99,26 @@ configure_file(
 add_executable(
     axon_recorder
     axon_recorder.cpp
-    recorder.cpp
-    state_machine.cpp
-    recording_session.cpp
-    metadata_injector.cpp
-    config_injector.cpp
-    worker_thread_pool.cpp
-    plugin_loader.cpp
-    config_parser.cpp
-    http_server.cpp
-    http_callback_client.cpp
+    src/core/recorder.cpp
+    src/state/state_machine.cpp
+    src/core/recording_session.cpp
+    src/metadata/metadata_injector.cpp
+    src/config/config_injector.cpp
+    src/core/worker_thread_pool.cpp
+    src/plugin/plugin_loader.cpp
+    src/config/config_parser.cpp
+    src/http/http_server.cpp
+    src/http/http_callback_client.cpp
+    src/http/websocket_server.cpp
+    src/http/websocket_session.cpp
+    src/http/event_broadcaster.cpp
 )
 
 target_include_directories(
     axon_recorder
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_BINARY_DIR} # For generated version.hpp
         ${nlohmann_json_SOURCE_DIR}/single_include
 )
@@ -124,6 +133,7 @@ target_link_libraries(
         OpenSSL::Crypto
         OpenSSL::SSL
         Boost::thread
+        Boost::system
         pthread
 )
 
@@ -145,7 +155,26 @@ endif()
 install(TARGETS axon_recorder RUNTIME DESTINATION bin)
 
 # Install plugin loader header for external plugins
-install(FILES plugin_loader.hpp DESTINATION include)
+install(FILES src/plugin/plugin_loader.hpp DESTINATION include)
+
+# Install WebSocket server headers
+install(
+    FILES
+        src/http/websocket_server.hpp
+        src/http/websocket_session.hpp
+        src/http/event_broadcaster.hpp
+    DESTINATION include
+)
+
+# =============================================================================
+# Tests
+# =============================================================================
+if(AXON_BUILD_TESTS)
+    add_subdirectory(
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+        ${CMAKE_CURRENT_BINARY_DIR}/test
+    )
+endif()
 
 # =============================================================================
 # Summary

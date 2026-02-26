@@ -221,6 +221,12 @@ public:
   AggregateStats get_aggregate_stats() const;
 
   /**
+   * Reset all statistics to zero.
+   * Called after recording finishes to clear stats for the next session.
+   */
+  void reset_stats();
+
+  /**
    * Get list of active topics.
    */
   std::vector<std::string> get_topics() const;

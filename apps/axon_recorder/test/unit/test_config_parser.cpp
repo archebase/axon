@@ -17,8 +17,8 @@
 #include <fstream>
 #include <string>
 
-#include "../config_parser.hpp"
-#include "../recorder.hpp"
+#include "../src/config/config_parser.hpp"
+#include "../src/core/recorder.hpp"
 
 namespace fs = std::filesystem;
 
