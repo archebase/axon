@@ -1,0 +1,200 @@
+# Axon Recorder Configuration for UDP JSON Recording
+# Usage: ./axon_recorder --config config/default_config_udp.yaml
+
+# ============================================================================
+# Plugin Configuration
+# ============================================================================
+plugin:
+  # Path to the UDP plugin shared library
+  # If specified, the recorder will automatically load this plugin on startup
+  # Common locations:
+  #   - Build directory: middlewares/udp/build/libaxon_udp.so
+  #   - Install directory: /usr/local/lib/axon/plugins/libaxon_udp.so
+  #   - Relative path: ./lib/libaxon_udp.so
+  path: ""
+
+  # JSON configuration passed to the UDP plugin on initialization
+  # Serialized form of the udp: section below
+  config: ""
+
+# ============================================================================
+# Dataset Configuration
+# ============================================================================
+dataset:
+  # Output directory for MCAP files
+  # When using HTTP RPC mode, output files are named as: <path>/<task_id>.mcap
+  # The task_id is provided via the /rpc/config endpoint
+  path: /tmp/axon
+
+  # Output filename (optional, defaults to <path>/recording.mcap)
+  output_file: recording.mcap
+
+  # Per-topic queue capacity (number of messages)
+  # Recommended: 4096-8192 for high-frequency topics
+  #              1024-2048 for low-frequency topics
+  queue_size: 8192
+
+# ============================================================================
+# UDP Streams Configuration
+# ============================================================================
+udp:
+  enabled: true
+  bind_address: "0.0.0.0"
+  buffer_size: 65536        # 64KB receive buffer per socket
+
+  # Timestamp extraction: read from a JSON field or use packet arrival time
+  timestamp_extraction:
+    source: "field"         # "field" or "arrival"
+    field: "timestamp"      # JSON field path (supports dot notation, e.g., "header.stamp")
+
+  # Stream definitions - one UDP socket per stream
+  streams:
+    # GPS receiver on port 4242
+    - name: "gps"
+      port: 4242
+      topic: "/udp/gps"
+      schema: "gps_data"
+      enabled: true
+
+    # CAN bus bridge on port 4243
+    - name: "can_bridge"
+      port: 4243
+      topic: "/udp/can"
+      schema: "can_frame"
+      enabled: true
+
+    # Custom sensor (disabled by default)
+    - name: "custom_sensor"
+      port: 4244
+      topic: "/udp/sensor/imu"
+      schema: "raw_json"    # Passthrough mode - no schema validation
+      enabled: false
+
+# ============================================================================
+# UDP Schema Definitions
+# ============================================================================
+# Define expected JSON fields for structured validation.
+# Use schema: "raw_json" on a stream to bypass validation.
+schemas:
+  gps_data:
+    description: "GPS position data"
+    fields:
+      - name: "timestamp"
+        type: "uint64"
+        required: true
+      - name: "latitude"
+        type: "float64"
+        required: true
+      - name: "longitude"
+        type: "float64"
+        required: true
+      - name: "altitude"
+        type: "float64"
+        required: false
+      - name: "hdop"
+        type: "float32"
+        required: false
+      - name: "satellites"
+        type: "uint32"
+        required: false
+
+  can_frame:
+    description: "CAN bus frame"
+    fields:
+      - name: "timestamp"
+        type: "uint64"
+        required: true
+      - name: "can_id"
+        type: "uint32"
+        required: true
+      - name: "dlc"
+        type: "uint8"
+        required: true
+      - name: "data"
+        type: "bytes"
+        required: true
+
+# ============================================================================
+# Recording Configuration
+# ============================================================================
+recording:
+  # MCAP compression: "none", "zstd", or "lz4"
+  # - zstd: Recommended, good balance of speed and compression
+  # - lz4:  Faster compression, larger files
+  # - none: No compression, fastest, largest files
+  compression: zstd
+  compression_level: 3  # zstd: 1-19, lz4: 1-12
+
+  # Maximum disk usage (ignored by axon_recorder, used by full service)
+  max_disk_usage_gb: 100
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+# Can be overridden by environment variables:
+#   AXON_LOG_LEVEL          - Global level (overrides both console and file)
+#   AXON_LOG_CONSOLE_LEVEL  - Console sink level
+#   AXON_LOG_FILE_LEVEL     - File sink level
+#   AXON_LOG_FILE_DIR       - Log file directory
+#   AXON_LOG_FORMAT         - File format ("json" or "text")
+#   AXON_LOG_FILE_ENABLED   - Enable file logging ("true" or "false")
+#   AXON_LOG_CONSOLE_ENABLED - Enable console logging ("true" or "false")
+logging:
+  console:
+    enabled: true
+    level: info      # debug, info, warn, error, fatal
+    colors: true
+  file:
+    enabled: false   # Set to true to enable file logging
+    level: debug
+    directory: /var/log/axon
+    pattern: "axon_%Y%m%d_%H%M%S.log"
+    format: json     # json or text
+    rotation_size_mb: 100
+    max_files: 10
+    rotate_at_midnight: true
+
+# ============================================================================
+# HTTP RPC Server Configuration
+# ============================================================================
+http_server:
+  host: "0.0.0.0"                # Bind address (0.0.0.0 for all interfaces)
+  port: 8080                     # Port number
+  auth_token: ""                 # Authentication token (empty = no authentication)
+
+# ============================================================================
+# Edge Upload Configuration
+# ============================================================================
+# Uploads MCAP and sidecar JSON to S3-compatible storage after recording
+upload:
+  enabled: false           # Set to true to enable automatic uploads
+
+  # S3 Configuration
+  s3:
+    endpoint_url: ""       # S3-compatible endpoint (empty for AWS S3)
+    bucket: "axon-raw-data"
+    region: "us-east-1"
+    use_ssl: true
+    verify_ssl: true
+
+  # Worker configuration
+  num_workers: 2
+
+  # Retry configuration
+  retry:
+    max_retries: 5
+    initial_delay_ms: 1000
+    max_delay_ms: 300000
+    exponential_base: 2.0
+    jitter: true
+
+  # State persistence for crash recovery
+  state_db_path: "/var/lib/axon/uploader_state.db"
+
+  # Cleanup policy
+  delete_after_upload: true               # Delete device copy after successful upload
+  failed_uploads_dir: "/data/failed_uploads/"
+
+  # Backpressure thresholds (GB)
+  warn_pending_gb: 8      # ~2 files - emit warning
+  alert_pending_gb: 20    # ~5 files - alert operator

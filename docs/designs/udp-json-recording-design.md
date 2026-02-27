@@ -1,7 +1,7 @@
 # UDP Reception and JSON Recording Design Document
 
 **Date:** 2026-02-26
-**Status:** Design
+**Status:** In Design
 **Target Version:** 0.3.0
 
 ## Overview
@@ -12,17 +12,17 @@ This document describes the design for UDP-based JSON data reception and recordi
 
 ### Current Limitations
 
-1. **ROS-Only Data Sources**: Axon currently only records data from ROS middleware plugins (ROS1/ROS2)
-2. **No JSON Support**: Many external systems output JSON telemetry that cannot be recorded
-3. **Siloed Data**: Non-ROS sensor data must be converted to ROS messages or stored separately
-4. **Deployment Complexity**: Custom integrations required for each non-ROS data source
+1. **ROS-Only Data Sources**: Axon currently records only from ROS middleware plugins (ROS1/ROS2)
+2. **No JSON Support**: Many external systems output JSON telemetry data that cannot be recorded
+3. **Data Silos**: Non-ROS sensor data must be converted to ROS messages or stored separately
+4. **Deployment Complexity**: Each non-ROS data source requires custom integration
 
 ### Use Cases
 
-1. **Custom Sensors**: LiDARs, IMUs, or cameras with proprietary UDP output
+1. **Custom Sensors**: LiDAR, IMU, or cameras with proprietary UDP output
 2. **External Systems**: GPS receivers, CAN bus bridges, industrial PLCs
 3. **IoT Devices**: Environmental sensors, power monitors, network equipment
-4. **Hybrid Recording**: Simultaneous ROS binary + UDP JSON in single MCAP
+4. **Hybrid Recording**: Both ROS binary data and UDP JSON in a single MCAP
 5. **Testing & Simulation**: Inject test data via UDP without ROS infrastructure
 
 ### Benefits
@@ -43,7 +43,6 @@ This document describes the design for UDP-based JSON data reception and recordi
 │                                                                              │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐  │
 │  │  HTTP RPC API   │    │  State Machine  │    │    MCAP Writer          │  │
-│  │  /rpc/udp/*     │    │                 │    │                         │  │
 │  └────────┬────────┘    └────────┬────────┘    └───────────▲─────────────┘  │
 │           │                      │                         │                 │
 │           │                      │                         │                 │
@@ -83,14 +82,14 @@ This document describes the design for UDP-based JSON data reception and recordi
 
 ### Plugin Architecture Integration
 
-The UDP receiver is implemented as a **middleware plugin** (`libaxon_udp.so`) following the same pattern as ROS1/ROS2 plugins:
+The UDP receiver is implemented as a **middleware plugin** (`libaxon_udp.so`), following the same pattern as ROS1/ROS2 plugins:
 
 ```
 middlewares/
 ├── ros1/           # ROS1 Noetic plugin
 ├── ros2/           # ROS2 Humble/Jazzy/Rolling plugin
 ├── zenoh/          # (Future) Zenoh plugin
-├── udp/            # UDP JSON plugin (NEW)
+├── udp/            # UDP JSON plugin (New)
 │   ├── CMakeLists.txt
 │   ├── include/
 │   │   └── axon_udp/
@@ -110,15 +109,15 @@ middlewares/
 | Aspect | Plugin Approach | Core Feature |
 |--------|-----------------|--------------|
 | Deployment | Optional, load on demand | Always included |
-| Dependencies | Isolated in plugin | Adds to core |
+| Dependencies | Isolated in plugin | Added to core |
 | Testing | Independent unit tests | Requires full recorder |
-| Consistency | Follows existing pattern | New integration point |
+| Consistency | Follows existing patterns | New integration point |
 
-**Decision:** Implement as a **plugin** for:
+**Decision:** Implement as a **plugin** because:
 - Optional deployment (not all robots need UDP)
-- Clean dependency isolation (no external libs in core)
+- Clear dependency isolation (no external libs in core)
 - Consistency with ROS plugin architecture
-- Easier testing and maintenance
+- Easier to test and maintain
 
 ## UDP Server Design
 
@@ -227,7 +226,6 @@ private:
 │  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────┐    │
 │  │ HTTP RPC Thread │     │ State Machine   │     │  Worker Thread Pool │    │
 │  │                 │     │ Thread          │     │  (Per-Topic Queues) │    │
-│  │ /rpc/udp/*      │     │                 │     │                     │    │
 │  └─────────────────┘     └─────────────────┘     │  ┌───────────────┐  │    │
 │                                                   │  │ /udp/gps     │  │    │
 │  ┌─────────────────────────────────────────────┐ │  │ SPSC Queue   │  │    │
@@ -257,7 +255,7 @@ private:
 | Plugin Executor | UDP receive + dispatch | Socket I/O (allowed) |
 | Worker Pool | Write to MCAP | Disk I/O (allowed) |
 
-**Key Principle:** UDP receive thread does NOT block on MCAP writes. Messages are pushed to SPSC queues and workers handle disk I/O.
+**Key Principle:** UDP receive thread does **not** block on MCAP writes. Messages are pushed to SPSC queues, worker threads handle disk I/O.
 
 ## JSON Schema System
 
@@ -265,7 +263,7 @@ private:
 
 The system supports two modes:
 
-1. **Structured Schema**: Define expected JSON fields with types
+1. **Structured Schema**: Define expected JSON fields and types
 2. **Raw JSON Passthrough**: Store JSON as-is without validation
 
 #### Structured Schema Definition
@@ -348,160 +346,49 @@ For JSON messages, we use MCAP's native JSON schema support:
 
 ### Timestamp Extraction
 
-JSON messages must include a timestamp field. The system supports multiple strategies:
+JSON messages must include a timestamp field. The system supports two strategies:
 
 ```yaml
 udp:
   timestamp_extraction:
-    # Strategy 1: Extract from JSON field
-    source: "field"           # "field" | "arrival" | "header"
-    field: "timestamp"        # JSON field name
-    units: "nanoseconds"      # "nanoseconds" | "milliseconds" | "seconds" | "microseconds"
+    source: "field"           # "field" | "arrival"
+    field: "timestamp"        # Field path, supports dot notation (e.g., "timestamp" or "header.stamp")
 
     # Strategy 2: Use packet arrival time
     # source: "arrival"
-
-    # Strategy 3: Extract from nested header (ROS-like)
-    # source: "header"
-    # header_field: "header.stamp"
 ```
 
+**Strategy 1 Description**: When `source: "field"`, configure the field path via `field`, supporting dot notation to access nested fields:
+- `field: "timestamp"` → `json["timestamp"]`
+- `field: "header.stamp"` → `json["header"]["stamp"]`
+
+Timestamp unit is fixed to **nanoseconds**.
+
 ```cpp
+// Timestamp extraction implementation
 class TimestampExtractor {
 public:
     struct Config {
-        enum class Source { Field, Arrival, Header };
+        enum class Source { Field, Arrival };
         Source source = Source::Field;
-        std::string field = "timestamp";
-        std::string units = "nanoseconds";
+        std::string field = "timestamp";  // Supports dot-notation path
     };
 
     uint64_t extract(const nlohmann::json& json, uint64_t arrival_time);
 
 private:
-    uint64_t convert_units(uint64_t value, const std::string& from, const std::string& to);
+    uint64_t extract_from_path(const nlohmann::json& json, const std::string& path);
 };
 ```
 
-## HTTP RPC API Extension
-
-### New Endpoints
-
-#### `GET /rpc/udp/streams` - List UDP Streams
-
-List all configured UDP streams and their status.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "streams": [
-      {
-        "name": "gps",
-        "port": 4242,
-        "topic": "/udp/gps",
-        "schema": "gps_data",
-        "enabled": true,
-        "active": true,
-        "stats": {
-          "packets_received": 12345,
-          "bytes_received": 567890,
-          "parse_errors": 0,
-          "buffer_overruns": 0
-        }
-      }
-    ]
-  }
-}
-```
-
-#### `POST /rpc/udp/streams` - Configure UDP Streams
-
-Add or modify UDP stream configuration.
-
-**Request:**
-```json
-{
-  "streams": [
-    {
-      "name": "gps",
-      "port": 4242,
-      "topic": "/udp/gps",
-      "schema": "gps_data",
-      "enabled": true
-    }
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "UDP streams configured"
-}
-```
-
-#### `POST /rpc/udp/streams/{name}/enable` - Enable Stream
-
-Enable a specific UDP stream.
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Stream 'gps' enabled"
-}
-```
-
-#### `POST /rpc/udp/streams/{name}/disable` - Disable Stream
-
-Disable a specific UDP stream without removing configuration.
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Stream 'gps' disabled"
-}
-```
-
-#### `GET /rpc/udp/stats` - Get UDP Statistics
-
-Get aggregate statistics for all UDP streams.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "total_packets_received": 24680,
-    "total_bytes_received": 1134567,
-    "total_parse_errors": 2,
-    "total_buffer_overruns": 0,
-    "streams": {
-      "gps": {
-        "packets_received": 12345,
-        "bytes_received": 567890
-      },
-      "can_bridge": {
-        "packets_received": 12335,
-        "bytes_received": 566677
-      }
-    }
-  }
-}
-```
-
-### State Machine Integration
+## State Machine Integration
 
 UDP streams follow the recorder state machine:
 
 | State | UDP Behavior |
-|-------|-------------|
-| IDLE | Sockets closed, no reception |
-| READY | Sockets opened, receiving but not recording |
+|-------|--------------|
+| IDLE | Sockets closed, not receiving |
+| READY | Sockets open, receiving but not recording |
 | RECORDING | Receiving and writing to MCAP |
 | PAUSED | Receiving but discarding messages |
 
@@ -520,7 +407,7 @@ void UdpPlugin::on_state_change(State new_state, State old_state) {
             enable_recording(true);
             break;
         case State::Paused:
-            enable_recording(false);  // Discard incoming
+            enable_recording(false);  // Discard incoming messages
             break;
     }
 }
@@ -571,7 +458,7 @@ AxonStatus udp_plugin_start() {
 }
 
 AxonStatus udp_plugin_stop() {
-    // Stop servers, cleanup
+    // Stop servers, cleanup resources
     return AXON_SUCCESS;
 }
 
@@ -646,7 +533,7 @@ void UdpPlugin::on_udp_message(
 All messages use **nanoseconds since Unix epoch** for consistent synchronization:
 
 | Source | Timestamp Source | Conversion |
-|--------|-----------------|------------|
+|--------|------------------|------------|
 | ROS2 | `header.stamp` or receive time | Already nanoseconds |
 | UDP | JSON field or arrival time | Convert from configured units |
 
@@ -668,9 +555,9 @@ uint64_t normalize_timestamp(uint64_t raw, TimestampSource source) {
 
 ### Memory Management
 
-1. **Buffer Reuse**: Pre-allocated receive buffers per stream
-2. **Zero-Copy Path**: JSON data written directly to MCAP without extra copy
-3. **Queue Sizing**: SPSC queue sized based on expected message rate
+1. **Buffer Reuse**: Pre-allocated receive buffer per stream
+2. **Zero-Copy Path**: JSON data written directly to MCAP without additional copies
+3. **Queue Sizing**: SPSC queue size based on expected message rate
 
 ```cpp
 // Recommended buffer sizes
@@ -681,11 +568,11 @@ constexpr size_t JSON_MAX_SIZE = 65507;           // Max UDP payload
 
 ### High-Frequency Optimization
 
-For streams with >1000 msg/sec:
+For streams >1000 messages/second:
 
-1. **Batch Processing**: Aggregate multiple messages before MCAP write
+1. **Batching**: Aggregate multiple messages before MCAP write
 2. **Compression**: Enable Zstd for JSON (good compression ratio)
-3. **Separate Worker**: Dedicated worker thread for high-frequency topics
+3. **Dedicated Worker**: Allocate dedicated worker thread for high-frequency topics
 
 ```yaml
 udp:
@@ -699,13 +586,13 @@ udp:
       batch_timeout_ms: 10        # Or timeout after 10ms
 ```
 
-### Benchmarking Targets
+### Benchmark Targets
 
 | Metric | Target | Notes |
 |--------|--------|-------|
 | UDP Receive Rate | >100K packets/sec | Per socket |
-| JSON Parse Rate | >50K msg/sec | Simple schemas |
-| MCAP Write Rate | >10K msg/sec | With compression |
+| JSON Parse Rate | >50K messages/sec | Simple schema |
+| MCAP Write Rate | >10K messages/sec | With compression |
 | Latency (receive to MCAP) | <1ms | 99th percentile |
 
 ## Error Handling
@@ -717,7 +604,7 @@ enum class UdpError {
     Success = 0,
     BufferOverflow,       // Packet larger than buffer
     JsonParseError,       // Invalid JSON
-    SchemaValidationError,// Missing required fields
+    SchemaValidationError,// Missing required field
     TimestampMissing,     // No timestamp in message
     UnknownSchema,        // Schema not registered
 };
@@ -797,7 +684,7 @@ void UdpPlugin::handle_error(UdpError error, const std::string& stream_name) {
 
 | Component | Size (approx) | Notes |
 |-----------|---------------|-------|
-| libaxon_udp.so | ~200KB | Including nlohmann/json |
+| libaxon_udp.so | ~200KB | Includes nlohmann/json |
 | Dependencies | 0 | Header-only JSON library |
 
 ### Configuration Example
@@ -863,7 +750,7 @@ schemas:
         required: true
 ```
 
-### Launch Example
+### Startup Example
 
 ```bash
 # Start recorder with ROS2 and UDP plugins
@@ -876,7 +763,7 @@ schemas:
 # 1. Parse UDP configuration
 # 2. Register schemas
 # 3. Open sockets on configured ports
-# 4. Begin receiving when state -> READY
+# 4. Begin receiving when state becomes READY
 ```
 
 ## Future Enhancements
@@ -893,16 +780,15 @@ schemas:
 
 1. **UDP TLS/DTLS**: Encrypted UDP streams
 2. **Compression**: Per-stream compression options
-3. **Backpressure**: Flow control for overwhelmed receivers
+3. **Backpressure**: Flow control for overloaded receivers
 
 ## Summary
 
 This design introduces UDP-based JSON recording to Axon through a plugin architecture:
 
-- **Plugin-based**: `libaxon_udp.so` follows established patterns
+- **Plugin-Based**: `libaxon_udp.so` follows established patterns
 - **Schema Support**: Structured JSON with validation or raw passthrough
-- **Hybrid Recording**: Simultaneous ROS2 + UDP in single MCAP
-- **HTTP RPC Control**: Full API for stream management
+- **Hybrid Recording**: ROS2 + UDP in a single MCAP
 - **High Performance**: Optimized for high-frequency data streams
 
-The implementation enables recording from non-ROS sources while maintaining Axon's core principles of reliability, performance, and simplicity.
+The implementation enables recording from non-ROS sources while maintaining Axon's core principles of reliability, high performance, and simplicity.

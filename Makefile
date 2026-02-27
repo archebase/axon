@@ -105,6 +105,12 @@ help:
 	@printf "%s\n" "  $(BLUE)make test-mock-integration$(NC) - Run mock middleware integration E2E test"
 	@printf "%s\n" "  $(BLUE)make test-mock-all$(NC)         - Run all mock middleware tests"
 	@echo ""
+	@printf "%s\n" "$(YELLOW)UDP Middleware:$(NC)"
+	@printf "%s\n" "  $(BLUE)make build-udp$(NC)           - Build UDP JSON plugin"
+	@printf "%s\n" "  $(BLUE)make test-udp$(NC)            - Run UDP plugin unit tests"
+	@printf "%s\n" "  $(BLUE)make test-udp-e2e$(NC)        - Run UDP plugin E2E test"
+	@printf "%s\n" "  $(BLUE)make test-udp-all$(NC)        - Run all UDP middleware tests"
+	@echo ""
 	@printf "%s\n" "$(YELLOW)ROS Middlewares:$(NC)"
 	@printf "%s\n" "  $(BLUE)make build$(NC)              - Build (auto-detects ROS1/ROS2)"
 	@printf "%s\n" "  $(BLUE)make build-ros1$(NC)        - Build ROS1 (Noetic)"
@@ -496,6 +502,44 @@ test-mock-all: build-mock
 	@printf "%s\n" "$(YELLOW)Running all mock middleware tests...$(NC)"
 	@cd middlewares/mock && ./test_full_workflow.sh
 	@printf "%s\n" "$(GREEN)✓ All mock middleware tests passed$(NC)"
+
+# =============================================================================
+# UDP Middleware Targets
+# =============================================================================
+
+.PHONY: build-udp test-udp test-udp-e2e test-udp-all
+
+# Build UDP plugin
+build-udp:
+	@printf "%s\n" "$(YELLOW)Building UDP middleware plugin...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UDP_PLUGIN=ON \
+			-DAXON_BUILD_ROS1_PLUGIN=OFF \
+			-DAXON_BUILD_ROS2_PLUGIN=OFF \
+			-DAXON_BUILD_ZENOH_PLUGIN=OFF \
+			-DAXON_BUILD_MOCK_PLUGIN=OFF && \
+		cmake --build . -j$(NPROC)
+	@printf "%s\n" "$(GREEN)✓ UDP middleware plugin built$(NC)"
+
+# Test UDP plugin unit tests
+test-udp: build-udp
+	@printf "%s\n" "$(YELLOW)Running UDP plugin unit tests...$(NC)"
+	@cd $(BUILD_DIR) && ctest -R test_udp -V --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ UDP plugin unit tests passed$(NC)"
+
+# Test UDP plugin E2E
+test-udp-e2e: build-udp build-core
+	@printf "%s\n" "$(YELLOW)Running UDP plugin E2E test...$(NC)"
+	@cd middlewares/udp && ./test/test_e2e_udp.sh
+	@printf "%s\n" "$(GREEN)✓ UDP plugin E2E test passed$(NC)"
+
+# Run all UDP tests
+test-udp-all: test-udp test-udp-e2e
+	@printf "%s\n" "$(GREEN)✓ All UDP middleware tests passed$(NC)"
 
 # =============================================================================
 # ROS Middleware Targets

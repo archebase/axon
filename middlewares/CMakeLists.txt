@@ -9,6 +9,7 @@
 #   - ROS1 (Noetic): libaxon_ros1_plugin.so
 #   - ROS2 (Humble/Jazzy/Rolling): libaxon_ros2_plugin.so
 #   - Zenoh: libaxon_zenoh_plugin.so
+#   - UDP JSON: libaxon_udp.so
 #
 # All plugins are installed to: lib/axon/plugins/
 # =============================================================================
@@ -87,6 +88,7 @@ option(
 )
 option(AXON_BUILD_ZENOH_PLUGIN "Build Zenoh plugin" OFF)
 option(AXON_BUILD_MOCK_PLUGIN "Build Mock plugin (for testing)" OFF)
+option(AXON_BUILD_UDP_PLUGIN "Build UDP JSON plugin" ON)
 
 # =============================================================================
 # Plugin Subdirectories
@@ -152,6 +154,21 @@ else()
     )
 endif()
 
+# UDP Plugin (for JSON over UDP recording)
+if(AXON_BUILD_UDP_PLUGIN)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/udp/CMakeLists.txt")
+        add_subdirectory(udp ${CMAKE_CURRENT_BINARY_DIR}/udp_plugin)
+        message(STATUS "UDP plugin: ENABLED")
+    else()
+        message(WARNING "UDP plugin requested but CMakeLists.txt not found")
+    endif()
+else()
+    message(
+        STATUS
+        "UDP plugin: DISABLED (enable with -DAXON_BUILD_UDP_PLUGIN=ON)"
+    )
+endif()
+
 # =============================================================================
 # Summary
 # =============================================================================
@@ -163,6 +180,7 @@ message(STATUS "  ROS1 Plugin:      ${AXON_BUILD_ROS1_PLUGIN}")
 message(STATUS "  ROS2 Plugin:      ${AXON_BUILD_ROS2_PLUGIN}")
 message(STATUS "  Zenoh Plugin:     ${AXON_BUILD_ZENOH_PLUGIN}")
 message(STATUS "  Mock Plugin:      ${AXON_BUILD_MOCK_PLUGIN}")
+message(STATUS "  UDP Plugin:       ${AXON_BUILD_UDP_PLUGIN}")
 message(STATUS "  Coverage:         ${AXON_ENABLE_COVERAGE}")
 message(STATUS "  Tests:            ${AXON_BUILD_TESTS}")
 message(STATUS "=====================================")
