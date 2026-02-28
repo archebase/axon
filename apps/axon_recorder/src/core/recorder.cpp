@@ -100,7 +100,7 @@ bool AxonRecorder::start() {
 
   // Initialize plugin
   if (descriptor->vtable->init) {
-    AxonStatus status = descriptor->vtable->init("");
+    AxonStatus status = descriptor->vtable->init(config_.plugin_config.c_str());
     if (status != AXON_SUCCESS) {
       set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
       state_manager_.transition_to(RecorderState::IDLE, error_msg);
@@ -618,10 +618,15 @@ bool AxonRecorder::register_topics() {
 
   // Register schemas and channels for all subscriptions
   for (const auto& sub : config_.subscriptions) {
+    // Determine schema encoding based on message type
+    bool is_json_type = (sub.message_type == "axon_udp/json");
+    std::string schema_encoding =
+      is_json_type ? "jsonschema" : (config_.profile == "ros1" ? "ros1msg" : "ros2msg");
+    std::string channel_encoding =
+      is_json_type ? "json" : (config_.profile == "ros1" ? "ros1" : "cdr");
+
     // Register schema (use message type as schema name)
-    uint16_t schema_id = recording_session_->register_schema(
-      sub.message_type, config_.profile == "ros1" ? "ros1msg" : "ros2msg", ""
-    );
+    uint16_t schema_id = recording_session_->register_schema(sub.message_type, schema_encoding, "");
 
     if (schema_id == 0) {
       set_error_helper(
@@ -634,7 +639,7 @@ bool AxonRecorder::register_topics() {
     // Register channel using composite key (topic + message_type)
     // This allows the same topic to have different message types (e.g., Image and CompressedImage)
     uint16_t channel_id = recording_session_->register_channel(
-      sub.topic_name, sub.message_type, config_.profile == "ros1" ? "ros1" : "cdr", schema_id
+      sub.topic_name, sub.message_type, channel_encoding, schema_id
     );
 
     if (channel_id == 0) {

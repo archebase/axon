@@ -4,6 +4,8 @@
 
 #include "config_parser.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <fstream>
 #include <sstream>
 
@@ -16,6 +18,49 @@
 
 namespace axon {
 namespace recorder {
+
+// ============================================================================
+// YAML to JSON conversion helper
+// ============================================================================
+
+static nlohmann::json yaml_node_to_json(const YAML::Node& node) {
+  switch (node.Type()) {
+    case YAML::NodeType::Null:
+      return nullptr;
+    case YAML::NodeType::Scalar: {
+      // Try integer, then double, then bool, then string
+      try {
+        return node.as<int64_t>();
+      } catch (...) {
+      }
+      try {
+        return node.as<double>();
+      } catch (...) {
+      }
+      try {
+        return node.as<bool>();
+      } catch (...) {
+      }
+      return node.as<std::string>();
+    }
+    case YAML::NodeType::Sequence: {
+      nlohmann::json arr = nlohmann::json::array();
+      for (const auto& item : node) {
+        arr.push_back(yaml_node_to_json(item));
+      }
+      return arr;
+    }
+    case YAML::NodeType::Map: {
+      nlohmann::json obj = nlohmann::json::object();
+      for (const auto& kv : node) {
+        obj[kv.first.as<std::string>()] = yaml_node_to_json(kv.second);
+      }
+      return obj;
+    }
+    default:
+      return nullptr;
+  }
+}
 
 // ============================================================================
 // ConfigParser Implementation
@@ -45,6 +90,37 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
     if (node["plugin"]) {
       if (node["plugin"]["path"]) {
         config.plugin_path = node["plugin"]["path"].as<std::string>();
+      }
+    }
+
+    // Serialize the entire YAML document as JSON for the plugin's init() call.
+    // The plugin is responsible for extracting the section it needs (e.g. "udp").
+    config.plugin_config = yaml_node_to_json(node).dump();
+
+    // Auto-populate subscriptions from UDP streams if no subscriptions are explicitly configured.
+    // This ensures per-topic workers are created and the message callback is registered.
+    if (config.subscriptions.empty() && node["udp"] && node["udp"]["streams"]) {
+      for (const auto& stream : node["udp"]["streams"]) {
+        bool enabled = true;
+        if (stream["enabled"]) {
+          enabled = stream["enabled"].as<bool>();
+        }
+        if (!enabled) {
+          continue;
+        }
+        std::string topic;
+        if (stream["topic"]) {
+          topic = stream["topic"].as<std::string>();
+        }
+        if (topic.empty()) {
+          continue;
+        }
+        SubscriptionConfig sub;
+        sub.topic_name = topic;
+        sub.message_type = "axon_udp/json";
+        sub.batch_size = 1;
+        sub.flush_interval_ms = 100;
+        config.subscriptions.push_back(sub);
       }
     }
 

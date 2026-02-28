@@ -161,6 +161,7 @@ struct RecorderConfig {
   std::string output_file = "output.mcap";
   bool output_file_is_explicit = false;  // True if set via CLI or config file
   std::string plugin_path;
+  std::string plugin_config;  // JSON config string passed to plugin init()
   std::vector<SubscriptionConfig> subscriptions;
 
   // Queue configuration
