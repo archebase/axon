@@ -81,16 +81,11 @@ bool UdpServer::start(
   return true;
 }
 
-void UdpServer::stop() {
-  if (!running_.load()) {
-    return;
-  }
-
-  running_.store(false);
-
-  std::lock_guard<std::mutex> lock(streams_mutex_);
-
-  // Close all sockets
+void UdpServer::close_all_streams() {
+  // Close all sockets and clear streams_ map.
+  // Called both from stop() and from the catch block in start() to avoid
+  // leaking sockets that were successfully opened before a partial failure.
+  // Caller must hold streams_mutex_.
   for (auto& [port, endpoint] : streams_) {
     if (endpoint && endpoint->socket) {
       boost::system::error_code ec;
@@ -100,8 +95,24 @@ void UdpServer::stop() {
       }
     }
   }
-
   streams_.clear();
+}
+
+void UdpServer::stop() {
+  if (!running_.load()) {
+    // Even if not fully started, clean up any sockets that may have been
+    // opened during a partial startup (e.g. after an exception in start()).
+    std::lock_guard<std::mutex> lock(streams_mutex_);
+    if (!streams_.empty()) {
+      close_all_streams();
+    }
+    return;
+  }
+
+  running_.store(false);
+
+  std::lock_guard<std::mutex> lock(streams_mutex_);
+  close_all_streams();
   AXON_LOG_INFO("UDP server stopped");
 }
 

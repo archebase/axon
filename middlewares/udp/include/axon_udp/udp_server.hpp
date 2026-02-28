@@ -92,6 +92,9 @@ private:
   /// Handle received data
   void handle_receive(StreamEndpoint& stream, std::size_t bytes_transferred);
 
+  /// Close all sockets and clear streams_ map (caller must hold streams_mutex_)
+  void close_all_streams();
+
   boost::asio::io_context& io_context_;
   std::unordered_map<uint16_t, std::unique_ptr<StreamEndpoint>> streams_;
   mutable std::mutex streams_mutex_;  // mutable for const methods
