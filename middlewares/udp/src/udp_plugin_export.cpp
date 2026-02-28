@@ -5,7 +5,6 @@
 // UDP Plugin C ABI Export
 // Provides C interface for dynamic loading by axon_recorder
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -89,19 +88,22 @@ int32_t axon_start(void) {
     return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
   }
 
+  // Copy callback and user_data to local variables to avoid race condition
+  // The lambda will capture these copies instead of the globals
+  AxonMessageCallback callback_copy = g_callback;
+  void* user_data_copy = g_user_data;
+
   // Set message callback wrapper
-  if (g_callback) {
-    g_plugin->set_message_callback([](
+  if (callback_copy) {
+    g_plugin->set_message_callback([callback_copy, user_data_copy](
                                      const std::string& topic,
                                      const std::vector<uint8_t>& data,
                                      const std::string& message_type,
                                      uint64_t timestamp
                                    ) {
-      if (g_callback) {
-        g_callback(
-          topic.c_str(), data.data(), data.size(), message_type.c_str(), timestamp, g_user_data
-        );
-      }
+      callback_copy(
+        topic.c_str(), data.data(), data.size(), message_type.c_str(), timestamp, user_data_copy
+      );
     });
   }
 

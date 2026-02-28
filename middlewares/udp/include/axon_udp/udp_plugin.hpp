@@ -109,12 +109,14 @@ private:
   /// @param json JSON object
   /// @param path Dot-notation path (e.g., "header.stamp")
   /// @return JSON value at path, or null if not found
-  nlohmann::json get_json_value(const nlohmann::json& json, const std::string& path);
+  nlohmann::json get_json_value(const nlohmann::json& json, const std::string& path) const;
 
   UdpPluginConfig config_;
   std::unique_ptr<boost::asio::io_context> io_context_;
   std::unique_ptr<UdpServer> server_;
   std::unique_ptr<std::thread> io_thread_;
+  using WorkGuard = boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
+  std::unique_ptr<WorkGuard> work_guard_;
   MessageCallback message_callback_;
 
   std::atomic<bool> initialized_{false};

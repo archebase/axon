@@ -21,11 +21,12 @@ namespace udp {
 
 /// UDP stream configuration
 struct UdpStreamConfig {
-  std::string name;         // Stream identifier
-  uint16_t port;            // UDP port to listen on
-  std::string topic;        // MCAP topic name
-  std::string schema_name;  // Schema identifier (or "raw_json" for passthrough)
-  bool enabled = true;      // Stream active flag
+  std::string name;            // Stream identifier
+  uint16_t port;               // UDP port to listen on
+  std::string topic;           // MCAP topic name
+  std::string schema_name;     // Schema identifier (or "raw_json" for passthrough)
+  bool enabled = true;         // Stream active flag
+  size_t buffer_size = 65536;  // Receive buffer size
 };
 
 /// Per-stream statistics
@@ -50,9 +51,10 @@ public:
   UdpServer& operator=(const UdpServer&) = delete;
 
   /// Start listening on configured streams
+  /// @param bind_address IP address to bind to (e.g., "0.0.0.0" for all interfaces)
   /// @param streams Stream configurations
   /// @return true if all streams started successfully
-  bool start(const std::vector<UdpStreamConfig>& streams);
+  bool start(const std::string& bind_address, const std::vector<UdpStreamConfig>& streams);
 
   /// Stop all streams and close sockets
   void stop();

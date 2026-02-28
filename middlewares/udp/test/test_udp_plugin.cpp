@@ -86,7 +86,7 @@ TEST_F(UdpServerTest, StartAndStop) {
   config.enabled = true;
   streams.push_back(config);
 
-  EXPECT_TRUE(server_->start(streams));
+  EXPECT_TRUE(server_->start("0.0.0.0", streams));
   EXPECT_TRUE(server_->is_running());
 
   server_->stop();
@@ -112,7 +112,7 @@ TEST_F(UdpServerTest, StartMultipleStreams) {
   config2.enabled = true;
   streams.push_back(config2);
 
-  EXPECT_TRUE(server_->start(streams));
+  EXPECT_TRUE(server_->start("0.0.0.0", streams));
   EXPECT_TRUE(server_->is_running());
 
   auto stats = server_->get_all_stats();
@@ -132,7 +132,7 @@ TEST_F(UdpServerTest, DisabledStreamNotStarted) {
   config.enabled = false;  // Disabled
   streams.push_back(config);
 
-  EXPECT_TRUE(server_->start(streams));
+  EXPECT_TRUE(server_->start("0.0.0.0", streams));
   EXPECT_TRUE(server_->is_running());
 
   // Should have no active streams
@@ -331,7 +331,7 @@ TEST_F(UdpMessageReceiveTest, ReceiveMessage) {
   );
 
   // Start server
-  ASSERT_TRUE(server_->start(streams));
+  ASSERT_TRUE(server_->start("0.0.0.0", streams));
 
   // Give server time to start and init async receive
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -365,7 +365,7 @@ TEST_F(UdpMessageReceiveTest, StatisticsUpdated) {
   streams.push_back(config);
 
   // Start server
-  ASSERT_TRUE(server_->start(streams));
+  ASSERT_TRUE(server_->start("0.0.0.0", streams));
 
   // Give server time to start and init async receive
   std::this_thread::sleep_for(std::chrono::milliseconds(500));

@@ -16,6 +16,8 @@
 #include <axon_log_init.hpp>
 #include <axon_log_macros.hpp>
 
+using axon::logging::kv;
+
 namespace axon {
 namespace recorder {
 
@@ -113,6 +115,8 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
           topic = stream["topic"].as<std::string>();
         }
         if (topic.empty()) {
+          std::string name = stream["name"] ? stream["name"].as<std::string>() : "(unnamed)";
+          AXON_LOG_WARN("Skipping UDP stream with empty topic: " << kv("name", name));
           continue;
         }
         SubscriptionConfig sub;

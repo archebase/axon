@@ -21,7 +21,9 @@ UdpServer::~UdpServer() {
   stop();
 }
 
-bool UdpServer::start(const std::vector<UdpStreamConfig>& streams) {
+bool UdpServer::start(
+  const std::string& bind_address, const std::vector<UdpStreamConfig>& streams
+) {
   if (running_.load()) {
     AXON_LOG_WARN("UDP server already running");
     return true;
@@ -33,8 +35,6 @@ bool UdpServer::start(const std::vector<UdpStreamConfig>& streams) {
   // so that async_receive() doesn't exit early
   running_.store(true);
 
-  boost::asio::ip::udp::endpoint listen_endpoint;
-
   for (const auto& config : streams) {
     if (!config.enabled) {
       AXON_LOG_INFO("Stream " << kv("name", config.name) << " disabled, skipping");
@@ -44,16 +44,16 @@ bool UdpServer::start(const std::vector<UdpStreamConfig>& streams) {
     try {
       auto endpoint = std::make_unique<StreamEndpoint>();
       endpoint->config = config;
-      endpoint->receive_buffer.resize(65536);  // Max UDP payload size
+      endpoint->receive_buffer.resize(config.buffer_size);  // Use configured buffer size
 
-      // Create and bind socket
+      // Create and bind socket with configured bind address
       endpoint->socket = std::make_unique<boost::asio::ip::udp::socket>(
         io_context_,
-        boost::asio::ip::udp::endpoint(boost::asio::ip::make_address("0.0.0.0"), config.port)
+        boost::asio::ip::udp::endpoint(boost::asio::ip::make_address(bind_address), config.port)
       );
 
       // Set socket buffer size
-      boost::asio::socket_base::receive_buffer_size option(65536);
+      boost::asio::socket_base::receive_buffer_size option(config.buffer_size);
       endpoint->socket->set_option(option);
 
       uint16_t port = config.port;
@@ -61,7 +61,8 @@ bool UdpServer::start(const std::vector<UdpStreamConfig>& streams) {
 
       AXON_LOG_INFO(
         "UDP stream started: " << kv("name", config.name) << kv("port", config.port)
-                               << kv("topic", config.topic)
+                               << kv("topic", config.topic) << kv("bind_address", bind_address)
+                               << kv("buffer_size", config.buffer_size)
       );
 
       // Start async receive
@@ -136,27 +137,37 @@ void UdpServer::async_receive(StreamEndpoint& stream) {
     return;
   }
 
+  // Capture pointer instead of reference for async safety
+  // The stream is owned by streams_ map and will remain valid until stop() completes
+  StreamEndpoint* stream_ptr = &stream;
+
   stream.socket->async_receive_from(
     boost::asio::buffer(stream.receive_buffer),
     stream.sender_endpoint,
-    [this, &stream](const boost::system::error_code& ec, std::size_t bytes_transferred) {
+    [this, stream_ptr](const boost::system::error_code& ec, std::size_t bytes_transferred) {
+      // Check if we're still running before processing
+      if (!running_.load()) {
+        return;
+      }
+
       if (ec) {
         if (ec != boost::asio::error::operation_aborted) {
           AXON_LOG_WARN(
-            "UDP receive error: " << kv("port", stream.config.port) << kv("error", ec.message())
+            "UDP receive error: " << kv("port", stream_ptr->config.port)
+                                  << kv("error", ec.message())
           );
           {
-            std::lock_guard<std::mutex> lock(stream.stats_mutex);
-            stream.stats.parse_errors++;
+            std::lock_guard<std::mutex> lock(stream_ptr->stats_mutex);
+            stream_ptr->stats.parse_errors++;
           }
         }
         return;
       }
 
-      handle_receive(stream, bytes_transferred);
+      handle_receive(*stream_ptr, bytes_transferred);
 
       // Continue receiving
-      async_receive(stream);
+      async_receive(*stream_ptr);
     }
   );
 }
@@ -167,16 +178,6 @@ void UdpServer::handle_receive(StreamEndpoint& stream, std::size_t bytes_transfe
     std::lock_guard<std::mutex> lock(stream.stats_mutex);
     stream.stats.packets_received++;
     stream.stats.bytes_received += bytes_transferred;
-  }
-
-  // Check buffer overrun
-  if (bytes_transferred > stream.receive_buffer.size()) {
-    std::lock_guard<std::mutex> lock(stream.stats_mutex);
-    stream.stats.buffer_overruns++;
-    AXON_LOG_WARN(
-      "UDP buffer overrun: " << kv("port", stream.config.port) << kv("size", bytes_transferred)
-    );
-    return;
   }
 
   // Call message callback if set

@@ -18,6 +18,15 @@ endif()
 # =============================================================================
 # nlohmann_json is provided by parent project via FetchContent
 
+# Verify required variables are set
+if(NOT DEFINED AXON_LOGGING_DIR)
+    message(
+        FATAL_ERROR
+        "AXON_LOGGING_DIR must be set by parent project. "
+        "Please include this project via the parent CMakeLists.txt"
+    )
+endif()
+
 find_package(Boost REQUIRED COMPONENTS system)
 
 # Try to find nlohmann_json (works when built from parent project)

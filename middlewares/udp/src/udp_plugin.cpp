@@ -84,15 +84,15 @@ bool UdpPlugin::start() {
     return true;
   }
 
-  // Start UDP server
-  if (!server_->start(config_.streams)) {
+  // Start UDP server with configured bind address
+  if (!server_->start(config_.bind_address, config_.streams)) {
     AXON_LOG_ERROR("Failed to start UDP server");
     return false;
   }
 
-  // Start io_context thread
+  // Start io_context thread with work guard
+  work_guard_ = std::make_unique<WorkGuard>(io_context_->get_executor());
   io_thread_ = std::make_unique<std::thread>([this]() {
-    boost::asio::io_context::work work(*io_context_);
     io_context_->run();
   });
 
@@ -109,10 +109,13 @@ bool UdpPlugin::stop() {
 
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // Stop UDP server
+  // Stop UDP server first
   if (server_) {
     server_->stop();
   }
+
+  // Reset work guard to allow io_context to stop
+  work_guard_.reset();
 
   // Stop io_context
   if (io_context_) {
@@ -177,6 +180,7 @@ bool UdpPlugin::parse_config(const std::string& config_json) {
           stream_config.topic = stream.value("topic", "");
           stream_config.schema_name = stream.value("schema", "raw_json");
           stream_config.enabled = stream.value("enabled", true);
+          stream_config.buffer_size = stream.value("buffer_size", config_.buffer_size);
 
           if (stream_config.name.empty() || stream_config.topic.empty()) {
             AXON_LOG_WARN("Skipping stream with missing name or topic");
@@ -244,7 +248,9 @@ uint64_t UdpPlugin::extract_timestamp(const nlohmann::json& json, uint64_t arriv
   return arrival_time;
 }
 
-nlohmann::json UdpPlugin::get_json_value(const nlohmann::json& json, const std::string& path) {
+nlohmann::json UdpPlugin::get_json_value(
+  const nlohmann::json& json, const std::string& path
+) const {
   nlohmann::json current = json;
 
   // Split path by dots
