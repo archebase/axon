@@ -657,7 +657,7 @@ ws:
 
 # File scanner
 scanner:
-  data_dir: "/axon/data"       # Root directory to scan for recordings
+  data_dir: "/axon/recording"       # Root directory to scan for recordings
   require_json_sidecar: true       # Skip MCAP files without a matching .json
 
 # S3 uploader (passed to core/axon_uploader)
@@ -727,7 +727,7 @@ uploader:
 
 | Path | Purpose |
 |------|---------|
-| `/axon/data/` | Recorded MCAP + JSON files written by `axon_recorder` |
+| `/axon/recording/` | Recorded MCAP + JSON files written by `axon_recorder` |
 | `/axon/transfer/` | Transfer daemon working directory (SQLite state DB) |
 | `/axon/transfer/failed_uploads/` | Permanently failed files moved here for manual inspection |
 

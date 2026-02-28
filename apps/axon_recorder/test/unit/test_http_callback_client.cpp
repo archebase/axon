@@ -92,7 +92,7 @@ protected:
     payload.duration_sec = 300.0;
     payload.message_count = 15000;
     payload.file_size_bytes = 52428800;  // 50MB
-    payload.output_path = "/data/recordings/task_001.mcap";
+    payload.output_path = "/axon/recording/task_001.mcap";
     payload.topics = {"/camera/image", "/lidar/scan"};
     payload.error = "";
     return payload;
@@ -132,7 +132,7 @@ TEST_F(FinishCallbackPayloadTest, ToJsonLargeNumbers) {
   payload.duration_sec = 3600.5;
   payload.message_count = 1000000000;      // 1 billion
   payload.file_size_bytes = 5368709120LL;  // 5GB
-  payload.output_path = "/data/recordings/task_001.mcap";
+  payload.output_path = "/axon/recording/task_001.mcap";
   payload.topics = {};
   payload.error = "";
 
@@ -575,7 +575,7 @@ TEST_F(FinishCallbackPayloadTest, ErrorWithSpecialCharacters) {
   FinishCallbackPayload payload;
   payload.task_id = "task_001";
   payload.status = "failed";
-  payload.error = "Error: Disk full. Path \"/data/recordings\" is read-only";
+  payload.error = "Error: Disk full. Path \"/axon/recording\" is read-only";
 
   std::string json = payload.to_json();
 
@@ -1039,8 +1039,8 @@ TEST_F(FinishCallbackPayloadTest, MetadataAllFields) {
   payload.duration_sec = 3600.0;
   payload.message_count = 100000;
   payload.file_size_bytes = 500 * 1024 * 1024;  // 500MB
-  payload.output_path = "/data/recordings/task_001.mcap";
-  payload.sidecar_path = "/data/recordings/task_001.json";
+  payload.output_path = "/axon/recording/task_001.mcap";
+  payload.sidecar_path = "/axon/recording/task_001.json";
   payload.topics = {"/camera", "/lidar", "/imu"};
   payload.error = "";
 
