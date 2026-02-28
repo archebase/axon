@@ -41,7 +41,7 @@ std::string ConfigInjector::enabled_marker_path() const {
     return std::string(home) + "/.axon/" + ENABLED_MARKER;
   }
   // Fallback for testing or non-standard environments
-  return "/tmp/axon/" + std::string(ENABLED_MARKER);
+  return "/axon/" + std::string(ENABLED_MARKER);
 }
 
 std::string ConfigInjector::cache_path() const {
@@ -51,7 +51,7 @@ std::string ConfigInjector::cache_path() const {
     return std::string(home) + "/.axon/" + CACHE_FILENAME;
   }
   // Fallback for testing or non-standard environments
-  return "/tmp/axon/" + std::string(CACHE_FILENAME);
+  return "/axon/" + std::string(CACHE_FILENAME);
 }
 
 bool ConfigInjector::is_enabled() const {

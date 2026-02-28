@@ -74,7 +74,7 @@ std::string ConfigCache::default_config_dir() {
   }
 
   // Fallback to /tmp if HOME is not set
-  return "/tmp/axon/config";
+  return "/axon/config";
 }
 
 std::string ConfigCache::default_cache_path() {
@@ -85,7 +85,7 @@ std::string ConfigCache::default_cache_path() {
   }
 
   // Fallback to /tmp if HOME is not set
-  return "/tmp/axon/" + std::string(CACHE_FILENAME);
+  return "/axon/" + std::string(CACHE_FILENAME);
 }
 
 ConfigCache::ConfigCache() = default;
@@ -107,7 +107,7 @@ std::string ConfigCache::enabled_marker_path() const {
   if (home && home[0] != '\0') {
     return std::string(home) + "/.axon/" + ENABLED_MARKER;
   }
-  return "/tmp/axon/" + std::string(ENABLED_MARKER);
+  return "/axon/" + std::string(ENABLED_MARKER);
 }
 
 bool ConfigCache::is_enabled() const {

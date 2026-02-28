@@ -95,7 +95,7 @@ void print_usage(const char* program_name) {
     << "  plugin:\n"
     << "    path: /path/to/plugin.so\n"
     << "  dataset:\n"
-    << "    path: /data/recordings\n"
+    << "    path: /axon/recording\n"
     << "  subscriptions:\n"
     << "    - name: /camera/image\n"
     << "      message_type: sensor_msgs/msg/Image\n"
