@@ -303,6 +303,19 @@ Only effective if the upload has not yet started. If the upload is already in pr
 
 The daemon replies with a `status` message (see below).
 
+#### `upload_ack` — Keystone acknowledges uploaded task
+
+```json
+{
+  "type": "upload_ack",
+  "task_id": "task_abc123"
+}
+```
+
+`task_id` is the only required field. After receiving ACK:
+- if `delete_after_upload: false`, task is marked `COMPLETED` immediately
+- if `delete_after_upload: true`, local cleanup runs first, then task is marked `COMPLETED`
+
 ---
 
 ### Transfer → Server (outgoing)
@@ -318,6 +331,7 @@ The daemon replies with a `status` message (see below).
     "device_id": "robot_arm_01",
     "pending_count": 3,
     "uploading_count": 0,
+    "waiting_ack_count": 1,
     "failed_count": 1
   }
 }
@@ -370,6 +384,8 @@ Allows the fleet server to learn the device's state immediately on reconnect.
 
 Per the existing `EdgeUploader` contract: MCAP is uploaded first; JSON is uploaded last. JSON arriving in S3 is the completion signal for downstream systems (Dagster).
 
+`upload_complete` means "uploaded to S3" only. Final task completion (`COMPLETED` in SQLite) happens after Keystone sends `upload_ack`.
+
 #### `upload_failed` — Upload permanently failed (retries exhausted)
 
 ```json
@@ -406,10 +422,29 @@ Per the existing `EdgeUploader` contract: MCAP is uploaded first; JSON is upload
   "data": {
     "pending_count": 3,
     "uploading_count": 1,
+    "waiting_ack_count": 2,
+    "waiting_ack_task_ids": ["task_abc123", "task_def456"],
     "completed_count": 42,
     "failed_count": 1,
     "pending_bytes": 12884901888,
     "bytes_per_sec": 8912896
+  }
+}
+```
+
+`waiting_ack_task_ids` always returns the full list (no pagination).
+
+#### `local_cleanup_failed` — Local file cleanup exhausted retries after ACK
+
+```json
+{
+  "type": "local_cleanup_failed",
+  "timestamp": "2026-02-28T10:06:00.000Z",
+  "data": {
+    "task_id": "task_abc123",
+    "file_path": "/axon/recording/task_abc123.mcap",
+    "retry_count": 5,
+    "reason": "cleanup failed: mcap=permission denied"
   }
 }
 ```
@@ -441,7 +476,7 @@ Both files must exist for a recording to be considered complete and uploadable.
 Used for `upload_request`:
 1. Construct `{data_dir}/{task_id}.mcap` and `{data_dir}/{task_id}.json`
 2. Verify both files exist and are regular files
-3. Check `UploadStateManager` — skip if status is `COMPLETED` or `UPLOADING`
+3. Check `UploadStateManager` — skip if status is `COMPLETED`, `UPLOADING`, or `UPLOADED_WAIT_ACK`
 4. Return `FileGroup{mcap_path, json_path, task_id, file_size}`
 
 ### Bulk Scan
@@ -449,7 +484,7 @@ Used for `upload_request`:
 Used for `upload_all`:
 1. Iterate `data_dir` recursively for all `*.mcap` files
 2. For each MCAP, check for a matching `*.json` sidecar in the same directory
-3. Filter out tasks already `COMPLETED` in SQLite
+3. Filter out tasks already `COMPLETED`, `UPLOADING`, or `UPLOADED_WAIT_ACK` in SQLite
 4. Return sorted list of `FileGroup` (oldest mtime first, so backlog drains in order)
 
 ### Class Interface
@@ -498,8 +533,9 @@ private:
 ### Deduplication
 
 Before enqueuing, `UploadCoordinator` checks the SQLite state via `UploadStateManager::get()`:
-- `COMPLETED` → skip, optionally send `upload_complete` to server for idempotency
+- `COMPLETED` → skip
 - `UPLOADING` → skip, server is already receiving progress events
+- `UPLOADED_WAIT_ACK` → skip, waiting for Keystone ACK and/or local cleanup retry
 - `PENDING` → already queued but not started; skip re-enqueue
 - Not found → new upload; insert record and enqueue
 
@@ -709,6 +745,9 @@ Environment variables take precedence over YAML values.
 | File disappears between scan and enqueue | `EdgeUploader` reports failure → send `upload_failed` |
 | S3 transient error | `EdgeUploader` retries with backoff (up to `max_retries`) |
 | S3 permanent failure | State set to `FAILED`; files moved to `failed_uploads_dir`; send `upload_failed` |
+| `upload_ack` for unknown task_id | Send `upload_not_found`; no crash |
+| `upload_ack` for already `COMPLETED` task | Idempotent no-op |
+| Post-ACK local cleanup fails | Retry local cleanup with backoff; after max retries send `local_cleanup_failed` and mark `COMPLETED` |
 | WS disconnects during upload | Upload continues; progress reports are dropped; server re-queries on reconnect |
 | SQLite I/O error | Log fatal + daemon exits (state DB is critical for crash recovery) |
 | Disk full on device | `EdgeUploader` emits backpressure warning at 8 GB pending, alert at 20 GB pending |
@@ -716,7 +755,9 @@ Environment variables take precedence over YAML values.
 
 ## Data Retention Policy
 
-Whether local files are kept after a successful upload is controlled by a single boolean flag:
+Whether local files are kept after a successful upload is controlled by a single boolean flag.
+
+With ACK-gated completion, successful S3 upload first transitions to `UPLOADED_WAIT_ACK`. Final `COMPLETED` happens after `upload_ack`.
 
 ```yaml
 uploader:
@@ -733,16 +774,29 @@ uploader:
 
 ### Behaviour by Mode
 
-| `delete_after_upload` | After successful upload | After permanent failure |
-|-----------------------|------------------------|------------------------|
-| `true` (default) | MCAP + JSON deleted from `data_dir` immediately after S3 confirmation | Files moved to `failed_uploads_dir`; originals deleted from `data_dir` |
-| `false` | MCAP + JSON kept in `data_dir`; SQLite marks task `COMPLETED` | Files kept in `data_dir`; SQLite marks task `FAILED` |
+| `delete_after_upload` | On `upload_complete` | On `upload_ack` | After permanent failure |
+|-----------------------|----------------------|-----------------|------------------------|
+| `true` (default) | SQLite marks `UPLOADED_WAIT_ACK`; local files kept | Try deleting local files, then mark `COMPLETED`; retry deletion with backoff on failure | Files moved to `failed_uploads_dir`; originals deleted from `data_dir` |
+| `false` | SQLite marks `UPLOADED_WAIT_ACK`; local files kept | Mark `COMPLETED` immediately; local files retained | Files kept in `data_dir`; SQLite marks task `FAILED` |
 
 **Default is `true`** because robot storage is typically limited and the S3 copy is the authoritative record. Set `false` when a local backup is required (e.g., for debugging or secondary processing).
 
-Regardless of this flag, the SQLite state DB (`transfer_state.db`) always records the outcome. The `FileScanner` checks the DB before enqueuing, so tasks marked `COMPLETED` are never re-uploaded even if the original files were not deleted (i.e., `delete_after_upload: false`).
+Regardless of this flag, the SQLite state DB (`transfer_state.db`) always records the outcome. The `FileScanner` checks the DB before enqueuing, so tasks marked `UPLOADED_WAIT_ACK` or `COMPLETED` are never re-uploaded.
 
 Files that exceed `max_retries` are always moved to `failed_uploads_dir` so they can be inspected or manually retried, independent of the `delete_after_upload` setting.
+
+### Post-ACK Cleanup Retry Policy
+
+```yaml
+uploader:
+  cleanup_retry:
+    max_retries: 5
+    initial_delay_ms: 30000
+    backoff_multiplier: 2.0
+    max_delay_ms: 600000
+```
+
+If local deletion still fails after `max_retries`, task is marked `COMPLETED` and `local_cleanup_failed` is reported to Keystone.
 
 ### Environment Variable Override
 

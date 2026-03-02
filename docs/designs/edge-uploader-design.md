@@ -94,7 +94,10 @@ When network is unavailable for extended periods:
 
 | Scenario | Action |
 |----------|--------|
-| Upload successful | **Delete immediately** - device copy removed after S3 confirmation |
+| Upload successful | Mark `UPLOADED_WAIT_ACK` (do not delete immediately) |
+| Fleet ACK received (`upload_ack`) and `delete_after_upload=true` | Delete local files, then mark `COMPLETED` |
+| Fleet ACK received and `delete_after_upload=false` | Mark `COMPLETED`, keep local files |
+| Post-ACK local cleanup failure | Retry cleanup with backoff; after max retries mark `COMPLETED` and report `local_cleanup_failed` |
 | Upload failed (retrying) | Keep on device until max retries exhausted |
 | Upload permanently failed | Move to `/data/failed_uploads/` for manual review |
 

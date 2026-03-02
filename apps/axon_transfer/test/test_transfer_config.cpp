@@ -44,6 +44,10 @@ factory_id: "test_factory"
   EXPECT_EQ(config.uploader.state_db_path, "/tmp/axon/transfer/transfer_state.db");
   EXPECT_EQ(config.uploader.failed_uploads_dir, "/tmp/axon/transfer/failed_uploads/");
   EXPECT_EQ(config.uploader.num_workers, 2);
+  EXPECT_EQ(config.uploader.cleanup_retry.max_retries, 5);
+  EXPECT_EQ(config.uploader.cleanup_retry.initial_delay_ms.count(), 30000);
+  EXPECT_EQ(config.uploader.cleanup_retry.backoff_multiplier, 2.0);
+  EXPECT_EQ(config.uploader.cleanup_retry.max_delay_ms.count(), 600000);
 }
 
 TEST_F(TransferConfigTest, LoadFullConfig) {
@@ -61,6 +65,11 @@ scanner:
   require_json_sidecar: false
 uploader:
   num_workers: 4
+  cleanup_retry:
+    max_retries: 9
+    initial_delay_ms: 5000
+    backoff_multiplier: 1.5
+    max_delay_ms: 120000
   s3:
     bucket: "test-bucket"
     region: "us-west-2"
@@ -77,6 +86,10 @@ uploader:
   EXPECT_EQ(config.scanner.data_dir, "/data/recordings");
   EXPECT_FALSE(config.scanner.require_json_sidecar);
   EXPECT_EQ(config.uploader.num_workers, 4);
+  EXPECT_EQ(config.uploader.cleanup_retry.max_retries, 9);
+  EXPECT_EQ(config.uploader.cleanup_retry.initial_delay_ms.count(), 5000);
+  EXPECT_EQ(config.uploader.cleanup_retry.backoff_multiplier, 1.5);
+  EXPECT_EQ(config.uploader.cleanup_retry.max_delay_ms.count(), 120000);
   EXPECT_EQ(config.uploader.s3.bucket, "test-bucket");
   EXPECT_EQ(config.uploader.s3.region, "us-west-2");
 }

@@ -126,3 +126,21 @@ TEST_F(FileScannerTest, EmptyDirectory) {
 
   EXPECT_TRUE(results.empty());
 }
+
+TEST_F(FileScannerTest, FindSkipsUploadedWaitAck) {
+  create_file(test_dir_ / "task_001.mcap");
+  create_file(test_dir_ / "task_001.json");
+
+  auto state_manager = std::make_shared<axon::uploader::UploadStateManager>(db_path_.string());
+  axon::uploader::UploadRecord record;
+  record.file_path = (test_dir_ / "task_001.mcap").string();
+  record.json_path = (test_dir_ / "task_001.json").string();
+  record.s3_key = "factory/device/date/task_001.mcap";
+  record.task_id = "task_001";
+  ASSERT_TRUE(state_manager->insert(record));
+  ASSERT_TRUE(state_manager->markUploadedWaitAck(record.file_path));
+
+  axon::transfer::FileScanner scanner({test_dir_.string(), true}, state_manager);
+  auto result = scanner.find("task_001");
+  EXPECT_FALSE(result.has_value());
+}

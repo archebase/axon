@@ -62,10 +62,13 @@ TransferDaemon::TransferDaemon(const TransferConfig& config)
 
   scanner_ = std::make_unique<FileScanner>(config_.scanner, state_manager_);
 
-  ws_client_ = std::make_unique<WsClient>(ioc_, config_.ws);
+  WsConfig ws_config = config_.ws;
+  ws_config.url += "/" + config_.device_id;
+  ws_client_ = std::make_unique<WsClient>(ioc_, ws_config);
 
-  coordinator_ =
-    std::make_unique<UploadCoordinator>(config_, *ws_client_, *scanner_, uploader_, ioc_);
+  coordinator_ = std::make_unique<UploadCoordinator>(
+    config_, *ws_client_, *scanner_, uploader_, state_manager_, ioc_
+  );
 }
 
 void TransferDaemon::run() {
@@ -116,6 +119,9 @@ void TransferDaemon::on_ws_message(const nlohmann::json& msg) {
     coordinator_->on_cancel(task_id);
   } else if (type == "status_query") {
     coordinator_->on_status_query();
+  } else if (type == "upload_ack") {
+    std::string task_id = msg.value("task_id", "");
+    coordinator_->on_upload_ack(task_id);
   } else {
     std::cerr << "axon_transfer: unknown message type: " << type << "\n";
   }

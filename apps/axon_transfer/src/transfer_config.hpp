@@ -48,10 +48,18 @@ struct RetryConfig {
 };
 
 struct UploaderConfig {
+  struct CleanupRetryConfig {
+    int max_retries{5};
+    std::chrono::milliseconds initial_delay_ms{30000};
+    double backoff_multiplier{2.0};
+    std::chrono::milliseconds max_delay_ms{600000};
+  };
+
   std::string state_db_path{"/tmp/axon/transfer/transfer_state.db"};
   bool delete_after_upload{true};
   std::string failed_uploads_dir{"/tmp/axon/transfer/failed_uploads/"};
   int num_workers{2};
+  CleanupRetryConfig cleanup_retry;
   S3Config s3;
   RetryConfig retry;
 };

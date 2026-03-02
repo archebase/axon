@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-#include "upload_state_manager.hpp"
+#include "../../../core/axon_uploader/upload_state_manager.hpp"
 
 namespace axon {
 namespace transfer {
@@ -35,7 +35,8 @@ std::optional<FileGroup> FileScanner::find(const std::string& task_id) const {
   auto record = state_manager_->get(mcap_path.string());
   if (record) {
     if (record->status == axon::uploader::UploadStatus::COMPLETED ||
-        record->status == axon::uploader::UploadStatus::UPLOADING) {
+        record->status == axon::uploader::UploadStatus::UPLOADING ||
+        record->status == axon::uploader::UploadStatus::UPLOADED_WAIT_ACK) {
       return std::nullopt;
     }
   }
@@ -75,7 +76,9 @@ std::vector<FileGroup> FileScanner::scan_all() const {
 
     auto record = state_manager_->get(mcap_path.string());
     if (record) {
-      if (record->status == axon::uploader::UploadStatus::COMPLETED) {
+      if (record->status == axon::uploader::UploadStatus::COMPLETED ||
+          record->status == axon::uploader::UploadStatus::UPLOADING ||
+          record->status == axon::uploader::UploadStatus::UPLOADED_WAIT_ACK) {
         continue;
       }
     }

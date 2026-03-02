@@ -44,3 +44,9 @@ uploader:
     initial_delay_ms: 1000
     max_delay_ms: 300000
     backoff_base: 2.0
+
+  cleanup_retry:
+    max_retries: 5
+    initial_delay_ms: 30000
+    backoff_multiplier: 2.0
+    max_delay_ms: 600000

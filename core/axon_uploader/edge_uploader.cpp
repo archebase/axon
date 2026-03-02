@@ -442,7 +442,7 @@ std::string EdgeUploader::currentDateString() {
 
 void EdgeUploader::onUploadSuccess(const UploadItem& item) {
   // Update state DB
-  state_manager_->markCompleted(item.mcap_path);
+  state_manager_->markUploadedWaitAck(item.mcap_path);
 
   // Update stats
   stats_.files_completed++;
@@ -451,11 +451,6 @@ void EdgeUploader::onUploadSuccess(const UploadItem& item) {
   {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     last_successful_upload_ = std::chrono::system_clock::now();
-  }
-
-  // Cleanup local files if configured
-  if (config_.delete_after_upload) {
-    cleanupLocalFiles(item.mcap_path, item.json_path);
   }
 
   // Invoke callback

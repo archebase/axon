@@ -118,6 +118,19 @@ TransferConfig load_config(const std::string& yaml_path) {
       config.uploader.retry.backoff_base =
         yaml["uploader"]["retry"]["backoff_base"].as<double>(2.0);
     }
+
+    if (yaml["uploader"]["cleanup_retry"]) {
+      config.uploader.cleanup_retry.max_retries =
+        yaml["uploader"]["cleanup_retry"]["max_retries"].as<int>(5);
+      config.uploader.cleanup_retry.initial_delay_ms = std::chrono::milliseconds(
+        yaml["uploader"]["cleanup_retry"]["initial_delay_ms"].as<int>(30000)
+      );
+      config.uploader.cleanup_retry.backoff_multiplier =
+        yaml["uploader"]["cleanup_retry"]["backoff_multiplier"].as<double>(2.0);
+      config.uploader.cleanup_retry.max_delay_ms = std::chrono::milliseconds(
+        yaml["uploader"]["cleanup_retry"]["max_delay_ms"].as<int>(600000)
+      );
+    }
   }
 
   if (config.ws.url.empty()) {

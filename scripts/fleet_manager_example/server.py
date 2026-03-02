@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 RECORDER_RPC_BASE = os.getenv("AXON_RECORDER_RPC_BASE", "http://127.0.0.1:8080")
 MAX_EVENTS_PER_DEVICE = int(os.getenv("AXON_FLEET_MAX_EVENTS", "500"))
+AUTO_ACK = os.getenv("AXON_TRANSFER_AUTO_ACK", "true").lower() in ("1", "true", "yes")
 
 app = FastAPI(title="Axon Fleet Manager Example", version="0.1.0")
 
@@ -26,6 +27,10 @@ class UploadRequestBody(BaseModel):
 
 
 class CancelBody(BaseModel):
+    task_id: str
+
+
+class AckBody(BaseModel):
     task_id: str
 
 
@@ -130,6 +135,25 @@ async def transfer_socket(websocket: WebSocket, device_id: str) -> None:
         while True:
             payload = await websocket.receive_json()
             hub._record(device_id, "inbound", payload)
+
+            if not AUTO_ACK:
+                continue
+
+            msg_type = payload.get("type")
+            if msg_type == "upload_complete":
+                task_id = payload.get("data", {}).get("task_id")
+                if task_id:
+                    await hub.send(
+                        device_id, {"type": "upload_ack", "task_id": task_id}
+                    )
+            elif msg_type == "status":
+                waiting_ids = payload.get("data", {}).get("waiting_ack_task_ids", [])
+                if isinstance(waiting_ids, list):
+                    for task_id in waiting_ids:
+                        if isinstance(task_id, str) and task_id:
+                            await hub.send(
+                                device_id, {"type": "upload_ack", "task_id": task_id}
+                            )
     except WebSocketDisconnect:
         await hub.disconnect(device_id, websocket)
 
@@ -172,6 +196,13 @@ async def transfer_status_query(device_id: str) -> dict[str, Any]:
 @app.post("/api/v1/transfer/{device_id}/cancel")
 async def transfer_cancel(device_id: str, body: CancelBody) -> dict[str, Any]:
     msg = {"type": "cancel", "task_id": body.task_id}
+    await hub.send(device_id, msg)
+    return {"ok": True, "sent": msg}
+
+
+@app.post("/api/v1/transfer/{device_id}/upload_ack")
+async def transfer_upload_ack(device_id: str, body: AckBody) -> dict[str, Any]:
+    msg = {"type": "upload_ack", "task_id": body.task_id}
     await hub.send(device_id, msg)
     return {"ok": True, "sent": msg}
 
