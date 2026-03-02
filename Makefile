@@ -97,6 +97,8 @@ help:
 	@printf "%s\n" "  $(BLUE)make app$(NC)              - Build all applications"
 	@printf "%s\n" "  $(BLUE)make app-axon-recorder$(NC) - Build axon_recorder plugin loader"
 	@printf "%s\n" "  $(BLUE)make app-axon-config$(NC)  - Build axon_config tool"
+	@printf "%s\n" "  $(BLUE)make app-axon-transfer$(NC) - Build axon_transfer daemon"
+	@printf "%s\n" "  $(BLUE)make test-axon-transfer$(NC) - Build and run axon_transfer tests"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
 	@printf "%s\n" "  $(BLUE)make build-mock$(NC)           - Build mock middleware plugin"
@@ -404,13 +406,13 @@ coverage-core: coverage-mcap coverage-uploader coverage-logging
 # Application Targets
 # =============================================================================
 
-.PHONY: app app-axon-recorder app-axon-config
-.PHONY: test-axon-config
+.PHONY: app app-axon-recorder app-axon-config app-axon-transfer
+.PHONY: test-axon-config test-axon-transfer
 
 # Build all applications
 app: build-core
 	@printf "%s\n" "$(YELLOW)Building applications...$(NC)"
-	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder axon_config
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder axon_config axon_transfer
 	@printf "%s\n" "$(GREEN)✓ All applications built$(NC)"
 
 # Build axon_recorder (plugin loader library)
@@ -446,6 +448,29 @@ test-axon-config: build-core
 	@printf "%s\n" "$(YELLOW)Running axon_config tests...$(NC)"
 	@cd build/axon_config && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_config tests passed$(NC)"
+
+# Build axon_transfer daemon
+app-axon-transfer:
+	@printf "%s\n" "$(YELLOW)Building axon_transfer...$(NC)"
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=ON >/dev/null 2>&1 || \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=ON
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_transfer
+	@printf "%s\n" "$(GREEN)✓ axon_transfer built$(NC)"
+
+# Test axon_transfer
+test-axon-transfer: app-axon-transfer
+	@printf "%s\n" "$(YELLOW)Running axon_transfer tests...$(NC)"
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target test_transfer_config test_file_scanner
+	@cd build/axon_transfer/test && ctest --output-on-failure
+	@printf "%s\n" "$(GREEN)✓ axon_transfer tests passed$(NC)"
 
 # =============================================================================
 # Mock Middleware Targets

@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+#
+# SPDX-License-Identifier: MulanPSL-2.0
+
+services:
+  fleet-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: axon-fleet-manager
+    environment:
+      AXON_RECORDER_RPC_BASE: "http://host.docker.internal:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: axon-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: axon-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c '
+      until /usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
+      /usr/bin/mc mb --ignore-existing local/axon-recordings;
+      /usr/bin/mc anonymous set none local/axon-recordings;
+      echo "MinIO bucket ready: axon-recordings";
+      '
+
+volumes:
+  minio_data:
