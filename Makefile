@@ -134,13 +134,18 @@ help:
 	@printf "%s\n" "  $(BLUE)make ci-local-reuse$(NC)    - REUSE license compliance"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)CI Docker Testing:$(NC)"
-	@printf "%s\n" "  $(BLUE)make ci-docker$(NC)         - Quick CI in Docker (format + lint + C++ tests)"
+	@printf "%s\n" "  $(BLUE)make ci-docker$(NC)         - Quick CI in Docker (format + lint + C++ + Zenoh tests)"
 	@printf "%s\n" "  $(BLUE)make ci-docker-all$(NC)     - Full CI validation (all tests in Docker)"
 	@printf "%s\n" "  $(BLUE)make ci-docker-cpp$(NC)     - C++ tests in Docker"
 	@printf "%s\n" "  $(BLUE)make ci-docker-ros$(NC)     - ROS tests in Docker (all distros)"
 	@printf "%s\n" "  $(BLUE)make e2e-docker$(NC)       - All E2E tests in Docker"
 	@printf "%s\n" "  $(BLUE)make ci-docker-zenoh$(NC)   - Zenoh tests in Docker"
 	@printf "%s\n" "  $(BLUE)make ci-docker-coverage$(NC) - Coverage tests in Docker"
+	@echo ""
+	@printf "%s\n" "$(YELLOW)Zenoh CI Targets:$(NC)"
+	@printf "%s\n" "  $(BLUE)make ci-zenoh$(NC)          - Zenoh plugin unit tests"
+	@printf "%s\n" "  $(BLUE)make ci-zenoh-integration$(NC) - Zenoh unit + integration tests"
+	@printf "%s\n" "  $(BLUE)make ci-zenoh-coverage$(NC) - Zenoh tests with coverage"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)E2E Testing:$(NC)"
 	@printf "%s\n" "  $(BLUE)make e2e$(NC)                - E2E tests (local, requires build)"
@@ -801,9 +806,10 @@ clean-cov: clean-coverage
 
 .PHONY: ci-local ci-local-quick
 .PHONY: ci-local-cpp-unit ci-local-cpp-integration ci-local-reuse
-.PHONY: ci-docker ci-docker-all ci-docker-cpp ci-docker-ros ci-docker-zenoh ci-docker-coverage
+.PHONY: ci-docker ci-docker-all ci-docker-cpp ci-docker-ros ci-docker-middleware ci-docker-zenoh ci-docker-coverage
 .PHONY: ci-docker-ros1 ci-docker-ros2
 .PHONY: ci-docker-coverage-cpp ci-docker-coverage-ros
+.PHONY: ci-zenoh ci-zenoh-integration ci-zenoh-coverage ci-zenoh-all
 .PHONY: e2e-docker e2e-docker-ros1 e2e-docker-ros2-humble e2e-docker-ros2-jazzy e2e-docker-ros2-rolling
 
 # =============================================================================
@@ -835,12 +841,12 @@ ci-local-reuse:
 # Docker CI (Docker-based)
 # =============================================================================
 
-# ci-docker: Quick CI in Docker (format + lint + C++ tests)
-ci-docker: format-ci lint ci-docker-cpp
+# ci-docker: Quick CI in Docker (format + lint + C++ + Zenoh tests)
+ci-docker: format-ci lint ci-docker-cpp ci-docker-zenoh
 	@printf "%s\n" "$(GREEN)✓ Quick Docker CI checks passed!$(NC)"
 
 # ci-docker-all: Full CI validation (all tests in Docker)
-ci-docker-all: format-ci lint docker-test-ros1 docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling
+ci-docker-all: format-ci lint ci-docker-cpp ci-docker-middleware
 	@printf "%s\n" "$(GREEN)╔══════════════════════════════════════════════════════════╗$(NC)"
 	@printf "%s\n" "$(GREEN)║     ✓ ALL DOCKER CI CHECKS PASSED!                       ║$(NC)"
 	@printf "%s\n" "$(GREEN)╚══════════════════════════════════════════════════════════╝$(NC)"
@@ -851,9 +857,13 @@ ci-docker-cpp:
 	@printf "%s\n" "$(GREEN)✓ C++ tests passed$(NC)"
 
 # ci-docker-ros: ROS tests in Docker (all distros)
-ci-docker-ros:
-	@./scripts/docker-test-ros.sh noetic && ./scripts/docker-test-ros.sh humble
+ci-docker-ros: ci-docker-ros1 ci-docker-ros2
 	@printf "%s\n" "$(GREEN)✓ ROS tests passed$(NC)"
+
+# ci-docker-middleware: ROS + Zenoh middleware tests in Docker
+ci-docker-middleware:
+	@$(MAKE) -j3 ci-docker-ros1 ci-docker-ros2 ci-docker-zenoh
+	@printf "%s\n" "$(GREEN)✓ Middleware tests passed$(NC)"
 
 # ci-docker-ros1: ROS1 tests in Docker
 ci-docker-ros1: docker-test-ros1
@@ -866,6 +876,22 @@ ci-docker-ros2: docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-
 # ci-docker-zenoh: Zenoh tests in Docker
 ci-docker-zenoh:
 	@./scripts/ci-docker-zenoh.sh
+
+# ci-zenoh: Zenoh plugin unit tests
+ci-zenoh:
+	@./scripts/ci-docker-zenoh.sh
+
+# ci-zenoh-integration: Zenoh unit + integration tests
+ci-zenoh-integration:
+	@./scripts/ci-docker-zenoh.sh --integration
+
+# ci-zenoh-coverage: Zenoh tests with coverage
+ci-zenoh-coverage:
+	@./scripts/ci-docker-zenoh.sh --coverage
+
+# ci-zenoh-all: Zenoh unit + integration tests
+ci-zenoh-all: ci-zenoh-integration
+	@printf "%s\n" "$(GREEN)✓ Zenoh all tests passed$(NC)"
 
 # ci-docker-coverage: All coverage tests in Docker
 ci-docker-coverage: ci-docker-coverage-cpp ci-docker-coverage-ros
