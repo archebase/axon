@@ -184,7 +184,7 @@ if [ ${#FAILED_DISTROS[@]} -eq 0 ]; then
         echo ""
         echo -e "${YELLOW}Coverage reports:${NC}"
         for DISTRO in "${SELECTED_DISTROS[@]}"; do
-            local COVERAGE_FILE="${PROJECT_ROOT}/coverage_output_${DISTRO}/coverage.info"
+            COVERAGE_FILE="${PROJECT_ROOT}/coverage_output_${DISTRO}/coverage.info"
             if [ -f "${COVERAGE_FILE}" ]; then
                 echo "  ${DISTRO}: ${COVERAGE_FILE}"
             fi

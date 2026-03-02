@@ -166,7 +166,7 @@ run_stage_1() {
     # Zenoh Plugin Tests
     echo ""
     echo -e "${YELLOW}[1/2] Running Zenoh plugin tests...${NC}"
-    if "${SCRIPT_DIR}/ci-zenoh-local.sh" ${COVERAGE_ARG}; then
+    if "${SCRIPT_DIR}/ci-docker-zenoh.sh" ${COVERAGE_ARG}; then
         echo -e "${GREEN}✓ Zenoh plugin tests passed${NC}"
     else
         echo -e "${RED}✗ Zenoh plugin tests failed${NC}"

@@ -93,25 +93,23 @@ find core \
 }
 
 echo -e "${YELLOW}  Scanning middlewares/...${NC}"
-find middlewares/ros1 middlewares/ros2 middlewares/filters middlewares/zenoh middlewares/mock \
+find middlewares \
     \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
     ! -path "*/build/*" ! -path "*/test/*" ! -path "*/install/*" \
     ! -path "*/devel/*" ! -path "*/depthlitez/*" -print0 2>/dev/null | \
-    xargs -0 cppcheck "${CPPCHECK_ARGS[@]}" 2>/dev/null || true
+    xargs -0 cppcheck "${CPPCHECK_ARGS[@]}" 2>&1 || {
+    echo -e "${RED}✗ Linting failed in middlewares/${NC}"
+    exit 1
+}
 
-echo -e "${YELLOW}  Scanning middlewares...${NC}"
-find middlewares -name "*.cpp" -o -name "*.hpp" 2>/dev/null | head -20
-
-echo -e "${YELLOW}  Scanning core...${NC}"
-find core -name "*.cpp" -o -name "*.hpp" 2>/dev/null | head -20
-
-# Actually run cppcheck if available
-if command -v cppcheck &> /dev/null; then
-    echo -e "${YELLOW}Running cppcheck...${NC}"
-    cppcheck --enable=warning,performance --suppress=missingIncludeSystem \
-        --quiet \
-        core/ middlewares/ 2>&1 || true
-fi
+echo -e "${YELLOW}  Scanning apps/...${NC}"
+find apps \
+    \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.c" \) \
+    ! -path "*/build/*" ! -path "*/test/*" -print0 2>/dev/null | \
+    xargs -0 cppcheck "${CPPCHECK_ARGS[@]}" 2>&1 || {
+    echo -e "${RED}✗ Linting failed in apps/${NC}"
+    exit 1
+}
 
 echo ""
-echo -e "${GREEN}Lint check completed${NC}"
+echo -e "${GREEN}✓ Lint check passed${NC}"
