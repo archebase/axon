@@ -512,7 +512,9 @@ TEST_F(EdgeUploaderIntegrationTest, ConfigGetter) {
 }
 
 TEST_F(EdgeUploaderIntegrationTest, CleanupLocalFiles) {
-  // Enable cleanup after upload
+  // With ACK-gated flow, EdgeUploader no longer deletes files on upload success.
+  // Files remain until an explicit ACK is processed by the transfer daemon layer.
+  // This test verifies that files are preserved after upload completes.
   config_.delete_after_upload = true;
 
   EdgeUploader uploader(config_);
@@ -543,9 +545,10 @@ TEST_F(EdgeUploaderIntegrationTest, CleanupLocalFiles) {
 
   EXPECT_TRUE(upload_completed) << "Upload did not complete";
 
-  // Files should be deleted after successful upload
-  EXPECT_FALSE(fs::exists(mcap_path)) << "MCAP file should be deleted after upload";
-  EXPECT_FALSE(fs::exists(json_path)) << "JSON file should be deleted after upload";
+  // Files should NOT be deleted by EdgeUploader — cleanup is deferred until
+  // the transfer daemon receives an upload_ack from the fleet manager.
+  EXPECT_TRUE(fs::exists(mcap_path)) << "MCAP file should remain until ACK";
+  EXPECT_TRUE(fs::exists(json_path)) << "JSON file should remain until ACK";
 
   uploader.stop();
 }
