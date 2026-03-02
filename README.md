@@ -146,13 +146,12 @@ cmake --build . -j$(nproc)
 - `make clean` - Clean all build artifacts
 
 **Docker Testing (No Local ROS Required):**
-- `make docker-test-cpp` - C++ core library tests
-- `make docker-test-ros1` - ROS1 Noetic tests
-- `make docker-test-ros2-humble` - ROS2 Humble tests
-- `make docker-test-ros2-jazzy` - ROS2 Jazzy tests
-- `make docker-test-ros2-rolling` - ROS2 Rolling tests
-- `make docker-test-all` - Test all ROS versions sequentially
-- `make docker-test-compose` - Test all versions in parallel (faster)
+- `make ci-docker-cpp` - C++ core library tests in Docker
+- `make ci-docker-ros1` - ROS1 Noetic tests in Docker
+- `make ci-docker-ros2` - ROS2 (Humble/Jazzy/Rolling) tests in Docker
+- `make ci-docker-ros` - ROS1 + ROS2 tests in Docker
+- `make e2e-docker` - E2E tests across all ROS versions in Docker
+- `make ci-docker-all` - Full Docker CI validation
 
 **Code Quality:**
 - `make format` - Format code (requires clang-format and cargo)
@@ -168,15 +167,18 @@ cmake --build . -j$(nproc)
 The easiest way to test across all ROS versions:
 
 ```bash
-# Test in a specific ROS version
-make docker-test-ros1
-make docker-test-ros2-humble
+# Test in specific middleware groups
+make ci-docker-ros1
+make ci-docker-ros2
 
-# Test in all ROS versions (sequential)
-make docker-test-all
+# Test ROS suites in Docker
+make ci-docker-ros
 
-# Test in all ROS versions (parallel using docker-compose)
-make docker-test-compose
+# Full Docker CI validation
+make ci-docker-all
+
+# E2E tests in Docker
+make e2e-docker
 
 # Or use docker-compose directly
 cd docker
@@ -473,4 +475,3 @@ Built with:
 - [MCAP](https://mcap.dev/) - Modern robotics data format
 - [Boost.Beast](https://github.com/boostorg/beast) - HTTP/WebSocket library
 - [yaml-cpp](https://github.com/jbeder/yaml-cpp) - YAML parser
-
