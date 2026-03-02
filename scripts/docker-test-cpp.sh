@@ -82,9 +82,17 @@ else
     echo -e "${YELLOW}Running C++ tests...${NC}"
 fi
 
-DOCKER_BUILDKIT=1 docker run --rm \
-    -v "${PROJECT_ROOT}:/workspace/axon" \
-    ${RUN_COVERAGE:+-v "${PROJECT_ROOT}/coverage:/workspace/coverage"} \
+DOCKER_ARGS=(
+    --rm
+    -v "${PROJECT_ROOT}:/workspace/axon"
+)
+
+if [ "$RUN_COVERAGE" = true ]; then
+    mkdir -p "${PROJECT_ROOT}/coverage"
+    DOCKER_ARGS+=( -v "${PROJECT_ROOT}/coverage:/workspace/coverage" )
+fi
+
+DOCKER_BUILDKIT=1 docker run "${DOCKER_ARGS[@]}" \
     ${IMAGE_NAME} \
     bash -c "
         set -e
@@ -110,9 +118,11 @@ DOCKER_BUILDKIT=1 docker run --rm \
             echo '=========================================='
             ctest --output-on-failure
 
-            ${RUN_COVERAGE:+lcov --capture --directory . \
-                --output-file /workspace/coverage/\${lib}_coverage.info \
-                --rc lcov_branch_coverage=1 || true}
+            if [ \"${RUN_COVERAGE}\" = \"true\" ]; then
+                lcov --capture --directory . \
+                    --output-file /workspace/coverage/\${lib}_coverage.info \
+                    --rc lcov_branch_coverage=1 || true
+            fi
         done
 
         echo ''

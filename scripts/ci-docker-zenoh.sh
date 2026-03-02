@@ -95,6 +95,7 @@ if [ "$RUN_COVERAGE" = true ]; then
                 -DAXON_BUILD_ZENOH_PLUGIN=ON \
                 -DAXON_BUILD_ROS1_PLUGIN=OFF \
                 -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_UPLOADER=OFF \
                 -DAXON_BUILD_MOCK_PLUGIN=OFF \
                 -DAXON_BUILD_TESTS=ON && \
             make -j\$(nproc) && \
@@ -130,6 +131,7 @@ else
                 -DAXON_BUILD_ZENOH_PLUGIN=ON \
                 -DAXON_BUILD_ROS1_PLUGIN=OFF \
                 -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_UPLOADER=OFF \
                 -DAXON_BUILD_MOCK_PLUGIN=OFF \
                 -DAXON_BUILD_TESTS=ON && \
             make -j\$(nproc) && \

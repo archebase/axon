@@ -174,10 +174,12 @@ build-core:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=OFF \
 			--log-level=ERROR >/dev/null 2>&1 || \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_BUILD_TESTS=ON
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=OFF
 	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_logging axon_mcap
 	@printf "%s\n" "$(GREEN)✓ Core libraries built$(NC)"
 
@@ -188,7 +190,8 @@ build-mcap:
 	@cd $(BUILD_DIR) && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_BUILD_TESTS=ON && \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=OFF && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
 
@@ -198,7 +201,8 @@ build-logging:
 	@cd $(BUILD_DIR) && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_BUILD_TESTS=ON && \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=OFF && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ axon_logging built$(NC)"
 
@@ -325,7 +329,8 @@ coverage-mcap:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=Debug \
 			-DAXON_BUILD_TESTS=ON \
-			-DAXON_ENABLE_COVERAGE=ON && \
+			-DAXON_ENABLE_COVERAGE=ON \
+			-DAXON_BUILD_UPLOADER=OFF && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
 	@cd $(BUILD_DIR)/axon_mcap && ctest --output-on-failure
@@ -380,7 +385,8 @@ coverage-logging:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=Debug \
 			-DAXON_BUILD_TESTS=ON \
-			-DAXON_ENABLE_COVERAGE=ON && \
+			-DAXON_ENABLE_COVERAGE=ON \
+			-DAXON_BUILD_UPLOADER=OFF && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(YELLOW)Running tests...$(NC)"
 	@cd $(BUILD_DIR)/axon_logging && ctest --output-on-failure

@@ -6,7 +6,8 @@ find_package(yaml-cpp REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 if(NOT TARGET axon_uploader)
-  message(FATAL_ERROR "axon_transfer requires target axon_uploader. Configure with -DAXON_BUILD_UPLOADER=ON")
+  message(STATUS "axon_transfer: skipping build because axon_uploader is not available (configure with -DAXON_BUILD_UPLOADER=ON)")
+  return()
 endif()
 
 set(AXON_TRANSFER_CORE_SOURCES

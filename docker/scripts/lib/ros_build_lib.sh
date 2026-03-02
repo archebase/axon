@@ -114,6 +114,7 @@ ros_build_package() {
     local cmake_args=(
         -DCMAKE_BUILD_TYPE="$build_type"
         -DAXON_BUILD_TESTS=ON
+        -DAXON_BUILD_UPLOADER=OFF
     )
 
     if [ "$enable_coverage" = "true" ]; then
