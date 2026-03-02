@@ -195,7 +195,7 @@ subscriptions:
 
   // Dataset defaults
   EXPECT_EQ(config.dataset.mode, "append");  // Default mode
-  EXPECT_EQ(config.dataset.stats_file_path, "/data/recordings/recorder_stats.json");
+  EXPECT_EQ(config.dataset.stats_file_path, "/axon/recording/recorder_stats.json");
 
   // Subscription defaults
   EXPECT_EQ(config.subscriptions[0].batch_size, 1);           // Default batch size
@@ -662,8 +662,8 @@ subscriptions:
   EXPECT_TRUE(parser.load_from_string(yaml, config));
 
   EXPECT_EQ(config.dataset.path, "/only/path");
-  EXPECT_EQ(config.dataset.mode, "append");                                           // Default
-  EXPECT_EQ(config.dataset.stats_file_path, "/data/recordings/recorder_stats.json");  // Default
+  EXPECT_EQ(config.dataset.mode, "append");                                          // Default
+  EXPECT_EQ(config.dataset.stats_file_path, "/axon/recording/recorder_stats.json");  // Default
 }
 
 TEST_F(ConfigParserTest, ParseRecordingAllOptions) {

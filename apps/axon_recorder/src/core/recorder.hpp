@@ -76,8 +76,8 @@ struct SubscriptionConfig {
  */
 struct DatasetConfig {
   std::string path;
-  std::string mode = "append";                                           // "create" or "append"
-  std::string stats_file_path = "/data/recordings/recorder_stats.json";  // Stats output file
+  std::string mode = "append";                                          // "create" or "append"
+  std::string stats_file_path = "/axon/recording/recorder_stats.json";  // Stats output file
 };
 
 /**
@@ -117,9 +117,9 @@ struct UploadConfig {
   S3Config s3;
   RetryConfig retry;
   int num_workers = 2;
-  std::string state_db_path = "/var/lib/axon/uploader_state.db";
+  std::string state_db_path = "/axon/transfer/transfer_state.db";
   bool delete_after_upload = true;
-  std::string failed_uploads_dir = "/data/failed_uploads/";
+  std::string failed_uploads_dir = "/axon/transfer/failed_uploads/";
   double warn_pending_gb = 8.0;
   double alert_pending_gb = 20.0;
 };

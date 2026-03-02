@@ -19,10 +19,11 @@ namespace uploader {
  * Upload status enumeration
  */
 enum class UploadStatus {
-  PENDING,    // Queued for upload
-  UPLOADING,  // Currently being uploaded
-  COMPLETED,  // Successfully uploaded
-  FAILED      // Permanently failed (exceeded retries)
+  PENDING,            // Queued for upload
+  UPLOADING,          // Currently being uploaded
+  UPLOADED_WAIT_ACK,  // Uploaded to S3, waiting for fleet ACK before finalize
+  COMPLETED,          // Successfully uploaded
+  FAILED              // Permanently failed (exceeded retries)
 };
 
 /**
@@ -34,6 +35,8 @@ inline std::string uploadStatusToString(UploadStatus status) {
       return "pending";
     case UploadStatus::UPLOADING:
       return "uploading";
+    case UploadStatus::UPLOADED_WAIT_ACK:
+      return "uploaded_wait_ack";
     case UploadStatus::COMPLETED:
       return "completed";
     case UploadStatus::FAILED:
@@ -49,6 +52,7 @@ inline std::string uploadStatusToString(UploadStatus status) {
 inline UploadStatus uploadStatusFromString(const std::string& str) {
   if (str == "pending") return UploadStatus::PENDING;
   if (str == "uploading") return UploadStatus::UPLOADING;
+  if (str == "uploaded_wait_ack") return UploadStatus::UPLOADED_WAIT_ACK;
   if (str == "completed") return UploadStatus::COMPLETED;
   if (str == "failed") return UploadStatus::FAILED;
   return UploadStatus::PENDING;  // Default
@@ -58,25 +62,29 @@ inline UploadStatus uploadStatusFromString(const std::string& str) {
  * Record representing an upload's state in the database
  */
 struct UploadRecord {
-  std::string file_path;        // Primary key - local MCAP file path
-  std::string json_path;        // Sidecar JSON path
-  std::string s3_key;           // Target S3 key
-  std::string task_id;          // Task identifier
-  std::string factory_id;       // Factory identifier
-  std::string device_id;        // Device identifier
-  uint64_t file_size_bytes;     // File size
-  std::string checksum_sha256;  // SHA-256 checksum
-  UploadStatus status;          // Current status
-  int retry_count;              // Number of retries so far
-  std::string last_error;       // Last error message
-  std::string created_at;       // ISO 8601 timestamp
-  std::string updated_at;       // ISO 8601 timestamp
-  std::string completed_at;     // ISO 8601 timestamp (empty if not completed)
+  std::string file_path;             // Primary key - local MCAP file path
+  std::string json_path;             // Sidecar JSON path
+  std::string s3_key;                // Target S3 key
+  std::string task_id;               // Task identifier
+  std::string factory_id;            // Factory identifier
+  std::string device_id;             // Device identifier
+  uint64_t file_size_bytes;          // File size
+  std::string checksum_sha256;       // SHA-256 checksum
+  UploadStatus status;               // Current status
+  int retry_count;                   // Number of retries so far
+  std::string last_error;            // Last error message
+  std::string created_at;            // ISO 8601 timestamp
+  std::string updated_at;            // ISO 8601 timestamp
+  std::string completed_at;          // ISO 8601 timestamp (empty if not completed)
+  int delete_retry_count;            // Retry count for post-ACK local cleanup
+  std::string delete_next_retry_at;  // Next cleanup retry time (ISO 8601)
+  std::string delete_last_error;     // Last cleanup error
 
   UploadRecord()
       : file_size_bytes(0)
       , status(UploadStatus::PENDING)
-      , retry_count(0) {}
+      , retry_count(0)
+      , delete_retry_count(0) {}
 };
 
 /**
@@ -138,6 +146,11 @@ public:
   bool markCompleted(const std::string& file_path);
 
   /**
+   * Mark an upload as uploaded and waiting for fleet ACK
+   */
+  bool markUploadedWaitAck(const std::string& file_path);
+
+  /**
    * Mark an upload as failed
    *
    * Sets status to FAILED with error message.
@@ -172,6 +185,16 @@ public:
    * @return Record if found, nullopt otherwise
    */
   std::optional<UploadRecord> get(const std::string& file_path);
+
+  /**
+   * Get a specific upload record by task_id
+   */
+  std::optional<UploadRecord> getByTaskId(const std::string& task_id);
+
+  /**
+   * Get records by status
+   */
+  std::vector<UploadRecord> getByStatus(UploadStatus status);
 
   /**
    * Get all pending uploads
@@ -211,6 +234,14 @@ public:
    * @return Total file size of all pending/uploading records
    */
   uint64_t pendingBytes();
+
+  /**
+   * Update deletion retry fields for post-ACK cleanup
+   */
+  bool updateDeleteRetry(
+    const std::string& file_path, int retry_count, const std::string& next_retry_at,
+    const std::string& error
+  );
 
   /**
    * Delete records older than specified age

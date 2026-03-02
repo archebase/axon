@@ -59,7 +59,7 @@ endif()
 
 option(AXON_ENABLE_COVERAGE "Enable code coverage for all Axon modules" OFF)
 option(AXON_BUILD_TESTS "Build tests for all Axon modules" OFF)
-option(AXON_BUILD_UPLOADER "Build axon_uploader (requires AWS SDK)" OFF)
+option(AXON_BUILD_UPLOADER "Build axon_uploader (requires AWS SDK)" ON)
 
 # Enable testing globally
 if(AXON_BUILD_TESTS)
@@ -155,6 +155,13 @@ if(EXISTS "${AXON_APPS_DIR}/axon_config/CMakeLists.txt")
     add_subdirectory(
         ${AXON_APPS_DIR}/axon_config
         ${CMAKE_CURRENT_BINARY_DIR}/axon_config
+    )
+endif()
+
+if(EXISTS "${AXON_APPS_DIR}/axon_transfer/CMakeLists.txt")
+    add_subdirectory(
+        ${AXON_APPS_DIR}/axon_transfer
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_transfer
     )
 endif()
 

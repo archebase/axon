@@ -46,6 +46,7 @@ jobs:
                 -DAXON_BUILD_ZENOH_PLUGIN=ON \
                 -DAXON_BUILD_ROS1_PLUGIN=OFF \
                 -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_UPLOADER=OFF \
                 -DAXON_BUILD_TESTS=ON && \
               make -j\$(nproc) && \
               ctest --output-on-failure -V -L zenoh_plugin
@@ -67,6 +68,7 @@ jobs:
                 -DAXON_BUILD_ZENOH_PLUGIN=ON \
                 -DAXON_BUILD_ROS1_PLUGIN=OFF \
                 -DAXON_BUILD_ROS2_PLUGIN=OFF \
+                -DAXON_BUILD_UPLOADER=OFF \
                 -DAXON_BUILD_TESTS=ON && \
               make -j\$(nproc) && \
               ctest --output-on-failure -L zenoh_plugin && \

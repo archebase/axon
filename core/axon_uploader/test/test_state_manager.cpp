@@ -252,11 +252,13 @@ TEST_F(UploadStateManagerTest, DbPath) {
 TEST_F(UploadStateManagerTest, StatusConversion) {
   EXPECT_EQ(uploadStatusToString(UploadStatus::PENDING), "pending");
   EXPECT_EQ(uploadStatusToString(UploadStatus::UPLOADING), "uploading");
+  EXPECT_EQ(uploadStatusToString(UploadStatus::UPLOADED_WAIT_ACK), "uploaded_wait_ack");
   EXPECT_EQ(uploadStatusToString(UploadStatus::COMPLETED), "completed");
   EXPECT_EQ(uploadStatusToString(UploadStatus::FAILED), "failed");
 
   EXPECT_EQ(uploadStatusFromString("pending"), UploadStatus::PENDING);
   EXPECT_EQ(uploadStatusFromString("uploading"), UploadStatus::UPLOADING);
+  EXPECT_EQ(uploadStatusFromString("uploaded_wait_ack"), UploadStatus::UPLOADED_WAIT_ACK);
   EXPECT_EQ(uploadStatusFromString("completed"), UploadStatus::COMPLETED);
   EXPECT_EQ(uploadStatusFromString("failed"), UploadStatus::FAILED);
   EXPECT_EQ(uploadStatusFromString("unknown"), UploadStatus::PENDING);  // Default
@@ -529,6 +531,41 @@ TEST_F(UploadStateManagerTest, GetIncompleteEmpty) {
 
   auto incomplete = manager_->getIncomplete();
   EXPECT_TRUE(incomplete.empty());
+}
+
+TEST_F(UploadStateManagerTest, MarkUploadedWaitAck) {
+  auto record = createTestRecord("/tmp/test_wait_ack.mcap", "task_wait_ack");
+  ASSERT_TRUE(manager_->insert(record));
+  ASSERT_TRUE(manager_->markUploadedWaitAck(record.file_path));
+
+  auto retrieved = manager_->get(record.file_path);
+  ASSERT_TRUE(retrieved.has_value());
+  EXPECT_EQ(retrieved->status, UploadStatus::UPLOADED_WAIT_ACK);
+}
+
+TEST_F(UploadStateManagerTest, GetByTaskId) {
+  auto record = createTestRecord("/tmp/test_task_lookup.mcap", "task_lookup");
+  ASSERT_TRUE(manager_->insert(record));
+
+  auto retrieved = manager_->getByTaskId("task_lookup");
+  ASSERT_TRUE(retrieved.has_value());
+  EXPECT_EQ(retrieved->task_id, "task_lookup");
+  EXPECT_EQ(retrieved->file_path, "/tmp/test_task_lookup.mcap");
+}
+
+TEST_F(UploadStateManagerTest, UpdateDeleteRetryFields) {
+  auto record = createTestRecord("/tmp/test_retry_fields.mcap", "task_retry_fields");
+  ASSERT_TRUE(manager_->insert(record));
+
+  ASSERT_TRUE(
+    manager_->updateDeleteRetry(record.file_path, 2, "2026-03-02T12:00:00Z", "permission denied")
+  );
+
+  auto retrieved = manager_->get(record.file_path);
+  ASSERT_TRUE(retrieved.has_value());
+  EXPECT_EQ(retrieved->delete_retry_count, 2);
+  EXPECT_EQ(retrieved->delete_next_retry_at, "2026-03-02T12:00:00Z");
+  EXPECT_EQ(retrieved->delete_last_error, "permission denied");
 }
 
 // ============================================================================

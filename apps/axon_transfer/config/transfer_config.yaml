@@ -1,0 +1,51 @@
+# Axon Transfer Configuration
+# S3 transfer daemon for fleet management
+
+# Device identification
+device_id: "robot_01"
+factory_id: "factory_a"
+
+# WebSocket client configuration
+ws:
+  url: "ws://fleet.factory-a.local:8090/transfer"
+  ping_interval_ms: 30000
+  ping_timeout_ms: 10000
+  reconnect:
+    initial_delay_ms: 1000
+    backoff_multiplier: 2.0
+    max_delay_ms: 60000
+    jitter_factor: 0.2
+
+# File scanner configuration
+scanner:
+  data_dir: "/tmp/axon/recording"
+  require_json_sidecar: true
+
+# S3 uploader configuration
+uploader:
+  state_db_path: "/tmp/axon/transfer/transfer_state.db"
+  delete_after_upload: true
+  failed_uploads_dir: "/tmp/axon/transfer/failed_uploads/"
+  num_workers: 2
+
+  s3:
+    endpoint_url: "https://s3.amazonaws.com"
+    bucket: "axon-recordings"
+    region: "cn-northwest-1"
+    access_key: ""
+    secret_key: ""
+    part_size: 67108864
+    connect_timeout_ms: 10000
+    request_timeout_ms: 300000
+
+  retry:
+    max_retries: 5
+    initial_delay_ms: 1000
+    max_delay_ms: 300000
+    backoff_base: 2.0
+
+  cleanup_retry:
+    max_retries: 5
+    initial_delay_ms: 30000
+    backoff_multiplier: 2.0
+    max_delay_ms: 600000

@@ -36,11 +36,12 @@ struct UploaderConfig {
   int num_workers = 2;
 
   // State persistence
-  std::string state_db_path = "/var/lib/axon/uploader_state.db";
+  std::string state_db_path = "/axon/transfer/transfer_state.db";
 
   // Cleanup policy
   bool delete_after_upload = true;  // Delete device copy after successful upload
-  std::string failed_uploads_dir = "/data/failed_uploads/";  // Move permanently failed files here
+  std::string failed_uploads_dir =
+    "/axon/transfer/failed_uploads/";  // Move permanently failed files here
 
   // Backpressure thresholds (bytes)
   uint64_t warn_pending_bytes = 8ULL * 1024 * 1024 * 1024;    // 8GB - emit warning

@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+#
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# Example config for local API testing:
+# - Fleet manager server: FastAPI on localhost:8090
+# - Object storage: MinIO Docker on localhost:9000
+
+device_id: "robot_01"
+factory_id: "factory_local"
+
+ws:
+  url: "ws://127.0.0.1:8090/transfer"
+  ping_interval_ms: 30000
+  ping_timeout_ms: 10000
+  reconnect:
+    initial_delay_ms: 1000
+    backoff_multiplier: 2.0
+    max_delay_ms: 60000
+    jitter_factor: 0.2
+
+scanner:
+  data_dir: "/tmp/axon/recording"
+  require_json_sidecar: true
+
+uploader:
+  state_db_path: "/tmp/axon/transfer/transfer_state.db"
+  delete_after_upload: true
+  failed_uploads_dir: "/tmp/axon/transfer/failed_uploads/"
+  num_workers: 2
+
+  s3:
+    endpoint_url: "http://127.0.0.1:9000"
+    bucket: "axon-recordings"
+    region: "us-east-1"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    part_size: 67108864
+    connect_timeout_ms: 10000
+    request_timeout_ms: 300000
+
+  retry:
+    max_retries: 5
+    initial_delay_ms: 1000
+    max_delay_ms: 300000
+    backoff_base: 2.0
+
+  cleanup_retry:
+    max_retries: 5
+    initial_delay_ms: 30000
+    backoff_multiplier: 2.0
+    max_delay_ms: 600000
