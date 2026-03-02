@@ -55,42 +55,66 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - ✅ Code formatting: Google-style clang-format
 - ✅ Pre-commit hooks infrastructure
 
+### Robot Configuration Management (axon_config)
+- ✅ **CLI Configuration Tool**: Standalone tool for robot initialization and config collection
+  - `init` - Initialize config directory structure
+  - `scan` - Scan and cache config files into MCAP attachments
+  - `enable` / `disable` - Toggle config injection for recordings
+  - `status` - Show current configuration state
+- ✅ **Config Injection**: Automatically embed robot config (URDF, calibration, sensor config) into MCAP recordings as attachments
+- ✅ **Cache System**: Single-read MCAP cache at `/axon/config/cache.mcap` for zero per-file I/O during recording
+
 ---
 
 ## Version 0.3.0 (In Planning)
 
 ### Web Control Panel (AxonPanel)
-- [ ] Frontend Interface
-  - [ ] Real-time status display
-  - [ ] Recording control buttons
-  - [ ] Topic subscription management
-  - [ ] Real-time statistics charts
-- [ ] Backend Integration
-  - [ ] WebSocket real-time push
-  - [ ] RESTful API call encapsulation
+- ✅ Frontend Interface
+  - ✅ Real-time status display
+  - ✅ Recording control buttons
+  - ✅ Topic subscription management
+  - ✅ Real-time statistics charts
+- ✅ Backend Integration
+  - ✅ WebSocket real-time push
+  - ✅ RESTful API call encapsulation
 - [ ] Deployment Support
   - [ ] Static resources embedded in binary
   - [ ] Standalone deployment mode
 
 ### UDP Reception Service and JSON Recording
-- [ ] UDP Server
-  - [ ] High-performance UDP socket reception
-  - [ ] JSON data stream reception
-- [ ] JSON Message Recording to MCAP
-  - [ ] Generic JSON schema definition
-  - [ ] JSON compression and storage
-- [ ] Hybrid Recording (ROS binary + UDP JSON)
+- ✅ UDP Server
+  - ✅ High-performance UDP socket reception
+  - ✅ JSON data stream reception
+- ✅ JSON Message Recording to MCAP
+  - ✅ Generic JSON schema definition
+  - ✅ JSON compression and storage
+
 
 ### Binary File Embedding in MCAP
-- [ ] Embed Format Design
-  - [ ] MCAP attachment mechanism
-  - [ ] Custom schema definition
-  - [ ] Metadata association
-- [ ] Embed Content Types
-  - [ ] Device model
-  - [ ] Robot description files
-  - [ ] Calibration files
+- ✅ Embed Format Design
+  - ✅ MCAP attachment mechanism
+  - ✅ Custom schema definition
+  - ✅ Metadata association
+- ✅ Embed Content Types
+  - ✅ Device model
+  - ✅ Robot description files
+  - ✅ Calibration files
   - [ ] Custom attachments
+
+### S3 Transfer Daemon (axon_transfer)
+- [ ] **WebSocket Client**: Connect to fleet server for upload scheduling
+  - [ ] Receive per-task and bulk upload commands
+  - [ ] Report progress/completion/failure back over WebSocket
+  - [ ] Device identification via URL path
+- [ ] **Reconnect Strategy**: Exponential backoff with jitter (1s–60s cap, ±20%)
+  - [ ] Unlimited retries — daemon never gives up
+  - [ ] Uploads continue uninterrupted during disconnection
+- [ ] **File Scanner**: Discover MCAP + JSON pairs in configured data directory
+  - [ ] Deduplication via SQLite state (skip already-completed uploads)
+  - [ ] Configurable data retention (delete or keep local copy after upload)
+- [ ] **S3 Upload**: Reuse `core/axon_uploader` library
+  - [ ] Multipart upload for large files (>5 MB)
+  - [ ] Crash recovery via SQLite state persistence
 
 ### Usability Enhancements
 - [ ] Configuration Management Enhancements
@@ -132,6 +156,19 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - [ ] Thread Group Isolation
   - [ ] Recording subscriptions use separate executor/threads
   - [ ] Control plane separate thread pool
+
+### Hybrid Recording
+- [ ] Unified recording pipeline for ROS binary + UDP JSON in a single MCAP file
+- [ ] Time-synchronized message interleaving across sources
+- [ ] Per-source topic namespace isolation
+
+### Robot Configuration Management via Web UI
+- [ ] **AxonPanel Config Integration**
+  - [ ] View current robot configuration (URDF, calibration, sensors)
+  - [ ] Upload and update configuration files
+  - [ ] Trigger config scan and cache rebuild
+  - [ ] Enable/disable config injection toggle
+  - [ ] Config change history and diff view
 
 ---
 
