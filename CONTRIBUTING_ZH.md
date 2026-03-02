@@ -407,7 +407,7 @@ make test
 
 **使用 Docker 运行完整测试套件（无需本地 ROS）：**
 ```bash
-make docker-test-all
+make ci-docker-all
 ```
 
 **特定测试类别：**
@@ -415,10 +415,11 @@ make docker-test-all
 make test-core                    # C++ 核心库测试
 make test-mcap                    # MCAP 写入器测试
 make test-uploader                # 上传器测试
-make docker-test-ros1             # ROS1 测试
-make docker-test-ros2-humble      # ROS2 Humble 测试
-make docker-test-ros2-jazzy       # ROS2 Jazzy 测试
-make docker-test-ros2-rolling     # ROS2 Rolling 测试
+make ci-docker-cpp                # Docker 中运行 C++ 测试
+make ci-docker-ros1               # Docker 中运行 ROS1 测试
+make ci-docker-ros2               # Docker 中运行 ROS2 测试（所有发行版）
+make ci-docker-ros                # Docker 中运行 ROS1 + ROS2 测试
+make e2e-docker                   # Docker 中运行 E2E 测试
 ```
 
 **运行特定测试：**

@@ -61,20 +61,19 @@ make release
 ### Docker Testing (No Local ROS Required)
 
 ```bash
-# C++ tests (dedicated Docker image, faster than ROS images)
-make docker-test-cpp              # C++ core library tests
+# C++ tests (dedicated Docker image)
+make ci-docker-cpp                # C++ core library tests
 
 # ROS tests
-make docker-test-ros1             # ROS1 Noetic
-make docker-test-ros2-humble      # ROS2 Humble
-make docker-test-ros2-jazzy       # ROS2 Jazzy
-make docker-test-ros2-rolling     # ROS2 Rolling
+make ci-docker-ros1               # ROS1 Noetic
+make ci-docker-ros2               # ROS2 (Humble + Jazzy + Rolling)
+make ci-docker-ros                # ROS1 + ROS2
 
-# Test all ROS versions sequentially
-make docker-test-all
+# End-to-end tests
+make e2e-docker                   # ROS1 + ROS2 E2E in Docker
 
-# Test all versions in parallel (faster)
-make docker-test-compose
+# Full CI validation in Docker
+make ci-docker-all
 
 # Coverage in Docker
 make docker-coverage
@@ -411,32 +410,24 @@ ctest -R test_mcap_validator --output-on-failure
 All CI targets run in Docker to match the CI environment exactly. No local ROS required.
 
 ```bash
-# Quick CI check (format + lint + C++ tests)
-make ci
+# Local CI checks
+make ci-local              # Quick CI (format + lint + C++ tests)
+make ci-local-quick        # Fastest check (format + lint only)
+make ci-local-cpp-unit     # C++ unit tests only
+make ci-local-cpp-integration  # C++ integration tests (with MinIO)
+make ci-local-reuse        # REUSE license compliance
 
-# Fastest check (format + lint only, no tests)
-make ci-quick
-
-# Full CI validation (all checks)
-make ci-all
-
-# C++ tests
-make ci-cpp                # C++ library tests (unit + integration)
-make ci-cpp-unit           # C++ unit tests only
-make ci-cpp-integration    # C++ integration tests (with MinIO)
-
-# ROS tests
-make ci-ros1               # ROS1 Noetic tests in Docker
-make ci-ros2               # ROS2 (Humble + Jazzy + Rolling) tests in Docker
-make ci-ros                # All ROS tests
-
-# E2E tests
-make ci-e2e                # E2E tests (ROS1 + ROS2 Humble)
-
-# Coverage
-make ci-coverage           # All coverage reports (C++ + ROS2 + Recorder)
-make ci-coverage-cpp       # C++ library coverage
-make ci-coverage-ros       # ROS2 coverage (Humble only)
+# Docker CI checks
+make ci-docker             # Quick Docker CI (format + lint + C++ tests)
+make ci-docker-all         # Full Docker CI validation (all tests)
+make ci-docker-cpp         # C++ library tests in Docker
+make ci-docker-ros1        # ROS1 Noetic tests in Docker
+make ci-docker-ros2        # ROS2 (Humble + Jazzy + Rolling) tests in Docker
+make ci-docker-ros         # ROS1 + ROS2 tests in Docker
+make e2e-docker            # E2E tests in Docker
+make ci-docker-coverage    # Coverage reports in Docker
+make ci-docker-coverage-cpp  # C++ library coverage in Docker
+make ci-docker-coverage-ros  # ROS2 coverage in Docker
 ```
 
 ## Critical Rules and Conventions

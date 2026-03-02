@@ -427,7 +427,7 @@ make test
 
 **Full test suite using Docker (no local ROS needed):**
 ```bash
-make docker-test-all
+make ci-docker-all
 ```
 
 **Specific test categories:**
@@ -435,10 +435,11 @@ make docker-test-all
 make test-core                    # C++ core library tests
 make test-mcap                    # MCAP writer tests
 make test-uploader                # Uploader tests
-make docker-test-ros1             # ROS1 tests
-make docker-test-ros2-humble      # ROS2 Humble tests
-make docker-test-ros2-jazzy       # ROS2 Jazzy tests
-make docker-test-ros2-rolling     # ROS2 Rolling tests
+make ci-docker-cpp                # C++ tests in Docker
+make ci-docker-ros1               # ROS1 tests in Docker
+make ci-docker-ros2               # ROS2 tests in Docker (all distros)
+make ci-docker-ros                # ROS1 + ROS2 tests in Docker
+make e2e-docker                   # E2E tests in Docker
 ```
 
 **Run specific tests:**
