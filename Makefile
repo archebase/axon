@@ -193,7 +193,7 @@ build-mcap:
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=OFF && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_mcap
 	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
 
 build-logging:
@@ -204,7 +204,7 @@ build-logging:
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=OFF && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_logging
 	@printf "%s\n" "$(GREEN)✓ axon_logging built$(NC)"
 
 build-uploader:
@@ -216,7 +216,7 @@ build-uploader:
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=ON \
 			$(CMAKE_EXTRA_ARGS) && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_uploader
 	@printf "%s\n" "$(GREEN)✓ axon_uploader built$(NC)"
 
 # Test axon_mcap
@@ -626,7 +626,7 @@ build-zenoh:
 			-DAXON_BUILD_ROS1_PLUGIN=OFF \
 			-DAXON_BUILD_ROS2_PLUGIN=OFF \
 			-DAXON_BUILD_ZENOH_PLUGIN=ON && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_zenoh_plugin
 	@printf "%s\n" "$(GREEN)✓ Zenoh plugin built$(NC)"
 
 # =============================================================================

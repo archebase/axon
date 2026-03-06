@@ -3,6 +3,16 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# Check for npm (required for frontend build)
+find_program(NPM_EXECUTABLE npm)
+if(NOT NPM_EXECUTABLE)
+    message(
+        WARNING
+        "npm not found. Skipping axon_panel build. Install Node.js to build axon_panel."
+    )
+    return()
+endif()
+
 # Find cpp-httplib
 find_package(httplib QUIET)
 if(NOT httplib_FOUND)
