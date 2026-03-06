@@ -235,8 +235,8 @@ Axon/
 │   ├── ros1/                 # ROS1 (Noetic) plugin → libaxon_ros1.so
 │   ├── ros2/                 # ROS2 (Humble/Jazzy/Rolling) plugin → libaxon_ros2.so
 │   ├── zenoh/                # Zenoh plugin → libaxon_zenoh.so
+│   ├── udp/                  # UDP JSON recording plugin → libaxon_udp.so
 │   ├── mock/                 # Mock plugin for testing (no ROS required)
-│   │   └── src/mock_plugin/  # Mock plugin implementation
 │   └── filters/              # Data processing filters (shared across plugins)
 │       ├── include/          # Depth compressor header
 │       ├── src/              # Depth compressor implementation
@@ -251,15 +251,39 @@ Axon/
 ├── python/                   # Python client library
 │   └── axon_client/          # Async/sync HTTP client
 │
-├── tools/                    # Utility tools and web applications
-│   └── axon_panel/           # Vue 3 web control panel
+├── docker/                   # Docker images and compose files
+│   ├── Dockerfile.ros1       # ROS1 Noetic build environment
+│   ├── Dockerfile.ros2.*     # ROS2 (Humble/Jazzy/Rolling) environments
+│   └── docker-compose.*.yml  # Compose configurations for testing
+│
+├── cmake/                    # CMake modules and utilities
+│   └── *.cmake               # Custom CMake functions and macros
+│
+├── scripts/                  # Build and utility scripts
+│   └── ci/                   # CI-specific scripts
+│
+├── .github/                  # GitHub Actions workflows and templates
+│   ├── workflows/            # CI/CD pipeline definitions
+│   └── prompts/              # AI assistant prompt templates
 │
 └── docs/designs/             # Design documents
-    ├── rpc-api-design.md     # HTTP RPC API specification
-    ├── frontend-design.md    # AxonPanel web UI architecture
+    ├── rpc-api-design.md                         # HTTP RPC API specification
+    ├── frontend-design.md                        # AxonPanel web UI architecture
     ├── middleware-plugin-architecture-design.md  # Plugin architecture
     ├── license-management-design.md              # REUSE licensing
-    └── depth-compression-filter.md              # Depth compression design
+    ├── depth-compression-filter.md               # Depth compression design
+    ├── axon-config-design.md                     # Robot config management
+    ├── axon-transfer-design.md                   # S3 transfer daemon design
+    ├── app-packaging-design.md                   # Application packaging strategy
+    ├── udp-json-recording-design.md              # UDP JSON recording plugin
+    ├── websocket-push-design.md                  # WebSocket real-time updates
+    ├── edge-uploader-design.md                   # Edge uploader library
+    ├── metadata-injection-design.md              # MCAP metadata injection
+    ├── logging-infrastructure-design.md          # Logging system design
+    ├── cmake-architecture-design.md              # CMake build system
+    ├── recorder-core-test-design.md              # Testing strategy
+    ├── default-working-directory-design.md       # Working directory conventions
+    └── project-structure.md                      # Project organization
 ```
 
 **Plugin ABI Interface:**
