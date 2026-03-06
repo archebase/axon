@@ -77,9 +77,9 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - ✅ Backend Integration
   - ✅ WebSocket real-time push
   - ✅ RESTful API call encapsulation
-- [ ] Deployment Support
-  - [ ] Static resources embedded in binary
-  - [ ] Standalone deployment mode
+- ✅ Deployment Support
+  - ✅ Standalone deployment mode
+  - ✅ Independent web server with embedded static assets
 
 ### UDP Reception Service and JSON Recording
 - ✅ UDP Server
@@ -136,7 +136,7 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - [ ] `axon-config` package with standalone binary
   - [ ] `axon-recorder` package with bundled plugins (ROS1 for 20.04, ROS2 for 22.04/24.04)
   - [ ] `axon-transfer` package with vendored AWS SDK
-  - [ ] `axon-panel` static assets tarball
+  - [ ] `axon-panel` Standalone deployment
 - [ ] **Portable Tarballs**: Linux x86_64 portable bundles
   - [ ] Self-contained directory layout with `run.sh` launcher
   - [ ] Vendored runtime dependencies (excluding glibc/ld-linux)

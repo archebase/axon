@@ -165,6 +165,13 @@ if(EXISTS "${AXON_APPS_DIR}/axon_transfer/CMakeLists.txt")
     )
 endif()
 
+if(EXISTS "${AXON_APPS_DIR}/axon_panel/CMakeLists.txt")
+    add_subdirectory(
+        ${AXON_APPS_DIR}/axon_panel
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_panel
+    )
+endif()
+
 if(EXISTS "${AXON_APPS_DIR}/plugin_example/CMakeLists.txt")
     add_subdirectory(
         ${AXON_APPS_DIR}/plugin_example

@@ -98,6 +98,7 @@ help:
 	@printf "%s\n" "  $(BLUE)make app-axon-recorder$(NC) - Build axon_recorder plugin loader"
 	@printf "%s\n" "  $(BLUE)make app-axon-config$(NC)  - Build axon_config tool"
 	@printf "%s\n" "  $(BLUE)make app-axon-transfer$(NC) - Build axon_transfer daemon"
+	@printf "%s\n" "  $(BLUE)make app-axon-panel$(NC)   - Build axon_panel web server"
 	@printf "%s\n" "  $(BLUE)make test-axon-transfer$(NC) - Build and run axon_transfer tests"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
@@ -412,13 +413,13 @@ coverage-core: coverage-mcap coverage-uploader coverage-logging
 # Application Targets
 # =============================================================================
 
-.PHONY: app app-axon-recorder app-axon-config app-axon-transfer
+.PHONY: app app-axon-recorder app-axon-config app-axon-transfer app-axon-panel
 .PHONY: test-axon-config test-axon-transfer
 
 # Build all applications
 app: build-core
 	@printf "%s\n" "$(YELLOW)Building applications...$(NC)"
-	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder axon_config axon_transfer
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder axon_config axon_transfer axon_panel
 	@printf "%s\n" "$(GREEN)✓ All applications built$(NC)"
 
 # Build axon_recorder (plugin loader library)
@@ -477,6 +478,24 @@ test-axon-transfer: app-axon-transfer
 	@cmake --build $(BUILD_DIR) -j$(NPROC) --target test_transfer_config test_file_scanner
 	@cd build/axon_transfer/test && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_transfer tests passed$(NC)"
+
+# Build axon_panel (standalone web server)
+app-axon-panel:
+	@printf "%s\n" "$(YELLOW)Building axon_panel...$(NC)"
+	@if ! command -v npm >/dev/null 2>&1; then \
+		printf "%s\n" "$(RED)Error: npm not found. Install Node.js first.$(NC)"; \
+		exit 1; \
+	fi
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON >/dev/null 2>&1 || \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON
+	@cmake --build $(BUILD_DIR)/axon_panel -j$(NPROC) --target axon_panel
+	@printf "%s\n" "$(GREEN)✓ axon_panel built$(NC)"
 
 # =============================================================================
 # Mock Middleware Targets
