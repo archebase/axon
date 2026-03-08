@@ -17,6 +17,11 @@ if [ ! -d "$DIST_DIR" ]; then
     exit 1
 fi
 
+if ! command -v xxd >/dev/null 2>&1; then
+    echo "Error: xxd not found. Install it with: sudo apt-get install xxd"
+    exit 1
+fi
+
 echo "Embedding assets from $DIST_DIR into $OUTPUT_FILE"
 
 # Start generating the C++ file

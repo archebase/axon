@@ -216,7 +216,7 @@ build-uploader:
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=ON \
 			$(CMAKE_EXTRA_ARGS) && \
-		cmake --build . -j$(NPROC) --target axon_uploader test_retry_handler test_s3_client_mocked test_edge_uploader_mocked test_upload_queue test_s3_client test_state_manager
+		cmake --build . -j$(NPROC) --target axon_uploader test_retry_handler test_s3_client_mocked test_edge_uploader_mocked test_upload_queue test_s3_client test_state_manager test_edge_uploader
 	@printf "%s\n" "$(GREEN)✓ axon_uploader built$(NC)"
 
 # Test axon_mcap
@@ -433,7 +433,7 @@ app-axon-recorder:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON
-	@cmake --build $(BUILD_DIR)/axon_recorder -j$(NPROC) --target axon_recorder
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder
 	@printf "%s\n" "$(GREEN)✓ axon_recorder built$(NC)"
 
 # Build axon_config (robot configuration tool)
@@ -447,7 +447,7 @@ app-axon-config:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON
-	@cmake --build $(BUILD_DIR)/axon_config -j$(NPROC) --target axon_config
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_config
 	@printf "%s\n" "$(GREEN)✓ axon_config built$(NC)"
 
 # Test axon_config
@@ -494,7 +494,7 @@ app-axon-panel:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON
-	@cmake --build $(BUILD_DIR)/axon_panel -j$(NPROC) --target axon_panel
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_panel
 	@printf "%s\n" "$(GREEN)✓ axon_panel built$(NC)"
 
 # =============================================================================

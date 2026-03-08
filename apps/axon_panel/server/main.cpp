@@ -27,7 +27,16 @@ int main(int argc, char* argv[]) {
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
     if (arg == "--port" && i + 1 < argc) {
-      port = std::stoi(argv[++i]);
+      try {
+        port = std::stoi(argv[++i]);
+      } catch (const std::exception&) {
+        std::cerr << "Invalid port value: " << argv[i] << std::endl;
+        return 1;
+      }
+      if (port <= 0 || port > 65535) {
+        std::cerr << "Port must be between 1 and 65535" << std::endl;
+        return 1;
+      }
     } else if (arg == "--version") {
       std::cout << "AxonPanel v0.3.0" << std::endl;
       return 0;
@@ -66,8 +75,10 @@ int main(int argc, char* argv[]) {
     }
   });
 
-  std::cout << "AxonPanel running on http://0.0.0.0:" << port << std::endl;
-  std::cout << "Press Ctrl+C to stop" << std::endl;
+  // Initialize embedded assets before starting server (thread-safe)
+  EmbeddedAssets::init();
+
+  std::cout << "Starting AxonPanel on http://0.0.0.0:" << port << std::endl;
 
   if (!svr.listen("0.0.0.0", port)) {
     std::cerr << "Failed to start server on port " << port << std::endl;
