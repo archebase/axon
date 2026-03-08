@@ -193,7 +193,7 @@ build-mcap:
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=OFF && \
-		cmake --build . -j$(NPROC) --target axon_mcap
+		cmake --build . -j$(NPROC) --target axon_mcap test_mcap_writer test_mcap_validator test_mcap_validator_mocked
 	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
 
 build-logging:
@@ -216,7 +216,7 @@ build-uploader:
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=ON \
 			$(CMAKE_EXTRA_ARGS) && \
-		cmake --build . -j$(NPROC) --target axon_uploader
+		cmake --build . -j$(NPROC) --target axon_uploader test_retry_handler test_s3_client_mocked test_edge_uploader_mocked test_upload_queue test_s3_client test_state_manager
 	@printf "%s\n" "$(GREEN)✓ axon_uploader built$(NC)"
 
 # Test axon_mcap
