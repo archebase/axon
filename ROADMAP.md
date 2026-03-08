@@ -77,9 +77,9 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - ✅ Backend Integration
   - ✅ WebSocket real-time push
   - ✅ RESTful API call encapsulation
-- [ ] Deployment Support
-  - [ ] Static resources embedded in binary
-  - [ ] Standalone deployment mode
+- ✅ Deployment Support
+  - ✅ Standalone deployment mode
+  - ✅ Independent web server with embedded static assets
 
 ### UDP Reception Service and JSON Recording
 - ✅ UDP Server
@@ -101,32 +101,61 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - ✅ Calibration files
   - [ ] Custom attachments
 
-### S3 Transfer Daemon (axon_transfer)
-- [ ] **WebSocket Client**: Connect to fleet server for upload scheduling
-  - [ ] Receive per-task and bulk upload commands
-  - [ ] Report progress/completion/failure back over WebSocket
-  - [ ] Device identification via URL path
-- [ ] **Reconnect Strategy**: Exponential backoff with jitter (1s–60s cap, ±20%)
-  - [ ] Unlimited retries — daemon never gives up
-  - [ ] Uploads continue uninterrupted during disconnection
-- [ ] **File Scanner**: Discover MCAP + JSON pairs in configured data directory
-  - [ ] Deduplication via SQLite state (skip already-completed uploads)
-  - [ ] Configurable data retention (delete or keep local copy after upload)
-- [ ] **S3 Upload**: Reuse `core/axon_uploader` library
-  - [ ] Multipart upload for large files (>5 MB)
-  - [ ] Crash recovery via SQLite state persistence
+### WebSocket RPC API
+- [ ] **WebSocket Server**: Bidirectional real-time communication alongside HTTP RPC
+  - [ ] WebSocket endpoint at `/ws` for persistent connections
+  - [ ] Support same RPC commands as HTTP API (config/begin/pause/resume/end)
+  - [ ] Real-time state change notifications pushed to clients
+  - [ ] Real-time statistics streaming (message counts, bandwidth, disk usage)
+- [ ] **Connection Management**
+  - [ ] Multiple concurrent client connections
+  - [ ] Automatic reconnection handling with exponential backoff
+  - [ ] Heartbeat/ping-pong for connection health monitoring
+- [ ] **Message Protocol**
+  - [ ] JSON-based request/response format compatible with HTTP RPC
+  - [ ] Event subscription model for selective updates
+  - [ ] Error handling and status codes aligned with HTTP API
 
-### Usability Enhancements
-- [ ] Configuration Management Enhancements
-  - [ ] Configuration validation and error messages
-  - [ ] More configuration templates and presets
-- [ ] Recording Task Management
-  - [ ] Task list viewing
-  - [ ] Batch operations
-- [ ] Logging and Troubleshooting
-  - [ ] Dynamic log level adjustment
-  - [ ] Key event highlighting
-  - [ ] Error diagnostic suggestions
+### S3 Transfer Daemon (axon_transfer)
+- ✅ **WebSocket Client**: Connect to fleet server for upload scheduling
+  - ✅ Receive per-task and bulk upload commands
+  - ✅ Report progress/completion/failure back over WebSocket
+  - ✅ Device identification via URL path
+- ✅ **Reconnect Strategy**: Exponential backoff with jitter (1s–60s cap, ±20%)
+  - ✅ Unlimited retries — daemon never gives up
+  - ✅ Uploads continue uninterrupted during disconnection
+- ✅ **File Scanner**: Discover MCAP + JSON pairs in configured data directory
+  - ✅ Deduplication via SQLite state (skip already-completed uploads)
+  - ✅ Configurable data retention (delete or keep local copy after upload)
+- ✅ **S3 Upload**: Reuse `core/axon_uploader` library
+  - ✅ Multipart upload for large files (>5 MB)
+  - ✅ Crash recovery via SQLite state persistence
+
+### App Packaging
+- [ ] **Native Debian Packages**: Ubuntu 20.04/22.04/24.04 `.deb` packages
+  - [ ] `axon-config` package with standalone binary
+  - [ ] `axon-recorder` package with bundled plugins (ROS1 for 20.04, ROS2 for 22.04/24.04)
+  - [ ] `axon-transfer` package with vendored AWS SDK
+  - [ ] `axon-panel` Standalone deployment
+- [ ] **Portable Tarballs**: Linux x86_64 portable bundles
+  - [ ] Self-contained directory layout with `run.sh` launcher
+  - [ ] Vendored runtime dependencies (excluding glibc/ld-linux)
+- [ ] **CMake Install Rules**: Normalize install destinations
+  - [ ] Add missing install rules for core libraries (`axon_mcap`, `axon_uploader`)
+  - [ ] Consistent use of `GNUInstallDirs` across all components
+  - [ ] Plugin install to `/opt/axon/lib/axon/plugins/`
+- [ ] **Runtime Linking**: RPATH/RUNPATH configuration
+  - [ ] Set `RUNPATH=$ORIGIN/../lib/bundled:$ORIGIN/../lib` for binaries
+  - [ ] Plugin-local runpath for vendored dependencies
+  - [ ] Dependency vendoring script with `ldd` analysis
+- [ ] **Plugin Discovery**: Default plugin resolution in recorder
+  - [ ] Search `/opt/axon/lib/axon/plugins/` by default
+  - [ ] Support `AXON_PLUGIN_DIR` environment variable override
+  - [ ] Explicit selection via config profile or CLI flag
+- [ ] **CI Packaging Matrix**: GitHub Actions workflow
+  - [ ] Per-OS build containers (20.04/22.04/24.04)
+  - [ ] Automated `.deb` generation with CPack
+  - [ ] Release asset publishing with checksums and SBOM
 
 ---
 
@@ -169,6 +198,18 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - [ ] Trigger config scan and cache rebuild
   - [ ] Enable/disable config injection toggle
   - [ ] Config change history and diff view
+
+### Usability Enhancements
+- [ ] Configuration Management Enhancements
+  - [ ] Configuration validation and error messages
+  - [ ] More configuration templates and presets
+- [ ] Recording Task Management
+  - [ ] Task list viewing
+  - [ ] Batch operations
+- [ ] Logging and Troubleshooting
+  - [ ] Dynamic log level adjustment
+  - [ ] Key event highlighting
+  - [ ] Error diagnostic suggestions
 
 ---
 

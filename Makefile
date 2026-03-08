@@ -98,6 +98,7 @@ help:
 	@printf "%s\n" "  $(BLUE)make app-axon-recorder$(NC) - Build axon_recorder plugin loader"
 	@printf "%s\n" "  $(BLUE)make app-axon-config$(NC)  - Build axon_config tool"
 	@printf "%s\n" "  $(BLUE)make app-axon-transfer$(NC) - Build axon_transfer daemon"
+	@printf "%s\n" "  $(BLUE)make app-axon-panel$(NC)   - Build axon_panel web server"
 	@printf "%s\n" "  $(BLUE)make test-axon-transfer$(NC) - Build and run axon_transfer tests"
 	@echo ""
 	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
@@ -192,7 +193,7 @@ build-mcap:
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=OFF && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_mcap test_mcap_writer test_mcap_validator test_mcap_validator_mocked
 	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
 
 build-logging:
@@ -203,7 +204,7 @@ build-logging:
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=OFF && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_logging
 	@printf "%s\n" "$(GREEN)✓ axon_logging built$(NC)"
 
 build-uploader:
@@ -215,7 +216,7 @@ build-uploader:
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=ON \
 			$(CMAKE_EXTRA_ARGS) && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_uploader test_retry_handler test_s3_client_mocked test_edge_uploader_mocked test_upload_queue test_s3_client test_state_manager test_edge_uploader
 	@printf "%s\n" "$(GREEN)✓ axon_uploader built$(NC)"
 
 # Test axon_mcap
@@ -412,13 +413,13 @@ coverage-core: coverage-mcap coverage-uploader coverage-logging
 # Application Targets
 # =============================================================================
 
-.PHONY: app app-axon-recorder app-axon-config app-axon-transfer
+.PHONY: app app-axon-recorder app-axon-config app-axon-transfer app-axon-panel
 .PHONY: test-axon-config test-axon-transfer
 
 # Build all applications
 app: build-core
 	@printf "%s\n" "$(YELLOW)Building applications...$(NC)"
-	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder axon_config axon_transfer
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder axon_config axon_transfer axon_panel
 	@printf "%s\n" "$(GREEN)✓ All applications built$(NC)"
 
 # Build axon_recorder (plugin loader library)
@@ -432,7 +433,7 @@ app-axon-recorder:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON
-	@cmake --build $(BUILD_DIR)/axon_recorder -j$(NPROC) --target axon_recorder
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder
 	@printf "%s\n" "$(GREEN)✓ axon_recorder built$(NC)"
 
 # Build axon_config (robot configuration tool)
@@ -446,7 +447,7 @@ app-axon-config:
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON
-	@cmake --build $(BUILD_DIR)/axon_config -j$(NPROC) --target axon_config
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_config
 	@printf "%s\n" "$(GREEN)✓ axon_config built$(NC)"
 
 # Test axon_config
@@ -477,6 +478,24 @@ test-axon-transfer: app-axon-transfer
 	@cmake --build $(BUILD_DIR) -j$(NPROC) --target test_transfer_config test_file_scanner
 	@cd build/axon_transfer/test && ctest --output-on-failure
 	@printf "%s\n" "$(GREEN)✓ axon_transfer tests passed$(NC)"
+
+# Build axon_panel (standalone web server)
+app-axon-panel:
+	@printf "%s\n" "$(YELLOW)Building axon_panel...$(NC)"
+	@if ! command -v npm >/dev/null 2>&1; then \
+		printf "%s\n" "$(RED)Error: npm not found. Install Node.js first.$(NC)"; \
+		exit 1; \
+	fi
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON >/dev/null 2>&1 || \
+		cmake .. \
+			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_BUILD_TESTS=ON
+	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_panel
+	@printf "%s\n" "$(GREEN)✓ axon_panel built$(NC)"
 
 # =============================================================================
 # Mock Middleware Targets
@@ -607,7 +626,7 @@ build-zenoh:
 			-DAXON_BUILD_ROS1_PLUGIN=OFF \
 			-DAXON_BUILD_ROS2_PLUGIN=OFF \
 			-DAXON_BUILD_ZENOH_PLUGIN=ON && \
-		cmake --build . -j$(NPROC)
+		cmake --build . -j$(NPROC) --target axon_zenoh_plugin
 	@printf "%s\n" "$(GREEN)✓ Zenoh plugin built$(NC)"
 
 # =============================================================================
