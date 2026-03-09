@@ -177,7 +177,9 @@ public:
    * Get session start time.
    * @return Time point when session was opened
    */
-  std::chrono::system_clock::time_point get_start_time() const { return start_time_; }
+  std::chrono::system_clock::time_point get_start_time() const {
+    return start_time_;
+  }
 
   /**
    * Get the last error message.
