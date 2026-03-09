@@ -441,12 +441,7 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     // Convert start_time to ISO8601 string
     std::string started_at;
     if (start_time != std::chrono::system_clock::time_point{}) {
-      std::time_t time_t_val = std::chrono::system_clock::to_time_t(start_time);
-      std::tm tm_buf;
-      localtime_r(&time_t_val, &tm_buf);
-      char buf[32];
-      strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
-      started_at = buf;
+      started_at = HttpCallbackClient::get_iso8601_timestamp(start_time);
     }
 
     // Stop recording
