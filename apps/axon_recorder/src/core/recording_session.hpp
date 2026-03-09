@@ -174,6 +174,12 @@ public:
   double get_duration_sec() const;
 
   /**
+   * Get session start time.
+   * @return Time point when session was opened
+   */
+  std::chrono::system_clock::time_point get_start_time() const { return start_time_; }
+
+  /**
    * Get the last error message.
    */
   std::string get_last_error() const;

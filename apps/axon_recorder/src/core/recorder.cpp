@@ -58,6 +58,8 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
 
   worker_pool_ = std::make_unique<WorkerThreadPool>(pool_config);
 
+  http_callback_client_ = std::make_shared<HttpCallbackClient>();
+
   return true;
 }
 
@@ -421,9 +423,60 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       return false;
     }
 
+    // Get statistics and session info before stopping
+    auto stats = this->get_statistics();
+    std::string finished_at = HttpCallbackClient::get_iso8601_timestamp();
+    double duration_sec = 0.0;
+    std::string output_path;
+    std::string sidecar_path;
+    std::chrono::system_clock::time_point start_time;
+
+    if (recording_session_) {
+      duration_sec = recording_session_->get_duration_sec();
+      output_path = recording_session_->get_path();
+      sidecar_path = recording_session_->get_sidecar_path();
+      start_time = recording_session_->get_start_time();
+    }
+
+    // Convert start_time to ISO8601 string
+    std::string started_at;
+    if (start_time != std::chrono::system_clock::time_point{}) {
+      std::time_t time_t_val = std::chrono::system_clock::to_time_t(start_time);
+      std::tm tm_buf;
+      localtime_r(&time_t_val, &tm_buf);
+      char buf[32];
+      strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+      started_at = buf;
+    }
+
     // Stop recording
     if (this->is_running()) {
       this->stop();
+
+      // Send finish callback if URL is configured
+      if (http_callback_client_ && !task_config->finish_callback_url.empty()) {
+        FinishCallbackPayload payload;
+        payload.task_id = task_id;
+        payload.device_id = task_config->device_id;
+        payload.status = "finished";
+        payload.started_at = started_at;
+        payload.finished_at = finished_at;
+        payload.duration_sec = duration_sec;
+        payload.message_count = static_cast<int64_t>(stats.messages_written);
+        payload.file_size_bytes = static_cast<int64_t>(stats.bytes_written);
+        payload.output_path = output_path;
+        payload.sidecar_path = sidecar_path;
+        payload.topics = task_config->topics;
+
+        // Map TaskConfig fields to CallbackMetadata
+        payload.metadata.scene = task_config->scene;
+        payload.metadata.subscene = task_config->subscene;
+        payload.metadata.skills = task_config->skills;
+        payload.metadata.factory = task_config->factory;
+
+        http_callback_client_->post_finish_callback_async(*task_config, payload);
+      }
+
       return true;
     }
     return false;

@@ -293,6 +293,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp
                 ../src/http/http_server.cpp
+                ../src/http/http_callback_client.cpp
                 ../src/core/worker_thread_pool.cpp
                 ../src/http/websocket_server.cpp
                 ../src/http/websocket_session.cpp

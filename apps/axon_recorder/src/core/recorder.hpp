@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "../config/task_config.hpp"
+#include "../http/http_callback_client.hpp"
 #include "../http/http_server.hpp"
 #include "../plugin/plugin_loader.hpp"
 #include "../state/state_machine.hpp"
@@ -391,6 +392,9 @@ private:
 
   // HTTP RPC server
   std::unique_ptr<HttpServer> http_server_;
+
+  // HTTP callback client for sending start/finish notifications
+  std::shared_ptr<HttpCallbackClient> http_callback_client_;
 
   // Shutdown callback (set by main program)
   ShutdownCallback shutdown_callback_;
