@@ -41,6 +41,9 @@ struct TaskConfig {
   std::string finish_callback_url;
   std::string user_token;  // JWT token for callback authentication
 
+  // Recording timestamps
+  std::string started_at;  // ISO8601 timestamp when recording started
+
   // Metadata timestamps
   std::chrono::system_clock::time_point cached_at;
 
