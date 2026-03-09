@@ -212,6 +212,20 @@ public:
   std::string get_checksum() const;
 
   /**
+   * Get the actual file size after close().
+   */
+  uint64_t get_final_file_size() const {
+    return final_file_size_;
+  }
+
+  /**
+   * Get the time point when close() completed.
+   */
+  std::chrono::system_clock::time_point get_close_time() const {
+    return close_time_;
+  }
+
+  /**
    * Update topic statistics for metadata.
    * Called by RecorderNode when messages are written.
    *
@@ -252,6 +266,9 @@ private:
 
   // Statistics (atomic for thread-safe reads)
   std::atomic<uint64_t> messages_written_{0};
+
+  uint64_t final_file_size_ = 0;
+  std::chrono::system_clock::time_point close_time_;
 };
 
 }  // namespace recorder

@@ -405,6 +405,9 @@ private:
 
   // Mutex for protecting task_config_, worker_pool_, recording_session_ from concurrent access
   mutable std::mutex recorder_mutex_;
+
+  uint64_t last_session_final_file_size_ = 0;
+  std::chrono::system_clock::time_point last_session_close_time_;
 };
 
 }  // namespace recorder

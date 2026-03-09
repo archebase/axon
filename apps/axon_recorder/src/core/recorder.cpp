@@ -256,6 +256,10 @@ void AxonRecorder::stop() {
   // Close recording session (injects metadata, generates sidecar)
   if (recording_session_) {
     recording_session_->close();
+
+    last_session_final_file_size_ = recording_session_->get_final_file_size();
+    last_session_close_time_ = recording_session_->get_close_time();
+
     recording_session_.reset();
   }
 
@@ -423,16 +427,11 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       return false;
     }
 
-    // Get statistics and session info before stopping
-    auto stats = this->get_statistics();
-    std::string finished_at = HttpCallbackClient::get_iso8601_timestamp();
-    double duration_sec = 0.0;
     std::string output_path;
     std::string sidecar_path;
     std::chrono::system_clock::time_point start_time;
 
     if (recording_session_) {
-      duration_sec = recording_session_->get_duration_sec();
       output_path = recording_session_->get_path();
       sidecar_path = recording_session_->get_sidecar_path();
       start_time = recording_session_->get_start_time();
@@ -448,6 +447,23 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     if (this->is_running()) {
       this->stop();
 
+      auto stats = this->get_statistics();
+      int64_t file_size_bytes = (last_session_final_file_size_ > 0)
+                                  ? static_cast<int64_t>(last_session_final_file_size_)
+                                  : static_cast<int64_t>(stats.bytes_written);
+
+      std::string finished_at;
+      double duration_sec = 0.0;
+      if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
+        finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
+        if (start_time != std::chrono::system_clock::time_point{}) {
+          duration_sec =
+            std::chrono::duration<double>(last_session_close_time_ - start_time).count();
+        }
+      } else {
+        finished_at = HttpCallbackClient::get_iso8601_timestamp();
+      }
+
       // Send finish callback if URL is configured
       if (http_callback_client_ && !task_config->finish_callback_url.empty()) {
         FinishCallbackPayload payload;
@@ -458,7 +474,7 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
         payload.finished_at = finished_at;
         payload.duration_sec = duration_sec;
         payload.message_count = static_cast<int64_t>(stats.messages_written);
-        payload.file_size_bytes = static_cast<int64_t>(stats.bytes_written);
+        payload.file_size_bytes = file_size_bytes;
         payload.output_path = output_path;
         payload.sidecar_path = sidecar_path;
         payload.topics = task_config->topics;
