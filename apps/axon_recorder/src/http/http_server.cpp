@@ -257,14 +257,23 @@ void HttpServer::server_thread_func() {
           );
         }
 
+        // Reflect the request Origin back rather than using a wildcard.
+        // This allows only the actual requesting origin (e.g. the panel on port+2)
+        // while still supporting any hostname without hardcoding.
+        std::string origin = std::string(request[http::field::origin]);
+        if (origin.empty()) {
+          origin = "*";
+        }
+
         http::response<http::string_body> response{
           static_cast<http::status>(status_code), request.version()
         };
         response.set(http::field::server, "AxonRecorder/0.1.0");
         response.set(http::field::content_type, content_type);
-        response.set("Access-Control-Allow-Origin", "*");
+        response.set("Access-Control-Allow-Origin", origin);
         response.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         response.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        response.set("Vary", "Origin");
         response.keep_alive(request.keep_alive());
         response.body() = response_body;
         response.prepare_payload();
