@@ -279,13 +279,13 @@ int main(int argc, char* argv[]) {
     config.output_file = cli_output_file;
   }
   if (!cli_profile.empty()) {
-    config.profile = cli_profile;
+    config.recording.profile = cli_profile;
   }
   if (!cli_compression.empty()) {
-    config.compression = cli_compression;
+    config.recording.compression = cli_compression;
   }
   if (cli_compression_level >= 0) {
-    config.compression_level = cli_compression_level;
+    config.recording.compression_level = cli_compression_level;
   }
   if (cli_queue_capacity > 0) {
     config.queue_capacity = cli_queue_capacity;
@@ -317,9 +317,9 @@ int main(int argc, char* argv[]) {
             << "  Plugin:      " << config.plugin_path << "\n"
             << "  Output:      " << config.output_file << "\n"
             << "  Dataset:     " << config.dataset.path << "\n"
-            << "  Profile:     " << config.profile << "\n"
-            << "  Compression: " << config.compression << " level " << config.compression_level
-            << "\n"
+            << "  Profile:     " << config.recording.profile << "\n"
+            << "  Compression: " << config.recording.compression << " level "
+            << config.recording.compression_level << "\n"
             << "  Queue size:  " << config.queue_capacity << "\n";
 
   // Show topics if configured

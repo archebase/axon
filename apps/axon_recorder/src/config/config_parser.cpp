@@ -263,6 +263,15 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
   if (node["max_disk_usage_gb"]) {
     recording.max_disk_usage_gb = node["max_disk_usage_gb"].as<double>();
   }
+  if (node["compression"]) {
+    recording.compression = node["compression"].as<std::string>();
+  }
+  if (node["compression_level"]) {
+    recording.compression_level = node["compression_level"].as<int>();
+  }
+  if (node["profile"]) {
+    recording.profile = node["profile"].as<std::string>();
+  }
   return true;
 }
 
