@@ -86,6 +86,9 @@ struct DatasetConfig {
  */
 struct RecordingConfig {
   double max_disk_usage_gb = 100.0;
+  std::string profile = "ros2";
+  std::string compression = "zstd";
+  int compression_level = 3;
 };
 
 /**
@@ -168,11 +171,6 @@ struct RecorderConfig {
   // Queue configuration
   size_t queue_capacity = 1024;
   size_t num_worker_threads = 1;
-
-  // MCAP options
-  std::string profile = "ros2";
-  std::string compression = "zstd";
-  int compression_level = 3;
 
   // Extended configuration for full recording service
   DatasetConfig dataset;

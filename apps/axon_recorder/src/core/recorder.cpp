@@ -115,17 +115,17 @@ bool AxonRecorder::start() {
 
   // Configure MCAP options
   mcap_wrapper::McapWriterOptions mcap_options;
-  mcap_options.profile = config_.profile;
+  mcap_options.profile = config_.recording.profile;
 
-  if (config_.compression == "zstd") {
+  if (config_.recording.compression == "zstd") {
     mcap_options.compression = mcap_wrapper::Compression::Zstd;
-  } else if (config_.compression == "lz4") {
+  } else if (config_.recording.compression == "lz4") {
     mcap_options.compression = mcap_wrapper::Compression::Lz4;
   } else {
     mcap_options.compression = mcap_wrapper::Compression::None;
   }
 
-  mcap_options.compression_level = config_.compression_level;
+  mcap_options.compression_level = config_.recording.compression_level;
 
   // Construct output file path
   // Priority:
@@ -685,9 +685,9 @@ bool AxonRecorder::register_topics() {
     // Determine schema encoding based on message type
     bool is_json_type = (sub.message_type == "axon_udp/json");
     std::string schema_encoding =
-      is_json_type ? "jsonschema" : (config_.profile == "ros1" ? "ros1msg" : "ros2msg");
+      is_json_type ? "jsonschema" : (config_.recording.profile == "ros1" ? "ros1msg" : "ros2msg");
     std::string channel_encoding =
-      is_json_type ? "json" : (config_.profile == "ros1" ? "ros1" : "cdr");
+      is_json_type ? "json" : (config_.recording.profile == "ros1" ? "ros1" : "cdr");
 
     // Register schema (use message type as schema name)
     uint16_t schema_id = recording_session_->register_schema(sub.message_type, schema_encoding, "");
