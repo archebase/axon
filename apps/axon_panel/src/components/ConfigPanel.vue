@@ -98,7 +98,7 @@
                 <input
                   v-model="form.start_callback_url"
                   type="url"
-                  placeholder="http://server.example.com/api/start"
+                  placeholder="http://server.example.com/api/v1/callbacks/start"
                 />
               </div>
 
@@ -107,7 +107,7 @@
                 <input
                   v-model="form.finish_callback_url"
                   type="url"
-                  placeholder="http://server.example.com/api/finish"
+                  placeholder="http://server.example.com/api/v1/callbacks/finish"
                 />
               </div>
 
@@ -147,16 +147,16 @@ const emit = defineEmits(['submit', 'cancel'])
 
 const form = reactive({
   task_id: `task_${Date.now()}`,
-  device_id: 'robot_01',
+  device_id: 'TASK-2024-001',
   data_collector_id: 'collector_01',
   scene: 'warehouse_navigation',
   subscene: 'aisle_traversal',
-  factory: 'factory_shenzhen',
+  factory: 'mcap-files',
   operator_name: 'operator_001',
   skills: ['navigation', 'obstacle_avoidance'],
   topics: ['/camera/image', '/lidar/scan', '/odom'],
-  start_callback_url: '',
-  finish_callback_url: '',
+  start_callback_url: 'http://192.168.88.3:9999/api/v1/callbacks/start',
+  finish_callback_url: 'http://192.168.88.3:9999/api/v1/callbacks/finish',
   user_token: ''
 })
 
