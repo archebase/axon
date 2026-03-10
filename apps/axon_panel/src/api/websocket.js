@@ -19,23 +19,20 @@ function getWebSocketUrl() {
     const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     // WebSocket server runs on port 8081 (separate from HTTP on 8080)
     const wsPort = url.port === '8080' ? '8081' : url.port
-    return `${wsProtocol}//${url.hostname}:${wsPort}`
+    return `${wsProtocol}//${url.hostname}:${wsPort}/ws`
   }
 
-  // Otherwise, construct from current page location
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const host = window.location.host
+  const hostname = window.location.hostname
 
-  // Development fallback: use port 8081 for WebSocket (separate from HTTP on 8080)
-  let wsHost = host
   if (import.meta.env.DEV) {
-    const port = host.split(':')[1]
-    if (port && port !== '8081') {
-      wsHost = host.replace(/:\d+$/, ':8081')
-    }
+    // Dev mode: WebSocket server is always on port 8081
+    return `${wsProtocol}//${hostname}:8081/ws`
   }
 
-  return `${wsProtocol}//${wsHost}`
+  // Production: panel is served on port N+2, WebSocket is on port N+1 (N=8080 default)
+  const port = parseInt(window.location.port, 10) || 8082
+  return `${wsProtocol}//${hostname}:${port - 1}/ws`
 }
 
 /**

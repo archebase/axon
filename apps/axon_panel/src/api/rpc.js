@@ -1,10 +1,21 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+function getBaseUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
+  // Dev mode: use relative URL so Vite proxy forwards /rpc → localhost:8080
+  if (import.meta.env.DEV) {
+    return ''
+  }
+  // Production: panel is served on port N+2, RPC is on port N (N=8080 default)
+  const port = parseInt(window.location.port, 10) || 8082
+  return `${window.location.protocol}//${window.location.hostname}:${port - 2}`
+}
 
 // Create axios instance with interceptors for debugging
 const apiClient = axios.create({
-  baseURL: BASE_URL,
+  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json'
   }
