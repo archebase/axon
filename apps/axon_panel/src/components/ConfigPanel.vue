@@ -155,8 +155,8 @@ const form = reactive({
   operator_name: 'operator_001',
   skills: ['navigation', 'obstacle_avoidance'],
   topics: ['/camera/image', '/lidar/scan', '/odom'],
-  start_callback_url: 'http://192.168.88.3:9999/api/v1/callbacks/start',
-  finish_callback_url: 'http://192.168.88.3:9999/api/v1/callbacks/finish',
+  start_callback_url: 'http://server.example.com/api/v1/callbacks/start',
+  finish_callback_url: 'http://server.example.com/api/v1/callbacks/finish',
   user_token: ''
 })
 
