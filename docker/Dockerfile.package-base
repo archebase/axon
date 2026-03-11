@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# =============================================================================
+# Axon Package Build - Base Image
+# =============================================================================
+# Multi-stage build environment for creating Axon Debian packages.
+# This base image contains common build dependencies for all packages.
+# =============================================================================
+
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install basic build tools and packaging dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    lsb-release \
+    software-properties-common \
+    gnupg \
+    # Debian packaging tools
+    debhelper \
+    dpkg-dev \
+    devscripts \
+    fakeroot \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install nlohmann-json (from Ubuntu repo)
+RUN apt-get update && apt-get install -y \
+    nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install common dependencies
+RUN apt-get update && apt-get install -y \
+    libyaml-cpp-dev \
+    liblz4-dev \
+    libzstd-dev \
+    libre2-dev \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \
+    libssl-dev \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# AWS SDK v2 is built from source via FetchContent in core/axon_uploader
+# No additional system packages needed beyond curl and sqlite
+
+# Set working directory
+WORKDIR /axon
+
+# Copy packaging scripts
+COPY packaging/deb/scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh 2>/dev/null || true
+
+CMD ["/bin/bash"]
