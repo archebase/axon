@@ -199,6 +199,12 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - [ ] Enable/disable config injection toggle
   - [ ] Config change history and diff view
 
+### Robot Registration (axon_config)
+- [ ] **Keystone Integration**: Register robot identity from `axon_config` to Keystone
+  - [ ] Add `register` command for Keystone enrollment flow
+  - [ ] Push robot metadata (serial number/model/site) with token-based authentication
+  - [ ] Persist registration status locally for retry and diagnostics
+
 ### Usability Enhancements
 - [ ] Configuration Management Enhancements
   - [ ] Configuration validation and error messages
@@ -226,6 +232,12 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 ### Operations and Alerting
 - [ ] Disk space threshold monitoring and alerting
 - [ ] Long blocking alerting
+
+### System Monitor Component (axon_system)
+- [ ] **Standalone Monitor Service**: Add `axon_system` for host/runtime observability
+  - [ ] Collect CPU, memory, disk, and network metrics
+  - [ ] Expose health and resource status for recorder/transfer processes
+  - [ ] Integrate alerts with existing operations pipeline
 
 ### Custom Upload Rules
 - [ ] Upload Strategy Configuration
