@@ -6,7 +6,7 @@ set -e
 
 # Install bash completion
 if [ -d /usr/share/bash-completion/completions ]; then
-    ln -sf /opt/axon/share/bash-completion/axon.bash \
+    ln -sf /opt/axon/share/bash-completion/completions/axon \
            /usr/share/bash-completion/completions/axon 2>/dev/null || true
 fi
 

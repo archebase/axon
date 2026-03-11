@@ -6,7 +6,15 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.12)
-project(axon_zenoh_plugin)
+project(axon_zenoh_plugin VERSION 0.2.1 LANGUAGES CXX)
+
+# =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
 
 # Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -230,8 +238,8 @@ endif()
 install(
     TARGETS axon_zenoh_plugin
     ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib/axon/plugins
-    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION plugins
+    RUNTIME DESTINATION plugins
 )
 
 install(
