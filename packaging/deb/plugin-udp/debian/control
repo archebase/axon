@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-plugin-udp
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libboost-dev,
+
+Package: axon-plugin-udp
+Architecture: any
+Depends: axon-recorder,
+         ${shlibs:Depends},
+         ${misc:Depends}
+Description: UDP JSON plugin for Axon Recorder
+ This plugin enables Axon to record JSON data over UDP.

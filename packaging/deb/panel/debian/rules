@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Build Vue 3 frontend assets first
+	cd apps/axon_panel && npm run build
+	# Then build the C++ binary with embedded assets
+	dh_auto_build
+
+override_dh_auto_clean:
+	dh_auto_clean
+	# Clean frontend build artifacts
+	rm -rf apps/axon_panel/dist apps/axon_panel/node_modules

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-transfer
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libboost-dev,
+               libyaml-cpp-dev,
+               libssl-dev,
+               libaws-common-runtime-dev,
+
+Package: axon-transfer
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Axon S3 Transfer Daemon
+ Background service for uploading MCAP recordings to S3.
+ .
+ Features:
+  - Multipart upload for large files
+  - SQLite state persistence for crash recovery
+  - Exponential backoff retry with jitter
