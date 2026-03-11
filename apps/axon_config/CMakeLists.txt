@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.14)
 project(axon_config LANGUAGES CXX)
 
 # =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
+
+# =============================================================================
 # Centralized CMake Modules
 # =============================================================================
 # All Axon modules must use the centralized cmake/Modules directory.
@@ -82,6 +90,9 @@ target_include_directories(axon_config PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # Compiler warnings
 # =============================================================================
 target_compile_options(axon_config PRIVATE -Wall -Wextra -Wpedantic)
+
+# Set output name to use hyphen (axon-config)
+set_target_properties(axon_config PROPERTIES OUTPUT_NAME "axon-config")
 
 # =============================================================================
 # Installation

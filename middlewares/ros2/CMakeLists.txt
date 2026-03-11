@@ -6,7 +6,15 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.14)
-project(axon_ros2_plugin VERSION 1.0.0 LANGUAGES CXX)
+project(axon_ros2_plugin VERSION 0.2.1 LANGUAGES CXX)
+
+# =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
 
 # Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -188,10 +196,12 @@ endif()
 # =============================================================================
 # Install
 # =============================================================================
+# Install plugin library to /opt/axon/plugins/
 install(
     TARGETS axon_ros2_plugin
     ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib/axon/plugins
+    LIBRARY DESTINATION plugins
+    RUNTIME DESTINATION plugins
 )
 
 install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")
@@ -203,6 +213,7 @@ message(STATUS "")
 message(STATUS "Axon ROS2 Plugin Configuration:")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Install Prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "  ROS2 Root: ${ROS2_DIR}")
 message(STATUS "  Depth Compression: ${AXON_ENABLE_DEPTH_COMPRESSION}")
 message(STATUS "  Tests Enabled: ${AXON_BUILD_TESTS}")

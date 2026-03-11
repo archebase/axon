@@ -6,5 +6,5 @@
 /opt/axon/lib
 /opt/axon/plugins
 /opt/axon/share/config
-/opt/axon/share/bash-completion
+/opt/axon/share/bash-completion/completions
 /usr/bin

@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 project(axon_transfer LANGUAGES CXX)
 
+# =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
+
 find_package(Boost REQUIRED COMPONENTS system thread filesystem)
 find_package(yaml-cpp REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -52,6 +60,9 @@ target_compile_features(axon_transfer_core PUBLIC cxx_std_17)
 
 add_executable(axon_transfer src/main.cpp)
 target_link_libraries(axon_transfer PRIVATE axon_transfer_core)
+
+# Set output name to use hyphen (axon-transfer)
+set_target_properties(axon_transfer PROPERTIES OUTPUT_NAME "axon-transfer")
 
 install(TARGETS axon_transfer RUNTIME DESTINATION bin)
 

@@ -6,7 +6,15 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.14)
-project(axon_ros1_plugin VERSION 1.0.0 LANGUAGES CXX)
+project(axon_ros1_plugin VERSION 0.2.1 LANGUAGES CXX)
+
+# =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
 
 # Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -212,7 +220,8 @@ endif()
 install(
     TARGETS axon_ros1_plugin
     ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib/axon/plugins
+    LIBRARY DESTINATION plugins
+    RUNTIME DESTINATION plugins
 )
 
 install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")

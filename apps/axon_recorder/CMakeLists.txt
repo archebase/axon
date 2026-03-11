@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.12)
 project(axon_recorder VERSION 0.2.1)
 
 # =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
+
+# =============================================================================
 # Centralized CMake Modules
 # =============================================================================
 # All Axon modules must use the centralized cmake/Modules directory.
@@ -145,6 +153,9 @@ endif()
 # Enable C++17
 target_compile_features(axon_recorder PRIVATE cxx_std_17)
 
+# Set output name to use hyphen (axon-recorder)
+set_target_properties(axon_recorder PROPERTIES OUTPUT_NAME "axon-recorder")
+
 # Coverage flags
 if(AXON_ENABLE_COVERAGE)
     target_compile_options(axon_recorder PRIVATE --coverage)
@@ -182,6 +193,8 @@ endif()
 message(STATUS "")
 message(STATUS "=== Axon Recorder Configuration ===")
 message(STATUS "  C++ Standard: 17")
+message(STATUS "  Install Prefix: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "  Output Binary: axon-recorder")
 message(STATUS "  Coverage: ${AXON_ENABLE_COVERAGE}")
 message(STATUS "=================================")
 message(STATUS "")
