@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+#!/bin/sh
+set -e
+
+# Install bash completion
+if [ -d /usr/share/bash-completion/completions ]; then
+    ln -sf /opt/axon/share/bash-completion/axon.bash \
+           /usr/share/bash-completion/completions/axon 2>/dev/null || true
+fi
+
+# Add to /etc/axon directories for runtime config
+if [ ! -d /etc/axon ]; then
+    mkdir -p /etc/axon
+fi
+
+if [ ! -d /axon ]; then
+    mkdir -p /axon
+fi
+
+exit 0

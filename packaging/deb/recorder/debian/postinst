@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+#!/bin/sh
+set -e
+
+# Create runtime directories
+if [ ! -d /axon ]; then
+    mkdir -p /axon
+fi
+
+if [ ! -d /axon/recordings ]; then
+    mkdir -p /axon/recordings
+fi
+
+# Create system config directory
+if [ ! -d /etc/axon ]; then
+    mkdir -p /etc/axon
+fi
+
+# Enable systemd service if systemd is running
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+
+exit 0

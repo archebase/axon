@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+#!/bin/sh
+set -e
+
+# Create runtime directories
+if [ ! -d /axon ]; then
+    mkdir -p /axon
+fi
+
+if [ ! -d /axon/uploads ]; then
+    mkdir -p /axon/uploads
+fi
+
+exit 0

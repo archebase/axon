@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-config
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libzstd-dev,
+               liblz4-dev
+
+Package: axon-config
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Axon Robot Configuration Tool
+ CLI tool for managing robot configuration in Axon.
+ .
+ Features:
+  - Initialize config directory structure
+  - Scan and cache config files
+  - Enable/disable config injection for recordings
+  - Show configuration status

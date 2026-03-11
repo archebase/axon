@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+#!/bin/sh
+set -e
+
+# Stop systemd service before removal if it's running
+if [ -d /run/systemd/system ]; then
+    if systemctl is-active --quiet axon-transfer.service 2>/dev/null; then
+        systemctl stop axon-transfer.service || true
+    fi
+    if systemctl is-enabled --quiet axon-transfer.service 2>/dev/null; then
+        systemctl disable axon-transfer.service || true
+    fi
+fi
+
+exit 0

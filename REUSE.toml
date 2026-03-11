@@ -127,6 +127,12 @@ SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"
 
 [[annotations]]
+path = "packaging/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
+SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
 path = ".vscode/**"
 SPDX-FileCopyrightText = "Copyright (c) 2026 ArcheBase"
 SPDX-License-Identifier = "MulanPSL-2.0"

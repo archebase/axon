@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-dispatcher
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake
+
+Package: axon-dispatcher
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Axon Unified CLI Dispatcher
+ Provides the 'axon' command that dispatches to subcommands
+ like 'axon recorder', 'axon config', etc. (similar to git).
+ .
+ This creates a unified entry point for all Axon tools.

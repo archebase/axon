@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+axon-recorder (0.2.1-1) unstable; urgency=medium
+
+  * Initial packaging
+  * Based on Axon v0.2.1
+
+ -- ArcheBase <noreply@archebase.com>  Tue, 11 Mar 2026 00:00:00 +0000

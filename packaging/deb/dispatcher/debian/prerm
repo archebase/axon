@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+#!/bin/sh
+set -e
+
+# Remove bash completion symlink
+if [ -L /usr/share/bash-completion/completions/axon ]; then
+    rm -f /usr/share/bash-completion/completions/axon
+fi
+
+exit 0
