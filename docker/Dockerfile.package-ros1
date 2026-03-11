@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# =============================================================================
+# Axon Package Build - ROS1 Noetic
+# =============================================================================
+# Build environment for creating Axon ROS1 Noetic plugin packages.
+# =============================================================================
+
+FROM ros:noetic-ros-base
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install Debian packaging tools
+RUN apt-get update && apt-get install -y \
+    debhelper \
+    dpkg-dev \
+    devscripts \
+    fakeroot \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install nlohmann-json
+RUN apt-get update && apt-get install -y \
+    nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install common dependencies
+RUN apt-get update && apt-get install -y \
+    libyaml-cpp-dev \
+    liblz4-dev \
+    libzstd-dev \
+    libre2-dev \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \
+    libssl-dev \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# AWS SDK v2 is built from source via FetchContent in core/axon_uploader
+# No additional system packages needed beyond curl and sqlite
+
+# Source ROS1
+RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc
+
+# Set working directory
+WORKDIR /axon
+
+# Copy packaging scripts
+COPY packaging/deb/scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh 2>/dev/null || true
+
+CMD ["/bin/bash"]
