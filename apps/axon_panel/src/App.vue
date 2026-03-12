@@ -1,7 +1,10 @@
 <template>
   <div id="app">
     <header class="header">
-      <h1>AxonPanel</h1>
+      <div class="logo-title">
+        <img src="/logo.png" alt="Axon Logo" class="logo" />
+        <h1>AxonPanel</h1>
+      </div>
       <div class="header-middle">
         <RpcModeToggle v-model="rpcMode" :ws-connected="wsConnected" />
       </div>
@@ -505,20 +508,33 @@ onUnmounted(() => {
 }
 
 .header {
-  background: var(--primary-color);
-  color: white;
+  background: var(--surface-color);
+  color: var(--text-primary);
   padding: 1.5rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   gap: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .header h1 {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
+  color: var(--primary-color);
+}
+
+.logo-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo {
+  height: 32px;
+  width: auto;
 }
 
 .header-middle {
@@ -534,9 +550,9 @@ onUnmounted(() => {
 }
 
 .log-toggle-btn {
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  color: white;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
   padding: 0;
   border-radius: 6px;
   cursor: pointer;
@@ -560,13 +576,13 @@ onUnmounted(() => {
 }
 
 .log-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.26);
+  background: var(--border-color);
   transform: translateY(-1px);
 }
 
 .log-toggle-btn:active {
   transform: translateY(0);
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--neutral-color);
 }
 
 .log-badge {
@@ -626,6 +642,10 @@ onUnmounted(() => {
 
   .header h1 {
     font-size: 1.25rem;
+  }
+
+  .logo {
+    height: 24px;
   }
 
   .header-middle {

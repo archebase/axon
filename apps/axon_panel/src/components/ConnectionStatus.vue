@@ -40,7 +40,7 @@ defineEmits(['refresh'])
 
 .label {
   font-weight: 500;
-  opacity: 0.95;
+  color: var(--text-secondary);
 }
 
 .badge {
@@ -62,15 +62,16 @@ defineEmits(['refresh'])
 
 .value {
   font-family: monospace;
-  background: rgba(255,255,255,0.18);
+  background: var(--surface-muted);
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
+  color: var(--text-primary);
 }
 
 .refresh-btn {
-  background: rgba(255,255,255,0.16);
-  border: none;
-  color: white;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -80,7 +81,7 @@ defineEmits(['refresh'])
 }
 
 .refresh-btn:hover {
-  background: rgba(255,255,255,0.26);
+  background: var(--border-color);
 }
 
 .refresh-btn:active {

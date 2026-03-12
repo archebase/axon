@@ -35,7 +35,7 @@ defineEmits(['update:modelValue'])
 
 .label {
   font-weight: 500;
-  color: white;
+  color: var(--text-secondary);
   font-size: 0.875rem;
 }
 
