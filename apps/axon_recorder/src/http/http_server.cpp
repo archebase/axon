@@ -435,7 +435,7 @@ void HttpServer::handle_request(
     nlohmann::json health;
     health["status"] = "ok";
     health["service"] = "AxonRecorder";
-    health["version"] = "0.0.0";
+    health["version"] = axon::recorder::get_version();
     health["running"] = running_.load();
     health["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
     response_body = health.dump();

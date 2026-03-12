@@ -62,7 +62,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { rpcApi } from './api/rpc'
 import { getWebSocketClient } from './api/websocket'
 import ConnectionStatus from './components/ConnectionStatus.vue'
@@ -85,6 +85,11 @@ const logs = ref([])
 // RPC mode: 'ws' (WebSocket only), 'http' (HTTP only)
 const rpcMode = ref(localStorage.getItem('rpcMode') || 'ws')
 const wsConnected = ref(false)
+
+// Persist RPC mode preference to localStorage
+watch(rpcMode, (newValue) => {
+  localStorage.setItem('rpcMode', newValue)
+})
 
 const errorCount = computed(() => logs.value.filter(log => log.type === 'error').length)
 
