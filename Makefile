@@ -429,10 +429,12 @@ app-axon-recorder:
 	@cd $(BUILD_DIR) && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_BUILD_TESTS=ON >/dev/null 2>&1 || \
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=OFF >/dev/null 2>&1 || \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-			-DAXON_BUILD_TESTS=ON
+			-DAXON_BUILD_TESTS=ON \
+			-DAXON_BUILD_UPLOADER=OFF
 	@cmake --build $(BUILD_DIR) -j$(NPROC) --target axon_recorder
 	@printf "%s\n" "$(GREEN)✓ axon_recorder built$(NC)"
 
