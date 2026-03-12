@@ -3,14 +3,20 @@
 # Skip tests
 DEB_BUILD_OPTIONS += nocheck
 
-# Get the repo root - assume we're building from apps/ subdirectory
+# Get the repo root - use AXON_REPO_ROOT from environment if set, otherwise compute
+ifeq ($(origin AXON_REPO_ROOT),environment)
+REPO_ROOT := $(AXON_REPO_ROOT)
+else
 REPO_ROOT := $(shell cd $(CURDIR)/../.. && pwd)
+endif
 
 # main packaging script based on dh7 syntax
 %:
 	dh $@
 
 override_dh_auto_build:
+	# Install npm dependencies first
+	npm install
 	# Build Vue 3 frontend assets first
 	npm run build
 	# Then build the C++ binary with embedded assets
@@ -18,31 +24,6 @@ override_dh_auto_build:
 
 override_dh_auto_configure:
 	dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release
-
-# Skip shlibdeps and gencontrol to work around dpkg-gencontrol backslash issue
-override_dh_shlibdeps:
-	# Skip
-
-override_dh_gencontrol:
-	# Skip
-
-# After dh_installdeb, manually create control file and build package
-override_dh_builddeb:
-	dh_installdeb
-	# Manually create control file
-	cat > debian/axon-panel/DEBIAN/control << EOF
-Package: axon-panel
-Version: 0.2.1-1
-Architecture: amd64
-Maintainer: ArcheBase <noreply@archebase.com>
-Installed-Size: 500
-Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.3.1), libssl3, $${misc:Depends}
-Section: utils
-Priority: optional
-Description: Axon Web Panel
- Web-based control interface for Axon recorder.
-EOF
-	dh_builddeb
 
 override_dh_auto_clean:
 	dh_auto_clean || true

@@ -37,6 +37,7 @@ fi
 # Always set PACKAGE_DIR relative to PROJECT_ROOT
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
 OUTPUT_DIR="${PACKAGE_DIR}/output"
+BUILD_DIR="${PACKAGE_DIR}/build"
 SCRIPT_DIR="${PACKAGE_DIR}/scripts"
 
 # Colors for output
@@ -57,13 +58,18 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Create output directory
+# Create output and build directories
 mkdir -p "${OUTPUT_DIR}"
+mkdir -p "${BUILD_DIR}"
 
 # Clean output directory
 rm -f "${OUTPUT_DIR}"/*.deb 2>/dev/null || true
 
-# Clean any previous build artifacts from all app directories
+# Clean build directory (centralized location for all intermediate artifacts)
+rm -rf "${BUILD_DIR:?}"/*
+mkdir -p "${BUILD_DIR}"
+
+# Clean any stray debian directories from app directories (legacy cleanup)
 for app_dir in ${PROJECT_ROOT}/apps/*; do
     rm -rf "${app_dir}/debian" "${app_dir}/obj-"* "${app_dir}/.debian-build" 2>/dev/null || true
 done 2>/dev/null || true
@@ -88,6 +94,7 @@ DEBIAN_VERSION="${VERSION}-1"
 
 log_info "Building Axon standalone packages version ${DEBIAN_VERSION}"
 log_info "Project root: ${PROJECT_ROOT}"
+log_info "Build directory: ${BUILD_DIR}"
 log_info "Output directory: ${OUTPUT_DIR}"
 
 # Build function for individual packages
@@ -97,6 +104,7 @@ build_app_package() {
     local app_dir="$2"
     local pkg_dir="$3"  # packaging/deb subdirectory name (e.g., "recorder" not "axon-recorder")
     local debian_dir="${PACKAGE_DIR}/${pkg_dir}/debian"
+    local build_area="${BUILD_DIR}/${pkg_name}"
 
     if [ ! -d "$debian_dir" ]; then
         log_error "Debian directory not found: $debian_dir"
@@ -114,20 +122,30 @@ build_app_package() {
     local original_dir="$(pwd)"
     local build_success=0
 
-    # Clean up any previous build artifacts
-    rm -rf "${app_dir}/debian" "${app_dir}/obj-"* "${app_dir}/.debian-build" 2>/dev/null || true
+    # Clean and create build area
+    rm -rf "${build_area}"
+    mkdir -p "${build_area}"
 
-    # Create temp directory with debian files
-    local temp_dir="${app_dir}/.debian-build"
-    rm -rf "${temp_dir}"
-    cp -r "${debian_dir}" "${temp_dir}"
+    # Copy source to build area (excluding build artifacts and .git)
+    mkdir -p "${build_area}"
+    # Use tar instead of rsync for better compatibility
+    (cd "${app_dir}" && tar cf - \
+        --exclude='.git*' \
+        --exclude='build' \
+        --exclude='install' \
+        --exclude='log' \
+        --exclude='*.pyc' \
+        --exclude='__pycache__' \
+        --exclude='debian' \
+        --exclude='obj-*' \
+        --exclude='.debian-build' \
+        .) | (cd "${build_area}" && tar xf -)
 
-    # Move to actual debian directory
-    rm -rf "${app_dir}/debian"
-    mv "${temp_dir}" "${app_dir}/debian"
+    # Copy debian files to build area
+    cp -r "${debian_dir}" "${build_area}/debian"
 
-    # Build from source directory
-    cd "${app_dir}"
+    # Build from build area
+    cd "${build_area}"
     if AXON_REPO_ROOT="${PROJECT_ROOT}" dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then
         log_info "Successfully built ${pkg_name}"
         build_success=1
@@ -142,10 +160,10 @@ build_app_package() {
     fi
 
     # Move built packages to output directory (even if build had post-package errors)
-    find .. -maxdepth 1 -name "${pkg_name}_*.deb" -type f -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+    find "${BUILD_DIR}" -maxdepth 1 -name "${pkg_name}_*.deb" -type f -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
 
-    # Clean up
-    rm -rf "${app_dir}/debian"
+    # Clean up build area (keep directory for inspection)
+    # rm -rf "${build_area}"
     cd "${original_dir}"
 
     if [ "$build_success" -eq 1 ]; then
@@ -156,6 +174,7 @@ build_app_package() {
 }
 
 # Build packages in order
+
 # 1. axon-recorder (core recorder with HTTP RPC API)
 build_app_package "axon-recorder" "${PROJECT_ROOT}/apps/axon_recorder" "recorder" || exit 1
 
@@ -163,23 +182,18 @@ build_app_package "axon-recorder" "${PROJECT_ROOT}/apps/axon_recorder" "recorder
 build_app_package "axon-config" "${PROJECT_ROOT}/apps/axon_config" "config" || exit 1
 
 # 3. axon-transfer (S3 transfer daemon)
-# Note: Requires AWS SDK. If not installed, package will be built without binary.
-build_app_package "axon-transfer" "${PROJECT_ROOT}/apps/axon_transfer" "transfer" || log_warn "axon-transfer built without binary (AWS SDK not available)"
+build_app_package "axon-transfer" "${PROJECT_ROOT}/apps/axon_transfer" "transfer" || exit 1
 
 # 4. axon-panel (web control panel - requires Node.js)
-if command -v npm &> /dev/null; then
-    log_info "Building axon-panel (requires Node.js build)..."
-    build_app_package "axon-panel" "${PROJECT_ROOT}/apps/axon_panel" "panel" || log_warn "Failed to build axon-panel (continuing)"
-else
-    log_warn "npm not found, skipping axon-panel build"
-fi
+build_app_package "axon-panel" "${PROJECT_ROOT}/apps/axon_panel" "panel" || exit 1
 
 # 5. axon-dispatcher (unified CLI dispatcher)
 build_app_package "axon-dispatcher" "${PROJECT_ROOT}/apps/axon_dispatcher" "dispatcher" || exit 1
 
 # 6. axon-all (meta-package)
 log_info "Building axon-all (meta-package)..."
-temp_meta_dir="/tmp/axon-all-build.$$"
+temp_meta_dir="${BUILD_DIR}/axon-all"
+rm -rf "$temp_meta_dir"
 mkdir -p "$temp_meta_dir"
 cd "$temp_meta_dir"
 

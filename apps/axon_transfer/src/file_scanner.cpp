@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-#include "../../../core/axon_uploader/upload_state_manager.hpp"
+#include "upload_state_manager.hpp"
 
 namespace axon {
 namespace transfer {

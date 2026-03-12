@@ -72,6 +72,11 @@ target_include_directories(
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# When building for packaging with AXON_REPO_ROOT
+if(DEFINED AXON_REPO_ROOT)
+    target_include_directories(axon_transfer_core PUBLIC "${AXON_UPLOADER_DIR}")
+endif()
+
 target_link_libraries(
     axon_transfer_core
     PUBLIC

@@ -22,6 +22,7 @@ fi
 
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
 OUTPUT_DIR="${PACKAGE_DIR}/output"
+BUILD_DIR="${PACKAGE_DIR}/build"
 
 # Colors for output
 RED='\033[0;31m'
@@ -55,8 +56,9 @@ if [ ! -d "$SOURCE_DIR" ]; then
     exit 1
 fi
 
-# Create output directory
+# Create output and build directories
 mkdir -p "${OUTPUT_DIR}"
+mkdir -p "${BUILD_DIR}"
 
 # Get version
 if [ -f "${PROJECT_ROOT}/apps/axon_recorder/CMakeLists.txt" ]; then
@@ -72,30 +74,41 @@ log_info "Building ${PKG_NAME}..."
 # Save current directory
 ORIGINAL_DIR="$(pwd)"
 
-# Create temp directory with debian files
-TEMP_DIR="${SOURCE_DIR}/.debian-build"
-rm -rf "${TEMP_DIR}"
-cp -r "${DEBIAN_DIR}" "${TEMP_DIR}"
+# Clean and create build area
+BUILD_AREA="${BUILD_DIR}/${PKG_NAME}"
+rm -rf "${BUILD_AREA}"
+mkdir -p "${BUILD_AREA}"
 
-# Move to actual debian directory
-rm -rf "${SOURCE_DIR}/debian"
-mv "${TEMP_DIR}" "${SOURCE_DIR}/debian"
+# Copy source to build area (excluding build artifacts and .git)
+mkdir -p "${BUILD_AREA}"
+# Use tar instead of rsync for better compatibility
+(cd "${SOURCE_DIR}" && tar cf - \
+    --exclude='.git*' \
+    --exclude='build' \
+    --exclude='install' \
+    --exclude='log' \
+    --exclude='*.pyc' \
+    --exclude='__pycache__' \
+    --exclude='debian' \
+    --exclude='obj-*' \
+    --exclude='.debian-build' \
+    .) | (cd "${BUILD_AREA}" && tar xf -)
 
-# Build from source directory
-cd "${SOURCE_DIR}"
+# Copy debian files to build area
+cp -r "${DEBIAN_DIR}" "${BUILD_AREA}/debian"
+
+# Build from build area
+cd "${BUILD_AREA}"
 if dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then
     log_info "Successfully built ${PKG_NAME}"
 
     # Move built packages to output directory
-    find .. -maxdepth 1 -name "${PKG_NAME}_*.deb" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+    find "${BUILD_DIR}" -maxdepth 1 -name "${PKG_NAME}_*.deb" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
 
-    # Clean up
-    rm -rf "${SOURCE_DIR}/debian"
     cd "${ORIGINAL_DIR}"
     exit 0
 else
     log_error "Failed to build ${PKG_NAME}"
-    rm -rf "${SOURCE_DIR}/debian"
     cd "${ORIGINAL_DIR}"
     exit 1
 fi

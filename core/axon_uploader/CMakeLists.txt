@@ -60,7 +60,10 @@ endif()
 
 if(NOT AWSSDK_FOUND)
     message(STATUS "axon_uploader: AWS SDK not found, skipping uploader build")
-    message(STATUS "axon_uploader: To enable, install AWS SDK from https://github.com/aws/aws-sdk-cpp")
+    message(
+        STATUS
+        "axon_uploader: To enable, install AWS SDK from https://github.com/aws/aws-sdk-cpp"
+    )
     set(_AXON_UPLOADER_DEPS_MET FALSE)
 endif()
 
@@ -184,7 +187,7 @@ if(AXON_UPLOADER_BUILD_TESTS OR AXON_BUILD_TESTS)
     elseif(
         AXON_UPLOADER_ENABLE_COVERAGE
         AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
-        )
+    )
         target_compile_options(
             test_edge_uploader
             PRIVATE --coverage -fprofile-arcs -ftest-coverage

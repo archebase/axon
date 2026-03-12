@@ -69,6 +69,7 @@ case "$BUILD_TYPE" in
         DOCKERFILE="Dockerfile.package-ros1"
         BUILD_SCRIPT="build-ros1.sh"
         IMAGE_NAME="axon-package-ros1"
+        ROS_DISTRO="noetic"
         ;;
     all)
         log_section "Building All Packages in Docker"

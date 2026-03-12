@@ -101,6 +101,10 @@ help:
 	@printf "%s\n" "  $(BLUE)make app-axon-panel$(NC)   - Build axon_panel web server"
 	@printf "%s\n" "  $(BLUE)make test-axon-transfer$(NC) - Build and run axon_transfer tests"
 	@echo ""
+	@printf "%s\n" "$(YELLOW)Packaging (Docker-based):$(NC)"
+	@printf "%s\n" "  $(BLUE)make package-docker$(NC)     - Build all packages in Docker (recommended)"
+	@printf "%s\n" "  $(BLUE)make package-clean$(NC)      - Clean package build artifacts"
+	@echo ""
 	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
 	@printf "%s\n" "  $(BLUE)make build-mock$(NC)           - Build mock middleware plugin"
 	@printf "%s\n" "  $(BLUE)make test-mock-e2e$(NC)        - Run mock plugin E2E test (standalone)"
@@ -1059,45 +1063,22 @@ ci-local-reuse-sbom:
 # =============================================================================
 # Packaging Targets
 # =============================================================================
-# Build Debian packages for Axon components.
+# Build Debian packages for Axon components using Docker.
 
 PACKAGE_DIR := packaging/deb
-
-# package-standalone: Build non-ROS packages (recorder, config, panel, dispatcher)
-.PHONY: package-standalone
-package-standalone:
-	@echo "Building standalone packages..."
-	@$(PACKAGE_DIR)/scripts/build-standalone.sh
-
-# package-ros2: Build ROS2 plugin packages
-.PHONY: package-ros2
-package-ros2:
-	@echo "Building ROS2 plugin packages..."
-	@$(PACKAGE_DIR)/scripts/build-ros2.sh
-
-# package-ros1: Build ROS1 plugin packages
-.PHONY: package-ros1
-package-ros1:
-	@echo "Building ROS1 plugin packages..."
-	@$(PACKAGE_DIR)/scripts/build-ros1.sh
-
-# package-all: Build all applicable packages for current environment
-.PHONY: package-all
-package-all:
-	@echo "Building all applicable packages..."
-	@$(PACKAGE_DIR)/scripts/build-all.sh
 
 # package-docker: Build packages in Docker container
 .PHONY: package-docker
 package-docker:
 	@echo "Building packages in Docker..."
-	@$(PACKAGE_DIR)/scripts/build-in-docker.sh
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh all
 
 # package-clean: Clean package build artifacts
 .PHONY: package-clean
 package-clean:
 	@echo "Cleaning package build artifacts..."
 	@rm -rf $(PACKAGE_DIR)/output/*.deb
+	@rm -rf $(PACKAGE_DIR)/build
 	@find . -name ".debian-build" -type d -exec rm -rf {} + 2>/dev/null || true
 	@find . -name "debian" -type d -path "*/apps/*" -exec rm -rf {} + 2>/dev/null || true
 	@find . -name "debian" -type d -path "*/middlewares/*" -exec rm -rf {} + 2>/dev/null || true
