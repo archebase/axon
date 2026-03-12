@@ -18,6 +18,7 @@ ENV TZ=UTC
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
+    ninja-build \
     pkg-config \
     git \
     curl \
@@ -50,13 +51,38 @@ RUN apt-get update && apt-get install -y \
     libboost-dev \
     libboost-system-dev \
     libboost-filesystem-dev \
+    libboost-log-dev \
+    libboost-thread-dev \
     libssl-dev \
     libsqlite3-dev \
     libcurl4-openssl-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# AWS SDK v2 is built from source via FetchContent in core/axon_uploader
-# No additional system packages needed beyond curl and sqlite
+# Install AWS SDK for C++ (required for axon-transfer for S3 uploads)
+# Build from source with minimal components to reduce build time
+# This takes ~15-20 minutes but is required for S3 upload functionality
+RUN git clone --depth 1 --recurse-submodules \
+    --branch 1.11.479 \
+    --single-branch \
+    https://github.com/aws/aws-sdk-cpp.git \
+    /tmp/aws-sdk-cpp && \
+    cd /tmp/aws-sdk-cpp && \
+    cmake -B build \
+        -GNinja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_ONLY="s3;transfer" \
+        -DBUILD_SHARED_LIBS=ON \
+        -DENABLE_TESTING=OFF \
+        -DAUTOR_RUN_TESTS=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DUNITY_BUILD=OFF && \
+    cmake --build build -j"$(nproc)" && \
+    cmake --install build && \
+    ldconfig && \
+    rm -rf /tmp/aws-sdk-cpp
+
+# Note: MCAP library is downloaded via FetchContent during build
 
 # Set working directory
 WORKDIR /axon

@@ -11,10 +11,12 @@
  *   axon panel [args]    -> axon-panel
  */
 
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #ifndef AXON_VERSION
@@ -106,7 +108,7 @@ int main(int argc, char* argv[]) {
       if (COMMANDS[i].binary) {
         // Rebuild argv array for execvp
         std::vector<char*> exec_argv;
-        exec_argv.push_back(COMMANDS[i].binary);
+        exec_argv.push_back(const_cast<char*>(COMMANDS[i].binary));
 
         // Pass through remaining arguments
         for (int j = 2; j < argc; ++j) {
