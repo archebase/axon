@@ -42,12 +42,18 @@ if(DEFINED AXON_REPO_ROOT)
 
     # Add axon_logging if not already built
     if(NOT TARGET axon_logging AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
-        add_subdirectory("${AXON_LOGGING_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
+        add_subdirectory(
+            "${AXON_LOGGING_DIR}"
+            ${CMAKE_CURRENT_BINARY_DIR}/axon_logging
+        )
     endif()
 
     # Add axon_mcap if not already built
     if(NOT TARGET axon_mcap AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
-        add_subdirectory("${AXON_MCAP_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
+        add_subdirectory(
+            "${AXON_MCAP_DIR}"
+            ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap
+        )
     endif()
 endif()
 

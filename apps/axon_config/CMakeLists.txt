@@ -35,6 +35,15 @@ include(AxonCoverage OPTIONAL)
 # =============================================================================
 # Use axon_mcap for mcap_headers interface
 # =============================================================================
+# When building for packaging with AXON_REPO_ROOT set, set MCAP path
+if(DEFINED AXON_REPO_ROOT AND NOT DEFINED AXON_MCAP_DIR)
+    set(AXON_MCAP_DIR
+        "${AXON_REPO_ROOT}/core/axon_mcap"
+        CACHE PATH
+        "Axon MCAP directory"
+    )
+endif()
+
 # Use centralized AXON_MCAP_DIR if set by parent, otherwise use AXON_CORE_DIR
 if(DEFINED AXON_MCAP_DIR AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
     # Use parent's path (built from repo root)

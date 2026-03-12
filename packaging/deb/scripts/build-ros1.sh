@@ -22,6 +22,7 @@ fi
 
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
 OUTPUT_DIR="${PACKAGE_DIR}/output"
+BUILD_DIR="${PACKAGE_DIR}/build"
 
 # Colors for output
 RED='\033[0;31m'
@@ -51,8 +52,13 @@ else
     log_warn "Continuing anyway (Docker build may have pre-sourced environment)"
 fi
 
-# Create output directory
+# Create output and build directories
 mkdir -p "${OUTPUT_DIR}"
+mkdir -p "${BUILD_DIR}"
+
+# Clean build directory for ROS1
+rm -rf "${BUILD_DIR:?}"/ros1*
+mkdir -p "${BUILD_DIR}"
 
 # Get version from project
 if [ -f "${PROJECT_ROOT}/apps/axon_recorder/CMakeLists.txt" ]; then
@@ -64,12 +70,15 @@ fi
 DEBIAN_VERSION="${VERSION}-1"
 
 log_info "Building Axon ROS1 Noetic plugin packages version ${DEBIAN_VERSION}"
+log_info "Build directory: ${BUILD_DIR}"
+log_info "Output directory: ${OUTPUT_DIR}"
 
 # Build function for plugins
 build_plugin() {
     local pkg_name="$1"
     local source_dir="$2"
-    local debian_dir="${PACKAGE_DIR}/${pkg_name}/debian"
+    local debian_dir="${PACKAGE_DIR}/plugin-${pkg_name#axon-plugin-}/debian"
+    local build_area="${BUILD_DIR}/${pkg_name}"
 
     if [ ! -d "$debian_dir" ]; then
         log_error "Debian directory not found: $debian_dir"
@@ -86,31 +95,40 @@ build_plugin() {
     # Save current directory
     local original_dir="$(pwd)"
 
-    # Create temp directory with debian files
-    local temp_dir="${source_dir}/.debian-build"
-    rm -rf "${temp_dir}"
-    cp -r "${debian_dir}" "${temp_dir}"
+    # Clean and create build area
+    rm -rf "${build_area}"
+    mkdir -p "${build_area}"
 
-    # Move to actual debian directory
-    rm -rf "${source_dir}/debian"
-    mv "${temp_dir}" "${source_dir}/debian"
+    # Copy source to build area (excluding build artifacts and .git)
+    mkdir -p "${build_area}"
+    # Use tar instead of rsync for better compatibility
+    (cd "${source_dir}" && tar cf - \
+        --exclude='.git*' \
+        --exclude='build' \
+        --exclude='install' \
+        --exclude='log' \
+        --exclude='*.pyc' \
+        --exclude='__pycache__' \
+        --exclude='debian' \
+        --exclude='obj-*' \
+        --exclude='.debian-build' \
+        .) | (cd "${build_area}" && tar xf -)
 
-    # Build from source directory
-    cd "${source_dir}"
+    # Copy debian files to build area
+    cp -r "${debian_dir}" "${build_area}/debian"
+
+    # Build from build area
+    cd "${build_area}"
     if dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then
         log_info "Successfully built ${pkg_name}"
 
         # Move built packages to output directory
-        find .. -maxdepth 1 -name "${pkg_name}_*.deb" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+        find "${BUILD_DIR}" -maxdepth 1 -name "${pkg_name}_*.deb" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
 
-        # Clean up
-        rm -rf "${source_dir}/debian"
         cd "${original_dir}"
-
         return 0
     else
         log_error "Failed to build ${pkg_name}"
-        rm -rf "${source_dir}/debian"
         cd "${original_dir}"
         return 1
     fi

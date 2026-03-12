@@ -10,8 +10,12 @@ include /usr/share/dpkg/buildflags.mk
 # Skip tests
 DEB_BUILD_OPTIONS += nocheck
 
-# Get the repo root - assume we're building from apps/ subdirectory
+# Get the repo root - use AXON_REPO_ROOT from environment if set, otherwise compute
+ifeq ($(origin AXON_REPO_ROOT),environment)
+REPO_ROOT := $(AXON_REPO_ROOT)
+else
 REPO_ROOT := $(shell cd $(CURDIR)/../.. && pwd)
+endif
 
 # main packaging script based on dh7 syntax
 %:
