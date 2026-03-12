@@ -33,6 +33,25 @@ include(AxonStdLib REQUIRED)
 include(AxonCoverage OPTIONAL)
 
 # =============================================================================
+# Core Libraries (when built from repo root or for packaging)
+# =============================================================================
+# When AXON_REPO_ROOT is set (e.g., for Debian packaging), add core libraries
+if(DEFINED AXON_REPO_ROOT)
+    set(AXON_LOGGING_DIR "${AXON_REPO_ROOT}/core/axon_logging")
+    set(AXON_MCAP_DIR "${AXON_REPO_ROOT}/core/axon_mcap")
+
+    # Add axon_logging if not already built
+    if(NOT TARGET axon_logging AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
+        add_subdirectory("${AXON_LOGGING_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/axon_logging)
+    endif()
+
+    # Add axon_mcap if not already built
+    if(NOT TARGET axon_mcap AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
+        add_subdirectory("${AXON_MCAP_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap)
+    endif()
+endif()
+
+# =============================================================================
 # Dependencies
 # =============================================================================
 # Find required components first

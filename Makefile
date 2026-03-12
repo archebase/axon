@@ -1050,3 +1050,49 @@ ci-local-cpp-integration-coverage:
 # ci-local-reuse-sbom: REUSE compliance with SPDX SBOM generation
 ci-local-reuse-sbom:
 	@./scripts/ci-reuse-local.sh --sbom
+
+# =============================================================================
+# Packaging Targets
+# =============================================================================
+# Build Debian packages for Axon components.
+
+PACKAGE_DIR := packaging/deb
+
+# package-standalone: Build non-ROS packages (recorder, config, panel, dispatcher)
+.PHONY: package-standalone
+package-standalone:
+	@echo "Building standalone packages..."
+	@$(PACKAGE_DIR)/scripts/build-standalone.sh
+
+# package-ros2: Build ROS2 plugin packages
+.PHONY: package-ros2
+package-ros2:
+	@echo "Building ROS2 plugin packages..."
+	@$(PACKAGE_DIR)/scripts/build-ros2.sh
+
+# package-ros1: Build ROS1 plugin packages
+.PHONY: package-ros1
+package-ros1:
+	@echo "Building ROS1 plugin packages..."
+	@$(PACKAGE_DIR)/scripts/build-ros1.sh
+
+# package-all: Build all applicable packages for current environment
+.PHONY: package-all
+package-all:
+	@echo "Building all applicable packages..."
+	@$(PACKAGE_DIR)/scripts/build-all.sh
+
+# package-docker: Build packages in Docker container
+.PHONY: package-docker
+package-docker:
+	@echo "Building packages in Docker..."
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh
+
+# package-clean: Clean package build artifacts
+.PHONY: package-clean
+package-clean:
+	@echo "Cleaning package build artifacts..."
+	@rm -rf $(PACKAGE_DIR)/output/*.deb
+	@find . -name ".debian-build" -type d -exec rm -rf {} + 2>/dev/null || true
+	@find . -name "debian" -type d -path "*/apps/*" -exec rm -rf {} + 2>/dev/null || true
+	@find . -name "debian" -type d -path "*/middlewares/*" -exec rm -rf {} + 2>/dev/null || true

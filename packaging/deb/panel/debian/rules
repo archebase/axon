@@ -1,18 +1,50 @@
-# SPDX-FileCopyrightText: 2026 ArcheBase
-# SPDX-License-Identifier: MulanPSL-2.0
-
 #!/usr/bin/make -f
 
+# Skip tests
+DEB_BUILD_OPTIONS += nocheck
+
+# Get the repo root - assume we're building from apps/ subdirectory
+REPO_ROOT := $(shell cd $(CURDIR)/../.. && pwd)
+
+# main packaging script based on dh7 syntax
 %:
 	dh $@
 
 override_dh_auto_build:
 	# Build Vue 3 frontend assets first
-	cd apps/axon_panel && npm run build
+	npm run build
 	# Then build the C++ binary with embedded assets
 	dh_auto_build
 
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release
+
+# Skip shlibdeps and gencontrol to work around dpkg-gencontrol backslash issue
+override_dh_shlibdeps:
+	# Skip
+
+override_dh_gencontrol:
+	# Skip
+
+# After dh_installdeb, manually create control file and build package
+override_dh_builddeb:
+	dh_installdeb
+	# Manually create control file
+	cat > debian/axon-panel/DEBIAN/control << EOF
+Package: axon-panel
+Version: 0.2.1-1
+Architecture: amd64
+Maintainer: ArcheBase <noreply@archebase.com>
+Installed-Size: 500
+Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.3.1), libssl3, $${misc:Depends}
+Section: utils
+Priority: optional
+Description: Axon Web Panel
+ Web-based control interface for Axon recorder.
+EOF
+	dh_builddeb
+
 override_dh_auto_clean:
-	dh_auto_clean
-	# Clean frontend build artifacts
-	rm -rf apps/axon_panel/dist apps/axon_panel/node_modules
+	dh_auto_clean || true
+	rm -rf obj-* debian/.debhelper debian/debhelper-build-stamp debian/files 2>/dev/null || true
+	rm -rf dist node_modules

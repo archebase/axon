@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: 2026 ArcheBase
-# SPDX-License-Identifier: MulanPSL-2.0
-
 axon-dispatcher (0.2.1-1) unstable; urgency=medium
 
   * Initial packaging
