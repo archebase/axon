@@ -137,6 +137,14 @@ public:
    */
   std::string get_url() const;
 
+  /**
+   * Send a message to a specific client
+   * @param client_id Target client ID
+   * @param message JSON message to send
+   * @return true if message was sent, false if client not found or error
+   */
+  bool send_to_client(const std::string& client_id, const std::string& message);
+
 private:
   /**
    * Accept loop

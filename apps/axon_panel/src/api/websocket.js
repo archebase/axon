@@ -1,7 +1,8 @@
 /**
  * WebSocket client for AxonPanel real-time updates
- * 
+ *
  * Provides automatic reconnection with exponential backoff and event-based message handling.
+ * Supports bidirectional RPC commands with concurrent request handling.
  */
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
@@ -36,7 +37,7 @@ function getWebSocketUrl() {
 }
 
 /**
- * WebSocket client with auto-reconnect and event handling
+ * WebSocket client with auto-reconnect, event handling, and RPC support
  */
 export class WebSocketClient {
   constructor(options = {}) {
@@ -45,14 +46,19 @@ export class WebSocketClient {
     this.maxReconnectInterval = options.maxReconnectInterval || 30000
     this.reconnectMultiplier = options.reconnectMultiplier || 1.5
     this.pingInterval = options.pingInterval || 30000
-    
+    this.rpcTimeout = options.rpcTimeout || 5000
+
     this.ws = null
     this.reconnectTimer = null
     this.pingTimer = null
     this.currentReconnectInterval = this.reconnectInterval
     this.isConnecting = false
     this.shouldReconnect = true
-    
+
+    // Pending RPC requests for concurrent request support
+    this.pendingRequests = new Map()
+    this.requestCounter = 0
+
     // Event handlers
     this.handlers = {
       connected: [],
@@ -62,7 +68,8 @@ export class WebSocketClient {
       log: [],
       error: [],
       disconnected: [],
-      raw: []
+      raw: [],
+      rpc_response: []
     }
   }
 
@@ -73,11 +80,11 @@ export class WebSocketClient {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return
     }
-    
+
     if (this.isConnecting) {
       return
     }
-    
+
     this.isConnecting = true
     this.shouldReconnect = true
 
@@ -87,32 +94,63 @@ export class WebSocketClient {
       }
 
       this.ws = new WebSocket(this.url)
-      
+
       this.ws.onopen = () => {
         if (import.meta.env.DEV) {
           console.log('[WebSocket] Connected to', this.url)
         }
         this.isConnecting = false
         this.currentReconnectInterval = this.reconnectInterval
-        
+
         // Start ping/pong to keep connection alive
         this.startPing()
-        
+
+        // Notify connected handlers
+        this.handlers.connected.forEach(h => h())
+
         // Request initial state
         this.send({ action: 'get_state' })
       }
-      
+
       this.ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
-          
+
           if (import.meta.env.DEV) {
             console.log('[WebSocket] Message:', message.type, message.data)
           }
-          
+
           // Call raw handler with full message
           this.handlers.raw.forEach(h => h(message))
-          
+
+          // Handle RPC response for request correlation
+          if (message.type === 'rpc_response' && message.request_id) {
+            const pending = this.pendingRequests.get(message.request_id)
+            if (pending) {
+              clearTimeout(pending.timeoutId)
+              this.pendingRequests.delete(message.request_id)
+
+              // Extract response data matching HTTP RPC format
+              // Include success, message, and data fields
+              const response = {
+                success: message.success !== undefined ? message.success : true,
+                message: message.message || '',
+                data: message.data !== undefined ? message.data : {}
+              }
+
+              if (message.success === false) {
+                pending.reject(new Error(message.message || 'Command failed'))
+              } else {
+                pending.resolve(response)
+              }
+            }
+            // Also call rpc_response handlers
+            if (this.handlers.rpc_response) {
+              this.handlers.rpc_response.forEach(h => h(message.data, message))
+            }
+            return
+          }
+
           // Call type-specific handlers
           if (message.type && this.handlers[message.type]) {
             this.handlers[message.type].forEach(h => h(message.data, message))
@@ -123,39 +161,46 @@ export class WebSocketClient {
           }
         }
       }
-      
+
       this.ws.onclose = (event) => {
         if (import.meta.env.DEV) {
           console.log('[WebSocket] Closed:', event.code, event.reason)
         }
-        
+
         this.isConnecting = false
         this.stopPing()
-        
+
+        // Reject all pending requests
+        this.pendingRequests.forEach((pending) => {
+          clearTimeout(pending.timeoutId)
+          pending.reject(new Error('WebSocket disconnected'))
+        })
+        this.pendingRequests.clear()
+
         // Notify handlers
         this.handlers.disconnected.forEach(h => h({ code: event.code, reason: event.reason }))
-        
+
         // Attempt reconnection
         if (this.shouldReconnect) {
           this.scheduleReconnect()
         }
       }
-      
+
       this.ws.onerror = (error) => {
         if (import.meta.env.DEV) {
           console.error('[WebSocket] Error:', error)
         }
-        
+
         this.isConnecting = false
       }
-      
+
     } catch (error) {
       if (import.meta.env.DEV) {
         console.error('[WebSocket] Connection failed:', error)
       }
-      
+
       this.isConnecting = false
-      
+
       if (this.shouldReconnect) {
         this.scheduleReconnect()
       }
@@ -168,12 +213,19 @@ export class WebSocketClient {
   disconnect() {
     this.shouldReconnect = false
     this.stopPing()
-    
+
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
-    
+
+    // Reject all pending requests
+    this.pendingRequests.forEach((pending) => {
+      clearTimeout(pending.timeoutId)
+      pending.reject(new Error('WebSocket disconnected'))
+    })
+    this.pendingRequests.clear()
+
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect')
       this.ws = null
@@ -187,16 +239,16 @@ export class WebSocketClient {
     if (this.reconnectTimer) {
       return
     }
-    
+
     if (import.meta.env.DEV) {
       console.log('[WebSocket] Reconnecting in', this.currentReconnectInterval, 'ms')
     }
-    
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       this.connect()
     }, this.currentReconnectInterval)
-    
+
     // Increase interval for next attempt
     this.currentReconnectInterval = Math.min(
       this.currentReconnectInterval * this.reconnectMultiplier,
@@ -209,7 +261,7 @@ export class WebSocketClient {
    */
   startPing() {
     this.stopPing()
-    
+
     this.pingTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ action: 'ping' }))
@@ -238,6 +290,35 @@ export class WebSocketClient {
   }
 
   /**
+   * Send RPC command and return Promise
+   * @param {string} action RPC action to execute
+   * @param {object} params Parameters for the RPC command
+   * @returns {Promise} Promise that resolves with response data
+   */
+  sendCommand(action, params = {}) {
+    return new Promise((resolve, reject) => {
+      if (!this.isConnected()) {
+        reject(new Error('WebSocket not connected'))
+        return
+      }
+
+      // Generate unique request ID for correlation
+      const requestId = `req_${Date.now()}_${++this.requestCounter}`
+
+      // Store pending request with timeout
+      const timeoutId = setTimeout(() => {
+        this.pendingRequests.delete(requestId)
+        reject(new Error('Command timeout'))
+      }, this.rpcTimeout)
+
+      this.pendingRequests.set(requestId, { resolve, reject, timeoutId })
+
+      // Send command with request ID
+      this.send({ action, request_id: requestId, ...params })
+    })
+  }
+
+  /**
    * Subscribe to events
    * @param {string[]} events Event types to subscribe to
    */
@@ -262,15 +343,90 @@ export class WebSocketClient {
   }
 
   /**
-   * Request current state
+   * Request current state (fire and forget)
    */
   requestState() {
     this.send({ action: 'get_state' })
   }
 
   /**
+   * Get current state (RPC method with response)
+   * @returns {Promise<object>} State information
+   */
+  async getState() {
+    return this.sendCommand('get_state')
+  }
+
+  /**
+   * Begin recording
+   * @param {string} taskId Task ID for the recording
+   * @returns {Promise<object>} Response data
+   */
+  async begin(taskId) {
+    return this.sendCommand('begin', { task_id: taskId })
+  }
+
+  /**
+   * Finish recording
+   * @param {string} taskId Task ID for the recording
+   * @returns {Promise<object>} Response data
+   */
+  async finish(taskId) {
+    return this.sendCommand('finish', { task_id: taskId })
+  }
+
+  /**
+   * Pause recording
+   * @returns {Promise<object>} Response data
+   */
+  async pause() {
+    return this.sendCommand('pause')
+  }
+
+  /**
+   * Resume recording
+   * @returns {Promise<object>} Response data
+   */
+  async resume() {
+    return this.sendCommand('resume')
+  }
+
+  /**
+   * Cancel recording
+   * @returns {Promise<object>} Response data
+   */
+  async cancel() {
+    return this.sendCommand('cancel')
+  }
+
+  /**
+   * Clear configuration
+   * @returns {Promise<object>} Response data
+   */
+  async clear() {
+    return this.sendCommand('clear')
+  }
+
+  /**
+   * Set task configuration
+   * @param {object} configData Task configuration data
+   * @returns {Promise<object>} Response data
+   */
+  async config(configData) {
+    return this.sendCommand('config', { task_config: configData })
+  }
+
+  /**
+   * Quit recorder
+   * @returns {Promise<object>} Response data
+   */
+  async quit() {
+    return this.sendCommand('quit')
+  }
+
+  /**
    * Register event handler
-   * @param {string} eventType Event type (connected, state, stats, config, log, error, disconnected, raw)
+   * @param {string} eventType Event type (connected, state, stats, config, log, error, disconnected, raw, rpc_response)
    * @param {function} handler Handler function
    * @returns {function} Unsubscribe function
    */
@@ -279,9 +435,9 @@ export class WebSocketClient {
       console.warn(`Unknown event type: ${eventType}`)
       return () => {}
     }
-    
+
     this.handlers[eventType].push(handler)
-    
+
     // Return unsubscribe function
     return () => {
       const index = this.handlers[eventType].indexOf(handler)

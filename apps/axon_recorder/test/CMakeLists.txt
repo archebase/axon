@@ -203,6 +203,21 @@ target_link_libraries(
     pthread
 )
 
+# test_rpc_handlers.cpp - Shared RPC handler tests
+add_axon_test(test_rpc_handlers
+    SOURCES unit/test_rpc_handlers.cpp
+            ../src/http/rpc_handlers.cpp
+)
+target_link_libraries(test_rpc_handlers yaml-cpp)
+
+# test_websocket_rpc_handler.cpp - WebSocket RPC handler tests
+add_axon_test(test_websocket_rpc_handler
+    SOURCES unit/test_websocket_rpc_handler.cpp
+            ../src/http/websocket_rpc_handler.cpp
+            ../src/http/rpc_handlers.cpp
+)
+target_link_libraries(test_websocket_rpc_handler yaml-cpp)
+
 # =============================================================================
 # Integration Tests
 # =============================================================================
@@ -298,6 +313,8 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../src/http/websocket_server.cpp
                 ../src/http/websocket_session.cpp
                 ../src/http/event_broadcaster.cpp
+                ../src/http/rpc_handlers.cpp
+                ../src/http/websocket_rpc_handler.cpp
     )
     target_link_libraries(
         test_recorder_integration

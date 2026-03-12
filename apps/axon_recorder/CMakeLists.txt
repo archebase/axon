@@ -112,6 +112,8 @@ add_executable(
     src/http/websocket_server.cpp
     src/http/websocket_session.cpp
     src/http/event_broadcaster.cpp
+    src/http/rpc_handlers.cpp
+    src/http/websocket_rpc_handler.cpp
 )
 
 target_include_directories(

@@ -294,5 +294,23 @@ std::string WebSocketServer::get_url() const {
   return "ws://" + config_.host + ":" + std::to_string(config_.port) + "/ws";
 }
 
+bool WebSocketServer::send_to_client(const std::string& client_id, const std::string& message) {
+  std::shared_lock lock(sessions_mutex_);
+
+  auto it = sessions_.find(client_id);
+  if (it == sessions_.end()) {
+    return false;
+  }
+
+  if (auto session = it->second.lock()) {
+    if (session->is_open()) {
+      session->send(message);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 }  // namespace recorder
 }  // namespace axon

@@ -2,6 +2,9 @@
   <div id="app">
     <header class="header">
       <h1>AxonPanel</h1>
+      <div class="header-middle">
+        <RpcModeToggle v-model="rpcMode" :ws-connected="wsConnected" />
+      </div>
       <div class="header-actions">
         <ConnectionStatus
           :connected="connected"
@@ -67,6 +70,7 @@ import StatePanel from './components/StatePanel.vue'
 import ControlPanel from './components/ControlPanel.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
 import LogPanel from './components/LogPanel.vue'
+import RpcModeToggle from './components/RpcModeToggle.vue'
 
 const connected = ref(false)
 const health = ref(null)
@@ -77,6 +81,10 @@ const stats = ref(null)
 const showConfigPanel = ref(false)
 const showLogs = ref(true)
 const logs = ref([])
+
+// RPC mode: 'ws' (WebSocket only), 'http' (HTTP only)
+const rpcMode = ref(localStorage.getItem('rpcMode') || 'ws')
+const wsConnected = ref(false)
 
 const errorCount = computed(() => logs.value.filter(log => log.type === 'error').length)
 
@@ -193,8 +201,11 @@ function setupWebSocket() {
       console.log('[App] WebSocket connected event received:', data)
     }
     connected.value = true
-    health.value = { version: data.version }
-    if (data.state) {
+    wsConnected.value = true
+    if (data && data.version) {
+      health.value = { version: data.version }
+    }
+    if (data && data.state) {
       currentState.value = data.state
     }
     addLog('WebSocket connected', 'success')
@@ -273,6 +284,7 @@ function setupWebSocket() {
   // Handle disconnection
   unsubscribers.push(wsClient.on('disconnected', () => {
     connected.value = false
+    wsConnected.value = false
     addLog('WebSocket disconnected', 'warning')
   }))
   
@@ -296,53 +308,85 @@ function clearLogs() {
   logs.value = []
 }
 
+/**
+ * Unified RPC function that respects the RPC mode toggle
+ * - WebSocket mode: Use WebSocket only (error if not connected)
+ * - HTTP mode: Use HTTP only
+ */
+async function sendCommand(command, ...args) {
+  const wsClient = getWebSocketClient()
+
+  // WebSocket mode
+  if (rpcMode.value === 'ws') {
+    if (!wsClient.isConnected()) {
+      throw new Error('WebSocket not connected')
+    }
+    addLog(`Sending ${command} via WebSocket`, 'info')
+    const wsMethodMap = {
+      'begin': 'begin',
+      'finish': 'finish',
+      'pause': 'pause',
+      'resume': 'resume',
+      'cancel': 'cancel',
+      'clear': 'clear',
+      'config': 'config',
+      'quit': 'quit'
+    }
+    if (wsMethodMap[command]) {
+      const wsMethod = wsMethodMap[command]
+      if (command === 'config') {
+        return await wsClient.config(args[0])
+      } else {
+        return await wsClient[wsMethod](...args)
+      }
+    }
+  }
+
+  // HTTP mode
+  const httpMethodMap = {
+    'begin': 'begin',
+    'finish': 'finish',
+    'pause': 'pause',
+    'resume': 'resume',
+    'cancel': 'cancel',
+    'clear': 'clear',
+    'config': 'setConfig',
+    'quit': 'quit'
+  }
+  if (httpMethodMap[command]) {
+    return await rpcApi[httpMethodMap[command]](...args)
+  }
+
+  throw new Error(`Unknown command: ${command}`)
+}
+
 async function handleCommand(command) {
   addLog(`Executing command: ${command}`, 'info')
 
   try {
+    // Handle config locally
+    if (command === 'config') {
+      showConfigPanel.value = true
+      return
+    }
+
+    // Prepare arguments
+    let args = []
     let result
-    switch (command) {
-      case 'config':
-        showConfigPanel.value = true
+    if (command === 'begin' || command === 'finish') {
+      if (!currentTaskId.value) {
+        addLog('Error: No task_id available. Please configure a task first.', 'error')
         return
+      }
+      addLog(`Using task_id: ${currentTaskId.value}`, 'info')
+      args = [currentTaskId.value]
+    }
 
-      case 'begin':
-        addLog(`Using task_id: ${currentTaskId.value}`, 'info')
-        if (!currentTaskId.value) {
-          addLog('Error: No task_id available. Please configure a task first.', 'error')
-          return
-        }
-        result = await rpcApi.begin(currentTaskId.value)
-        break
+    // Use unified sendCommand function
+    result = await sendCommand(command, ...args)
 
-      case 'finish':
-        result = await rpcApi.finish(currentTaskId.value)
-        break
-
-      case 'pause':
-        result = await rpcApi.pause()
-        break
-
-      case 'resume':
-        result = await rpcApi.resume()
-        break
-
-      case 'cancel':
-        result = await rpcApi.cancel(currentTaskId.value)
-        break
-
-      case 'clear':
-        result = await rpcApi.clear()
-        break
-
-      case 'quit':
-        result = await rpcApi.quit()
-        addLog('Quit command sent. Server will shutdown.', 'warning')
-        break
-
-      default:
-        addLog(`Unknown command: ${command}`, 'error')
-        return
+    if (command === 'quit') {
+      addLog('Quit command sent. Server will shutdown.', 'warning')
     }
 
     if (result.success) {
@@ -360,7 +404,7 @@ async function handleConfigSubmit(config) {
   addLog('Setting configuration...', 'info')
   addLog(`Task ID: ${config.task_id}`, 'info')
   try {
-    const result = await rpcApi.setConfig(config)
+    const result = await sendCommand('config', config)
     if (result.success) {
       addLog(result.message, 'success')
 
@@ -463,12 +507,19 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  gap: 1.5rem;
 }
 
 .header h1 {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
+}
+
+.header-middle {
+  flex: 1;
+  display: flex;
+  justify-content: center;
 }
 
 .header-actions {
@@ -565,11 +616,15 @@ onUnmounted(() => {
     padding: 1rem;
     flex-direction: column;
     gap: 1rem;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
   .header h1 {
     font-size: 1.25rem;
+  }
+
+  .header-middle {
+    justify-content: flex-start;
   }
 
   .header-actions {
