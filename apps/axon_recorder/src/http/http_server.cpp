@@ -18,6 +18,7 @@
 #include "../config/task_config.hpp"
 #include "event_broadcaster.hpp"
 #include "version.hpp"
+#include "websocket_rpc_handler.hpp"
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "http_server"
@@ -110,6 +111,39 @@ bool HttpServer::start() {
     event_broadcaster_->start_stats_broadcast(std::chrono::milliseconds(1000));
 
     AXON_LOG_INFO("EventBroadcaster started with 1s stats interval");
+
+    // Set up WebSocket RPC handler
+    // Convert callbacks to RpcCallbacks for the RPC handler
+    RpcCallbacks rpc_callbacks;
+    rpc_callbacks.get_state = callbacks_.get_state;
+    rpc_callbacks.get_stats = callbacks_.get_stats;
+    rpc_callbacks.get_task_config = callbacks_.get_task_config;
+    rpc_callbacks.set_config = callbacks_.set_config;
+    rpc_callbacks.begin_recording = callbacks_.begin_recording;
+    rpc_callbacks.finish_recording = callbacks_.finish_recording;
+    rpc_callbacks.cancel_recording = callbacks_.cancel_recording;
+    rpc_callbacks.pause_recording = callbacks_.pause_recording;
+    rpc_callbacks.resume_recording = callbacks_.resume_recording;
+    rpc_callbacks.clear_config = callbacks_.clear_config;
+    rpc_callbacks.quit = callbacks_.quit;
+
+    ws_rpc_handler_ = std::make_unique<WebSocketRpcHandler>(
+      rpc_callbacks, [this](const std::string& client_id, const nlohmann::json& response) {
+        // Send RPC response to specific client via WebSocket
+        if (ws_server_) {
+          ws_server_->send_to_client(client_id, response.dump());
+        }
+      }
+    );
+
+    // Set WebSocket message handler to route RPC commands
+    ws_server_->set_message_handler(
+      [this](const std::string& client_id, const std::string& message) {
+        ws_rpc_handler_->handle_message(client_id, message);
+      }
+    );
+
+    AXON_LOG_INFO("WebSocket RPC handler enabled");
 
     server_thread_ = std::make_unique<std::thread>(&HttpServer::server_thread_func, this);
     running_.store(true);
@@ -401,7 +435,7 @@ void HttpServer::handle_request(
     nlohmann::json health;
     health["status"] = "ok";
     health["service"] = "AxonRecorder";
-    health["version"] = "0.0.0";
+    health["version"] = axon::recorder::get_version();
     health["running"] = running_.load();
     health["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
     response_body = health.dump();
@@ -418,334 +452,46 @@ void HttpServer::handle_request(
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_begin(const nlohmann::json& params) {
-  RpcResponse response;
-
-  // Check if task_id is provided and is a string
-  if (!params.contains("task_id")) {
-    response.success = false;
-    response.message = "Missing required parameter: task_id";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-    return response;
-  }
-
-  if (!params["task_id"].is_string()) {
-    response.success = false;
-    response.message = "task_id must be a string";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-    return response;
-  }
-
-  std::string provided_task_id = params["task_id"].get<std::string>();
-
-  // Check callback exists
-  if (!callbacks_.begin_recording) {
-    response.success = false;
-    response.message = "Begin recording callback not registered";
-    return response;
-  }
-
-  // Call the callback
-  bool success = callbacks_.begin_recording(provided_task_id);
-
-  if (success) {
-    response.success = true;
-    response.message = "Recording started successfully";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-    response.data["task_id"] = provided_task_id;
-  } else {
-    response.success = false;
-    response.message = "Failed to start recording";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_begin(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_pause(const nlohmann::json& params) {
-  RpcResponse response;
-
-  if (!callbacks_.pause_recording) {
-    response.success = false;
-    response.message = "Pause recording callback not registered";
-    return response;
-  }
-
-  bool success = callbacks_.pause_recording();
-
-  if (success) {
-    response.success = true;
-    response.message = "Recording paused successfully";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  } else {
-    response.success = false;
-    response.message = "Failed to pause recording";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_pause(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_resume(const nlohmann::json& params) {
-  RpcResponse response;
-
-  if (!callbacks_.resume_recording) {
-    response.success = false;
-    response.message = "Resume recording callback not registered";
-    return response;
-  }
-
-  bool success = callbacks_.resume_recording();
-
-  if (success) {
-    response.success = true;
-    response.message = "Recording resumed successfully";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  } else {
-    response.success = false;
-    response.message = "Failed to resume recording";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_resume(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_finish(const nlohmann::json& params) {
-  RpcResponse response;
-
-  // Check if task_id is provided and is a string
-  if (!params.contains("task_id")) {
-    response.success = false;
-    response.message = "Missing required parameter: task_id";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-    return response;
-  }
-
-  if (!params["task_id"].is_string()) {
-    response.success = false;
-    response.message = "task_id must be a string";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-    return response;
-  }
-
-  std::string task_id = params["task_id"].get<std::string>();
-
-  if (!callbacks_.finish_recording) {
-    response.success = false;
-    response.message = "Finish recording callback not registered";
-    return response;
-  }
-
-  bool success = callbacks_.finish_recording(task_id);
-
-  if (success) {
-    response.success = true;
-    response.message = "Recording finished successfully";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-    response.data["task_id"] = task_id;
-  } else {
-    response.success = false;
-    response.message = "Failed to finish recording";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_finish(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_quit(const nlohmann::json& params) {
-  (void)params;  // Unused - quit doesn't require task_id
-
-  RpcResponse response;
-
-  // Call the quit callback to signal the main program to exit
-  if (callbacks_.quit) {
-    callbacks_.quit();
-  }
-
-  // Stop the HTTP server
-  AXON_LOG_INFO("Stopping HTTP server...");
+  auto response = axon::recorder::handle_rpc_quit(callbacks_, params);
+  // Stop the HTTP server after quit callback
   stop_requested_.store(true);
-
-  response.success = true;
-  response.message = "Program quitting. Recording stopped and data saved.";
-  response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-
   return response;
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_cancel(const nlohmann::json& params) {
-  RpcResponse response;
-
-  if (!callbacks_.cancel_recording) {
-    response.success = false;
-    response.message = "Cancel recording callback not registered";
-    return response;
-  }
-
-  bool success = callbacks_.cancel_recording();
-
-  if (success) {
-    response.success = true;
-    response.message = "Recording cancelled successfully";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  } else {
-    response.success = false;
-    response.message = "Failed to cancel recording";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_cancel(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_clear(const nlohmann::json& params) {
-  RpcResponse response;
-
-  if (!callbacks_.clear_config) {
-    response.success = false;
-    response.message = "Clear config callback not registered";
-    return response;
-  }
-
-  bool success = callbacks_.clear_config();
-
-  if (success) {
-    response.success = true;
-    response.message = "Configuration cleared successfully";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  } else {
-    response.success = false;
-    response.message = "Failed to clear configuration";
-    response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_clear(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_get_state(const nlohmann::json& params) {
-  RpcResponse response;
-
-  response.success = true;
-  response.message = "State retrieved successfully";
-
-  // Add version information
-  response.data["version"] = get_version();
-
-  // Get state from callback
-  if (callbacks_.get_state) {
-    response.data["state"] = callbacks_.get_state();
-  } else {
-    response.data["state"] = "unknown";
-  }
-
-  // Get task config if available (READY, RECORDING, PAUSED states)
-  if (callbacks_.get_task_config) {
-    const TaskConfig* task_config = callbacks_.get_task_config();
-    if (task_config) {
-      nlohmann::json config_json;
-      config_json["task_id"] = task_config->task_id;
-      config_json["device_id"] = task_config->device_id;
-      config_json["data_collector_id"] = task_config->data_collector_id;
-      config_json["scene"] = task_config->scene;
-      config_json["subscene"] = task_config->subscene;
-      config_json["skills"] = task_config->skills;
-      config_json["factory"] = task_config->factory;
-      config_json["operator_name"] = task_config->operator_name;
-      config_json["topics"] = task_config->topics;
-      // Note: Don't include sensitive fields like callback URLs and tokens
-      response.data["task_config"] = config_json;
-    }
-  }
-
-  // Get stats from callback to check if running
-  if (callbacks_.get_stats) {
-    try {
-      nlohmann::json stats = callbacks_.get_stats();
-      response.data["running"] =
-        stats.value("messages_written", 0) > 0 || stats.value("messages_received", 0) > 0;
-    } catch (...) {
-      response.data["running"] = false;
-    }
-  } else {
-    response.data["running"] = false;
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_get_state(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_get_stats(const nlohmann::json& params) {
-  RpcResponse response;
-
-  if (!callbacks_.get_stats) {
-    response.success = false;
-    response.message = "Get stats callback not registered";
-    return response;
-  }
-
-  try {
-    nlohmann::json stats = callbacks_.get_stats();
-    response.success = true;
-    response.message = "Statistics retrieved successfully";
-    response.data = stats;
-  } catch (const std::exception& e) {
-    response.success = false;
-    response.message = std::string("Failed to get statistics: ") + e.what();
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_get_stats(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_set_config(const nlohmann::json& params) {
-  RpcResponse response;
-
-  // Check if task_config is present in params
-  if (!params.contains("task_config")) {
-    response.success = false;
-    response.message = "Missing 'task_config' in request parameters";
-    return response;
-  }
-
-  if (!callbacks_.set_config) {
-    response.success = false;
-    response.message = "Set config callback not registered";
-    return response;
-  }
-
-  try {
-    const auto& config_json = params["task_config"];
-
-    // Extract task_id for response
-    std::string task_id;
-    if (config_json.contains("task_id")) {
-      if (!config_json["task_id"].is_string()) {
-        response.success = false;
-        response.message = "task_id must be a string";
-        response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-        return response;
-      }
-      task_id = config_json["task_id"].get<std::string>();
-    }
-
-    // Call the callback with the config
-    bool success = callbacks_.set_config(task_id, config_json);
-
-    if (success) {
-      response.success = true;
-      response.message = "Task configuration set successfully";
-      response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-      if (!task_id.empty()) {
-        response.data["task_id"] = task_id;
-      }
-    } else {
-      response.success = false;
-      response.message = "Failed to set task configuration";
-      response.data["state"] = callbacks_.get_state ? callbacks_.get_state() : "unknown";
-    }
-
-  } catch (const std::exception& e) {
-    response.success = false;
-    response.message = std::string("Failed to parse task config: ") + e.what();
-  }
-
-  return response;
+  return axon::recorder::handle_rpc_config(callbacks_, params);
 }
 
 std::string HttpServer::format_response(

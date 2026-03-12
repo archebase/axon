@@ -102,19 +102,19 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - [ ] Custom attachments
 
 ### WebSocket RPC API
-- [ ] **WebSocket Server**: Bidirectional real-time communication alongside HTTP RPC
-  - [ ] WebSocket endpoint at `/ws` for persistent connections
-  - [ ] Support same RPC commands as HTTP API (config/begin/pause/resume/end)
-  - [ ] Real-time state change notifications pushed to clients
-  - [ ] Real-time statistics streaming (message counts, bandwidth, disk usage)
-- [ ] **Connection Management**
-  - [ ] Multiple concurrent client connections
-  - [ ] Automatic reconnection handling with exponential backoff
-  - [ ] Heartbeat/ping-pong for connection health monitoring
-- [ ] **Message Protocol**
-  - [ ] JSON-based request/response format compatible with HTTP RPC
-  - [ ] Event subscription model for selective updates
-  - [ ] Error handling and status codes aligned with HTTP API
+- ✅ **WebSocket Server**: Bidirectional real-time communication alongside HTTP RPC
+  - ✅ WebSocket endpoint at `/ws` for persistent connections
+  - ✅ Support same RPC commands as HTTP API (config/begin/pause/resume/end)
+  - ✅ Real-time state change notifications pushed to clients
+  - ✅ Real-time statistics streaming (message counts, bandwidth, disk usage)
+- ✅ **Connection Management**
+  - ✅ Multiple concurrent client connections
+  - ✅ Automatic reconnection handling with exponential backoff
+  - ✅ Heartbeat/ping-pong for connection health monitoring
+- ✅ **Message Protocol**
+  - ✅ JSON-based request/response format compatible with HTTP RPC
+  - ✅ Event subscription model for selective updates
+  - ✅ Error handling and status codes aligned with HTTP API
 
 ### S3 Transfer Daemon (axon_transfer)
 - ✅ **WebSocket Client**: Connect to fleet server for upload scheduling

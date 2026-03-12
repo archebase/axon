@@ -19,74 +19,37 @@
 
 #include "../config/task_config.hpp"
 #include "event_broadcaster.hpp"
+#include "rpc_handlers.hpp"
 #include "websocket_server.hpp"
 
 namespace axon {
 namespace recorder {
 
 /**
- * Forward declaration
+ * Forward declarations
  */
 struct TaskConfig;
+class WebSocketRpcHandler;
 
 /**
  * HTTP RPC Server for AxonRecorder
  *
  * Provides RESTful JSON API for controlling the recorder remotely.
  * Uses callback interface to avoid direct dependency on AxonRecorder.
+ * Uses shared RPC handlers that can also be used by WebSocket.
  */
 class HttpServer {
 public:
   /**
-   * Callback function types for RPC operations
-   */
-  using GetStateCallback = std::function<std::string()>;
-  using GetStatsCallback = std::function<nlohmann::json()>;
-  using GetTaskConfigCallback = std::function<const TaskConfig*()>;
-  using SetConfigCallback = std::function<bool(const std::string&, const nlohmann::json&)>;
-  using BeginRecordingCallback = std::function<bool(const std::string&)>;
-  using FinishRecordingCallback = std::function<bool(const std::string&)>;
-  using CancelRecordingCallback = std::function<bool()>;
-  using PauseRecordingCallback = std::function<bool()>;
-  using ResumeRecordingCallback = std::function<bool()>;
-  using ClearConfigCallback = std::function<bool()>;
-  using QuitCallback = std::function<void()>;
-
-  /**
-   * RPC response structure
-   */
-  struct RpcResponse {
-    bool success;
-    std::string message;
-    nlohmann::json data;
-
-    nlohmann::json to_json() const {
-      nlohmann::json j;
-      j["success"] = success;
-      j["message"] = message;
-      if (!data.is_null()) {
-        j["data"] = data;
-      }
-      return j;
-    }
-  };
-
-  /**
    * Callback registration structure
+   * Alias to RpcCallbacks for backward compatibility
    */
-  struct Callbacks {
-    GetStateCallback get_state;
-    GetStatsCallback get_stats;
-    GetTaskConfigCallback get_task_config;
-    SetConfigCallback set_config;
-    BeginRecordingCallback begin_recording;
-    FinishRecordingCallback finish_recording;
-    CancelRecordingCallback cancel_recording;
-    PauseRecordingCallback pause_recording;
-    ResumeRecordingCallback resume_recording;
-    ClearConfigCallback clear_config;
-    QuitCallback quit;
-  };
+  using Callbacks = RpcCallbacks;
+
+  /**
+   * Use shared RpcResponse from rpc_handlers.hpp
+   */
+  using RpcResponse = ::axon::recorder::RpcResponse;
 
   /**
    * Constructor
@@ -232,6 +195,9 @@ private:
 
   // Event broadcaster for WebSocket push notifications
   std::unique_ptr<EventBroadcaster> event_broadcaster_;
+
+  // WebSocket RPC handler for bidirectional RPC commands
+  std::unique_ptr<WebSocketRpcHandler> ws_rpc_handler_;
 };
 
 }  // namespace recorder

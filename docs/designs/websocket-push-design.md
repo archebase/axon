@@ -328,6 +328,138 @@ Clients can send control messages to the server:
 }
 ```
 
+### WebSocket RPC Commands
+
+Clients can send RPC commands via WebSocket using the following message format:
+
+**Request:**
+```json
+{
+  "action": "begin|finish|pause|resume|cancel|clear|config|quit|get_state|get_stats",
+  "request_id": "unique_request_id",
+  ...params
+}
+```
+
+**Response:**
+```json
+{
+  "type": "rpc_response",
+  "request_id": "unique_request_id",
+  "success": true|false,
+  "data": {...},
+  "message": "error message if failed"
+}
+```
+
+#### RPC Actions
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| `begin` | `task_id` | Start recording with specified task ID |
+| `finish` | `task_id` | Finish recording with specified task ID |
+| `pause` | - | Pause recording |
+| `resume` | - | Resume recording |
+| `cancel` | - | Cancel current recording |
+| `clear` | - | Clear task configuration |
+| `config` | `task_config` | Set task configuration |
+| `quit` | - | Shutdown recorder |
+| `get_state` | - | Get current state (fire and forget) |
+| `get_stats` | - | Get current statistics (fire and forget) |
+
+#### Request-Response Correlation
+
+The `request_id` field enables concurrent RPC requests. Each request must include a unique identifier:
+
+```json
+{
+  "action": "begin",
+  "request_id": "req_1234567890_abc123",
+  "task_id": "task_123"
+}
+```
+
+The server will include the same `request_id` in the response:
+
+```json
+{
+  "type": "rpc_response",
+  "request_id": "req_1234567890_abc123",
+  "success": true,
+  "data": {
+    "state": "recording",
+    "task_id": "task_123"
+  },
+  "message": "Recording started successfully"
+}
+```
+
+Clients can maintain a map of pending requests and correlate responses asynchronously:
+
+```javascript
+// Client-side implementation
+const pendingRequests = new Map()
+
+async function sendCommand(action, params = {}) {
+  return new Promise((resolve, reject) => {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(requestId)
+      reject(new Error('Command timeout'))
+    }, 5000)
+    
+    pendingRequests.set(requestId, { resolve, reject, timeoutId })
+    ws.send(JSON.stringify({ action, request_id: requestId, ...params }))
+  })
+}
+
+// Handle responses
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data)
+  if (message.type === 'rpc_response' && message.request_id) {
+    const pending = pendingRequests.get(message.request_id)
+    if (pending) {
+      clearTimeout(pending.timeoutId)
+      pendingRequests.delete(message.request_id)
+      if (message.success) {
+        pending.resolve(message.data)
+      } else {
+        pending.reject(new Error(message.message))
+      }
+    }
+  }
+}
+```
+
+#### Example WebSocket RPC Session
+
+```javascript
+// Connect to WebSocket
+const ws = new WebSocket('ws://localhost:8081/ws')
+
+ws.onopen = () => {
+  // Send multiple concurrent commands
+  sendCommand('get_state')
+    .then(state => console.log('State:', state))
+  
+  sendCommand('begin', { task_id: 'task_123' })
+    .then(result => console.log('Begin result:', result))
+    .catch(error => console.error('Begin failed:', error))
+  
+  sendCommand('get_stats')
+    .then(stats => console.log('Stats:', stats))
+}
+
+// Handle responses
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data)
+  if (message.type === 'rpc_response') {
+    console.log('RPC Response:', message)
+  }
+}
+```
+
 ## Backend Implementation
 
 ### Component Design
@@ -1059,3 +1191,4 @@ VITE_WS_RECONNECT_DELAY=1000
 |---------|------|--------|---------|
 | 1.0 | 2026-02-24 | - | Initial design |
 | 1.1 | 2026-02-24 | - | Added heartbeat/ping-pong, thread safety, rate limiting |
+| 1.2 | 2026-03-12 | - | Added bidirectional WebSocket RPC protocol with request-response correlation |
