@@ -218,6 +218,20 @@ add_axon_test(test_websocket_rpc_handler
 )
 target_link_libraries(test_websocket_rpc_handler yaml-cpp)
 
+# test_ws_rpc_client.cpp - WebSocket RPC client mode tests
+add_axon_test(test_ws_rpc_client
+    SOURCES unit/test_ws_rpc_client.cpp
+            ../src/http/ws_rpc_client.cpp
+            ../src/http/rpc_handlers.cpp
+            ../src/state/state_machine.cpp
+)
+target_link_libraries(
+    test_ws_rpc_client
+    OpenSSL::Crypto
+    OpenSSL::SSL
+    pthread
+)
+
 # =============================================================================
 # Integration Tests
 # =============================================================================
@@ -315,6 +329,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../src/http/event_broadcaster.cpp
                 ../src/http/rpc_handlers.cpp
                 ../src/http/websocket_rpc_handler.cpp
+                ../src/http/ws_rpc_client.cpp
     )
     target_link_libraries(
         test_recorder_integration

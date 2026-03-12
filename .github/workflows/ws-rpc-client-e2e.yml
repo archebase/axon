@@ -1,0 +1,103 @@
+# =============================================================================
+# WebSocket RPC Client E2E Tests Workflow for Axon
+# =============================================================================
+# Runs end-to-end tests for the WebSocket RPC client mode.
+# This tests the recorder connecting as a WebSocket client to a mock keystone
+# server and receiving RPC commands over the persistent connection.
+#
+# Test components:
+#   - Mock keystone server (Python)
+#   - axon_recorder in WebSocket client mode
+#   - Python E2E test script
+# =============================================================================
+
+name: WS RPC Client E2E Tests
+
+on:
+  # Called by ci.yml orchestrator
+  workflow_call:
+  # Allow standalone runs
+  workflow_dispatch:
+
+jobs:
+  # ===========================================================================
+  # WebSocket RPC Client E2E Tests
+  # ===========================================================================
+  ws-rpc-client-e2e-tests:
+    name: WS RPC Client E2E
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: build-essential cmake pkg-config ccache libgtest-dev libgmock-dev libyaml-cpp-dev liblz4-dev libzstd-dev libre2-dev libturbojpeg0-dev libboost-dev libboost-system-dev libboost-log-dev libboost-thread-dev libboost-filesystem-dev libssl-dev python3 python3-pip
+          version: 1.0
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install websockets
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ws-rpc-e2e-${{ runner.os }}-${{ hashFiles('apps/axon_recorder/**/*.cpp', 'apps/axon_recorder/**/*.hpp', 'core/**/*.cpp', 'core/**/*.hpp') }}
+          restore-keys: |
+            ccache-ws-rpc-e2e-${{ runner.os }}-
+            ccache-cpp-${{ runner.os }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=500M
+          ccache --set-config=compression=true
+          ccache -z
+
+      - name: Build GTest from source
+        run: |
+          if [ -d /usr/src/googletest ]; then
+            cd /usr/src/googletest
+            sudo cmake -B build
+            sudo cmake --build build
+            sudo cmake --install build
+          fi
+
+      - name: Build axon_recorder
+        run: |
+          # Set ccache for faster builds
+          export CCACHE_DIR=~/.ccache
+          ccache -z
+
+          # Build with make
+          make app-axon-recorder BUILD_TYPE=Release
+
+          ccache -s
+
+      - name: Run WebSocket RPC Client E2E Tests
+        run: |
+          # Navigate to test directory
+          cd apps/axon_recorder/test
+
+          # Make scripts executable
+          chmod +x e2e/test_ws_rpc_client_e2e.py
+          chmod +x mock_keystone_server.py
+
+          # Run the E2E test
+          python3 e2e/test_ws_rpc_client_e2e.py
+
+      - name: Upload test logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ws-rpc-client-e2e-logs
+          path: |
+            apps/axon_recorder/test/*.log
+            /tmp/axon/recording/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore

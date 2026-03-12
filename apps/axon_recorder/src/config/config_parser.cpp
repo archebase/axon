@@ -163,6 +163,11 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_http_server(node["http_server"], config.http_server);
     }
 
+    // Parse RPC mode config (new unified config)
+    if (node["rpc"]) {
+      parse_rpc(node["rpc"], config.rpc);
+    }
+
     return true;
   } catch (const YAML::Exception& e) {
     last_error_ = "Failed to parse YAML content: " + std::string(e.what());
@@ -399,6 +404,49 @@ bool ConfigParser::parse_http_server(const YAML::Node& node, HttpServerConfig& h
   }
   if (node["auth_token"]) {
     http_server.auth_token = node["auth_token"].as<std::string>();
+  }
+
+  return true;
+}
+
+bool ConfigParser::parse_rpc(const YAML::Node& node, RpcModeConfig& rpc) {
+  // Parse mode (default: http_server)
+  if (node["mode"]) {
+    std::string mode_str = node["mode"].as<std::string>();
+    if (mode_str == "http_server") {
+      rpc.mode = RpcMode::HTTP_SERVER;
+    } else if (mode_str == "ws_client") {
+      rpc.mode = RpcMode::WS_CLIENT;
+    } else {
+      last_error_ = "Invalid rpc.mode: " + mode_str + ". Must be 'http_server' or 'ws_client'";
+      return false;
+    }
+  }
+
+  // Parse ws_client section (only used when mode == ws_client)
+  if (node["ws_client"]) {
+    const auto& ws = node["ws_client"];
+    if (ws["url"]) {
+      rpc.ws_client.url = ws["url"].as<std::string>();
+    }
+    if (ws["auth_token"]) {
+      rpc.ws_client.auth_token = ws["auth_token"].as<std::string>();
+    }
+    if (ws["reconnect_initial_delay_ms"]) {
+      rpc.ws_client.reconnect_initial_delay_ms = ws["reconnect_initial_delay_ms"].as<int>();
+    }
+    if (ws["reconnect_backoff_multiplier"]) {
+      rpc.ws_client.reconnect_backoff_multiplier = ws["reconnect_backoff_multiplier"].as<double>();
+    }
+    if (ws["reconnect_max_delay_ms"]) {
+      rpc.ws_client.reconnect_max_delay_ms = ws["reconnect_max_delay_ms"].as<int>();
+    }
+    if (ws["reconnect_jitter_factor"]) {
+      rpc.ws_client.reconnect_jitter_factor = ws["reconnect_jitter_factor"].as<double>();
+    }
+    if (ws["ping_interval_ms"]) {
+      rpc.ws_client.ping_interval_ms = ws["ping_interval_ms"].as<int>();
+    }
   }
 
   return true;
