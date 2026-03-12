@@ -118,19 +118,19 @@
   - ✅ 通过 SQLite 状态持久化实现崩溃恢复
 
 ### WebSocket RPC API
-- [ ] **WebSocket 服务器**：与 HTTP RPC 并行的双向实时通信
-  - [ ] WebSocket 端点 `/ws` 用于持久连接
-  - [ ] 支持与 HTTP API 相同的 RPC 命令（config/begin/pause/resume/end）
-  - [ ] 实时状态变更通知推送到客户端
-  - [ ] 实时统计数据流（消息计数、带宽、磁盘使用）
-- [ ] **连接管理**
-  - [ ] 多个并发客户端连接
-  - [ ] 自动重连处理，带指数退避
-  - [ ] 心跳/ping-pong 用于连接健康监测
-- [ ] **消息协议**
-  - [ ] 与 HTTP RPC 兼容的 JSON 请求/响应格式
-  - [ ] 事件订阅模型用于选择性更新
-  - [ ] 错误处理和状态码与 HTTP API 对齐
+- ✅ **WebSocket 服务器**：与 HTTP RPC 并行的双向实时通信
+  - ✅ WebSocket 端点 `/ws` 用于持久连接
+  - ✅ 支持与 HTTP API 相同的 RPC 命令（config/begin/pause/resume/end）
+  - ✅ 实时状态变更通知推送到客户端
+  - ✅ 实时统计数据流（消息计数、带宽、磁盘使用）
+- ✅ **连接管理**
+  - ✅ 多个并发客户端连接
+  - ✅ 自动重连处理，带指数退避
+  - ✅ 心跳/ping-pong 用于连接健康监测
+- ✅ **消息协议**
+  - ✅ 与 HTTP RPC 兼容的 JSON 请求/响应格式
+  - ✅ 事件订阅模型用于选择性更新
+  - ✅ 错误处理和状态码与 HTTP API 对齐
 
 ### 应用打包
 - [ ] **原生 Debian 包**：Ubuntu 20.04/22.04/24.04 `.deb` 包
