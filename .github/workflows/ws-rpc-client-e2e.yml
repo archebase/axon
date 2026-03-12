@@ -74,8 +74,8 @@ jobs:
           export CCACHE_DIR=~/.ccache
           ccache -z
 
-          # Build with make
-          make app-axon-recorder BUILD_TYPE=Release
+          # Build with make (disable uploader to avoid AWS SDK dependency)
+          make app-axon-recorder BUILD_TYPE=Release AXON_BUILD_UPLOADER=OFF
 
           ccache -s
 
