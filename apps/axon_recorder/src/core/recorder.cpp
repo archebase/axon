@@ -214,6 +214,18 @@ bool AxonRecorder::start() {
     return false;
   }
 
+  if (task_config_.has_value() && http_callback_client_ &&
+      !task_config_->start_callback_url.empty()) {
+    StartCallbackPayload payload;
+    payload.task_id = task_config_->task_id;
+    payload.device_id = task_config_->device_id;
+    payload.status = "recording";
+    payload.started_at = HttpCallbackClient::get_iso8601_timestamp();
+    payload.topics = task_config_->topics;
+
+    http_callback_client_->post_start_callback_async(*task_config_, payload);
+  }
+
   // Start plugin
   if (descriptor->vtable->start) {
     AxonStatus status = descriptor->vtable->start();
@@ -357,8 +369,8 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
           config.topics.push_back(topic);
         }
       }
-      if (config_json.contains("callback_url")) {
-        config.start_callback_url = config_json["callback_url"];
+      if (config_json.contains("start_callback_url")) {
+        config.start_callback_url = config_json["start_callback_url"];
       }
       if (config_json.contains("finish_callback_url")) {
         config.finish_callback_url = config_json["finish_callback_url"];
