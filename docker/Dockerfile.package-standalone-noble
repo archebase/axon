@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 
 # =============================================================================
-# Axon Package Build - Standalone (No ROS)
+# Axon Standalone Package Build - Ubuntu 24.04 (Noble)
 # =============================================================================
-# Build environment for creating Axon packages that don't require ROS.
-# Builds: axon-recorder, axon-config, axon-transfer, axon-panel, axon-dispatcher
+# Build environment for creating Axon packages for Ubuntu 24.04.
+# These packages are suitable for installation on Ubuntu 24.04 systems.
 # =============================================================================
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -27,65 +27,79 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     software-properties-common \
     gnupg \
-    # Debian packaging tools
     debhelper \
     dpkg-dev \
     devscripts \
     fakeroot \
+    xxd \
+    vim-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 18.x from NodeSource repository (required for axon-panel)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install nlohmann-json
+# Install common dependencies (Ubuntu 24.04 versions)
 RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install common dependencies
-RUN apt-get update && apt-get install -y \
     libyaml-cpp-dev \
     liblz4-dev \
     libzstd-dev \
     libre2-dev \
     libboost-dev \
     libboost-system-dev \
-    libboost-filesystem-dev \
     libboost-log-dev \
     libboost-thread-dev \
+    libboost-filesystem-dev \
     libssl-dev \
     libsqlite3-dev \
     libcurl4-openssl-dev \
     zlib1g-dev \
-    xxd \
     && rm -rf /var/lib/apt/lists/*
 
-# Install AWS SDK for C++ (required for axon-transfer for S3 uploads)
+# Install Node.js 18 for panel build
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pre-download MCAP library for FetchContent
+# This avoids network issues during package build
+ARG MCAP_COMMIT=a7eeff1383cc95a29dd9c5cac94104d277b5414e
+RUN cd /tmp && \
+    curl -fsSL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz" -o mcap.tar.gz && \
+    tar xzf mcap.tar.gz && \
+    mkdir -p /opt/mcap && \
+    mv "mcap-${MCAP_COMMIT}"/* /opt/mcap/ && \
+    rm -rf "mcap-${MCAP_COMMIT}" mcap.tar.gz && \
+    echo "MCAP pre-downloaded to /opt/mcap from commit ${MCAP_COMMIT}"
+
+# Pre-download cpp-httplib for axon-panel
+# Use a specific release tag that's compatible with the panel code
+RUN cd /tmp && \
+    curl -fsSL "https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.15.3.tar.gz" -o httplib.tar.gz && \
+    tar xzf httplib.tar.gz && \
+    mkdir -p /opt/cpp-httplib && \
+    mv cpp-httplib-0.15.3/* /opt/cpp-httplib/ && \
+    rm -rf cpp-httplib-0.15.3 httplib.tar.gz && \
+    echo "cpp-httplib pre-downloaded to /opt/cpp-httplib v0.15.3"
+
+# Install AWS SDK for C++ (required for S3 uploads in axon-uploader)
 # Build from source with minimal components to reduce build time
 # This takes ~15-20 minutes but is required for S3 upload functionality
-RUN git clone --depth 1 --recurse-submodules \
+RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
     --branch 1.11.479 \
     --single-branch \
     https://github.com/aws/aws-sdk-cpp.git \
     /tmp/aws-sdk-cpp && \
     cd /tmp/aws-sdk-cpp && \
     cmake -B build \
-        -GNinja \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_ONLY="s3;transfer" \
         -DBUILD_SHARED_LIBS=ON \
         -DENABLE_TESTING=OFF \
-        -DAUTOR_RUN_TESTS=OFF \
+        -DAUTORUN_TESTS=OFF \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
         -DUNITY_BUILD=OFF && \
     cmake --build build -j"$(nproc)" && \
     cmake --install build && \
     ldconfig && \
     rm -rf /tmp/aws-sdk-cpp
-
-# Note: MCAP library is downloaded via FetchContent during build
 
 # Set working directory
 WORKDIR /axon

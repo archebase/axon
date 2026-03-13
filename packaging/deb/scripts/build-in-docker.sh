@@ -9,8 +9,8 @@ set -e
 # =============================================================================
 # Builds Debian packages inside Docker containers for reproducible builds.
 # Usage:
-#   build-in-docker.sh [standalone|ros2|ros1|all]
-#   build-in-docker.sh --distro <humble|jazzy|rolling|noetic>
+#   build-in-docker.sh [standalone|ros2|ros1|udp|all]
+#   build-in-docker.sh --distro <humble|jazzy|noetic>
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,32 +53,69 @@ mkdir -p "${OUTPUT_DIR}"
 # Parse arguments
 BUILD_TYPE="${1:-standalone}"
 ROS_DISTRO="${ROS_DISTRO:-humble}"
+UBUNTU_DISTRO="${UBUNTU_DISTRO:-jammy}"  # focal|jammy|noble
 
 case "$BUILD_TYPE" in
     standalone)
-        DOCKERFILE="Dockerfile.package-standalone"
+        # Build for all Ubuntu versions or specific one
+        if [ -n "$UBUNTU_DISTRO_OVERRIDE" ]; then
+            UBUNTU_DISTRO="$UBUNTU_DISTRO_OVERRIDE"
+        fi
+        DOCKERFILE="Dockerfile.package-standalone-${UBUNTU_DISTRO}"
         BUILD_SCRIPT="build-standalone.sh"
-        IMAGE_NAME="axon-package-standalone"
+        IMAGE_NAME="axon-package-standalone-${UBUNTU_DISTRO}"
+        ;;
+    standalone-focal|standalone-jammy|standalone-noble)
+        UBUNTU_DISTRO="${BUILD_TYPE#standalone-}"
+        DOCKERFILE="Dockerfile.package-standalone-${UBUNTU_DISTRO}"
+        BUILD_SCRIPT="build-standalone.sh"
+        IMAGE_NAME="axon-package-standalone-${UBUNTU_DISTRO}"
         ;;
     ros2)
         DOCKERFILE="Dockerfile.package-ros2.${ROS_DISTRO}"
         BUILD_SCRIPT="build-ros2.sh"
         IMAGE_NAME="axon-package-ros2-${ROS_DISTRO}"
+        # Map ROS2 distro to Ubuntu distro
+        case "$ROS_DISTRO" in
+            humble) UBUNTU_DISTRO="jammy" ;;
+            jazzy) UBUNTU_DISTRO="noble" ;;
+            rolling) UBUNTU_DISTRO="noble" ;;
+            *) UBUNTU_DISTRO="jammy" ;;
+        esac
         ;;
     ros1)
         DOCKERFILE="Dockerfile.package-ros1"
         BUILD_SCRIPT="build-ros1.sh"
         IMAGE_NAME="axon-package-ros1"
         ROS_DISTRO="noetic"
+        UBUNTU_DISTRO="focal"
+        ;;
+    udp)
+        # UDP plugin uses standalone image (no ROS required)
+        UBUNTU_DISTRO="${UBUNTU_DISTRO:-jammy}"
+        DOCKERFILE="Dockerfile.package-standalone-${UBUNTU_DISTRO}"
+        BUILD_SCRIPT="build-udp.sh"
+        IMAGE_NAME="axon-package-standalone-${UBUNTU_DISTRO}"
+        ;;
+    udp-focal|udp-jammy|udp-noble)
+        UBUNTU_DISTRO="${BUILD_TYPE#udp-}"
+        DOCKERFILE="Dockerfile.package-standalone-${UBUNTU_DISTRO}"
+        BUILD_SCRIPT="build-udp.sh"
+        IMAGE_NAME="axon-package-standalone-${UBUNTU_DISTRO}"
         ;;
     all)
         log_section "Building All Packages in Docker"
 
-        # Build standalone packages
-        "$0" standalone
+        # Build standalone packages for all Ubuntu versions
+        for ubuntu_distro in focal jammy noble; do
+            if [ -f "${DOCKER_DIR}/Dockerfile.package-standalone-${ubuntu_distro}" ]; then
+                log_section "Building Standalone Packages for Ubuntu ${ubuntu_distro^}"
+                "$0" "standalone-${ubuntu_distro}" || log_warn "Failed to build standalone for ${ubuntu_distro}"
+            fi
+        done
 
         # Build ROS2 packages if Dockerfile exists
-        for distro in humble jazzy rolling; do
+        for distro in humble jazzy; do
             if [ -f "${DOCKER_DIR}/Dockerfile.package-ros2.${distro}" ]; then
                 log_section "Building ROS2 ${distro^} Packages"
                 "$0" --distro "$distro" || log_warn "Failed to build ROS2 ${distro}"
@@ -90,6 +127,14 @@ case "$BUILD_TYPE" in
             log_section "Building ROS1 Noetic Packages"
             "$0" ros1 || log_warn "Failed to build ROS1 packages"
         fi
+
+        # Build UDP plugin for all Ubuntu versions
+        for ubuntu_distro in focal jammy noble; do
+            if [ -f "${DOCKER_DIR}/Dockerfile.package-standalone-${ubuntu_distro}" ]; then
+                log_section "Building UDP Plugin for Ubuntu ${ubuntu_distro^}"
+                "$0" "udp-${ubuntu_distro}" || log_warn "Failed to build UDP plugin for ${ubuntu_distro}"
+            fi
+        done
 
         log_section "All Docker Builds Complete"
         exit 0
@@ -103,7 +148,7 @@ case "$BUILD_TYPE" in
         ;;
     *)
         log_error "Unknown build type: $BUILD_TYPE"
-        echo "Usage: $0 [standalone|ros2|ros1|all|--distro <name>]"
+        echo "Usage: $0 [standalone[-focal|-jammy|-noble]|ros2|ros1|udp[-focal|-jammy|-noble]|all|--distro <name>]"
         exit 1
         ;;
 esac
@@ -132,6 +177,7 @@ log_section "Building Packages in Container"
 docker run --rm \
     -v "${PROJECT_ROOT}:/axon:rw" \
     -e ROS_DISTRO="${ROS_DISTRO}" \
+    -e DISTRO="${UBUNTU_DISTRO}" \
     -e VERSION="${VERSION}" \
     -w /axon \
     "$IMAGE_NAME" \

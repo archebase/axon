@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-plugin-ros2-humble
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libboost-dev,
+               ros-humble-ros-base,
+               ros-humble-rclcpp,
+               ros-humble-rclcpp-components,
+
+Package: axon-plugin-ros2-humble
+Architecture: any
+Depends: axon-recorder,
+         ros-humble-ros-base,
+         ros-humble-rclcpp,
+         ${shlibs:Depends},
+         ${misc:Depends}
+Description: ROS2 Humble plugin for Axon Recorder
+ This plugin enables Axon to record from ROS2 Humble.
+ .
+ Built for Ubuntu 22.04 (Jammy) with ROS2 Humble.
+ Provides: ros2-humble-plugin

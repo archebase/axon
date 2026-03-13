@@ -21,7 +21,9 @@ else
 fi
 
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
-OUTPUT_DIR="${PACKAGE_DIR}/output"
+# ROS1 Noetic runs on Ubuntu 20.04 (Focal)
+UBUNTU_DISTRO="focal"
+OUTPUT_DIR="${PACKAGE_DIR}/output/${UBUNTU_DISTRO}"
 BUILD_DIR="${PACKAGE_DIR}/build"
 
 # Colors for output
@@ -112,6 +114,8 @@ build_plugin() {
         --exclude='debian' \
         --exclude='obj-*' \
         --exclude='.debian-build' \
+        --exclude='CMakeCache.txt' \
+        --exclude='CMakeFiles' \
         .) | (cd "${build_area}" && tar xf -)
 
     # Copy debian files to build area
@@ -119,7 +123,7 @@ build_plugin() {
 
     # Build from build area
     cd "${build_area}"
-    if dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then
+    if AXON_REPO_ROOT="${PROJECT_ROOT}" dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then
         log_info "Successfully built ${pkg_name}"
 
         # Move built packages to output directory

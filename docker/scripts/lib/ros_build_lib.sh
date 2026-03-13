@@ -146,9 +146,13 @@ ros_build_package() {
         ros_build_error "CMake configure failed"
     }
 
-    # Build
-    ros_build_log "INFO" "Building..."
-    cmake --build . -j$(nproc) || {
+    # Build - limit parallel jobs to avoid race conditions in Docker
+    local parallel_jobs=$(nproc)
+    if [ "$parallel_jobs" -gt 4 ]; then
+        parallel_jobs=4
+    fi
+    ros_build_log "INFO" "Building with -j$parallel_jobs..."
+    cmake --build . "-j$parallel_jobs" || {
         ros_build_error "Build failed"
     }
 

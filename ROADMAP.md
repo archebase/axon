@@ -10,10 +10,10 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - Runtime plugin discovery (`dlopen/dlsym`)
   - ABI version compatibility checking
   - Clear separation: core libraries have zero ROS dependencies
-- ✅ **ROS1 Plugin**: Support for ROS1 Noetic (`libaxon_ros1.so`)
+- ✅ **ROS1 Plugin**: Support for ROS1 Noetic (`libaxon_ros1_plugin.so`)
   - Topic subscription and message introspection
   - roscpp integration and plugin lifecycle management
-- ✅ **ROS2 Plugin**: Support for ROS2 Humble/Jazzy/Rolling (`libaxon_ros2.so`)
+- ✅ **ROS2 Plugin**: Support for ROS2 Humble/Jazzy/Rolling (`libaxon_ros2_plugin.so`)
   - rclcpp-based executor integration
   - Modern CMake targets
   - Multi-version compatibility testing
@@ -132,28 +132,21 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - ✅ Crash recovery via SQLite state persistence
 
 ### App Packaging
-- [ ] **Native Debian Packages**: Ubuntu 20.04/22.04/24.04 `.deb` packages
-  - [ ] `axon-config` package with standalone binary
-  - [ ] `axon-recorder` package with bundled plugins (ROS1 for 20.04, ROS2 for 22.04/24.04)
-  - [ ] `axon-transfer` package with vendored AWS SDK
-  - [ ] `axon-panel` Standalone deployment
-- [ ] **Portable Tarballs**: Linux x86_64 portable bundles
-  - [ ] Self-contained directory layout with `run.sh` launcher
-  - [ ] Vendored runtime dependencies (excluding glibc/ld-linux)
-- [ ] **CMake Install Rules**: Normalize install destinations
-  - [ ] Add missing install rules for core libraries (`axon_mcap`, `axon_uploader`)
-  - [ ] Consistent use of `GNUInstallDirs` across all components
-  - [ ] Plugin install to `/opt/axon/lib/axon/plugins/`
+- ✅ **Native Debian Packages**: Ubuntu 20.04/22.04/24.04 `.deb` packages
+  - ✅ `axon-config` package with standalone binary
+  - ✅ `axon-recorder` package with bundled plugins (ROS1 for 20.04, ROS2 for 22.04/24.04)
+  - ✅ `axon-transfer` package with vendored AWS SDK
+  - ✅ `axon-panel` Standalone deployment
+- ✅ **CMake Install Rules**: Normalize install destinations
+  - ✅ Add missing install rules for core libraries (`axon_mcap`, `axon_uploader`)
+  - ✅ Consistent use of `GNUInstallDirs` across all components
+  - ✅ Plugin install to `/opt/axon/lib/axon/plugins/`
 - [ ] **Runtime Linking**: RPATH/RUNPATH configuration
   - [ ] Set `RUNPATH=$ORIGIN/../lib/bundled:$ORIGIN/../lib` for binaries
   - [ ] Plugin-local runpath for vendored dependencies
   - [ ] Dependency vendoring script with `ldd` analysis
-- [ ] **Plugin Discovery**: Default plugin resolution in recorder
-  - [ ] Search `/opt/axon/lib/axon/plugins/` by default
-  - [ ] Support `AXON_PLUGIN_DIR` environment variable override
-  - [ ] Explicit selection via config profile or CLI flag
 - [ ] **CI Packaging Matrix**: GitHub Actions workflow
-  - [ ] Per-OS build containers (20.04/22.04/24.04)
+  - ✅ Per-OS build containers (20.04/22.04/24.04)
   - [ ] Automated `.deb` generation with CPack
   - [ ] Release asset publishing with checksums and SBOM
 

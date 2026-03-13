@@ -14,22 +14,29 @@ DEB_BUILD_OPTIONS += nocheck
 ifeq ($(origin AXON_REPO_ROOT),environment)
 REPO_ROOT := $(AXON_REPO_ROOT)
 else
-REPO_ROOT := $(shell cd $(CURDIR)/../.. && pwd)
+REPO_ROOT := $(shell cd $(CURDIR)/../../../.. && pwd)
 endif
+
+# Get ROS_DISTRO from environment or default to humble
+ROS_DISTRO ?= humble
 
 # main packaging script based on dh7 syntax
 %:
 	dh $@
 
 override_dh_auto_configure:
-	# Use pre-downloaded MCAP if available (Ubuntu 24.04+)
-	if [ -d "/opt/mcap" ]; then \
-		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap; \
-	else \
-		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT); \
-	fi
+	dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon \
+		-DAXON_REPO_ROOT=$(REPO_ROOT) \
+		-DROS_DISTRO=$(ROS_DISTRO) \
+		-DCMAKE_PREFIX_PATH=/opt/ros/$(ROS_DISTRO)
 
-# Skip clean reconfiguration to avoid path issues
+override_dh_auto_install:
+	dh_auto_install
+	# Install plugin to correct location
+	mkdir -p debian/axon-plugin-ros2/opt/axon/plugins
+	mv debian/axon-plugin-ros2/opt/axon/lib/libaxon_ros2_plugin.so \
+	   debian/axon-plugin-ros2/opt/axon/plugins/ || true
+
 override_dh_auto_clean:
 	dh_auto_clean || true
 	rm -rf obj-* debian/.debhelper debian/debhelper-build-stamp debian/files 2>/dev/null || true

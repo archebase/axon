@@ -14,6 +14,10 @@ set -e
 # - axon-transfer
 # - axon-dispatcher
 # - axon-all (meta-package)
+#
+# Environment:
+#   DISTRO - Ubuntu codename (focal|jammy|noble). Default: jammy
+#   OUTPUT_SUFFIX - Optional suffix for output directory
 # =============================================================================
 
 # Detect if running in Docker (check for /axon directory with CMakeLists.txt)
@@ -36,9 +40,18 @@ fi
 
 # Always set PACKAGE_DIR relative to PROJECT_ROOT
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
-OUTPUT_DIR="${PACKAGE_DIR}/output"
+DISTRO="${DISTRO:-jammy}"
+OUTPUT_DIR="${PACKAGE_DIR}/output/${DISTRO}"
 BUILD_DIR="${PACKAGE_DIR}/build"
 SCRIPT_DIR="${PACKAGE_DIR}/scripts"
+
+# Map distro names to display names
+case "$DISTRO" in
+    focal)  DISTRO_DISPLAY="20.04 (Focal)" ;;
+    jammy)  DISTRO_DISPLAY="22.04 (Jammy)" ;;
+    noble)  DISTRO_DISPLAY="24.04 (Noble)" ;;
+    *)      DISTRO_DISPLAY="$DISTRO" ;;
+esac
 
 # Colors for output
 RED='\033[0;31m'
@@ -62,7 +75,7 @@ log_error() {
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-# Clean output directory
+# Clean output directory for this distro only
 rm -f "${OUTPUT_DIR}"/*.deb 2>/dev/null || true
 
 # Clean build directory (centralized location for all intermediate artifacts)
@@ -92,7 +105,7 @@ if [ -z "$VERSION" ]; then
 fi
 DEBIAN_VERSION="${VERSION}-1"
 
-log_info "Building Axon standalone packages version ${DEBIAN_VERSION}"
+log_info "Building Axon standalone packages version ${DEBIAN_VERSION} for Ubuntu ${DISTRO_DISPLAY}"
 log_info "Project root: ${PROJECT_ROOT}"
 log_info "Build directory: ${BUILD_DIR}"
 log_info "Output directory: ${OUTPUT_DIR}"
@@ -104,7 +117,9 @@ build_app_package() {
     local app_dir="$2"
     local pkg_dir="$3"  # packaging/deb subdirectory name (e.g., "recorder" not "axon-recorder")
     local debian_dir="${PACKAGE_DIR}/${pkg_dir}/debian"
-    local build_area="${BUILD_DIR}/${pkg_name}"
+    # Add distro suffix to package name for multi-distro support
+    local suffixed_pkg_name="${pkg_name}-${DISTRO}"
+    local build_area="${BUILD_DIR}/${suffixed_pkg_name}"
 
     if [ ! -d "$debian_dir" ]; then
         log_error "Debian directory not found: $debian_dir"
@@ -116,7 +131,7 @@ build_app_package() {
         return 1
     fi
 
-    log_info "Building ${pkg_name}..."
+    log_info "Building ${suffixed_pkg_name}..."
 
     # Save current directory
     local original_dir="$(pwd)"
@@ -139,28 +154,42 @@ build_app_package() {
         --exclude='debian' \
         --exclude='obj-*' \
         --exclude='.debian-build' \
+        --exclude='CMakeCache.txt' \
+        --exclude='CMakeFiles' \
         .) | (cd "${build_area}" && tar xf -)
 
     # Copy debian files to build area
     cp -r "${debian_dir}" "${build_area}/debian"
 
+    # Modify control file to add distro suffix to package name
+    if [ -f "${build_area}/debian/control" ]; then
+        sed -i "s/^Package: ${pkg_name}$/Package: ${suffixed_pkg_name}/" "${build_area}/debian/control"
+        # Update dependencies that reference other axon packages (if any)
+        sed -i "s/, axon-recorder/, ${suffixed_pkg_name}/g" "${build_area}/debian/control" 2>/dev/null || true
+    fi
+
+    # Modify changelog to add distro suffix
+    if [ -f "${build_area}/debian/changelog" ]; then
+        sed -i "s/${pkg_name} (${suffixed_pkg_name} (/g" "${build_area}/debian/changelog"
+    fi
+
     # Build from build area
     cd "${build_area}"
     if AXON_REPO_ROOT="${PROJECT_ROOT}" dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then
-        log_info "Successfully built ${pkg_name}"
+        log_info "Successfully built ${suffixed_pkg_name}"
         build_success=1
     else
         # Check if package was created despite the error
-        if find .. -maxdepth 1 -name "${pkg_name}_*.deb" -type f -exec test -f {} \; -print | head -1 | grep -q .; then
-            log_info "Package ${pkg_name} was created (ignoring post-package error)"
+        if find .. -maxdepth 1 -name "${suffixed_pkg_name}_*.deb" -type f -exec test -f {} \; -print | head -1 | grep -q .; then
+            log_info "Package ${suffixed_pkg_name} was created (ignoring post-package error)"
             build_success=1
         else
-            log_error "Failed to build ${pkg_name}"
+            log_error "Failed to build ${suffixed_pkg_name}"
         fi
     fi
 
     # Move built packages to output directory (even if build had post-package errors)
-    find "${BUILD_DIR}" -maxdepth 1 -name "${pkg_name}_*.deb" -type f -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+    find "${BUILD_DIR}" -maxdepth 1 -name "${suffixed_pkg_name}_*.deb" -type f -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
 
     # Clean up build area (keep directory for inspection)
     # rm -rf "${build_area}"
@@ -191,25 +220,26 @@ build_app_package "axon-panel" "${PROJECT_ROOT}/apps/axon_panel" "panel" || exit
 build_app_package "axon-dispatcher" "${PROJECT_ROOT}/apps/axon_dispatcher" "dispatcher" || exit 1
 
 # 6. axon-all (meta-package)
-log_info "Building axon-all (meta-package)..."
-temp_meta_dir="${BUILD_DIR}/axon-all"
+log_info "Building axon-all-${DISTRO} (meta-package)..."
+meta_pkg_name="axon-all-${DISTRO}"
+temp_meta_dir="${BUILD_DIR}/${meta_pkg_name}"
 rm -rf "$temp_meta_dir"
 mkdir -p "$temp_meta_dir"
 cd "$temp_meta_dir"
 
 mkdir debian
-cat > debian/control <<'EOF'
-Source: axon-all
+cat > debian/control <<EOF
+Source: ${meta_pkg_name}
 Section: utils
 Priority: optional
 Maintainer: ArcheBase <noreply@archebase.com>
 
-Package: axon-all
+Package: ${meta_pkg_name}
 Architecture: any
-Depends: axon-recorder, axon-config, axon-panel,
-         axon-transfer, axon-dispatcher,
-         ${misc:Depends}
-Description: Axon - Complete installation (core tools only)
+Depends: axon-recorder-${DISTRO}, axon-config-${DISTRO}, axon-panel-${DISTRO},
+         axon-transfer-${DISTRO}, axon-dispatcher-${DISTRO},
+         \${misc:Depends}
+Description: Axon - Complete installation for Ubuntu ${DISTRO_DISPLAY}
  This meta-package installs all core Axon tools:
  - axon-recorder: Core recording engine
  - axon-config: Robot configuration tool
@@ -217,6 +247,7 @@ Description: Axon - Complete installation (core tools only)
  - axon-transfer: S3 transfer daemon
  - axon-dispatcher: Unified CLI entry point
  .
+ Built for Ubuntu ${DISTRO_DISPLAY}.
  Plugin packages must be installed separately based on your needs.
 EOF
 echo "7" > debian/compat
@@ -227,23 +258,23 @@ cat > debian/rules <<'EOF'
 EOF
 chmod +x debian/rules
 cat > debian/changelog <<EOF
-axon-all (${DEBIAN_VERSION}) unstable; urgency=medium
-  * Initial release
+${meta_pkg_name} (${DEBIAN_VERSION}) unstable; urgency=medium
+  * Initial release for Ubuntu ${DISTRO_DISPLAY}
  -- ArcheBase <noreply@archebase.com>  $(date -R)
 EOF
 
 if dpkg-buildpackage -b -uc -us; then
-    log_info "Successfully built axon-all"
-    mv ../axon-all_*.deb "${OUTPUT_DIR}/" 2>/dev/null || true
+    log_info "Successfully built ${meta_pkg_name}"
+    mv ../${meta_pkg_name}_*.deb "${OUTPUT_DIR}/" 2>/dev/null || true
 else
-    log_warn "Failed to build axon-all meta-package"
+    log_warn "Failed to build ${meta_pkg_name} meta-package"
 fi
 cd "${PROJECT_ROOT}"
 rm -rf "$temp_meta_dir"
 
 # Summary
 log_info "==================================================================="
-log_info "Build complete! Packages created:"
+log_info "Build complete for Ubuntu ${DISTRO_DISPLAY}! Packages created:"
 log_info "==================================================================="
 ls -lh "${OUTPUT_DIR}"/*.deb 2>/dev/null || log_warn "No packages found in ${OUTPUT_DIR}"
 log_info "==================================================================="

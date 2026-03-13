@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-plugin-ros2-jazzy
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libboost-dev,
+               ros-jazzy-ros-base,
+               ros-jazzy-rclcpp,
+               ros-jazzy-rclcpp-components,
+
+Package: axon-plugin-ros2-jazzy
+Architecture: any
+Depends: axon-recorder,
+         ros-jazzy-ros-base,
+         ros-jazzy-rclcpp,
+         ${shlibs:Depends},
+         ${misc:Depends}
+Provides: ros2-jazzy-plugin
+Description: ROS2 Jazzy plugin for Axon Recorder
+ This plugin enables Axon to record from ROS2 Jazzy.
+ .
+ Built for Ubuntu 24.04 (Noble) with ROS2 Jazzy.
