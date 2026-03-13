@@ -504,12 +504,15 @@ app-axon-panel:
 # =============================================================================
 
 # Build mock middleware
-build-mock:
+build-mock: build-core
 	@printf "%s\n" "$(YELLOW)Building mock middleware...$(NC)"
-	@mkdir -p middlewares/mock/src/mock_plugin/build
-	@cd middlewares/mock/src/mock_plugin/build && \
+	@mkdir -p middlewares/mock/build
+	@cd middlewares/mock/build && \
 		cmake .. \
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+			-DAXON_LOGGING_DIR=$(PROJECT_ROOT)/core/axon_logging \
+			-DAXON_APPS_DIR=$(PROJECT_ROOT)/apps \
+			-DAXON_BUILD_TESTS=ON \
 			-DCMAKE_INSTALL_PREFIX=$(PROJECT_ROOT)/middlewares/mock/install && \
 		cmake --build . -j$(NPROC)
 	@printf "%s\n" "$(GREEN)✓ Mock middleware built$(NC)"
@@ -517,13 +520,13 @@ build-mock:
 # Test mock plugin E2E
 test-mock-e2e: build-mock
 	@printf "%s\n" "$(YELLOW)Running mock plugin E2E test...$(NC)"
-	@cd middlewares/mock/src/mock_plugin/build && ./test_mock_plugin_e2e
+	@cd middlewares/mock/build && ./test_mock_plugin_e2e
 	@printf "%s\n" "$(GREEN)✓ Mock plugin E2E test passed$(NC)"
 
 # Test mock plugin load
 test-mock-load: build-mock
 	@printf "%s\n" "$(YELLOW)Running mock plugin load test...$(NC)"
-	@cd middlewares/mock/src/mock_plugin/build && \
+	@cd middlewares/mock/build && \
 		./test_mock_plugin_load ./libmock_plugin.so
 	@printf "%s\n" "$(GREEN)✓ Mock plugin load test passed$(NC)"
 
