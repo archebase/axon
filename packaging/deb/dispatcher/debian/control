@@ -10,9 +10,16 @@ Build-Depends: debhelper-compat (=13),
 
 Package: axon-dispatcher
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         axon-recorder,
+         axon-config,
+         axon-panel,
+         axon-transfer
 Description: Axon Unified CLI Dispatcher
  Provides the 'axon' command that dispatches to subcommands
  like 'axon recorder', 'axon config', etc. (similar to git).
  .
  This creates a unified entry point for all Axon tools.
+ .
+ Recommend installing axon-all for a complete setup.

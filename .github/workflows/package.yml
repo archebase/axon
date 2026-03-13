@@ -1,0 +1,155 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+name: Build Debian Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  # Core packages (no ROS dependencies) for each Ubuntu distro
+  package-core:
+    name: Core Packages (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [focal, jammy, noble]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build core packages
+        run: |
+          cd packaging/deb
+          ./scripts/build-in-docker.sh standalone-${{ matrix.distro }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-core-${{ matrix.distro }}
+          path: packaging/deb/output/*.deb
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ROS1 Noetic packages
+  package-ros1:
+    name: ROS1 Noetic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ROS1 packages
+        run: |
+          cd packaging/deb
+          ./scripts/build-in-docker.sh ros1
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-ros1
+          path: packaging/deb/output/*.deb
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ROS2 packages
+  package-ros2:
+    name: ROS2 ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [humble, jazzy]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ROS2 packages
+        run: |
+          cd packaging/deb
+          ./scripts/build-in-docker.sh --distro ${{ matrix.distro }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-ros2-${{ matrix.distro }}
+          path: packaging/deb/output/*.deb
+          retention-days: 30
+          if-no-files-found: warn
+
+  # UDP plugin packages
+  package-udp:
+    name: UDP Plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build UDP plugin
+        run: |
+          cd packaging/deb
+          ./scripts/build-in-docker.sh udp
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-udp
+          path: packaging/deb/output/*.deb
+          retention-days: 30
+          if-no-files-found: warn
+
+  # Create release with all packages
+  release:
+    name: Create Release
+    needs: [package-core, package-ros1, package-ros2, package-udp]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -name '*.deb' -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum *.deb > SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release/*.deb
+            release/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -32,6 +32,12 @@ override_dh_auto_configure:
 		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release; \
 	fi
 
+override_dh_install:
+	dh_install
+	# Install systemd service file
+	install -D -m 644 $(REPO_ROOT)/packaging/deb/systemd/axon-panel.service \
+		debian/axon-panel/lib/systemd/system/axon-panel.service
+
 override_dh_auto_clean:
 	dh_auto_clean || true
 	rm -rf obj-* debian/.debhelper debian/debhelper-build-stamp debian/files 2>/dev/null || true

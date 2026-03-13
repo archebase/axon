@@ -4,18 +4,49 @@
 #!/bin/sh
 set -e
 
-# Create runtime directories
+# Create axon user and group if they don't exist
+if ! getent passwd axon > /dev/null 2>&1; then
+    adduser --system --no-create-home --quiet --group axon || true
+fi
+
+# Create runtime directories with proper permissions
 if [ ! -d /axon ]; then
     mkdir -p /axon
+    chown axon:axon /axon
+    chmod 755 /axon
 fi
 
 if [ ! -d /axon/recordings ]; then
     mkdir -p /axon/recordings
+    chown axon:axon /axon/recordings
+    chmod 755 /axon/recordings
+fi
+
+# Create log directory
+if [ ! -d /var/log/axon ]; then
+    mkdir -p /var/log/axon
+    chown axon:axon /var/log/axon
+    chmod 755 /var/log/axon
+fi
+
+# Create state directory
+if [ ! -d /var/lib/axon ]; then
+    mkdir -p /var/lib/axon
+    chown axon:axon /var/lib/axon
+    chmod 755 /var/lib/axon
 fi
 
 # Create system config directory
 if [ ! -d /etc/axon ]; then
     mkdir -p /etc/axon
+    chmod 755 /etc/axon
+fi
+
+# Copy default configuration files if they don't exist
+# ROS2 is the most common default
+if [ ! -f /etc/axon/recorder.yaml ] && [ -f /opt/axon/share/config/default_config_ros2.yaml ]; then
+    cp /opt/axon/share/config/default_config_ros2.yaml /etc/axon/recorder.yaml
+    chmod 644 /etc/axon/recorder.yaml
 fi
 
 # Enable systemd service if systemd is running

@@ -195,10 +195,17 @@ docker run --rm \
 
 log_section "Docker Build Complete"
 
-# Show built packages
+# Show built packages (check subdirectories too)
 if [ -d "$OUTPUT_DIR" ]; then
     log_info "Packages created:"
-    ls -lh "${OUTPUT_DIR}"/*.deb 2>/dev/null || log_warn "No packages found"
+    found=$(find "${OUTPUT_DIR}" -name "*.deb" -type f 2>/dev/null | wc -l)
+    if [ "$found" -gt 0 ]; then
+        find "${OUTPUT_DIR}" -name "*.deb" -type f -exec ls -lh {} \;
+    else
+        log_warn "No packages found in ${OUTPUT_DIR}"
+    fi
+else
+    log_warn "Output directory not found: ${OUTPUT_DIR}"
 fi
 
 log_info "==================================================================="

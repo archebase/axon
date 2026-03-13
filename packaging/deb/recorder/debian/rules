@@ -29,6 +29,15 @@ override_dh_auto_configure:
 		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT); \
 	fi
 
+override_dh_install:
+	dh_install
+	# Install systemd service template
+	install -D -m 644 $(REPO_ROOT)/packaging/deb/systemd/axon-recorder@.service \
+		debian/axon-recorder/lib/systemd/system/axon-recorder@.service
+	# Install plugin enable helper script
+	install -D -m 755 $(REPO_ROOT)/packaging/deb/systemd/axon-recorder-enable \
+		debian/axon-recorder/opt/axon/bin/axon-recorder-enable
+
 # Skip clean reconfiguration to avoid path issues
 override_dh_auto_clean:
 	dh_auto_clean || true

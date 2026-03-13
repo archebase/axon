@@ -12,7 +12,10 @@ Build-Depends: debhelper-compat (=13),
 
 Package: axon-config
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libzstd1,
+         liblz4-1
 Description: Axon Robot Configuration Tool
  CLI tool for managing robot configuration in Axon.
  .
