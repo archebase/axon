@@ -152,22 +152,28 @@ class WsRpcClientE2ETest:
             self.project_root, "apps/axon_recorder/config/default_config_ros2.yaml"
         )
         # Prefer mock plugin (no ROS/UDP deps); fall back to UDP plugin if mock not built
-        plugin_path = os.path.join(
-            self.project_root, "build/middlewares/mock/libmock_plugin.so"
-        )
-        if not os.path.exists(plugin_path):
-            plugin_path = os.path.join(
+        # make build-mock outputs to middlewares/mock/build/; the unified build uses build/middlewares/mock/
+        mock_plugin_candidates = [
+            os.path.join(self.project_root, "middlewares/mock/build/libmock_plugin.so"),
+            os.path.join(self.project_root, "build/middlewares/mock/libmock_plugin.so"),
+            os.path.join(
                 self.project_root, "build/middlewares/udp_plugin/libaxon_udp.so"
-            )
+            ),
+        ]
+        plugin_path = next(
+            (p for p in mock_plugin_candidates if os.path.exists(p)),
+            mock_plugin_candidates[0],
+        )
 
         if not os.path.exists(recorder_bin):
             raise RuntimeError(f"Recorder binary not found: {recorder_bin}")
 
         if not os.path.exists(plugin_path):
+            candidates_str = "\n".join(f"  - {p}" for p in mock_plugin_candidates)
             raise RuntimeError(
                 f"No plugin found. Build the mock plugin first:\n"
                 f"  make build-mock\n"
-                f"Expected: {plugin_path}"
+                f"Searched:\n{candidates_str}"
             )
 
         # Create temp config directory
