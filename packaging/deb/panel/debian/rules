@@ -23,7 +23,14 @@ override_dh_auto_build:
 	dh_auto_build
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release
+	# Use pre-downloaded dependencies if available (Ubuntu 24.04+)
+	if [ -d "/opt/mcap" ] && [ -d "/opt/cpp-httplib" ]; then \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap -DFETCHCONTENT_SOURCE_DIR_HTTPLIB=/opt/cpp-httplib; \
+	elif [ -d "/opt/mcap" ]; then \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap; \
+	else \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release; \
+	fi
 
 override_dh_auto_clean:
 	dh_auto_clean || true

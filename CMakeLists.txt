@@ -85,6 +85,12 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
+# Set CMP0136 policy to OLD to avoid tar --touch flag incompatibility
+# CMake 3.24+ uses --touch flag which older tar versions don't support
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+    cmake_policy(SET CMP0136 OLD)
+endif()
+
 include(FetchContent)
 
 # Find Threads (required by Boost::thread)

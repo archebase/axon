@@ -1,0 +1,7 @@
+axon-plugin-ros2-jazzy (0.2.1-1) unstable; urgency=medium
+
+  * Initial packaging for ROS2 Jazzy
+  * Based on Axon v0.2.1
+  * Target: Ubuntu 24.04 (Noble) with ROS2 Jazzy
+
+ -- ArcheBase <noreply@archebase.com>  Tue, 11 Mar 2026 00:00:00 +0000

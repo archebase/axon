@@ -35,6 +35,8 @@ RUN apt-get update && apt-get install -y \
     libboost-dev \
     libboost-system-dev \
     libboost-filesystem-dev \
+    libboost-log-dev \
+    libboost-thread-dev \
     libssl-dev \
     libsqlite3-dev \
     libcurl4-openssl-dev \

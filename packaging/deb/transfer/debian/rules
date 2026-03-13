@@ -7,7 +7,12 @@ export DEB_BUILD_OPTIONS = nocheck
 	dh $@
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(AXON_REPO_ROOT)
+	# Use pre-downloaded MCAP if available (Ubuntu 24.04+)
+	if [ -d "/opt/mcap" ]; then \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(AXON_REPO_ROOT) -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap; \
+	else \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(AXON_REPO_ROOT); \
+	fi
 
 override_dh_auto_clean:
 	dh_auto_clean || true

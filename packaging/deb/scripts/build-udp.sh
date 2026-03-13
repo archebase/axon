@@ -5,10 +5,10 @@
 set -e
 
 # =============================================================================
-# Axon ROS2 Plugin Package Build Script
+# Axon UDP Plugin Package Build Script
 # =============================================================================
-# Builds Debian packages for ROS2 middleware plugin.
-# Requires a sourced ROS2 environment.
+# Builds Debian packages for UDP JSON middleware plugin.
+# This plugin does not require ROS.
 # =============================================================================
 
 # Detect if running in Docker
@@ -21,22 +21,8 @@ else
 fi
 
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
-# Map ROS distro to Ubuntu distro
-case "$ROS_DISTRO" in
-    humble)
-        UBUNTU_DISTRO="jammy"
-        ;;
-    jazzy)
-        UBUNTU_DISTRO="noble"
-        ;;
-    rolling)
-        UBUNTU_DISTRO="noble"
-        ;;
-    *)
-        UBUNTU_DISTRO="jammy"
-        ;;
-esac
-OUTPUT_DIR="${PACKAGE_DIR}/output/${UBUNTU_DISTRO}"
+DISTRO="${DISTRO:-jammy}"
+OUTPUT_DIR="${PACKAGE_DIR}/output/${DISTRO}"
 BUILD_DIR="${PACKAGE_DIR}/build"
 
 # Colors for output
@@ -57,37 +43,12 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Detect ROS_DISTRO from environment
-ROS_DISTRO="${ROS_DISTRO:-}"
-if [ -z "$ROS_DISTRO" ]; then
-    if [ -n "$AMENT_PREFIX_PATH" ]; then
-        ROS_DISTRO=$(echo "$AMENT_PREFIX_PATH" | grep -oP '/opt/ros/\K[^:]+' | head -1)
-    fi
-fi
-
-if [ -z "$ROS_DISTRO" ]; then
-    # Default to humble if not set
-    ROS_DISTRO="humble"
-fi
-
-log_info "Building for ROS2 distro: ${ROS_DISTRO}"
-
-# Validate ROS2 installation
-if [ -d "/opt/ros/${ROS_DISTRO}" ]; then
-    # Source ROS2 environment
-    # shellcheck source=/dev/null
-    source "/opt/ros/${ROS_DISTRO}/setup.bash"
-elif [ ! -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then
-    log_warn "ROS2 ${ROS_DISTRO} not found at /opt/ros/${ROS_DISTRO}"
-    log_warn "Continuing anyway (Docker build may have pre-sourced environment)"
-fi
-
 # Create output and build directories
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-# Clean build directory for ROS2
-rm -rf "${BUILD_DIR:?}"/ros2*
+# Clean build directory for UDP
+rm -rf "${BUILD_DIR:?}"/udp*
 mkdir -p "${BUILD_DIR}"
 
 # Get version from project
@@ -99,7 +60,7 @@ if [ -z "$VERSION" ]; then
 fi
 DEBIAN_VERSION="${VERSION}-1"
 
-log_info "Building Axon ROS2 plugin packages version ${DEBIAN_VERSION}"
+log_info "Building Axon UDP plugin package version ${DEBIAN_VERSION}"
 log_info "Build directory: ${BUILD_DIR}"
 log_info "Output directory: ${OUTPUT_DIR}"
 
@@ -108,7 +69,9 @@ build_plugin() {
     local pkg_name="$1"
     local source_dir="$2"
     local debian_dir="${PACKAGE_DIR}/plugin-${pkg_name#axon-plugin-}/debian"
-    local build_area="${BUILD_DIR}/${pkg_name}"
+    # Add distro suffix to package name for multi-distro support
+    local suffixed_pkg_name="${pkg_name}-${DISTRO}"
+    local build_area="${BUILD_DIR}/${suffixed_pkg_name}"
 
     if [ ! -d "$debian_dir" ]; then
         log_error "Debian directory not found: $debian_dir"
@@ -120,7 +83,7 @@ build_plugin() {
         return 1
     fi
 
-    log_info "Building ${pkg_name}..."
+    log_info "Building ${suffixed_pkg_name}..."
 
     # Save current directory
     local original_dir="$(pwd)"
@@ -149,34 +112,48 @@ build_plugin() {
     # Copy debian files to build area
     cp -r "${debian_dir}" "${build_area}/debian"
 
-    # Update rules with ROS_DISTRO
-    sed -i "s/ROS_DISTRO ?= humble/ROS_DISTRO ?= ${ROS_DISTRO}/" "${build_area}/debian/rules" || true
+    # Modify control file to add distro suffix to package name
+    if [ -f "${build_area}/debian/control" ]; then
+        sed -i "s/^Package: ${pkg_name}$/Package: ${suffixed_pkg_name}/" "${build_area}/debian/control"
+    fi
+
+    # Modify changelog to add distro suffix
+    if [ -f "${build_area}/debian/changelog" ]; then
+        sed -i "s/${pkg_name} (${suffixed_pkg_name} (/g" "${build_area}/debian/changelog"
+    fi
 
     # Build from build area
     cd "${build_area}"
     if AXON_REPO_ROOT="${PROJECT_ROOT}" dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then
-        log_info "Successfully built ${pkg_name}"
+        log_info "Successfully built ${suffixed_pkg_name}"
 
         # Move built packages to output directory
-        find "${BUILD_DIR}" -maxdepth 1 -name "${pkg_name}_*.deb" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+        find "${BUILD_DIR}" -maxdepth 1 -name "${suffixed_pkg_name}_*.deb" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
 
         cd "${original_dir}"
         return 0
     else
-        log_error "Failed to build ${pkg_name}"
-        cd "${original_dir}"
-        return 1
+        # Check if package was created despite the error
+        if find .. -maxdepth 1 -name "${suffixed_pkg_name}_*.deb" -type f -exec test -f {} \; -print | head -1 | grep -q .; then
+            log_info "Package ${suffixed_pkg_name} was created (ignoring post-package error)"
+            # Move built packages to output directory
+            find "${BUILD_DIR}" -maxdepth 1 -name "${suffixed_pkg_name}_*.deb" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+            cd "${original_dir}"
+            return 0
+        else
+            log_error "Failed to build ${suffixed_pkg_name}"
+            cd "${original_dir}"
+            return 1
+        fi
     fi
 }
 
-# Build ROS2 plugin
-# Use distro-specific package name for proper multi-distro support
-ROS2_PKG_NAME="axon-plugin-ros2-${ROS_DISTRO}"
-build_plugin "${ROS2_PKG_NAME}" "${PROJECT_ROOT}/middlewares/ros2" || exit 1
+# Build UDP plugin
+build_plugin "axon-plugin-udp" "${PROJECT_ROOT}/middlewares/udp" || exit 1
 
 # Summary
 log_info "==================================================================="
-log_info "ROS2 ${ROS_DISTRO} plugin build complete!"
+log_info "UDP plugin build complete for Ubuntu ${DISTRO}!"
 log_info "==================================================================="
-ls -lh "${OUTPUT_DIR}"/axon-plugin-ros2-${ROS_DISTRO}_*.deb 2>/dev/null || log_warn "No ROS2 plugin package found"
+ls -lh "${OUTPUT_DIR}"/axon-plugin-udp-*_*.deb 2>/dev/null || log_warn "No UDP plugin package found"
 log_info "==================================================================="
