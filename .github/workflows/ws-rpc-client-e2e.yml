@@ -68,17 +68,17 @@ jobs:
             sudo cmake --install build
           fi
 
-      - name: Build axon_recorder and mock plugin
+      - name: Build axon_recorder
         run: |
-          # Set ccache for faster builds
           export CCACHE_DIR=~/.ccache
           ccache -z
-
-          # Build recorder and mock plugin (no ROS required)
           make app-axon-recorder BUILD_TYPE=Release
-          make build-mock BUILD_TYPE=Release
-
           ccache -s
+
+      - name: Build mock plugin
+        run: |
+          export CCACHE_DIR=~/.ccache
+          make build-mock BUILD_TYPE=Release
 
       - name: Run WebSocket RPC Client E2E Tests
         run: |
