@@ -3,16 +3,29 @@
 # Skip tests
 export DEB_BUILD_OPTIONS = nocheck
 
+# Get the repo root
+ifeq ($(origin AXON_REPO_ROOT),environment)
+REPO_ROOT := $(AXON_REPO_ROOT)
+else
+REPO_ROOT := $(shell cd $(CURDIR)/../.. && pwd)
+endif
+
 %:
 	dh $@
 
 override_dh_auto_configure:
 	# Use pre-downloaded MCAP if available (Ubuntu 24.04+)
 	if [ -d "/opt/mcap" ]; then \
-		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(AXON_REPO_ROOT) -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap; \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap; \
 	else \
-		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(AXON_REPO_ROOT); \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT); \
 	fi
+
+override_dh_install:
+	dh_install
+	# Install systemd service file
+	install -D -m 644 $(REPO_ROOT)/packaging/deb/systemd/axon-transfer.service \
+		debian/axon-transfer/lib/systemd/system/axon-transfer.service
 
 override_dh_auto_clean:
 	dh_auto_clean || true

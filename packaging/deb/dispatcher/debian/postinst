@@ -4,7 +4,12 @@
 #!/bin/sh
 set -e
 
-# Install bash completion
+# Create symlink in /usr/bin for easy access
+if [ ! -e /usr/bin/axon ]; then
+    ln -sf /opt/axon/bin/axon /usr/bin/axon
+fi
+
+# Install bash completion symlink
 if [ -d /usr/share/bash-completion/completions ]; then
     ln -sf /opt/axon/share/bash-completion/completions/axon \
            /usr/share/bash-completion/completions/axon 2>/dev/null || true

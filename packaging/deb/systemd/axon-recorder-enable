@@ -1,0 +1,96 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+set -e
+
+PLUGIN_DIR="/opt/axon/plugins"
+SYMLINK_DIR="/opt/axon/plugins/symlinks"
+
+show_help() {
+    cat << EOF
+axon-recorder-enable - Enable Axon recorder with specific plugin
+
+Usage: axon-recorder-enable <plugin-name> [<plugin-name> ...]
+
+Creates symbolic links for easy plugin reference and enables the systemd service.
+
+Plugin Names:
+  ros2     ROS2 plugin (libaxon_ros2_plugin.so)
+  ros1     ROS1 plugin (libaxon_ros1_plugin.so)
+  udp      UDP plugin (libaxon_udp_plugin.so)
+  zenoh    Zenoh plugin (libaxon_zenoh_plugin.so)
+
+Examples:
+  axon-recorder-enable ros2
+  axon-recorder-enable ros1 ros2
+  axon-recorder-enable udp
+
+After enabling, start the service:
+  systemctl start axon-recorder@ros2
+  systemctl enable axon-recorder@ros2
+
+EOF
+}
+
+# Plugin name mapping
+declare -A PLUGIN_MAP=(
+    ["ros2"]="libaxon_ros2_plugin.so"
+    ["ros1"]="libaxon_ros1_plugin.so"
+    ["udp"]="libaxon_udp_plugin.so"
+    ["zenoh"]="libaxon_zenoh_plugin.so"
+)
+
+# Check if plugin exists and create symlink if needed
+enable_plugin() {
+    local plugin_name="$1"
+    local plugin_lib="${PLUGIN_MAP[$plugin_name]}"
+
+    if [ -z "$plugin_lib" ]; then
+        echo "Error: Unknown plugin '$plugin_name'" >&2
+        echo "Valid plugins: ${!PLUGIN_MAP[@]}" >&2
+        return 1
+    fi
+
+    # Check if plugin .so file exists
+    if [ ! -f "$PLUGIN_DIR/$plugin_lib" ]; then
+        echo "Warning: Plugin file not found: $PLUGIN_DIR/$plugin_lib" >&2
+        echo "The corresponding package may not be installed." >&2
+        return 1
+    fi
+
+    # Create symlink directory if it doesn't exist
+    mkdir -p "$SYMLINK_DIR"
+
+    # Create symbolic link for easy reference
+    local symlink="$SYMLINK_DIR/$plugin_name.so"
+    if [ ! -L "$symlink" ]; then
+        ln -sf "$PLUGIN_DIR/$plugin_lib" "$symlink"
+        echo "Created symlink: $symlink -> $PLUGIN_DIR/$plugin_lib"
+    fi
+
+    echo "Plugin '$plugin_name' is ready."
+    echo "Enable and start the service with:"
+    echo "  sudo systemctl enable axon-recorder@$plugin_name"
+    echo "  sudo systemctl start axon-recorder@$plugin_name"
+}
+
+main() {
+    if [ $# -eq 0 ]; then
+        show_help
+        exit 0
+    fi
+
+    case "$1" in
+        -h|--help|help)
+            show_help
+            exit 0
+            ;;
+    esac
+
+    for plugin in "$@"; do
+        enable_plugin "$plugin"
+    done
+}
+
+main "$@"

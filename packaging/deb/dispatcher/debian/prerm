@@ -4,6 +4,11 @@
 #!/bin/sh
 set -e
 
+# Remove symlink from /usr/bin
+if [ -L /usr/bin/axon ]; then
+    rm -f /usr/bin/axon
+fi
+
 # Remove bash completion symlink
 if [ -L /usr/share/bash-completion/completions/axon ]; then
     rm -f /usr/share/bash-completion/completions/axon
