@@ -1076,12 +1076,15 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
     this->request_shutdown();
   };
 
-  // Create WS RPC client
-  // Note: io_context is owned externally (typically by main thread)
-  // For now, we'll use a simple approach with a dedicated thread
+  // Create WS RPC client and run io_context on a dedicated thread
   ws_rpc_client_ = std::make_unique<WsRpcClient>(ws_ioc_, config);
   ws_rpc_client_->register_callbacks(callbacks);
   ws_rpc_client_->start();
+
+  // Start the io_context thread so async operations are driven
+  ws_thread_ = std::thread([this]() {
+    ws_ioc_.run();
+  });
 
   return true;
 }

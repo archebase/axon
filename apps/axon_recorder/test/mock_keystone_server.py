@@ -61,21 +61,25 @@ class MockKeystoneServer:
         request_id = request.get("request_id", "")
         params = request.get("params", {})
 
-        print(f"[{self.get_timestamp()}] Received RPC request: {action} (request_id: {request_id})")
+        print(
+            f"[{self.get_timestamp()}] Received RPC request: {action} (request_id: {request_id})"
+        )
 
         response = {
             "type": "rpc_response",
             "request_id": request_id,
             "success": False,
             "message": "",
-            "data": {}
+            "data": {},
         }
 
         if action == "get_state":
             response["success"] = True
             response["message"] = "State retrieved"
             # Get state from cached state
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id:
                 response["data"]["state"] = self.client_states.get(client_id, "idle")
             else:
@@ -95,7 +99,9 @@ class MockKeystoneServer:
             task_id = task_config.get("task_id", "unknown")
             self.client_configs[websocket] = task_config
             # Get client_id
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id:
                 self.client_states[client_id] = "ready"
             response["success"] = True
@@ -107,7 +113,9 @@ class MockKeystoneServer:
         elif action == "begin":
             task_id = params.get("task_id", "")
             # Verify task_id
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id and websocket in self.client_configs:
                 expected_task_id = self.client_configs[websocket].get("task_id", "")
                 if task_id == expected_task_id:
@@ -115,10 +123,14 @@ class MockKeystoneServer:
                     response["success"] = True
                     response["message"] = "Recording started"
                     response["data"]["state"] = "recording"
-                    print(f"[{self.get_timestamp()}] Started recording: task_id={task_id}")
+                    print(
+                        f"[{self.get_timestamp()}] Started recording: task_id={task_id}"
+                    )
                 else:
                     response["success"] = False
-                    response["message"] = f"Task ID mismatch: expected {expected_task_id}, got {task_id}"
+                    response["message"] = (
+                        f"Task ID mismatch: expected {expected_task_id}, got {task_id}"
+                    )
             else:
                 # Allow begin without config for testing
                 if client_id:
@@ -128,7 +140,9 @@ class MockKeystoneServer:
                 response["data"]["state"] = "recording"
 
         elif action == "pause":
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id:
                 self.client_states[client_id] = "paused"
             response["success"] = True
@@ -137,7 +151,9 @@ class MockKeystoneServer:
             print(f"[{self.get_timestamp()}] Paused recording")
 
         elif action == "resume":
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id:
                 self.client_states[client_id] = "recording"
             response["success"] = True
@@ -147,7 +163,9 @@ class MockKeystoneServer:
 
         elif action == "finish":
             task_id = params.get("task_id", "")
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id and websocket in self.client_configs:
                 expected_task_id = self.client_configs[websocket].get("task_id", "")
                 if task_id == expected_task_id:
@@ -156,10 +174,14 @@ class MockKeystoneServer:
                     response["success"] = True
                     response["message"] = "Recording finished successfully"
                     response["data"]["state"] = "idle"
-                    print(f"[{self.get_timestamp()}] Finished recording: task_id={task_id}")
+                    print(
+                        f"[{self.get_timestamp()}] Finished recording: task_id={task_id}"
+                    )
                 else:
                     response["success"] = False
-                    response["message"] = f"Task ID mismatch: expected {expected_task_id}, got {task_id}"
+                    response["message"] = (
+                        f"Task ID mismatch: expected {expected_task_id}, got {task_id}"
+                    )
             else:
                 # Allow finish without config for testing
                 if client_id:
@@ -170,8 +192,17 @@ class MockKeystoneServer:
                 response["message"] = "Recording finished successfully"
                 response["data"]["state"] = "idle"
 
+        elif action == "test":
+            # Simple connectivity test command
+            response["success"] = True
+            response["message"] = "Test command received"
+            response["data"]["echo"] = params.get("echo", "pong")
+            print(f"[{self.get_timestamp()}] Test command received")
+
         elif action == "cancel":
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id:
                 self.client_states[client_id] = "idle"
                 if websocket in self.client_configs:
@@ -182,7 +213,9 @@ class MockKeystoneServer:
             print(f"[{self.get_timestamp()}] Cancelled recording")
 
         elif action == "clear":
-            client_id = next((k for k, v in self.clients.items() if v == websocket), None)
+            client_id = next(
+                (k for k, v in self.clients.items() if v == websocket), None
+            )
             if client_id:
                 self.client_states[client_id] = "idle"
                 if websocket in self.client_configs:
@@ -216,11 +249,22 @@ class MockKeystoneServer:
                 curr_state = state_data.get("current", "unknown")
                 task_id = state_data.get("task_id", "")
                 self.client_states[client_id] = curr_state
-                print(f"[{self.get_timestamp()}] State update: {prev_state} -> {curr_state} (task: {task_id})")
+                print(
+                    f"[{self.get_timestamp()}] State update: {prev_state} -> {curr_state} (task: {task_id})"
+                )
 
             elif msg_type == "rpc_response":
-                # This shouldn't happen - server sends responses, not client
-                print(f"[{self.get_timestamp()}] WARNING: Received unexpected rpc_response from client")
+                # Handle responses to server-initiated requests (e.g. initial get_state)
+                if data.get("success") and "state" in data.get("data", {}):
+                    state = data["data"]["state"]
+                    self.client_states[client_id] = state
+                    print(
+                        f"[{self.get_timestamp()}] Client {client_id} initial status: state={state}"
+                    )
+                else:
+                    print(
+                        f"[{self.get_timestamp()}] WARNING: Received unexpected rpc_response from client"
+                    )
 
             else:
                 # Treat as RPC request
@@ -238,7 +282,17 @@ class MockKeystoneServer:
         self.clients[client_id] = websocket
         self.client_states[client_id] = "idle"
 
-        print(f"[{self.get_timestamp()}] Client connected: {client_id}")
+        remote = websocket.remote_address
+        print(
+            f"[{self.get_timestamp()}] Client connected: {client_id} from {remote[0]}:{remote[1]}"
+        )
+
+        # Query initial status from the newly connected recorder
+        self.request_counter += 1
+        request_id = f"req_{self.request_counter}"
+        await websocket.send(
+            json.dumps({"action": "get_state", "request_id": request_id})
+        )
 
         try:
             async for message in websocket:
@@ -271,8 +325,12 @@ class MockKeystoneServer:
 
     async def start(self):
         """Start the mock server."""
-        print(f"[{self.get_timestamp()}] Starting Mock Keystone Server on port {self.port}")
-        print(f"[{self.get_timestamp()}] WebSocket endpoint: ws://localhost:{self.port}/rpc")
+        print(
+            f"[{self.get_timestamp()}] Starting Mock Keystone Server on port {self.port}"
+        )
+        print(
+            f"[{self.get_timestamp()}] WebSocket endpoint: ws://localhost:{self.port}/rpc"
+        )
 
         async with serve(self.handle_client, "localhost", self.port):
             # Keep running
@@ -281,8 +339,12 @@ class MockKeystoneServer:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Mock Keystone Server for testing WebSocket RPC client mode")
-    parser.add_argument("--port", type=int, default=8090, help="Port to listen on (default: 8090)")
+    parser = argparse.ArgumentParser(
+        description="Mock Keystone Server for testing WebSocket RPC client mode"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8090, help="Port to listen on (default: 8090)"
+    )
     args = parser.parse_args()
 
     server = MockKeystoneServer(port=args.port)

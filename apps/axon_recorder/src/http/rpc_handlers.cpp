@@ -349,5 +349,25 @@ RpcResponse handle_rpc_config(const RpcCallbacks& callbacks, const nlohmann::jso
   return response;
 }
 
+RpcResponse handle_rpc_test(const RpcCallbacks& callbacks, const nlohmann::json& params) {
+  (void)callbacks;  // Unused - test command doesn't need callbacks
+  RpcResponse response;
+
+  response.success = true;
+  response.message = "Test command received successfully";
+
+  // Echo back the "echo" parameter if provided
+  if (params.contains("echo")) {
+    response.data["echo"] = params["echo"];
+  } else {
+    response.data["echo"] = "pong";
+  }
+
+  // Add state info
+  response.data["state"] = callbacks.get_state ? callbacks.get_state() : "unknown";
+
+  return response;
+}
+
 }  // namespace recorder
 }  // namespace axon
