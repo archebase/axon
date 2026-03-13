@@ -31,6 +31,7 @@ except ImportError:
 
 class E2ETestResult:
     """Result of an E2E test."""
+
     def __init__(self):
         self.success = False
         self.error = None
@@ -65,7 +66,9 @@ class TestWebSocketServer:
             self.recorder_ws = None
             self.client_connected.clear()
 
-    async def send_rpc_command(self, action: str, params: Dict = None, timeout: float = 10.0) -> Optional[Dict]:
+    async def send_rpc_command(
+        self, action: str, params: Dict = None, timeout: float = 10.0
+    ) -> Optional[Dict]:
         """Send an RPC command to the connected recorder and wait for response."""
         if not self.recorder_ws:
             print("[Server] ERROR: No recorder connected")
@@ -101,7 +104,9 @@ class TestWebSocketServer:
 
     async def start(self):
         """Start the test WebSocket server."""
-        self._server = await websockets.serve(self.handle_client, "localhost", self.port)
+        self._server = await websockets.serve(
+            self.handle_client, "localhost", self.port
+        )
         print(f"[Server] Test WebSocket server started on port {self.port}")
 
     async def stop(self):
@@ -140,12 +145,30 @@ class WsRpcClientE2ETest:
 
     async def start_recorder(self):
         """Start the axon_recorder in WS RPC client mode."""
-        recorder_bin = os.path.join(self.project_root, "build/axon_recorder/axon_recorder")
-        config_file = os.path.join(self.project_root, "apps/axon_recorder/config/default_config_ros2.yaml")
-        plugin_path = os.path.join(self.project_root, "build/middlewares/udp_plugin/libaxon_udp.so")
+        recorder_bin = os.path.join(
+            self.project_root, "build/axon_recorder/axon_recorder"
+        )
+        config_file = os.path.join(
+            self.project_root, "apps/axon_recorder/config/default_config_ros2.yaml"
+        )
+        # Prefer mock plugin (no ROS/UDP deps); fall back to UDP plugin if mock not built
+        plugin_path = os.path.join(
+            self.project_root, "build/middlewares/mock/libmock_plugin.so"
+        )
+        if not os.path.exists(plugin_path):
+            plugin_path = os.path.join(
+                self.project_root, "build/middlewares/udp_plugin/libaxon_udp.so"
+            )
 
         if not os.path.exists(recorder_bin):
             raise RuntimeError(f"Recorder binary not found: {recorder_bin}")
+
+        if not os.path.exists(plugin_path):
+            raise RuntimeError(
+                f"No plugin found. Build the mock plugin first:\n"
+                f"  make build-mock\n"
+                f"Expected: {plugin_path}"
+            )
 
         # Create temp config directory
         temp_config_dir = os.path.join(self.project_root, "apps/axon_recorder/test/e2e")
@@ -153,23 +176,24 @@ class WsRpcClientE2ETest:
         temp_config = os.path.join(temp_config_dir, "temp_test_config.yaml")
 
         # Read and modify config
-        with open(config_file, 'r') as f:
+        with open(config_file, "r") as f:
             config_content = f.read()
 
         # Replace the ws_client URL with our test server URL
         config_content = config_content.replace(
-            "url: ws://localhost:8090/rpc",
-            f"url: {self.ws_url}"
+            "url: ws://localhost:8090/rpc", f"url: {self.ws_url}"
         )
 
-        with open(temp_config, 'w') as f:
+        with open(temp_config, "w") as f:
             f.write(config_content)
 
         cmd = [
             recorder_bin,
             "--ws-client",
-            "--ws-url", self.ws_url,
-            "--config", temp_config,
+            "--ws-url",
+            self.ws_url,
+            "--config",
+            temp_config,
         ]
 
         if os.path.exists(plugin_path):
@@ -178,22 +202,23 @@ class WsRpcClientE2ETest:
         print(f"[Test] Starting recorder: {' '.join(cmd)}")
 
         self.recorder_process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=self.project_root
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.project_root
         )
 
         # Wait for recorder to connect
         print("[Test] Waiting for recorder to connect...")
         try:
-            await asyncio.wait_for(self.test_server.client_connected.wait(), timeout=15.0)
+            await asyncio.wait_for(
+                self.test_server.client_connected.wait(), timeout=15.0
+            )
             print("[Test] Recorder connected!")
         except asyncio.TimeoutError:
             # Check if process died
             if self.recorder_process.poll() is not None:
                 stdout, stderr = self.recorder_process.communicate()
-                raise RuntimeError(f"Recorder failed to start:\nstdout: {stdout.decode()}\nstderr: {stderr.decode()}")
+                raise RuntimeError(
+                    f"Recorder failed to start:\nstdout: {stdout.decode()}\nstderr: {stderr.decode()}"
+                )
             raise RuntimeError("Timeout waiting for recorder to connect")
 
     async def cleanup(self):
@@ -210,7 +235,9 @@ class WsRpcClientE2ETest:
             await self.test_server.stop()
 
         # Clean up temp config
-        temp_config = os.path.join(self.project_root, "apps/axon_recorder/test/e2e/temp_test_config.yaml")
+        temp_config = os.path.join(
+            self.project_root, "apps/axon_recorder/test/e2e/temp_test_config.yaml"
+        )
         if os.path.exists(temp_config):
             os.remove(temp_config)
 
@@ -232,7 +259,9 @@ class WsRpcClientE2ETest:
 
             # 3. Send test command (connectivity check)
             print("\nStep 3: Sending test command...")
-            response = await self.test_server.send_rpc_command("test", {"echo": "hello"})
+            response = await self.test_server.send_rpc_command(
+                "test", {"echo": "hello"}
+            )
             if not response:
                 result.error = "No response for test command"
                 return result
@@ -243,7 +272,9 @@ class WsRpcClientE2ETest:
 
             echo_value = response.get("data", {}).get("echo")
             if echo_value != "hello":
-                result.error = f"Test command echo mismatch: expected 'hello', got '{echo_value}'"
+                result.error = (
+                    f"Test command echo mismatch: expected 'hello', got '{echo_value}'"
+                )
                 return result
 
             result.state_transitions.append(f"test: success (echo={echo_value})")
@@ -271,9 +302,11 @@ class WsRpcClientE2ETest:
                 "device_id": "test_device",
                 "topics": ["/test/topic1", "/test/topic2"],
                 "start_callback_url": "",
-                "finish_callback_url": ""
+                "finish_callback_url": "",
             }
-            response = await self.test_server.send_rpc_command("config", {"task_config": task_config})
+            response = await self.test_server.send_rpc_command(
+                "config", {"task_config": task_config}
+            )
             if not response:
                 result.error = "No response for config"
                 return result
@@ -288,7 +321,9 @@ class WsRpcClientE2ETest:
 
             # 6. Send begin command
             print("\nStep 6: Sending begin command...")
-            response = await self.test_server.send_rpc_command("begin", {"task_id": "e2e_test_task"})
+            response = await self.test_server.send_rpc_command(
+                "begin", {"task_id": "e2e_test_task"}
+            )
             if not response:
                 result.error = "No response for begin"
                 return result
@@ -303,7 +338,9 @@ class WsRpcClientE2ETest:
 
             # 7. Send finish command
             print("\nStep 7: Sending finish command...")
-            response = await self.test_server.send_rpc_command("finish", {"task_id": "e2e_test_task"})
+            response = await self.test_server.send_rpc_command(
+                "finish", {"task_id": "e2e_test_task"}
+            )
             if not response:
                 result.error = "No response for finish"
                 return result
@@ -330,6 +367,7 @@ class WsRpcClientE2ETest:
         except Exception as e:
             result.error = str(e)
             import traceback
+
             traceback.print_exc()
         finally:
             await self.cleanup()
@@ -368,6 +406,7 @@ def main():
     except Exception as e:
         print(f"\n❌ E2E test ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

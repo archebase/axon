@@ -68,14 +68,15 @@ jobs:
             sudo cmake --install build
           fi
 
-      - name: Build axon_recorder
+      - name: Build axon_recorder and mock plugin
         run: |
           # Set ccache for faster builds
           export CCACHE_DIR=~/.ccache
           ccache -z
 
-          # Build with make
+          # Build recorder and mock plugin (no ROS required)
           make app-axon-recorder BUILD_TYPE=Release
+          make build-mock BUILD_TYPE=Release
 
           ccache -s
 
