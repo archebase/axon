@@ -27,6 +27,9 @@
 namespace axon {
 namespace recorder {
 
+// Forward declaration
+class WsRpcClient;
+
 /**
  * Message data structure for SPSC queue
  * Uses unique_ptr for zero-copy ownership transfer
@@ -149,6 +152,32 @@ struct LoggingConfig {
 };
 
 /**
+ * RPC mode enumeration
+ */
+enum class RpcMode { HTTP_SERVER, WS_CLIENT };
+
+/**
+ * WebSocket RPC client configuration
+ */
+struct WsClientConfig {
+  std::string url;                            // WebSocket server URL (e.g., ws://keystone:8090/rpc)
+  std::string auth_token = "";                // Optional JWT token for handshake
+  int reconnect_initial_delay_ms = 1000;      // Initial reconnect delay
+  double reconnect_backoff_multiplier = 2.0;  // Backoff multiplier
+  int reconnect_max_delay_ms = 60000;         // Maximum reconnect delay
+  double reconnect_jitter_factor = 0.2;       // Jitter factor for reconnection
+  int ping_interval_ms = 30000;               // Ping interval for keepalive
+};
+
+/**
+ * RPC mode configuration (unified for HTTP server and WebSocket client)
+ */
+struct RpcModeConfig {
+  RpcMode mode = RpcMode::HTTP_SERVER;
+  WsClientConfig ws_client;
+};
+
+/**
  * HTTP RPC server configuration
  */
 struct HttpServerConfig {
@@ -177,7 +206,10 @@ struct RecorderConfig {
   RecordingConfig recording;
   LoggingConfig logging;
   UploadConfig upload;
-  HttpServerConfig http_server;
+
+  // RPC configuration (HTTP server or WebSocket client mode)
+  RpcModeConfig rpc;
+  HttpServerConfig http_server;  // Kept for backward compatibility
 };
 
 /**
@@ -311,6 +343,24 @@ public:
   bool is_http_server_running() const;
 
   /**
+   * Start WebSocket RPC client (connects to keystone server)
+   *
+   * @param config WebSocket client configuration
+   * @return true on success, false on failure
+   */
+  bool start_ws_rpc_client(const WsClientConfig& config);
+
+  /**
+   * Stop WebSocket RPC client
+   */
+  void stop_ws_rpc_client();
+
+  /**
+   * Check if WebSocket RPC client is running
+   */
+  bool is_ws_rpc_client_running() const;
+
+  /**
    * Get statistics
    */
   struct Statistics {
@@ -390,6 +440,11 @@ private:
 
   // HTTP RPC server
   std::unique_ptr<HttpServer> http_server_;
+
+  // WebSocket RPC client (for keystone connection)
+  std::unique_ptr<WsRpcClient> ws_rpc_client_;
+  net::io_context ws_ioc_;
+  std::thread ws_thread_;
 
   // HTTP callback client for sending start/finish notifications
   std::shared_ptr<HttpCallbackClient> http_callback_client_;

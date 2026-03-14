@@ -162,3 +162,30 @@ http_server:
   port: 8080                     # Port number
   auth_token: ""                 # Authentication token (empty = no authentication)
 
+# ============================================================================
+# RPC Mode Configuration
+# ============================================================================
+# Unified configuration for HTTP server and WebSocket client modes
+# mode: "http_server" (default) or "ws_client"
+# - http_server: Start HTTP RPC server on local port (for axon_panel)
+# - ws_client: Connect as WebSocket client to keystone server (for fleet management)
+rpc:
+  mode: http_server
+
+  # WebSocket client configuration (only used when mode: ws_client)
+  ws_client:
+    # WebSocket server URL (e.g., ws://keystone:8090/rpc or wss://keystone:8090/rpc)
+    url: ws://localhost:8090/rpc
+
+    # Optional JWT token for authentication during handshake
+    auth_token: ""
+
+    # Reconnection settings with exponential backoff
+    reconnect_initial_delay_ms: 1000
+    reconnect_backoff_multiplier: 2.0
+    reconnect_max_delay_ms: 60000
+    reconnect_jitter_factor: 0.2
+
+    # Keepalive ping interval (0 to disable)
+    ping_interval_ms: 30000
+
