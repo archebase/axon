@@ -10,6 +10,8 @@ Build-Depends: debhelper-compat (=13),
                libboost-dev,
                libyaml-cpp-dev,
                libssl-dev,
+               libzstd-dev,
+               liblz4-dev,
                libsqlite3-dev,
                libcurl4-openssl-dev
 

@@ -166,11 +166,8 @@ build_app_package() {
         sed -i "s/^Package: ${pkg_name}$/Package: ${suffixed_pkg_name}/" "${build_area}/debian/control"
         sed -i "s/^Source: ${pkg_name}$/Source: ${suffixed_pkg_name}/" "${build_area}/debian/control"
         # Update dependencies that reference other axon packages (add distro suffix)
-        sed -i "s/axon-recorder\([^-.]\)/axon-recorder-${DISTRO}\1/g" "${build_area}/debian/control"
-        sed -i "s/axon-config\([^-.]\)/axon-config-${DISTRO}\1/g" "${build_area}/debian/control"
-        sed -i "s/axon-panel\([^-.]\)/axon-panel-${DISTRO}\1/g" "${build_area}/debian/control"
-        sed -i "s/axon-transfer\([^-.]\)/axon-transfer-${DISTRO}\1/g" "${build_area}/debian/control"
-        sed -i "s/axon-dispatcher\([^-.]\)/axon-dispatcher-${DISTRO}\1/g" "${build_area}/debian/control"
+        # Use perl for better regex support (handles end-of-line and various delimiters)
+        perl -i -pe 's/\b(axon-recorder|axon-config|axon-panel|axon-transfer|axon-dispatcher)\b(?!-)/${1}-'"${DISTRO}"'/g' "${build_area}/debian/control"
     fi
 
     # Modify changelog to add distro suffix

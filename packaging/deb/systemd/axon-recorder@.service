@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 
 [Unit]
-Description=Axon ROS Recorder (%i)
+Description=Axon Recorder (%i)
 Documentation=https://github.com/archebase/axon
 After=network-online.target
 Wants=network-online.target

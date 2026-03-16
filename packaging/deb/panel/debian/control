@@ -8,7 +8,7 @@ Maintainer: ArcheBase <noreply@archebase.com>
 Build-Depends: debhelper-compat (=13),
                cmake,
                nodejs (>= 18),
-               npm,
+               npm
 
 Package: axon-panel
 Architecture: any

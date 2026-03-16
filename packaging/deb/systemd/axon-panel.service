@@ -9,7 +9,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/axon/bin/axon-panel --port 8080
+ExecStart=/opt/axon/bin/axon-panel
 Restart=on-failure
 User=axon
 Group=axon
