@@ -11,7 +11,7 @@
 services:
   # Zenoh Router - Central pub/sub broker
   zenoh-router:
-    image: eclipse/zenoh:1.7.2
+    image: eclipse/zenoh:1.6.2
     container_name: zenoh_router
     network_mode: host
     command: ["--listen", "tcp/0.0.0.0:7447", "--no-multicast-scouting"]
