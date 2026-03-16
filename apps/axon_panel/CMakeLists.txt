@@ -76,5 +76,8 @@ target_link_libraries(axon_panel PRIVATE httplib::httplib)
 # C++17 for Ubuntu 20.04 compatibility (GCC 9.3)
 target_compile_features(axon_panel PRIVATE cxx_std_17)
 
+# Set output name to use hyphen (axon-panel)
+set_target_properties(axon_panel PROPERTIES OUTPUT_NAME "axon-panel")
+
 # Install target
 install(TARGETS axon_panel RUNTIME DESTINATION bin)

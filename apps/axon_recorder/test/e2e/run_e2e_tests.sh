@@ -23,10 +23,10 @@ TEST_DATA_DIR="${TEST_DIR}/test_data"
 
 # Try multiple possible locations for axon-recorder binary
 # Note: Binary name uses hyphen (axon-recorder) since v0.2.1
+# When building from root CMakeLists.txt, binary is at: build/axon_recorder/axon-recorder
+# When building standalone, binary is at: apps/axon_recorder/build/axon-recorder
 if [[ -f "${BUILD_DIR}/axon_recorder/axon-recorder" ]]; then
     RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon-recorder"
-elif [[ -f "${BUILD_DIR}/apps/axon_recorder/axon-recorder" ]]; then
-    RECORDER_BIN="${BUILD_DIR}/apps/axon_recorder/axon-recorder"
 elif [[ -f "${PROJECT_ROOT}/apps/axon_recorder/build/axon-recorder" ]]; then
     RECORDER_BIN="${PROJECT_ROOT}/apps/axon_recorder/build/axon-recorder"
 else

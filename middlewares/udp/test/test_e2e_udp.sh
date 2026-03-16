@@ -18,7 +18,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/build"
-RECODER="${BUILD_DIR}/axon_recorder/axon_recorder"
+RECODER="${BUILD_DIR}/axon_recorder/axon-recorder"
 UDP_PLUGIN="${BUILD_DIR}/middlewares/udp_plugin/libaxon_udp.so"
 TEST_DIR="/tmp/axon_udp_test_$$"
 CONFIG_FILE="${TEST_DIR}/config.yaml"
