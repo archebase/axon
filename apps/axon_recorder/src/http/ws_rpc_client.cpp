@@ -21,25 +21,6 @@ using axon::logging::kv;
 namespace axon {
 namespace recorder {
 
-namespace {
-
-std::string random_jitter(double factor) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<> dis(-factor, factor);
-  return std::to_string(dis(gen));
-}
-
-RecorderState string_to_state(const std::string& str) {
-  if (str == "idle") return RecorderState::IDLE;
-  if (str == "ready") return RecorderState::READY;
-  if (str == "recording") return RecorderState::RECORDING;
-  if (str == "paused") return RecorderState::PAUSED;
-  return RecorderState::IDLE;  // Default
-}
-
-}  // namespace
-
 WsRpcClient::WsRpcClient(net::io_context& ioc, const WsClientConfig& config)
     : config_(config)
     , resolver_(net::make_strand(ioc))

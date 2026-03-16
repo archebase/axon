@@ -109,7 +109,6 @@ private:
 
   // Keepalive
   void start_ping_timer();
-  void on_ping_timer(beast::error_code ec);
 
   // URL parsing
   static bool parse_url(
