@@ -12,8 +12,7 @@ Build-Depends: debhelper-compat (=13),
 
 Package: axon-panel
 Architecture: any
-Depends: axon-recorder (>= 0.2.0),
-         ${shlibs:Depends},
+Depends: ${shlibs:Depends},
          ${misc:Depends}
 Description: Axon Web Control Panel
  Browser-based interface for monitoring and controlling

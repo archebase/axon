@@ -27,6 +27,7 @@ if(DEFINED AXON_REPO_ROOT)
     # We need to check this before adding any subdirectories
     find_package(OpenSSL QUIET)
     find_package(SQLite3 QUIET)
+    find_package(ZLIB QUIET)
     find_package(AWSSDK QUIET COMPONENTS s3 transfer)
 
     if(NOT OpenSSL_FOUND OR NOT SQLite3_FOUND OR NOT AWSSDK_FOUND)

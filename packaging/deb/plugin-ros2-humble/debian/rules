@@ -33,9 +33,9 @@ override_dh_auto_configure:
 override_dh_auto_install:
 	dh_auto_install
 	# Install plugin to correct location
-	mkdir -p debian/axon-plugin-ros2/opt/axon/plugins
-	mv debian/axon-plugin-ros2/opt/axon/lib/libaxon_ros2_plugin.so \
-	   debian/axon-plugin-ros2/opt/axon/plugins/ || true
+	mkdir -p debian/$(shell dh_listpackages)/opt/axon/plugins
+	mv debian/$(shell dh_listpackages)/opt/axon/lib/libaxon_ros2_plugin.so \
+	   debian/$(shell dh_listpackages)/opt/axon/plugins/ || true
 
 override_dh_auto_clean:
 	dh_auto_clean || true

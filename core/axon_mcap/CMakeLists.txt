@@ -45,11 +45,13 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
         mcap
         URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz"
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        EXCLUDE_FROM_ALL
     )
 else()
     FetchContent_Declare(
         mcap
         URL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz"
+        EXCLUDE_FROM_ALL
     )
 endif()
 

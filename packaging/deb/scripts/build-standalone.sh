@@ -164,13 +164,18 @@ build_app_package() {
     # Modify control file to add distro suffix to package name
     if [ -f "${build_area}/debian/control" ]; then
         sed -i "s/^Package: ${pkg_name}$/Package: ${suffixed_pkg_name}/" "${build_area}/debian/control"
-        # Update dependencies that reference other axon packages (if any)
-        sed -i "s/, axon-recorder/, ${suffixed_pkg_name}/g" "${build_area}/debian/control" 2>/dev/null || true
+        sed -i "s/^Source: ${pkg_name}$/Source: ${suffixed_pkg_name}/" "${build_area}/debian/control"
+        # Update dependencies that reference other axon packages (add distro suffix)
+        sed -i "s/axon-recorder\([^-.]\)/axon-recorder-${DISTRO}\1/g" "${build_area}/debian/control"
+        sed -i "s/axon-config\([^-.]\)/axon-config-${DISTRO}\1/g" "${build_area}/debian/control"
+        sed -i "s/axon-panel\([^-.]\)/axon-panel-${DISTRO}\1/g" "${build_area}/debian/control"
+        sed -i "s/axon-transfer\([^-.]\)/axon-transfer-${DISTRO}\1/g" "${build_area}/debian/control"
+        sed -i "s/axon-dispatcher\([^-.]\)/axon-dispatcher-${DISTRO}\1/g" "${build_area}/debian/control"
     fi
 
     # Modify changelog to add distro suffix
     if [ -f "${build_area}/debian/changelog" ]; then
-        sed -i "s/${pkg_name} (${suffixed_pkg_name} (/g" "${build_area}/debian/changelog"
+        sed -i "s/^${pkg_name} /${suffixed_pkg_name} /g" "${build_area}/debian/changelog"
     fi
 
     # Build from build area

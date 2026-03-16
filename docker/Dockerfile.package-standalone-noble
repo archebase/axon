@@ -81,6 +81,7 @@ RUN cd /tmp && \
 
 # Install AWS SDK for C++ (required for S3 uploads in axon-uploader)
 # Build from source with minimal components to reduce build time
+# Build statically to create portable packages (no runtime dependency on AWS SDK)
 # This takes ~15-20 minutes but is required for S3 upload functionality
 RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
     --branch 1.11.479 \
@@ -91,14 +92,13 @@ RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
     cmake -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_ONLY="s3;transfer" \
-        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_SHARED_LIBS=OFF \
         -DENABLE_TESTING=OFF \
         -DAUTORUN_TESTS=OFF \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
         -DUNITY_BUILD=OFF && \
     cmake --build build -j"$(nproc)" && \
     cmake --install build && \
-    ldconfig && \
     rm -rf /tmp/aws-sdk-cpp
 
 # Set working directory

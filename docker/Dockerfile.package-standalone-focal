@@ -62,6 +62,30 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
+# Install AWS SDK for C++ (required for axon-transfer for S3 uploads)
+# Build from source with minimal components to reduce build time
+# Build statically to create portable packages (no runtime dependency on AWS SDK)
+# This takes ~15-20 minutes but is required for S3 upload functionality
+RUN apt-get update && apt-get install -y ninja-build zlib1g-dev && rm -rf /var/lib/apt/lists/* && \
+    git clone --depth 1 --recurse-submodules \
+    --branch 1.11.479 \
+    --single-branch \
+    https://github.com/aws/aws-sdk-cpp.git \
+    /tmp/aws-sdk-cpp && \
+    cd /tmp/aws-sdk-cpp && \
+    cmake -B build \
+        -GNinja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_ONLY="s3;transfer" \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DENABLE_TESTING=OFF \
+        -DAUTOR_RUN_TESTS=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DUNITY_BUILD=OFF && \
+    cmake --build build -j"$(nproc)" && \
+    cmake --install build && \
+    rm -rf /tmp/aws-sdk-cpp
+
 # Set working directory
 WORKDIR /axon
 

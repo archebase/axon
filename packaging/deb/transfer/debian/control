@@ -16,13 +16,7 @@ Build-Depends: debhelper-compat (=13),
 Package: axon-transfer
 Architecture: any
 Depends: ${shlibs:Depends},
-         ${misc:Depends},
-         libsqlite3-0,
-         libcurl4,
-         libssl3,
-         libyaml-cpp4,
-         libboost-filesystem1.74.0 | libboost-filesystem1.83.0,
-         libboost-system1.74.0 | libboost-system1.83.0
+         ${misc:Depends}
 Description: Axon S3 Transfer Daemon
  Background service for uploading MCAP recordings to S3.
  .

@@ -71,33 +71,8 @@ if(COMMAND axon_add_coverage)
 endif()
 
 # =============================================================================
-# Install
+# No install rules - static library is embedded in binaries at build time
 # =============================================================================
-include(GNUInstallDirs)
-
-install(
-    TARGETS axon_logging
-    EXPORT axon_logging_targets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-install(
-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/axon_logging
-    FILES_MATCHING
-    PATTERN "*.hpp"
-    PATTERN "*.h"
-)
-
-# Export library for use by other packages
-install(
-    EXPORT axon_logging_targets
-    FILE axon_logging_targets.cmake
-    NAMESPACE axon::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/axon_logging
-)
 
 # =============================================================================
 # Tests (optional)

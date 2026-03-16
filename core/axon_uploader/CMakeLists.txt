@@ -43,6 +43,7 @@ include(AxonCoverage OPTIONAL)
 
 find_package(OpenSSL QUIET)
 find_package(SQLite3 QUIET)
+find_package(ZLIB QUIET)
 find_package(AWSSDK QUIET COMPONENTS s3 transfer)
 
 # Check if all required dependencies are available

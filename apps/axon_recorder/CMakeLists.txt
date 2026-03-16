@@ -190,20 +190,8 @@ if(AXON_ENABLE_COVERAGE)
     target_link_options(axon_recorder PRIVATE --coverage)
 endif()
 
-# Install executable
+# Install executable only (headers not needed for runtime)
 install(TARGETS axon_recorder RUNTIME DESTINATION bin)
-
-# Install plugin loader header for external plugins
-install(FILES src/plugin/plugin_loader.hpp DESTINATION include)
-
-# Install WebSocket server headers
-install(
-    FILES
-        src/http/websocket_server.hpp
-        src/http/websocket_session.hpp
-        src/http/event_broadcaster.hpp
-    DESTINATION include
-)
 
 # =============================================================================
 # Tests

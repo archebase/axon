@@ -18,10 +18,13 @@ find_package(httplib QUIET)
 if(NOT httplib_FOUND)
     # Try to use FetchContent if not found
     include(FetchContent)
+    # Disable httplib's own install rules (header-only, embedded in binary)
+    set(HTTPLIB_INSTALL OFF CACHE BOOL "Disable httplib install" FORCE)
     FetchContent_Declare(
         httplib
         GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
         GIT_TAG v0.15.3
+        EXCLUDE_FROM_ALL
     )
     FetchContent_MakeAvailable(httplib)
 endif()

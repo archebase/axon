@@ -36,7 +36,7 @@ override_dh_install:
 	dh_install
 	# Install systemd service file
 	install -D -m 644 $(REPO_ROOT)/packaging/deb/systemd/axon-panel.service \
-		debian/axon-panel/lib/systemd/system/axon-panel.service
+		debian/$(shell dh_listpackages)/lib/systemd/system/axon-panel.service
 
 override_dh_auto_clean:
 	dh_auto_clean || true
