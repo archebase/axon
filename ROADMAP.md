@@ -137,18 +137,16 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - ✅ `axon-recorder` package with bundled plugins (ROS1 for 20.04, ROS2 for 22.04/24.04)
   - ✅ `axon-transfer` package with vendored AWS SDK
   - ✅ `axon-panel` Standalone deployment
+  - ✅ `axon-dispatcher` Unified CLI dispatcher
+  - ✅ `axon-all` Meta package for complete installation
 - ✅ **CMake Install Rules**: Normalize install destinations
   - ✅ Add missing install rules for core libraries (`axon_mcap`, `axon_uploader`)
   - ✅ Consistent use of `GNUInstallDirs` across all components
   - ✅ Plugin install to `/opt/axon/lib/axon/plugins/`
-- [ ] **Runtime Linking**: RPATH/RUNPATH configuration
-  - [ ] Set `RUNPATH=$ORIGIN/../lib/bundled:$ORIGIN/../lib` for binaries
-  - [ ] Plugin-local runpath for vendored dependencies
-  - [ ] Dependency vendoring script with `ldd` analysis
-- [ ] **CI Packaging Matrix**: GitHub Actions workflow
+- ✅ **CI Packaging Matrix**: GitHub Actions workflow
   - ✅ Per-OS build containers (20.04/22.04/24.04)
-  - [ ] Automated `.deb` generation with CPack
-  - [ ] Release asset publishing with checksums and SBOM
+  - ✅ Shell script-based `.deb` generation
+  - ✅ Release asset publishing with SHA256 checksums
 
 ---
 
