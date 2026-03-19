@@ -41,13 +41,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install nlohmann-json
-RUN apt-get update && apt-get install -y \
-    nlohmann-json3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install common dependencies
 RUN apt-get update && apt-get install -y \
+    nlohmann-json3-dev \
     libyaml-cpp-dev \
     liblz4-dev \
     libzstd-dev \
