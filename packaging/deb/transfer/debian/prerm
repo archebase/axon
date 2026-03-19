@@ -1,7 +1,6 @@
+#!/bin/sh
 # SPDX-FileCopyrightText: 2026 ArcheBase
 # SPDX-License-Identifier: MulanPSL-2.0
-
-#!/bin/sh
 set -e
 
 # Stop systemd service before removal if it's running
