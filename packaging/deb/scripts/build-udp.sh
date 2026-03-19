@@ -119,7 +119,7 @@ build_plugin() {
 
     # Modify changelog to add distro suffix
     if [ -f "${build_area}/debian/changelog" ]; then
-        sed -i "s/${pkg_name} (${suffixed_pkg_name} (/g" "${build_area}/debian/changelog"
+        sed -i "s/^${pkg_name} /${suffixed_pkg_name} /g" "${build_area}/debian/changelog"
     fi
 
     # Build from build area
