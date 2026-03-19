@@ -19,7 +19,7 @@ Example:
     python mock_keystone_server.py --port 8090
 
     # Terminal 2: Start recorder in WS client mode
-    ./build/axon_recorder/axon_recorder \\
+    ./build/axon_recorder/axon-recorder \\
         --ws-client \\
         --ws-url ws://localhost:8090/rpc \\
         --config config/default_config_ros2.yaml
