@@ -20,7 +20,7 @@
 #include <vector>
 
 #ifndef AXON_VERSION
-#define AXON_VERSION "0.2.1"
+#define AXON_VERSION "0.3.0"
 #endif
 
 // Command mappings

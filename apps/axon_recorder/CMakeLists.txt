@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(axon_recorder VERSION 0.2.1)
+project(axon_recorder VERSION 0.3.0)
 
 # =============================================================================
 # Installation Configuration
