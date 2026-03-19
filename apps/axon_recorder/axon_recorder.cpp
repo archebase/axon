@@ -49,31 +49,43 @@ void print_usage(const char* program_name) {
     << "Axon Recorder - Plugin-based ROS message recorder\n"
     << "Version: " << axon::recorder::get_version() << "\n"
     << "\n"
+    << "Modes:\n"
+    << "  --simple               Simple mode: start recording immediately without RPC\n"
+    << "  --ws-client            WebSocket client mode: connect to keystone server for RPC\n"
+    << "  (default)              HTTP server mode: start HTTP RPC server on port 8080\n"
+    << "\n"
     << "Options:\n"
-    << "  --simple               Simple mode: start recording immediately without HTTP RPC\n"
     << "  --output FILE          Output file path (default: auto-generated timestamp)\n"
     << "  --config PATH          Path to YAML configuration file\n"
-    << "  --plugin PATH         Path to ROS plugin shared library (.so)\n"
-    << "  --path PATH           Output directory path (default: .)\n"
-    << "  --profile PROFILE     ROS profile: ros1 or ros2 (default: ros2)\n"
-    << "  --compression ALG     Compression: none, zstd, lz4 (default: zstd)\n"
-    << "  --level LEVEL         Compression level (default: 3)\n"
-    << "  --queue-size SIZE     Message queue capacity (default: 1024)\n"
-    << "  --version             Show version information\n"
-    << "  --help                Show this help message\n"
+    << "  --plugin PATH          Path to ROS plugin shared library (.so)\n"
+    << "  --path PATH            Output directory path (default: .)\n"
+    << "  --profile PROFILE      ROS profile: ros1 or ros2 (default: ros2)\n"
+    << "  --compression ALG      Compression: none, zstd, lz4 (default: zstd)\n"
+    << "  --level LEVEL          Compression level (default: 3)\n"
+    << "  --queue-size SIZE      Message queue capacity (default: 1024)\n"
+    << "  --ws-url URL           WebSocket server URL for --ws-client mode\n"
+    << "  --ws-auth-token TOKEN  Authentication token for WebSocket handshake\n"
+    << "  --version              Show version information\n"
+    << "  --help                 Show this help message\n"
     << "\n"
     << "Simple Mode:\n"
     << "  When --simple is specified, the recorder starts immediately without waiting for\n"
-    << "  HTTP RPC commands. The output filename is either:\n"
+    << "  RPC commands. The output filename is either:\n"
     << "    - Specified via --output FILE\n"
     << "    - Auto-generated as YYYYMMDD_HHMMSS.mcap (e.g., 20240102_143000.mcap)\n"
     << "\n"
     << "  In simple mode, topics must be configured either via config file subscriptions\n"
-    << "  or CLI parameters. No HTTP RPC server is started.\n"
+    << "  or CLI parameters. No RPC server is started.\n"
     << "\n"
-    << "HTTP RPC Server:\n"
-    << "  Without --simple, the recorder starts an HTTP RPC server on port 8080 for remote "
-       "control.\n"
+    << "WebSocket Client Mode:\n"
+    << "  When --ws-client is specified, the recorder connects to a keystone server via\n"
+    << "  WebSocket and receives RPC commands over the persistent connection.\n"
+    << "  Requires --ws-url to specify the server URL.\n"
+    << "  The recorder automatically sends state updates to the server on transitions.\n"
+    << "\n"
+    << "HTTP RPC Server Mode (default):\n"
+    << "  Without --simple or --ws-client, the recorder starts an HTTP RPC server on\n"
+    << "  port 8080 for remote control.\n"
     << "  The recorder starts in IDLE state and waits for RPC commands.\n"
     << "  Available endpoints:\n"
     << "    POST /rpc/config      - Set task configuration (IDLE->READY)\n"
@@ -96,6 +108,14 @@ void print_usage(const char* program_name) {
     << "    path: /path/to/plugin.so\n"
     << "  dataset:\n"
     << "    path: /axon/recording\n"
+    << "  rpc:\n"
+    << "    mode: http_server      # or ws_client\n"
+    << "    ws_client:\n"
+    << "      url: ws://keystone:8090/rpc\n"
+    << "      auth_token: \"\"\n"
+    << "      reconnect_initial_delay_ms: 1000\n"
+    << "      reconnect_max_delay_ms: 60000\n"
+    << "      ping_interval_ms: 30000\n"
     << "  subscriptions:\n"
     << "    - name: /camera/image\n"
     << "      message_type: sensor_msgs/msg/Image\n"
@@ -123,7 +143,11 @@ void print_usage(const char* program_name) {
     << "  " << program_name
     << " --simple --output /data/my_recording.mcap --plugin ./ros2_plugin.so\n"
     << "\n"
-    << "  # Use config file only\n"
+    << "  # WebSocket client mode (connect to keystone)\n"
+    << "  " << program_name
+    << " --ws-client --ws-url ws://keystone:8090/rpc --plugin ./ros2_plugin.so\n"
+    << "\n"
+    << "  # HTTP RPC server mode (default)\n"
     << "  " << program_name << " --config config/default_config_ros2.yaml\n"
     << "\n"
     << "  # Override plugin path from config file\n"
@@ -187,13 +211,32 @@ int main(int argc, char* argv[]) {
   std::string cli_output_file;
   std::string cli_profile;
   std::string cli_compression;
+  std::string cli_ws_url;
+  std::string cli_ws_auth_token;
   int cli_compression_level = -1;
   size_t cli_queue_capacity = 0;
   bool simple_mode = false;
+  bool ws_client_mode = false;
 
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--simple") == 0) {
       simple_mode = true;
+    } else if (strcmp(argv[i], "--ws-client") == 0) {
+      ws_client_mode = true;
+    } else if (strcmp(argv[i], "--ws-url") == 0) {
+      if (i + 1 < argc) {
+        cli_ws_url = argv[++i];
+      } else {
+        std::cerr << "Error: --ws-url requires a URL argument" << std::endl;
+        return 1;
+      }
+    } else if (strcmp(argv[i], "--ws-auth-token") == 0) {
+      if (i + 1 < argc) {
+        cli_ws_auth_token = argv[++i];
+      } else {
+        std::cerr << "Error: --ws-auth-token requires a token argument" << std::endl;
+        return 1;
+      }
     } else if (strcmp(argv[i], "--output") == 0) {
       if (i + 1 < argc) {
         cli_output_file = argv[++i];
@@ -291,6 +334,17 @@ int main(int argc, char* argv[]) {
     config.queue_capacity = cli_queue_capacity;
   }
 
+  // Apply CLI overrides for WS client mode
+  if (ws_client_mode) {
+    config.rpc.mode = RpcMode::WS_CLIENT;
+    if (!cli_ws_url.empty()) {
+      config.rpc.ws_client.url = cli_ws_url;
+    }
+    if (!cli_ws_auth_token.empty()) {
+      config.rpc.ws_client.auth_token = cli_ws_auth_token;
+    }
+  }
+
   // Handle output filename in simple mode
   if (simple_mode) {
     if (!cli_output_file.empty()) {
@@ -311,9 +365,26 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // Validate WS client mode requirements
+  if (config.rpc.mode == RpcMode::WS_CLIENT && config.rpc.ws_client.url.empty()) {
+    std::cerr << "Error: WS client mode requires --ws-url or rpc.ws_client.url in config file"
+              << std::endl;
+    return 1;
+  }
+
+  // Determine mode string for display
+  std::string mode_str;
+  if (simple_mode) {
+    mode_str = "Simple";
+  } else if (config.rpc.mode == RpcMode::WS_CLIENT) {
+    mode_str = "WebSocket RPC Client";
+  } else {
+    mode_str = "HTTP RPC Server";
+  }
+
   // Print configuration
   std::cout << "Axon Recorder Configuration:\n"
-            << "  Mode:        " << (simple_mode ? "Simple" : "HTTP RPC") << "\n"
+            << "  Mode:        " << mode_str << "\n"
             << "  Plugin:      " << config.plugin_path << "\n"
             << "  Output:      " << config.output_file << "\n"
             << "  Dataset:     " << config.dataset.path << "\n"
@@ -321,6 +392,10 @@ int main(int argc, char* argv[]) {
             << "  Compression: " << config.recording.compression << " level "
             << config.recording.compression_level << "\n"
             << "  Queue size:  " << config.queue_capacity << "\n";
+
+  if (config.rpc.mode == RpcMode::WS_CLIENT) {
+    std::cout << "  WS URL:      " << config.rpc.ws_client.url << "\n";
+  }
 
   // Show topics if configured
   if (!config.subscriptions.empty()) {
@@ -376,6 +451,48 @@ int main(int argc, char* argv[]) {
 
     // Stop recording
     recorder.stop();
+
+    return 0;
+  }
+
+  // WS client mode - connect to keystone server
+  if (config.rpc.mode == RpcMode::WS_CLIENT) {
+    std::cout << "Starting WebSocket RPC client..." << std::endl;
+    std::cout << "Connecting to " << config.rpc.ws_client.url << "..." << std::endl;
+
+    // Register shutdown callback
+    recorder.set_shutdown_callback([]() {
+      std::cout << "\nReceived quit request via WebSocket RPC..." << std::endl;
+      g_should_exit.store(true);
+    });
+
+    if (!recorder.start_ws_rpc_client(config.rpc.ws_client)) {
+      std::cerr << "Error: Failed to start WebSocket RPC client: " << recorder.get_last_error()
+                << std::endl;
+      return 1;
+    }
+
+    std::cout << "WebSocket RPC client connected (current state: " << recorder.get_state_string()
+              << ")" << std::endl;
+    std::cout << "Waiting for RPC commands from keystone. Use Ctrl+C to quit." << std::endl;
+
+    // Wait for quit signal (recording controlled via RPC)
+    while (!g_should_exit.load()) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+
+      // Print statistics if recording is active
+      if (recorder.is_running()) {
+        auto stats = recorder.get_statistics();
+        if (stats.messages_written > 0) {
+          std::cout << "\rMessages: " << stats.messages_written << " written, "
+                    << stats.messages_received << " received, " << stats.messages_dropped
+                    << " dropped   " << std::flush;
+        }
+      }
+    }
+
+    std::cout << "\nStopping WebSocket RPC client..." << std::endl;
+    recorder.stop_ws_rpc_client();
 
     return 0;
   }

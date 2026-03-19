@@ -59,7 +59,7 @@ endif()
 
 option(AXON_ENABLE_COVERAGE "Enable code coverage for all Axon modules" OFF)
 option(AXON_BUILD_TESTS "Build tests for all Axon modules" OFF)
-option(AXON_BUILD_UPLOADER "Build axon_uploader (requires AWS SDK)" ON)
+option(AXON_BUILD_UPLOADER "Build axon_uploader (requires AWS SDK)" OFF)
 
 # Enable testing globally
 if(AXON_BUILD_TESTS)

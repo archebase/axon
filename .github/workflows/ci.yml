@@ -172,6 +172,16 @@ jobs:
     secrets: inherit
 
   # ===========================================================================
+  # Stage 2 (parallel): WebSocket RPC Client E2E Tests
+  # Tests the recorder connecting as a WebSocket client to a mock keystone
+  # ===========================================================================
+  ws-rpc-client-e2e-tests:
+    name: WS RPC Client E2E
+    needs: [unit-tests-cpp]
+    uses: ./.github/workflows/ws-rpc-client-e2e.yml
+    secrets: inherit
+
+  # ===========================================================================
   # Stage 3: Merge All Coverage and Upload to Codecov
   # Combines coverage from ROS tests, C++ tests (unit + integration), and E2E tests
   # ===========================================================================
@@ -180,7 +190,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests, tests-zenoh]
+    needs: [tests-ros, unit-tests-cpp, integration-tests-cpp, e2e-tests, tests-zenoh, ws-rpc-client-e2e-tests]
     if: always()
     steps:
       - name: Check pipeline status
@@ -190,6 +200,7 @@ jobs:
           echo "C++ Integration Tests: ${{ needs.integration-tests-cpp.result }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
           echo "Zenoh Plugin Tests: ${{ needs.tests-zenoh.result }}"
+          echo "WS RPC Client E2E Tests: ${{ needs.ws-rpc-client-e2e-tests.result }}"
 
           if [ "${{ needs.tests-ros.result }}" != "success" ]; then
             echo "❌ ROS tests failed"
@@ -216,7 +227,12 @@ jobs:
             exit 1
           fi
 
+          if [ "${{ needs.ws-rpc-client-e2e-tests.result }}" != "success" ]; then
+            echo "❌ WS RPC Client E2E tests failed"
+            exit 1
+          fi
+
           echo "✅ CI pipeline completed successfully!"
           echo ""
-          echo "📊 Coverage: Individual workflows upload with flags (cpp-unit, cpp-integration, ros-*, e2e-*, zenoh-plugin)"
+          echo "📊 Coverage: Individual workflows upload with flags (cpp-unit, cpp-integration, ros-*, e2e-*, zenoh-plugin, ws-rpc-e2e)"
           echo "   Codecov automatically merges multiple uploads from the same commit."

@@ -30,6 +30,7 @@ struct RetryConfig;
 struct UploadConfig;
 struct LoggingConfig;
 struct HttpServerConfig;
+struct RpcModeConfig;
 struct RecorderConfig;
 
 /**
@@ -83,6 +84,7 @@ private:
   bool parse_logging(const YAML::Node& node, LoggingConfig& logging);
   bool parse_upload(const YAML::Node& node, UploadConfig& upload);
   bool parse_http_server(const YAML::Node& node, HttpServerConfig& http_server);
+  bool parse_rpc(const YAML::Node& node, RpcModeConfig& rpc);
 
   // Last error message
   mutable std::string last_error_;

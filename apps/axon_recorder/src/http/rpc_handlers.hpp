@@ -156,6 +156,14 @@ RpcResponse handle_rpc_get_state(const RpcCallbacks& callbacks, const nlohmann::
  */
 RpcResponse handle_rpc_get_stats(const RpcCallbacks& callbacks, const nlohmann::json& params);
 
+/**
+ * Handle RPC test command (connectivity check)
+ * @param callbacks RPC callbacks to invoke
+ * @param params Request parameters (optional "echo" parameter)
+ * @return RPC response with echoed data
+ */
+RpcResponse handle_rpc_test(const RpcCallbacks& callbacks, const nlohmann::json& params);
+
 }  // namespace recorder
 }  // namespace axon
 
