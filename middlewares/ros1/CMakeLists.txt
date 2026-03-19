@@ -6,7 +6,7 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.14)
-project(axon_ros1_plugin VERSION 0.2.1 LANGUAGES CXX)
+project(axon_ros1_plugin VERSION 0.3.0 LANGUAGES CXX)
 
 # =============================================================================
 # Installation Configuration

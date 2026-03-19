@@ -42,7 +42,7 @@ if [ -f "${PROJECT_ROOT}/apps/axon_recorder/CMakeLists.txt" ]; then
     VERSION="$(grep 'project.*VERSION' "${PROJECT_ROOT}/apps/axon_recorder/CMakeLists.txt" | sed 's/.*VERSION \([0-9.]*\).*/\1/')"
 fi
 if [ -z "$VERSION" ]; then
-    VERSION="0.2.1"
+    VERSION="0.3.0"
 fi
 DEBIAN_VERSION="${VERSION}-1"
 
