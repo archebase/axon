@@ -121,6 +121,11 @@ build_plugin() {
     # Copy debian files to build area
     cp -r "${debian_dir}" "${build_area}/debian"
 
+    # Update version in changelog
+    if [ -f "${build_area}/debian/changelog" ]; then
+        sed -i "s/([0-9]\+\.[0-9]\+\.[0-9]\+-[0-9]\+)/(${DEBIAN_VERSION})/" "${build_area}/debian/changelog"
+    fi
+
     # Build from build area
     cd "${build_area}"
     if AXON_REPO_ROOT="${PROJECT_ROOT}" dpkg-buildpackage -b -uc -us -j"$(nproc)" 2>&1; then

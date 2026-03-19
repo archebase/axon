@@ -82,6 +82,11 @@ mkdir -p "${BUILD_AREA}"
 # Copy debian files to build area
 cp -r "${PACKAGE_DIR}/plugin-udp/debian" "${BUILD_AREA}/debian"
 
+# Update version in changelog
+if [ -f "${BUILD_AREA}/debian/changelog" ]; then
+    sed -i "s/([0-9]\+\.[0-9]\+\.[0-9]\+-[0-9]\+)/(${DEBIAN_VERSION})/" "${BUILD_AREA}/debian/changelog"
+fi
+
 # Build from build area
 cd "${BUILD_AREA}"
 
