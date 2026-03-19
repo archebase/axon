@@ -1,0 +1,7 @@
+# Build artifacts
+*.deb
+*.buildinfo
+*.changes
+*.ddeb
+*.tar.gz
+*.tar.xz

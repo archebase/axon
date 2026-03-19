@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# Install default configuration file to /opt/axon/share/config
+apps/axon_transfer/config/transfer_config.yaml opt/axon/share/config/

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# Directories created by packages
+/opt/axon/bin
+/opt/axon/lib
+/opt/axon/plugins
+/opt/axon/share/config
+/opt/axon/share/bash-completion/completions
+/usr/bin

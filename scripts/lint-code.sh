@@ -68,9 +68,16 @@ fi
 echo -e "${YELLOW}Linting C++ code...${NC}"
 
 # Build cppcheck arguments
+# Enable important checks but exclude style (too many false positives)
 CPPCHECK_ARGS=(
-    "--enable=all"
+    "--enable=warning,performance,portability"
+    # Suppress common false positives
     "--suppress=missingInclude"
+    "--suppress=unusedStructMember"        # API members not used internally
+    "--suppress=unusedFunction"            # API functions not called internally
+    "--suppress=unassignedVariable"        # Structured bindings: for (const auto& [key, value])
+    "--suppress=stlIfStrFind"              # string::find() for prefix check is intentional
+    "--suppress=stlFindInsert"             # map insertion without prior search is fine
     "--error-exitcode=1"
     "-I${PROJECT_ROOT}/core/axon_mcap/include"
     "-I${PROJECT_ROOT}/core/axon_uploader/include"

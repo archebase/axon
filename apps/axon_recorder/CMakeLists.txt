@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.12)
 project(axon_recorder VERSION 0.2.1)
 
 # =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
+
+# =============================================================================
 # Centralized CMake Modules
 # =============================================================================
 # All Axon modules must use the centralized cmake/Modules directory.
@@ -23,6 +31,31 @@ endif()
 # Include required modules (AxonStdLib provides standard helpers)
 include(AxonStdLib REQUIRED)
 include(AxonCoverage OPTIONAL)
+
+# =============================================================================
+# Core Libraries (when built from repo root or for packaging)
+# =============================================================================
+# When AXON_REPO_ROOT is set (e.g., for Debian packaging), add core libraries
+if(DEFINED AXON_REPO_ROOT)
+    set(AXON_LOGGING_DIR "${AXON_REPO_ROOT}/core/axon_logging")
+    set(AXON_MCAP_DIR "${AXON_REPO_ROOT}/core/axon_mcap")
+
+    # Add axon_logging if not already built
+    if(NOT TARGET axon_logging AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
+        add_subdirectory(
+            "${AXON_LOGGING_DIR}"
+            ${CMAKE_CURRENT_BINARY_DIR}/axon_logging
+        )
+    endif()
+
+    # Add axon_mcap if not already built
+    if(NOT TARGET axon_mcap AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
+        add_subdirectory(
+            "${AXON_MCAP_DIR}"
+            ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap
+        )
+    endif()
+endif()
 
 # =============================================================================
 # Dependencies
@@ -148,26 +181,17 @@ endif()
 # Enable C++17
 target_compile_features(axon_recorder PRIVATE cxx_std_17)
 
+# Set output name to use hyphen (axon-recorder)
+set_target_properties(axon_recorder PROPERTIES OUTPUT_NAME "axon-recorder")
+
 # Coverage flags
 if(AXON_ENABLE_COVERAGE)
     target_compile_options(axon_recorder PRIVATE --coverage)
     target_link_options(axon_recorder PRIVATE --coverage)
 endif()
 
-# Install executable
+# Install executable only (headers not needed for runtime)
 install(TARGETS axon_recorder RUNTIME DESTINATION bin)
-
-# Install plugin loader header for external plugins
-install(FILES src/plugin/plugin_loader.hpp DESTINATION include)
-
-# Install WebSocket server headers
-install(
-    FILES
-        src/http/websocket_server.hpp
-        src/http/websocket_session.hpp
-        src/http/event_broadcaster.hpp
-    DESTINATION include
-)
 
 # =============================================================================
 # Tests
@@ -185,6 +209,8 @@ endif()
 message(STATUS "")
 message(STATUS "=== Axon Recorder Configuration ===")
 message(STATUS "  C++ Standard: 17")
+message(STATUS "  Install Prefix: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "  Output Binary: axon-recorder")
 message(STATUS "  Coverage: ${AXON_ENABLE_COVERAGE}")
 message(STATUS "=================================")
 message(STATUS "")

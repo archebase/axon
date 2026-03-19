@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-panel
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               nodejs (>= 18),
+               npm
+
+Package: axon-panel
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends}
+Description: Axon Web Control Panel
+ Browser-based interface for monitoring and controlling
+ the Axon recorder via HTTP RPC.
+ .
+ Features:
+  - Real-time state monitoring
+  - Visual state machine diagram
+  - Recording control buttons
+  - Activity logging
+  - Responsive design
+ .
+ All static assets are embedded in the binary.

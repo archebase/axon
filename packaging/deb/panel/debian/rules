@@ -1,0 +1,44 @@
+#!/usr/bin/make -f
+
+# Skip tests
+DEB_BUILD_OPTIONS += nocheck
+
+# Get the repo root - use AXON_REPO_ROOT from environment if set, otherwise compute
+ifeq ($(origin AXON_REPO_ROOT),environment)
+REPO_ROOT := $(AXON_REPO_ROOT)
+else
+REPO_ROOT := $(shell cd $(CURDIR)/../.. && pwd)
+endif
+
+# main packaging script based on dh7 syntax
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Install npm dependencies first
+	npm install
+	# Build Vue 3 frontend assets first
+	npm run build
+	# Then build the C++ binary with embedded assets
+	dh_auto_build
+
+override_dh_auto_configure:
+	# Use pre-downloaded dependencies if available (Ubuntu 24.04+)
+	if [ -d "/opt/mcap" ] && [ -d "/opt/cpp-httplib" ]; then \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap -DFETCHCONTENT_SOURCE_DIR_HTTPLIB=/opt/cpp-httplib; \
+	elif [ -d "/opt/mcap" ]; then \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_MCAP=/opt/mcap; \
+	else \
+		dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT) -DCMAKE_BUILD_TYPE=Release; \
+	fi
+
+override_dh_install:
+	dh_install
+	# Install systemd service file
+	install -D -m 644 $(REPO_ROOT)/packaging/deb/systemd/axon-panel.service \
+		debian/$(shell dh_listpackages)/lib/systemd/system/axon-panel.service
+
+override_dh_auto_clean:
+	dh_auto_clean || true
+	rm -rf obj-* debian/.debhelper debian/debhelper-build-stamp debian/files 2>/dev/null || true
+	rm -rf dist node_modules

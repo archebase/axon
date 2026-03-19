@@ -101,6 +101,12 @@ help:
 	@printf "%s\n" "  $(BLUE)make app-axon-panel$(NC)   - Build axon_panel web server"
 	@printf "%s\n" "  $(BLUE)make test-axon-transfer$(NC) - Build and run axon_transfer tests"
 	@echo ""
+	@printf "%s\n" "$(YELLOW)Packaging (Docker-based):$(NC)"
+	@printf "%s\n" "  $(BLUE)make package-all$(NC)        - Build all packages in Docker (recommended)"
+	@printf "%s\n" "  $(BLUE)make package-core$(NC)       - Build core packages in Docker"
+	@printf "%s\n" "  $(BLUE)make package-plugins$(NC)    - Build all plugin packages in Docker"
+	@printf "%s\n" "  $(BLUE)make package-clean$(NC)      - Clean package build artifacts"
+	@echo ""
 	@printf "%s\n" "$(YELLOW)Mock Middleware (Testing):$(NC)"
 	@printf "%s\n" "  $(BLUE)make build-mock$(NC)           - Build mock middleware plugin"
 	@printf "%s\n" "  $(BLUE)make test-mock-e2e$(NC)        - Run mock plugin E2E test (standalone)"
@@ -1055,3 +1061,49 @@ ci-local-cpp-integration-coverage:
 # ci-local-reuse-sbom: REUSE compliance with SPDX SBOM generation
 ci-local-reuse-sbom:
 	@./scripts/ci-reuse-local.sh --sbom
+
+# =============================================================================
+# Packaging Targets
+# =============================================================================
+# Build Debian packages for Axon components using Docker.
+
+PACKAGE_DIR := packaging/deb
+
+# package-core: Build core packages in Docker (recorder, config, panel, transfer, dispatcher)
+.PHONY: package-core
+package-core:
+	@printf "%s\n" "$(YELLOW)Building core packages in Docker...$(NC)"
+	@for distro in focal jammy noble; do \
+		echo "Building core packages for Ubuntu $$distro..."; \
+		$(PACKAGE_DIR)/scripts/build-in-docker.sh standalone-$$distro || echo "Warning: $$distro build failed"; \
+	done
+
+# package-plugins: Build all plugin packages in Docker (ROS1 + ROS2 + UDP)
+.PHONY: package-plugins
+package-plugins:
+	@printf "%s\n" "$(YELLOW)Building plugin packages in Docker...$(NC)"
+	@echo "Building ROS1 plugin..."
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh ros1 || echo "Warning: ROS1 build failed"
+	@echo "Building ROS2 Humble plugin..."
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh --distro humble || echo "Warning: ROS2 Humble build failed"
+	@echo "Building ROS2 Jazzy plugin..."
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh --distro jazzy || echo "Warning: ROS2 Jazzy build failed"
+	@echo "Building UDP plugin..."
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh udp || echo "Warning: UDP build failed"
+
+# package-all: Build all packages in Docker (core + plugins for all distros)
+.PHONY: package-all
+package-all:
+	@printf "%s\n" "$(YELLOW)Building all packages in Docker...$(NC)"
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh all
+
+# package-clean: Clean package build artifacts
+.PHONY: package-clean
+package-clean:
+	@printf "%s\n" "$(YELLOW)Cleaning package build artifacts...$(NC)"
+	@rm -rf $(PACKAGE_DIR)/output/*.deb
+	@rm -rf $(PACKAGE_DIR)/build
+	@find . -name ".debian-build" -type d -exec rm -rf {} + 2>/dev/null || true
+	@find . -name "debian" -type d -path "*/apps/*" -exec rm -rf {} + 2>/dev/null || true
+	@find . -name "debian" -type d -path "*/middlewares/*" -exec rm -rf {} + 2>/dev/null || true
+	@printf "%s\n" "$(GREEN)✓ Package build artifacts cleaned$(NC)"

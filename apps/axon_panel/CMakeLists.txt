@@ -18,10 +18,13 @@ find_package(httplib QUIET)
 if(NOT httplib_FOUND)
     # Try to use FetchContent if not found
     include(FetchContent)
+    # Disable httplib's own install rules (header-only, embedded in binary)
+    set(HTTPLIB_INSTALL OFF CACHE BOOL "Disable httplib install" FORCE)
     FetchContent_Declare(
         httplib
         GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
         GIT_TAG v0.15.3
+        EXCLUDE_FROM_ALL
     )
     FetchContent_MakeAvailable(httplib)
 endif()
@@ -75,6 +78,9 @@ target_link_libraries(axon_panel PRIVATE httplib::httplib)
 
 # C++17 for Ubuntu 20.04 compatibility (GCC 9.3)
 target_compile_features(axon_panel PRIVATE cxx_std_17)
+
+# Set output name to use hyphen (axon-panel)
+set_target_properties(axon_panel PROPERTIES OUTPUT_NAME "axon-panel")
 
 # Install target
 install(TARGETS axon_panel RUNTIME DESTINATION bin)

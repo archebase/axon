@@ -26,13 +26,16 @@ MOCK_BUILD_DIR="${PROJECT_ROOT}/build/middlewares/mock"
 # Mock plugin path
 MOCK_PLUGIN="${MOCK_BUILD_DIR}/libmock_plugin.so"
 
-# Try multiple possible locations for axon_recorder binary
-if [[ -f "${BUILD_DIR}/apps/axon_recorder/axon_recorder" ]]; then
-    RECORDER_BIN="${BUILD_DIR}/apps/axon_recorder/axon_recorder"
-elif [[ -f "${PROJECT_ROOT}/apps/axon_recorder/build/axon_recorder" ]]; then
-    RECORDER_BIN="${PROJECT_ROOT}/apps/axon_recorder/build/axon_recorder"
+# Try multiple possible locations for axon-recorder binary
+# Note: Binary name uses hyphen (axon-recorder) since v0.2.1
+# When building from root CMakeLists.txt, binary is at: build/axon_recorder/axon-recorder
+# When building standalone, binary is at: apps/axon_recorder/build/axon-recorder
+if [[ -f "${BUILD_DIR}/axon_recorder/axon-recorder" ]]; then
+    RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon-recorder"
+elif [[ -f "${PROJECT_ROOT}/apps/axon_recorder/build/axon-recorder" ]]; then
+    RECORDER_BIN="${PROJECT_ROOT}/apps/axon_recorder/build/axon-recorder"
 else
-    RECORDER_BIN="${BUILD_DIR}/apps/axon_recorder/axon_recorder"
+    RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon-recorder"
 fi
 
 # Colors for output
@@ -124,9 +127,9 @@ build_axon_recorder() {
 
     # Find the actual binary location
     if [[ ! -f "${RECORDER_BIN}" ]]; then
-        RECORDER_BIN=$(find "${BUILD_DIR}" -name "axon_recorder" -type f -executable 2>/dev/null | head -n 1)
+        RECORDER_BIN=$(find "${BUILD_DIR}" -name "axon-recorder" -type f -executable 2>/dev/null | head -n 1)
         if [[ -z "${RECORDER_BIN}" ]]; then
-            log_error "Failed to build axon_recorder"
+            log_error "Failed to build axon-recorder"
             exit 1
         fi
     fi

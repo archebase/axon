@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# Install default configuration files to /opt/axon/share/config
+apps/axon_recorder/config/default_config_ros1.yaml opt/axon/share/config/
+apps/axon_recorder/config/default_config_ros2.yaml opt/axon/share/config/
+apps/axon_recorder/config/default_config_udp.yaml opt/axon/share/config/

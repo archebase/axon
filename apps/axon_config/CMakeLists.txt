@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.14)
 project(axon_config LANGUAGES CXX)
 
 # =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
+
+# =============================================================================
 # Centralized CMake Modules
 # =============================================================================
 # All Axon modules must use the centralized cmake/Modules directory.
@@ -27,6 +35,15 @@ include(AxonCoverage OPTIONAL)
 # =============================================================================
 # Use axon_mcap for mcap_headers interface
 # =============================================================================
+# When building for packaging with AXON_REPO_ROOT set, set MCAP path
+if(DEFINED AXON_REPO_ROOT AND NOT DEFINED AXON_MCAP_DIR)
+    set(AXON_MCAP_DIR
+        "${AXON_REPO_ROOT}/core/axon_mcap"
+        CACHE PATH
+        "Axon MCAP directory"
+    )
+endif()
+
 # Use centralized AXON_MCAP_DIR if set by parent, otherwise use AXON_CORE_DIR
 if(DEFINED AXON_MCAP_DIR AND EXISTS "${AXON_MCAP_DIR}/CMakeLists.txt")
     # Use parent's path (built from repo root)
@@ -82,6 +99,9 @@ target_include_directories(axon_config PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # Compiler warnings
 # =============================================================================
 target_compile_options(axon_config PRIVATE -Wall -Wextra -Wpedantic)
+
+# Set output name to use hyphen (axon-config)
+set_target_properties(axon_config PROPERTIES OUTPUT_NAME "axon-config")
 
 # =============================================================================
 # Installation

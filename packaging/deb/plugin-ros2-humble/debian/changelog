@@ -1,0 +1,7 @@
+axon-plugin-ros2-humble (0.2.1-1) unstable; urgency=medium
+
+  * Initial packaging for ROS2 Humble
+  * Based on Axon v0.2.1
+  * Target: Ubuntu 22.04 (Jammy) with ROS2 Humble
+
+ -- ArcheBase <noreply@archebase.com>  Tue, 11 Mar 2026 00:00:00 +0000

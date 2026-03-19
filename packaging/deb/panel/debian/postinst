@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+set -e
+
+# Create axon user and group if they don't exist
+if ! getent passwd axon > /dev/null 2>&1; then
+    adduser --system --no-create-home --quiet --group axon || true
+fi
+
+# Create log directory
+if [ ! -d /var/log/axon ]; then
+    mkdir -p /var/log/axon
+    chown axon:axon /var/log/axon
+    chmod 755 /var/log/axon
+fi
+
+# Enable systemd service if systemd is running
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+
+exit 0

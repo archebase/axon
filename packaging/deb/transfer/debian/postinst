@@ -1,0 +1,55 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+set -e
+
+# Create axon user and group if they don't exist
+if ! getent passwd axon > /dev/null 2>&1; then
+    adduser --system --no-create-home --quiet --group axon || true
+fi
+
+# Create runtime directories with proper permissions
+if [ ! -d /axon ]; then
+    mkdir -p /axon
+    chown axon:axon /axon
+    chmod 755 /axon
+fi
+
+if [ ! -d /axon/uploads ]; then
+    mkdir -p /axon/uploads
+    chown axon:axon /axon/uploads
+    chmod 755 /axon/uploads
+fi
+
+# Create transfer state directory
+if [ ! -d /var/lib/axon/transfer ]; then
+    mkdir -p /var/lib/axon/transfer
+    chown axon:axon /var/lib/axon/transfer
+    chmod 755 /var/lib/axon/transfer
+fi
+
+# Create log directory
+if [ ! -d /var/log/axon ]; then
+    mkdir -p /var/log/axon
+    chown axon:axon /var/log/axon
+    chmod 755 /var/log/axon
+fi
+
+# Create system config directory
+if [ ! -d /etc/axon ]; then
+    mkdir -p /etc/axon
+    chmod 755 /etc/axon
+fi
+
+# Copy default configuration file if it doesn't exist
+if [ ! -f /etc/axon/transfer.yaml ] && [ -f /opt/axon/share/config/transfer_config.yaml ]; then
+    cp /opt/axon/share/config/transfer_config.yaml /etc/axon/transfer.yaml
+    chmod 644 /etc/axon/transfer.yaml
+fi
+
+# Enable systemd service if systemd is running
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+
+exit 0

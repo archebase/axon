@@ -21,15 +21,16 @@ BUILD_DIR="${PROJECT_ROOT}/build"
 TEST_DIR="${SCRIPT_DIR}"
 TEST_DATA_DIR="${TEST_DIR}/test_data"
 
-# Try multiple possible locations for axon_recorder binary
-if [[ -f "${BUILD_DIR}/axon_recorder/axon_recorder" ]]; then
-    RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon_recorder"
-elif [[ -f "${BUILD_DIR}/apps/axon_recorder/axon_recorder" ]]; then
-    RECORDER_BIN="${BUILD_DIR}/apps/axon_recorder/axon_recorder"
-elif [[ -f "${PROJECT_ROOT}/apps/axon_recorder/build/axon_recorder" ]]; then
-    RECORDER_BIN="${PROJECT_ROOT}/apps/axon_recorder/build/axon_recorder"
+# Try multiple possible locations for axon-recorder binary
+# Note: Binary name uses hyphen (axon-recorder) since v0.2.1
+# When building from root CMakeLists.txt, binary is at: build/axon_recorder/axon-recorder
+# When building standalone, binary is at: apps/axon_recorder/build/axon-recorder
+if [[ -f "${BUILD_DIR}/axon_recorder/axon-recorder" ]]; then
+    RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon-recorder"
+elif [[ -f "${PROJECT_ROOT}/apps/axon_recorder/build/axon-recorder" ]]; then
+    RECORDER_BIN="${PROJECT_ROOT}/apps/axon_recorder/build/axon-recorder"
 else
-    RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon_recorder"
+    RECORDER_BIN="${BUILD_DIR}/axon_recorder/axon-recorder"
 fi
 
 # Mock plugin path - built with main build system
@@ -93,12 +94,12 @@ setup() {
 
     # Detect actual binary location
     if [[ ! -f "${RECORDER_BIN}" ]]; then
-        # Search for axon_recorder in common build locations
-        RECORDER_BIN=$(find "${BUILD_DIR}" -name "axon_recorder" -type f -executable 2>/dev/null | head -n 1)
+        # Search for axon-recorder in common build locations
+        RECORDER_BIN=$(find "${BUILD_DIR}" -name "axon-recorder" -type f -executable 2>/dev/null | head -n 1)
         if [[ -z "${RECORDER_BIN}" ]]; then
             log_error "Recorder binary not found"
             log_info "Searched in: ${BUILD_DIR}"
-            log_info "Please build axon_recorder first"
+            log_info "Please build axon-recorder first"
             log_info "  - Build with: make build-core"
             log_info "  - Or check: apps/axon_recorder/build/"
             exit 1

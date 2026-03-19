@@ -146,7 +146,7 @@ class WsRpcClientE2ETest:
     async def start_recorder(self):
         """Start the axon_recorder in WS RPC client mode."""
         recorder_bin = os.path.join(
-            self.project_root, "build/axon_recorder/axon_recorder"
+            self.project_root, "build/axon_recorder/axon-recorder"
         )
         config_file = os.path.join(
             self.project_root, "apps/axon_recorder/config/default_config_ros2.yaml"

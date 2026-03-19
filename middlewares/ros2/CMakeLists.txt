@@ -6,7 +6,15 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.14)
-project(axon_ros2_plugin VERSION 1.0.0 LANGUAGES CXX)
+project(axon_ros2_plugin VERSION 0.2.1 LANGUAGES CXX)
+
+# =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
 
 # Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -59,6 +67,84 @@ endif()
 # Find ROS2 libraries
 find_package(rclcpp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
+
+# Find nlohmann/json
+# Try modern CMake config first (Ubuntu 22.04+), fallback to header-only
+find_package(nlohmann_json 3.10.0 QUIET)
+if(NOT nlohmann_json_FOUND)
+    # Fallback for older systems: create interface target manually
+    message(
+        STATUS
+        "nlohmann_json CMake config not found, using header-only fallback"
+    )
+    # Check if FetchContent already created the target
+    if(NOT TARGET nlohmann_json::nlohmann_json)
+        # Check FetchContent source directory first (when built from parent project)
+        if(DEFINED nlohmann_json_SOURCE_DIR)
+            set(NLOHMANN_JSON_INCLUDE_DIR
+                "${nlohmann_json_SOURCE_DIR}/single_include"
+            )
+        else()
+            find_path(
+                NLOHMANN_JSON_INCLUDE_DIR
+                nlohmann/json.hpp
+                PATHS /usr/include /usr/local/include
+                NO_DEFAULT_PATH
+            )
+        endif()
+        if(NOT NLOHMANN_JSON_INCLUDE_DIR)
+            message(
+                FATAL_ERROR
+                "nlohmann/json headers not found. Install nlohmann-json3-dev"
+            )
+        endif()
+        # Create interface target for compatibility
+        add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
+        set_target_properties(
+            nlohmann_json::nlohmann_json
+            PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${NLOHMANN_JSON_INCLUDE_DIR}"
+        )
+    endif()
+endif()
+
+# =============================================================================
+# Find axon_logging (for standalone packaging)
+# =============================================================================
+if(NOT TARGET axon_logging)
+    if(DEFINED AXON_REPO_ROOT AND EXISTS "${AXON_REPO_ROOT}/core/axon_logging")
+        # Build axon_logging from source when AXON_REPO_ROOT is set (packaging use case)
+        message(
+            STATUS
+            "Building axon_logging from source at ${AXON_REPO_ROOT}/core/axon_logging"
+        )
+        add_subdirectory(
+            "${AXON_REPO_ROOT}/core/axon_logging"
+            "${CMAKE_CURRENT_BINARY_DIR}/axon_logging"
+        )
+    elseif(
+        DEFINED CMAKE_SOURCE_DIR
+        AND EXISTS "${CMAKE_SOURCE_DIR}/../../core/axon_logging"
+    )
+        # Try relative path if built from middlewares directory
+        set(_LOGGING_DIR "${CMAKE_SOURCE_DIR}/../../core/axon_logging")
+        if(EXISTS "${_LOGGING_DIR}/CMakeLists.txt")
+            message(
+                STATUS
+                "Building axon_logging from source at ${_LOGGING_DIR}"
+            )
+            add_subdirectory(
+                "${_LOGGING_DIR}"
+                "${CMAKE_CURRENT_BINARY_DIR}/axon_logging"
+            )
+        endif()
+    else()
+        message(
+            FATAL_ERROR
+            "axon_logging not found. Set AXON_LOGGING_DIR or AXON_REPO_ROOT, or build from parent project."
+        )
+    endif()
+endif()
 
 # ROS2 include directory
 set(ROS2_INCLUDE_DIR "${ROS2_DIR}/include")
@@ -188,10 +274,12 @@ endif()
 # =============================================================================
 # Install
 # =============================================================================
+# Install plugin library to /opt/axon/plugins/
 install(
     TARGETS axon_ros2_plugin
     ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib/axon/plugins
+    LIBRARY DESTINATION plugins
+    RUNTIME DESTINATION plugins
 )
 
 install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.hpp")
@@ -203,6 +291,7 @@ message(STATUS "")
 message(STATUS "Axon ROS2 Plugin Configuration:")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Install Prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "  ROS2 Root: ${ROS2_DIR}")
 message(STATUS "  Depth Compression: ${AXON_ENABLE_DEPTH_COMPRESSION}")
 message(STATUS "  Tests Enabled: ${AXON_BUILD_TESTS}")

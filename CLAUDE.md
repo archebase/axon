@@ -400,10 +400,10 @@ For quick testing or standalone use without the HTTP RPC server, the recorder su
 
 ```bash
 # Simple mode: start recording immediately without HTTP RPC
-./build/axon_recorder/axon_recorder --simple --output /tmp/recording.mcap --config /path/to/config.yaml
+./build/axon_recorder/axon-recorder --simple --output /tmp/recording.mcap --config /path/to/config.yaml
 
 # Simple mode with default output path (recording.mcap in current directory)
-./build/axon_recorder/axon_recorder --simple --config /path/to/config.yaml
+./build/axon_recorder/axon-recorder --simple --config /path/to/config.yaml
 ```
 
 In simple mode, the recorder:
@@ -845,7 +845,7 @@ To create a new middleware plugin:
 **axon_panel Development:**
 ```bash
 # Terminal 1: Start recorder
-./build/axon_recorder/axon_recorder --plugin ./build/middlewares/libaxon_ros2.so
+./build/axon_recorder/axon-recorder --plugin ./build/middlewares/libaxon_ros2.so
 
 # Terminal 2: Start panel dev server
 cd apps/axon_panel

@@ -28,21 +28,50 @@ include(AxonCoverage OPTIONAL)
 # Check Dependencies
 # =============================================================================
 # The uploader requires AWS SDK (S3), OpenSSL, and SQLite3.
-# If this CMakeLists.txt is being processed, uploader build was requested,
-# so missing dependencies should fail fast.
+# If AWS SDK is not available, the uploader is skipped gracefully.
 #
-# AWS SDK must be built from source (no apt packages available):
+# AWS SDK installation (Ubuntu 22.04):
+#   # Build from source (no apt packages available)
 #   git clone --recurse-submodules https://github.com/aws/aws-sdk-cpp
-#   cd aws-sdk-cpp && cmake -B build -DBUILD_ONLY="s3;transfer" && cmake --build build
-#   sudo cmake --install build
+#   cd aws-sdk-cpp && cmake -B build -DBUILD_ONLY="s3;transfer" -DBUILD_SHARED_LIBS=ON
+#   cmake --build build -j$(nproc) && sudo cmake --install build
+#   sudo ldconfig
 #
 # Other dependencies:
 #   Ubuntu/Debian: sudo apt-get install libssl-dev libsqlite3-dev libcurl4-openssl-dev
 #   macOS: brew install openssl sqlite3 curl
 
-find_package(OpenSSL REQUIRED)
-find_package(SQLite3 REQUIRED)
-find_package(AWSSDK REQUIRED COMPONENTS s3 transfer)
+find_package(OpenSSL QUIET)
+find_package(SQLite3 QUIET)
+find_package(ZLIB QUIET)
+find_package(AWSSDK QUIET COMPONENTS s3 transfer)
+
+# Check if all required dependencies are available
+set(_AXON_UPLOADER_DEPS_MET TRUE)
+
+if(NOT OpenSSL_FOUND)
+    message(STATUS "axon_uploader: OpenSSL not found, skipping uploader build")
+    set(_AXON_UPLOADER_DEPS_MET FALSE)
+endif()
+
+if(NOT SQLite3_FOUND)
+    message(STATUS "axon_uploader: SQLite3 not found, skipping uploader build")
+    set(_AXON_UPLOADER_DEPS_MET FALSE)
+endif()
+
+if(NOT AWSSDK_FOUND)
+    message(STATUS "axon_uploader: AWS SDK not found, skipping uploader build")
+    message(
+        STATUS
+        "axon_uploader: To enable, install AWS SDK from https://github.com/aws/aws-sdk-cpp"
+    )
+    set(_AXON_UPLOADER_DEPS_MET FALSE)
+endif()
+
+# Exit early if dependencies are not met
+if(NOT _AXON_UPLOADER_DEPS_MET)
+    return()
+endif()
 
 message(STATUS "axon_uploader: All dependencies found, building uploader")
 message(STATUS "axon_uploader: Found SQLite3 ${SQLite3_VERSION}")
@@ -179,7 +208,6 @@ message(STATUS "")
 message(STATUS "=== Axon Uploader Configuration ===")
 message(STATUS "  SQLite3: ${SQLite3_VERSION}")
 message(STATUS "  AWS SDK: Found")
-message(STATUS "  MCAP Validation: ${MCAP_BUILD_DIR}")
 message(STATUS "  Tests: ${AXON_UPLOADER_BUILD_TESTS}")
 message(STATUS "=====================================")
 message(STATUS "")

@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# =============================================================================
+# Axon Standalone Package Build - Ubuntu 20.04 (Focal)
+# =============================================================================
+# Build environment for creating Axon packages for Ubuntu 20.04.
+# These packages are suitable for installation on Ubuntu 20.04 systems.
+# =============================================================================
+
+FROM ubuntu:20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install basic build tools and packaging dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    pkg-config \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    lsb-release \
+    software-properties-common \
+    gnupg \
+    debhelper \
+    dpkg-dev \
+    devscripts \
+    fakeroot \
+    xxd \
+    vim-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add focal-backports for debhelper 13
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install -y -t focal-backports debhelper && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install common dependencies (Ubuntu 20.04 versions)
+RUN apt-get update && apt-get install -y \
+    nlohmann-json3-dev \
+    libyaml-cpp-dev \
+    liblz4-dev \
+    libzstd-dev \
+    libre2-dev \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-log-dev \
+    libboost-thread-dev \
+    libboost-filesystem-dev \
+    libssl-dev \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 18 for panel build
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install AWS SDK for C++ (required for axon-transfer for S3 uploads)
+# Build from source with minimal components to reduce build time
+# Build statically to create portable packages (no runtime dependency on AWS SDK)
+# This takes ~15-20 minutes but is required for S3 upload functionality
+RUN apt-get update && apt-get install -y ninja-build zlib1g-dev && rm -rf /var/lib/apt/lists/* && \
+    git clone --depth 1 --recurse-submodules \
+    --branch 1.11.479 \
+    --single-branch \
+    https://github.com/aws/aws-sdk-cpp.git \
+    /tmp/aws-sdk-cpp && \
+    cd /tmp/aws-sdk-cpp && \
+    cmake -B build \
+        -GNinja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_ONLY="s3;transfer" \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DENABLE_TESTING=OFF \
+        -DAUTOR_RUN_TESTS=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DUNITY_BUILD=OFF && \
+    cmake --build build -j"$(nproc)" && \
+    cmake --install build && \
+    rm -rf /tmp/aws-sdk-cpp
+
+# Set working directory
+WORKDIR /axon
+
+# Copy packaging scripts
+COPY packaging/deb/scripts/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.sh 2>/dev/null || true
+
+CMD ["/bin/bash"]

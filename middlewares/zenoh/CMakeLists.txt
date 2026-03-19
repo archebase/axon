@@ -6,7 +6,15 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.12)
-project(axon_zenoh_plugin)
+project(axon_zenoh_plugin VERSION 0.2.1 LANGUAGES CXX)
+
+# =============================================================================
+# Installation Configuration
+# =============================================================================
+# Set install prefix for packaging (defaults to /opt/axon)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
+endif()
 
 # Compiler warnings
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -39,13 +47,43 @@ include(AxonCoverage OPTIONAL)
 # =============================================================================
 # Find nlohmann/json
 # =============================================================================
-find_package(nlohmann_json 3.2.0 QUIET)
-
+# Try modern CMake config first (Ubuntu 22.04+), fallback to header-only
+find_package(nlohmann_json 3.10.0 QUIET)
 if(NOT nlohmann_json_FOUND)
+    # Fallback for older systems
     message(
-        FATAL_ERROR
-        "nlohmann_json not found. Please install nlohmann-json3-dev or build from parent project."
+        STATUS
+        "nlohmann_json CMake config not found, using header-only fallback"
     )
+    # Check if FetchContent already created the target
+    if(NOT TARGET nlohmann_json::nlohmann_json)
+        # Check FetchContent source directory first (when built from parent project)
+        if(DEFINED nlohmann_json_SOURCE_DIR)
+            set(NLOHMANN_JSON_INCLUDE_DIR
+                "${nlohmann_json_SOURCE_DIR}/single_include"
+            )
+        else()
+            find_path(
+                NLOHMANN_JSON_INCLUDE_DIR
+                nlohmann/json.hpp
+                PATHS /usr/include /usr/local/include
+                NO_DEFAULT_PATH
+            )
+        endif()
+        if(NOT NLOHMANN_JSON_INCLUDE_DIR)
+            message(
+                FATAL_ERROR
+                "nlohmann_json not found. Please install nlohmann-json3-dev or build from parent project."
+            )
+        endif()
+        # Create interface target for compatibility
+        add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
+        set_target_properties(
+            nlohmann_json::nlohmann_json
+            PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${NLOHMANN_JSON_INCLUDE_DIR}"
+        )
+    endif()
 endif()
 
 # =============================================================================
@@ -93,6 +131,44 @@ if(NOT zenohcxx_FOUND)
         message(
             WARNING
             "Zenoh C++ library not found. Please install zenoh-cpp or set CMAKE_PREFIX_PATH."
+        )
+    endif()
+endif()
+
+# =============================================================================
+# Find axon_logging (for standalone packaging)
+# =============================================================================
+if(NOT TARGET axon_logging)
+    if(DEFINED AXON_REPO_ROOT AND EXISTS "${AXON_REPO_ROOT}/core/axon_logging")
+        # Build axon_logging from source when AXON_REPO_ROOT is set (packaging use case)
+        message(
+            STATUS
+            "Building axon_logging from source at ${AXON_REPO_ROOT}/core/axon_logging"
+        )
+        add_subdirectory(
+            "${AXON_REPO_ROOT}/core/axon_logging"
+            "${CMAKE_CURRENT_BINARY_DIR}/axon_logging"
+        )
+    elseif(
+        DEFINED CMAKE_SOURCE_DIR
+        AND EXISTS "${CMAKE_SOURCE_DIR}/../../core/axon_logging"
+    )
+        # Try relative path if built from middlewares directory
+        set(_LOGGING_DIR "${CMAKE_SOURCE_DIR}/../../core/axon_logging")
+        if(EXISTS "${_LOGGING_DIR}/CMakeLists.txt")
+            message(
+                STATUS
+                "Building axon_logging from source at ${_LOGGING_DIR}"
+            )
+            add_subdirectory(
+                "${_LOGGING_DIR}"
+                "${CMAKE_CURRENT_BINARY_DIR}/axon_logging"
+            )
+        endif()
+    else()
+        message(
+            FATAL_ERROR
+            "axon_logging not found. Set AXON_LOGGING_DIR or AXON_REPO_ROOT, or build from parent project."
         )
     endif()
 endif()
@@ -230,8 +306,8 @@ endif()
 install(
     TARGETS axon_zenoh_plugin
     ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib/axon/plugins
-    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION plugins
+    RUNTIME DESTINATION plugins
 )
 
 install(

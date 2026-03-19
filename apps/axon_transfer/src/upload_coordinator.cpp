@@ -16,8 +16,8 @@
 #include <optional>
 #include <sstream>
 
-#include "../../../core/axon_uploader/upload_state_manager.hpp"
 #include "edge_uploader.hpp"
+#include "upload_state_manager.hpp"
 
 namespace axon {
 namespace transfer {

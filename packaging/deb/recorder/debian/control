@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-recorder
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libboost-dev,
+               libyaml-cpp-dev,
+               libssl-dev,
+               libzstd-dev,
+               liblz4-dev,
+               nlohmann-json3-dev
+
+Package: axon-recorder
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends}
+Description: Axon ROS Recorder
+ A high-performance, plugin-based data recorder with ROS1/ROS2 compatibility and fleet-ready HTTP RPC control for task-centric recording to MCAP format.
+ .
+ Features:
+  - HTTP RPC API for remote control
+  - Plugin-based middleware (ROS1, ROS2, Zenoh, UDP)
+  - MCAP output format with compression
+  - Crash-resilient state management

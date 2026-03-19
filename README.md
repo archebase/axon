@@ -227,19 +227,19 @@ http_server:
 
 ```bash
 # Display version
-./build/axon_recorder/axon_recorder --version
+./build/axon_recorder/axon-recorder --version
 
 # Run with default configuration (HTTP RPC mode)
-./build/axon_recorder/axon_recorder
+./build/axon_recorder/axon-recorder
 
 # Run with custom configuration
-./build/axon_recorder/axon_recorder --config /path/to/config.yaml
+./build/axon_recorder/axon-recorder --config /path/to/config.yaml
 
 # Simple mode: start recording immediately without HTTP RPC
-./build/axon_recorder/axon_recorder --simple --config /path/to/config.yaml
+./build/axon_recorder/axon-recorder --simple --config /path/to/config.yaml
 
 # Simple mode: custom output file
-./build/axon_recorder/axon_recorder --simple --output /tmp/recording.mcap --config /path/to/config.yaml
+./build/axon_recorder/axon-recorder --simple --output /tmp/recording.mcap --config /path/to/config.yaml
 ```
 
 ### HTTP RPC API
@@ -294,10 +294,10 @@ Axon uses a plugin-based architecture. Specify the plugin path:
 
 ```bash
 # ROS 1 plugin
-./build/axon_recorder/axon_recorder --plugin ./build/middlewares/libaxon_ros1.so
+./build/axon_recorder/axon-recorder --plugin ./build/middlewares/libaxon_ros1.so
 
 # ROS 2 plugin
-./build/axon_recorder/axon_recorder --plugin ./build/middlewares/libaxon_ros2.so
+./build/axon_recorder/axon-recorder --plugin ./build/middlewares/libaxon_ros2.so
 ```
 
 ### ROS Integration

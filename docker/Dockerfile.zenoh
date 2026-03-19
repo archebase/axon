@@ -2,21 +2,22 @@
 #
 # SPDX-License-Identifier: MulanPSL-2.0
 
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:22.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
+# Install build dependencies and tools
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     pkg-config \
     git \
     curl \
+    wget \
+    unzip \
     ca-certificates \
     gnupg \
-    wget \
     libgtest-dev \
     libgmock-dev \
     lcov \
@@ -25,18 +26,18 @@ RUN apt-get update && apt-get install -y \
 # Install nlohmann/json
 RUN apt-get update && apt-get install -y nlohmann-json3-dev && rm -rf /var/lib/apt/lists/*
 
-# Install Zenoh from official Eclipse repository (pre-built packages)
-RUN curl -L https://download.eclipse.org/zenoh/debian-repo/zenoh-public-key | \
-    gpg --dearmor --yes --output /etc/apt/keyrings/zenoh-public-key.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/zenoh-public-key.gpg] https://download.eclipse.org/zenoh/debian-repo/ /" | \
-    tee /etc/apt/sources.list.d/zenoh.list > /dev/null && \
-    apt-get update && \
-    apt-get install -y zenoh libzenohc-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install zenoh-cpp headers (header-only library)
+# Download and install pre-built zenoh-c 1.6.2 (avoids OOM from building Rust from source)
 WORKDIR /tmp
-RUN git clone --depth 1 --branch 1.7.2 https://github.com/eclipse-zenoh/zenoh-cpp.git && \
+RUN wget -q https://github.com/eclipse-zenoh/zenoh-c/releases/download/1.6.2/libzenohc-1.6.2-x86_64-unknown-linux-gnu-debian.zip && \
+    unzip libzenohc-1.6.2-x86_64-unknown-linux-gnu-debian.zip && \
+    apt-get update && \
+    apt-get install -y ./libzenohc_1.6.2_amd64.deb ./libzenohc-dev_1.6.2_amd64.deb && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /tmp/*
+
+# Install zenoh-cpp 1.6.2 from source (header-only, no compilation needed)
+WORKDIR /tmp
+RUN git clone --depth 1 --branch 1.6.2 https://github.com/eclipse-zenoh/zenoh-cpp.git && \
     cd zenoh-cpp && \
     mkdir build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -46,42 +47,10 @@ RUN git clone --depth 1 --branch 1.7.2 https://github.com/eclipse-zenoh/zenoh-cp
     cmake --install . && \
     cd / && rm -rf /tmp/zenoh-cpp
 
-# =============================================================================
-# Final stage - minimal runtime with Zenoh
-# =============================================================================
-FROM ubuntu:22.04
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Copy zenoh-cpp headers from builder
-COPY --from=builder /usr/local /usr/local/
-
-# Install Zenoh from official Eclipse repository
+# Install remaining dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
-    gnupg \
-    ca-certificates \
-    && curl -L https://download.eclipse.org/zenoh/debian-repo/zenoh-public-key | \
-    gpg --dearmor --yes --output /etc/apt/keyrings/zenoh-public-key.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/zenoh-public-key.gpg] https://download.eclipse.org/zenoh/debian-repo/ /" | \
-    tee /etc/apt/sources.list.d/zenoh.list > /dev/null && \
-    apt-get update && \
-    apt-get install -y zenoh libzenohc-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install testing tools and core library dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    pkg-config \
-    git \
-    libgtest-dev \
-    libgmock-dev \
-    lcov \
-    wget \
     gnupg2 \
     software-properties-common \
-    nlohmann-json3-dev \
     libyaml-cpp-dev \
     liblz4-dev \
     libzstd-dev \

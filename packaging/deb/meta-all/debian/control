@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-all
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13)
+
+Package: axon-all
+Architecture: any
+Depends: axon-recorder,
+         axon-config,
+         axon-panel,
+         axon-transfer,
+         axon-dispatcher,
+         ${misc:Depends}
+Description: Axon - Complete installation (core tools only)
+ This meta-package installs all core Axon tools:
+  - axon-recorder: Core recording engine with HTTP RPC API
+  - axon-config: Robot configuration CLI tool
+  - axon-panel: Web-based control interface
+  - axon-transfer: S3 transfer daemon
+  - axon-dispatcher: Unified CLI entry point
+ .
+ Plugin packages (axon-plugin-ros2, axon-plugin-ros1, axon-plugin-udp,
+ axon-plugin-zenoh) must be installed separately based on your needs.
+

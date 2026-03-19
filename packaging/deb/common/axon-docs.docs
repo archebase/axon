@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# Documentation files to install
+README.md usr/share/doc/axon
+ARCHITECTURE.md usr/share/doc/axon
+CONTRIBUTING.md usr/share/doc/axon
+LICENSE usr/share/doc/axon
+LICENSES/ usr/share/doc/axon
