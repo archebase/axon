@@ -118,9 +118,11 @@ build_plugin() {
         sed -i "s/^Package: ${pkg_name}$/Package: ${suffixed_pkg_name}/" "${build_area}/debian/control"
     fi
 
-    # Modify changelog to add distro suffix
+    # Modify changelog to add distro suffix and update version
     if [ -f "${build_area}/debian/changelog" ]; then
         sed -i "s/^${pkg_name} /${suffixed_pkg_name} /g" "${build_area}/debian/changelog"
+        # Update version from CMakeLists.txt (format: package (version) ...)
+        sed -i "s/([0-9]\+\.[0-9]\+\.[0-9]\+-[0-9]\+)/(${DEBIAN_VERSION})/" "${build_area}/debian/changelog"
     fi
 
     # Build from build area

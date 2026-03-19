@@ -93,8 +93,11 @@ jobs:
 
   # UDP plugin packages
   package-udp:
-    name: UDP Plugin
+    name: UDP Plugin (${{ matrix.distro }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: [focal, jammy, noble]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,12 +108,12 @@ jobs:
       - name: Build UDP plugin
         run: |
           cd packaging/deb
-          ./scripts/build-in-docker.sh udp
+          ./scripts/build-in-docker.sh udp-${{ matrix.distro }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: deb-udp
+          name: deb-udp-${{ matrix.distro }}
           path: packaging/deb/output/**/*.deb
           retention-days: 30
           if-no-files-found: warn
