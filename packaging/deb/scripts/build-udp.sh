@@ -114,6 +114,7 @@ build_plugin() {
 
     # Modify control file to add distro suffix to package name
     if [ -f "${build_area}/debian/control" ]; then
+        sed -i "s/^Source: ${pkg_name}$/Source: ${suffixed_pkg_name}/" "${build_area}/debian/control"
         sed -i "s/^Package: ${pkg_name}$/Package: ${suffixed_pkg_name}/" "${build_area}/debian/control"
     fi
 
