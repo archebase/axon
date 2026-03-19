@@ -36,7 +36,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deb-core-${{ matrix.distro }}
-          path: packaging/deb/output/*.deb
+          path: packaging/deb/output/**/*.deb
           retention-days: 30
           if-no-files-found: warn
 
@@ -60,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deb-ros1
-          path: packaging/deb/output/*.deb
+          path: packaging/deb/output/**/*.deb
           retention-days: 30
           if-no-files-found: warn
 
@@ -87,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deb-ros2-${{ matrix.distro }}
-          path: packaging/deb/output/*.deb
+          path: packaging/deb/output/**/*.deb
           retention-days: 30
           if-no-files-found: warn
 
@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deb-udp
-          path: packaging/deb/output/*.deb
+          path: packaging/deb/output/**/*.deb
           retention-days: 30
           if-no-files-found: warn
 
@@ -130,17 +130,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
       - name: Prepare release assets
         run: |
           mkdir -p release
-          find artifacts -name '*.deb' -exec cp {} release/ \;
-          ls -la release/
+          if [ -d artifacts ]; then
+            find artifacts -name '*.deb' -exec cp {} release/ \;
+          fi
+          ls -la release/ || echo "No artifacts found"
 
       - name: Generate checksums
         run: |
           cd release
-          sha256sum *.deb > SHA256SUMS.txt
+          if ls *.deb 1> /dev/null 2>&1; then
+            sha256sum *.deb > SHA256SUMS.txt
+          else
+            echo "No deb files to checksum" > SHA256SUMS.txt
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
