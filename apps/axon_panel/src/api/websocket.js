@@ -18,8 +18,8 @@ function getWebSocketUrl() {
   if (BASE_URL) {
     const url = new URL(BASE_URL)
     const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    // WebSocket server runs on port 8081 (separate from HTTP on 8080)
-    const wsPort = url.port === '8080' ? '8081' : url.port
+    // WebSocket server runs on recorder port + 1
+    const wsPort = parseInt(url.port, 10) + 1
     return `${wsProtocol}//${url.hostname}:${wsPort}/ws`
   }
 
@@ -27,13 +27,21 @@ function getWebSocketUrl() {
   const hostname = window.location.hostname
 
   if (import.meta.env.DEV) {
-    // Dev mode: WebSocket server is always on port 8081
-    return `${wsProtocol}//${hostname}:8081/ws`
+    // Dev mode: use VITE_RECORDER_PORT env or default 8080, WebSocket on port + 1
+    const recorderPort = parseInt(import.meta.env.VITE_RECORDER_PORT, 10) || 8080
+    return `${wsProtocol}//${hostname}:${recorderPort + 1}/ws`
   }
 
-  // Production: panel is served on port N+2, WebSocket is on port N+1 (N=8080 default)
-  const port = parseInt(window.location.port, 10) || 8082
-  return `${wsProtocol}//${hostname}:${port - 1}/ws`
+  // Production: check runtime config from server first
+  // window.__AXON_CONFIG__ is set by /config.js served from the C++ server
+  if (typeof window.__AXON_CONFIG__ !== 'undefined') {
+    const wsPort = window.__AXON_CONFIG__ + 1
+    return `${wsProtocol}//${hostname}:${wsPort}/ws`
+  }
+
+  // Fallback: panel is served on port N+2, WebSocket is on port N+1 (N=8080 default)
+  const panelPort = parseInt(window.location.port, 10) || 8082
+  return `${wsProtocol}//${hostname}:${panelPort - 1}/ws`
 }
 
 /**
@@ -89,16 +97,9 @@ export class WebSocketClient {
     this.shouldReconnect = true
 
     try {
-      if (import.meta.env.DEV) {
-        console.log('[WebSocket] Connecting to', this.url)
-      }
-
       this.ws = new WebSocket(this.url)
 
       this.ws.onopen = () => {
-        if (import.meta.env.DEV) {
-          console.log('[WebSocket] Connected to', this.url)
-        }
         this.isConnecting = false
         this.currentReconnectInterval = this.reconnectInterval
 
@@ -115,10 +116,6 @@ export class WebSocketClient {
       this.ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
-
-          if (import.meta.env.DEV) {
-            console.log('[WebSocket] Message:', message.type, message.data)
-          }
 
           // Call raw handler with full message
           this.handlers.raw.forEach(h => h(message))
@@ -156,17 +153,11 @@ export class WebSocketClient {
             this.handlers[message.type].forEach(h => h(message.data, message))
           }
         } catch (e) {
-          if (import.meta.env.DEV) {
-            console.error('[WebSocket] Failed to parse message:', event.data)
-          }
+          // Ignore parse errors
         }
       }
 
       this.ws.onclose = (event) => {
-        if (import.meta.env.DEV) {
-          console.log('[WebSocket] Closed:', event.code, event.reason)
-        }
-
         this.isConnecting = false
         this.stopPing()
 
@@ -187,18 +178,10 @@ export class WebSocketClient {
       }
 
       this.ws.onerror = (error) => {
-        if (import.meta.env.DEV) {
-          console.error('[WebSocket] Error:', error)
-        }
-
         this.isConnecting = false
       }
 
     } catch (error) {
-      if (import.meta.env.DEV) {
-        console.error('[WebSocket] Connection failed:', error)
-      }
-
       this.isConnecting = false
 
       if (this.shouldReconnect) {
@@ -238,10 +221,6 @@ export class WebSocketClient {
   scheduleReconnect() {
     if (this.reconnectTimer) {
       return
-    }
-
-    if (import.meta.env.DEV) {
-      console.log('[WebSocket] Reconnecting in', this.currentReconnectInterval, 'ms')
     }
 
     this.reconnectTimer = setTimeout(() => {
