@@ -27,7 +27,7 @@ function getWebSocketUrl() {
   const hostname = window.location.hostname
 
   if (import.meta.env.DEV) {
-    // Dev mode: use AXON_RECORDER_PORT env or default 8080, WebSocket on port + 1
+    // Dev mode: use VITE_RECORDER_PORT env or default 8080, WebSocket on port + 1
     const recorderPort = parseInt(import.meta.env.VITE_RECORDER_PORT, 10) || 8080
     return `${wsProtocol}//${hostname}:${recorderPort + 1}/ws`
   }

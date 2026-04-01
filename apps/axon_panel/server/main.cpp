@@ -66,6 +66,13 @@ int main(int argc, char* argv[]) {
   // Derive RPC port if not explicitly set
   int effective_rpc_port = (rpc_port > 0) ? rpc_port : (port - 2);
 
+  // Validate derived RPC port
+  if (effective_rpc_port <= 0 || effective_rpc_port > 65535) {
+    std::cerr << "Derived RPC port " << effective_rpc_port
+              << " is invalid. Use --rpc to specify a valid port." << std::endl;
+    return 1;
+  }
+
   httplib::Server svr;
 
   // Serve runtime configuration as JavaScript
