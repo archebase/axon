@@ -843,12 +843,12 @@ void AxonRecorder::set_error_helper(const std::string& error) {
 }
 
 void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
-  // Broadcast state change via WebSocket
+  std::string task_id;
+  if (task_config_.has_value()) {
+    task_id = task_config_->task_id;
+  }
+
   if (http_server_) {
-    std::string task_id;
-    if (task_config_.has_value()) {
-      task_id = task_config_->task_id;
-    }
     http_server_->broadcast_state_change(from, to, task_id);
 
     // Broadcast log for important state transitions
@@ -863,6 +863,12 @@ void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
     } else if (to == RecorderState::READY) {
       http_server_->broadcast_log("info", "Configuration set, ready to record");
     }
+  }
+
+  AXON_LOG_INFO("State transition: " << state_to_string(from) << " -> " << state_to_string(to));
+  if (ws_rpc_client_) {
+    AXON_LOG_INFO("Sending state update to WebSocket RPC server");
+    ws_rpc_client_->send_state_update(from, to, task_id);
   }
 }
 
