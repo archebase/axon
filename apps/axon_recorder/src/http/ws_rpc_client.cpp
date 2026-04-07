@@ -168,8 +168,28 @@ void WsRpcClient::on_handshake(beast::error_code ec) {
   connected_ = true;
   reconnect_attempt_ = 0;
 
+  // Send an initial state snapshot after connection/reconnection.
+  // This allows server-side state to converge immediately even without
+  // a new transition event right after handshake.
+  if (callbacks_.get_state) {
+    const RecorderState current_state = string_to_state(callbacks_.get_state());
+    std::string task_id;
+    if (callbacks_.get_task_config) {
+      const TaskConfig* task_config = callbacks_.get_task_config();
+      if (task_config && !task_config->task_id.empty()) {
+        task_id = task_config->task_id;
+      }
+    }
+    send_state_update(current_state, current_state, task_id);
+  }
+
   // Start ping timer for keepalive
   start_ping_timer();
+
+  // Flush outbound queue (including messages queued while disconnected)
+  net::post(strand_, [this]() {
+    this->do_write();
+  });
 
   // Start reading messages
   do_read();
