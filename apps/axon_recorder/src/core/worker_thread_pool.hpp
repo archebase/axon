@@ -64,7 +64,11 @@ struct TopicStatsSnapshot {
   uint64_t received = 0;
   uint64_t dropped = 0;
   uint64_t written = 0;
+  uint64_t bytes_received = 0;
+  uint64_t bytes_written = 0;
   uint32_t sequence = 0;
+  size_t queue_depth = 0;
+  size_t queue_capacity = 0;
 };
 
 /**
@@ -74,6 +78,8 @@ struct WorkerTopicStats {
   std::atomic<uint64_t> received{0};
   std::atomic<uint64_t> dropped{0};
   std::atomic<uint64_t> written{0};
+  std::atomic<uint64_t> bytes_received{0};
+  std::atomic<uint64_t> bytes_written{0};
   std::atomic<uint32_t> sequence{0};
 
   /// Create a copyable snapshot of the current values
@@ -82,6 +88,8 @@ struct WorkerTopicStats {
     s.received = received.load(std::memory_order_relaxed);
     s.dropped = dropped.load(std::memory_order_relaxed);
     s.written = written.load(std::memory_order_relaxed);
+    s.bytes_received = bytes_received.load(std::memory_order_relaxed);
+    s.bytes_written = bytes_written.load(std::memory_order_relaxed);
     s.sequence = sequence.load(std::memory_order_relaxed);
     return s;
   }
@@ -281,8 +289,20 @@ public:
     uint64_t total_received = 0;
     uint64_t total_dropped = 0;
     uint64_t total_written = 0;
+    uint64_t total_bytes_received = 0;
+    uint64_t total_bytes_written = 0;
   };
   AggregateStats get_aggregate_stats() const;
+
+  /**
+   * Get per-topic queue depths (for monitoring).
+   * Returns a map from topic name to queue depth and capacity.
+   */
+  struct QueueDepthInfo {
+    size_t depth = 0;
+    size_t capacity = 0;
+  };
+  std::unordered_map<std::string, QueueDepthInfo> get_queue_depths() const;
 
   /**
    * Reset all statistics to zero.

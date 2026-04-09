@@ -164,8 +164,8 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - ✅ Latency anomaly detection and alerting
   - ✅ Latency hotspot analysis
 - [ ] Quality of Service Monitoring
-  - [ ] Bandwidth utilization
-  - [ ] Queue depth monitoring
+  - ✅ Bandwidth utilization
+  - ✅ Queue depth monitoring
 
 ### Memory Optimization
 - [ ] Zero-Copy Optimization

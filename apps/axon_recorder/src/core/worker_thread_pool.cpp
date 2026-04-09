@@ -159,6 +159,7 @@ bool WorkerThreadPool::try_push(const std::string& topic, MessageItem&& item) {
   std::lock_guard<std::mutex> push_lock(context->push_mutex);
 
   context->stats.received.fetch_add(1, std::memory_order_relaxed);
+  context->stats.bytes_received.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
 
   item.enqueue_time_ns = get_steady_clock_ns();
 
@@ -272,7 +273,10 @@ TopicStatsSnapshot WorkerThreadPool::get_topic_stats(const std::string& topic) c
     return TopicStatsSnapshot{};
   }
 
-  return it->second->stats.snapshot();
+  TopicStatsSnapshot snapshot = it->second->stats.snapshot();
+  snapshot.queue_depth = it->second->queue->size();
+  snapshot.queue_capacity = it->second->queue->capacity();
+  return snapshot;
 }
 
 WorkerThreadPool::AggregateStats WorkerThreadPool::get_aggregate_stats() const {
@@ -283,9 +287,25 @@ WorkerThreadPool::AggregateStats WorkerThreadPool::get_aggregate_stats() const {
     aggregate.total_received += context->stats.received.load(std::memory_order_relaxed);
     aggregate.total_dropped += context->stats.dropped.load(std::memory_order_relaxed);
     aggregate.total_written += context->stats.written.load(std::memory_order_relaxed);
+    aggregate.total_bytes_received += context->stats.bytes_received.load(std::memory_order_relaxed);
+    aggregate.total_bytes_written += context->stats.bytes_written.load(std::memory_order_relaxed);
   }
 
   return aggregate;
+}
+
+std::unordered_map<std::string, WorkerThreadPool::QueueDepthInfo> WorkerThreadPool::get_queue_depths() const {
+  std::shared_lock<std::shared_mutex> lock(contexts_mutex_);
+
+  std::unordered_map<std::string, QueueDepthInfo> depths;
+  for (const auto& [topic, context] : topic_contexts_) {
+    QueueDepthInfo info;
+    info.depth = context->queue->size();
+    info.capacity = context->queue->capacity();
+    depths[topic] = info;
+  }
+
+  return depths;
 }
 
 void WorkerThreadPool::reset_stats() {
@@ -295,6 +315,8 @@ void WorkerThreadPool::reset_stats() {
     context->stats.received.store(0, std::memory_order_relaxed);
     context->stats.dropped.store(0, std::memory_order_relaxed);
     context->stats.written.store(0, std::memory_order_relaxed);
+    context->stats.bytes_received.store(0, std::memory_order_relaxed);
+    context->stats.bytes_written.store(0, std::memory_order_relaxed);
   }
 }
 
@@ -385,6 +407,7 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
 
       if (success) {
         context->stats.written.fetch_add(1, std::memory_order_relaxed);
+        context->stats.bytes_written.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
       }
 
     } else {
@@ -439,6 +462,7 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
       }
       if (drain_success) {
         context->stats.written.fetch_add(1, std::memory_order_relaxed);
+        context->stats.bytes_written.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
       }
     } catch (const std::exception& e) {
       AXON_LOG_WARN(

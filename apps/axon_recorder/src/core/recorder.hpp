@@ -369,6 +369,9 @@ public:
     uint64_t messages_written;
     uint64_t messages_dropped;
     uint64_t bytes_written;
+    uint64_t bytes_received;
+    double receive_rate_mbps;
+    double write_rate_mbps;
   };
   Statistics get_statistics() const;
 
@@ -497,6 +500,12 @@ private:
   };
   std::mutex drop_report_mutex_;
   std::unordered_map<std::string, DropReportState> drop_report_states_;
+
+  // QoS monitoring state (bandwidth utilization)
+  mutable std::mutex qos_mutex_;
+  mutable std::chrono::steady_clock::time_point last_rate_calc_time_;
+  mutable uint64_t last_bytes_received_ = 0;
+  mutable uint64_t last_bytes_written_ = 0;
 };
 
 }  // namespace recorder

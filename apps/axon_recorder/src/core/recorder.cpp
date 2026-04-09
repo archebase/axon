@@ -45,7 +45,10 @@ void message_callback(
 }  // namespace
 
 AxonRecorder::AxonRecorder()
-    : running_(false) {
+    : running_(false)
+    , last_rate_calc_time_(std::chrono::steady_clock::now())
+    , last_bytes_received_(0)
+    , last_bytes_written_(0) {
   // Register state transition callback
   state_manager_.register_transition_callback([this](RecorderState from, RecorderState to) {
     on_state_transition(from, to);
@@ -344,6 +347,25 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     j["messages_written"] = stats.messages_written;
     j["messages_dropped"] = stats.messages_dropped;
     j["bytes_written"] = stats.bytes_written;
+    j["bytes_received"] = stats.bytes_received;
+    j["receive_rate_mbps"] = stats.receive_rate_mbps;
+    j["write_rate_mbps"] = stats.write_rate_mbps;
+
+    // Add queue depth monitoring
+    if (worker_pool_) {
+      auto depths = worker_pool_->get_queue_depths();
+      nlohmann::json queue_depths = nlohmann::json::object();
+      for (const auto& [topic, info] : depths) {
+        nlohmann::json q;
+        q["depth"] = info.depth;
+        q["capacity"] = info.capacity;
+        q["utilization"] = info.capacity > 0 ?
+          static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
+        queue_depths[topic] = q;
+      }
+      j["queue_depths"] = queue_depths;
+    }
+
     return j;
   };
 
@@ -667,6 +689,29 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
     stats.messages_received = pool_stats.total_received;
     stats.messages_written = pool_stats.total_written;
     stats.messages_dropped = pool_stats.total_dropped;
+    stats.bytes_received = pool_stats.total_bytes_received;
+    stats.bytes_written = pool_stats.total_bytes_written;
+  }
+
+  // Calculate bandwidth rates
+  {
+    std::lock_guard<std::mutex> qos_lock(qos_mutex_);
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - last_rate_calc_time_).count();
+
+    if (elapsed > 0) {
+      double elapsed_sec = elapsed / 1000.0;
+      uint64_t bytes_recv_delta = stats.bytes_received - last_bytes_received_;
+      uint64_t bytes_write_delta = stats.bytes_written - last_bytes_written_;
+
+      stats.receive_rate_mbps = (bytes_recv_delta / elapsed_sec) / (1024.0 * 1024.0);
+      stats.write_rate_mbps = (bytes_write_delta / elapsed_sec) / (1024.0 * 1024.0);
+
+      last_rate_calc_time_ = now;
+      last_bytes_received_ = stats.bytes_received;
+      last_bytes_written_ = stats.bytes_written;
+    }
   }
 
   // Get statistics from recording session
@@ -1067,6 +1112,25 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
     j["messages_written"] = stats.messages_written;
     j["messages_dropped"] = stats.messages_dropped;
     j["bytes_written"] = stats.bytes_written;
+    j["bytes_received"] = stats.bytes_received;
+    j["receive_rate_mbps"] = stats.receive_rate_mbps;
+    j["write_rate_mbps"] = stats.write_rate_mbps;
+
+    // Add queue depth monitoring
+    if (worker_pool_) {
+      auto depths = worker_pool_->get_queue_depths();
+      nlohmann::json queue_depths = nlohmann::json::object();
+      for (const auto& [topic, info] : depths) {
+        nlohmann::json q;
+        q["depth"] = info.depth;
+        q["capacity"] = info.capacity;
+        q["utilization"] = info.capacity > 0 ?
+          static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
+        queue_depths[topic] = q;
+      }
+      j["queue_depths"] = queue_depths;
+    }
+
     return j;
   };
 
