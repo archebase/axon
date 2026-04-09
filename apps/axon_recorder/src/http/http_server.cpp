@@ -408,6 +408,12 @@ void HttpServer::handle_request(
       } else if (rpc_method == "stats" && method_str == "GET") {
         AXON_LOG_DEBUG("Routing to handle_rpc_get_stats");
         rpc_response = handle_rpc_get_stats(params);
+      } else if (rpc_method == "drop_stats" && method_str == "GET") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_get_drop_stats");
+        rpc_response = handle_rpc_get_drop_stats(params);
+      } else if (rpc_method == "latency_stats" && method_str == "GET") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_get_latency_stats");
+        rpc_response = handle_rpc_get_latency_stats(params);
       } else if (rpc_method == "config" && method_str == "POST") {
         AXON_LOG_DEBUG("Routing to handle_rpc_set_config");
         rpc_response = handle_rpc_set_config(params);
@@ -488,6 +494,14 @@ HttpServer::RpcResponse HttpServer::handle_rpc_get_state(const nlohmann::json& p
 
 HttpServer::RpcResponse HttpServer::handle_rpc_get_stats(const nlohmann::json& params) {
   return axon::recorder::handle_rpc_get_stats(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_get_drop_stats(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_get_drop_stats(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_get_latency_stats(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_get_latency_stats(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_set_config(const nlohmann::json& params) {

@@ -6,6 +6,16 @@
 
 #include <chrono>
 
+// Clock utilities
+namespace {
+inline uint64_t get_steady_clock_ns() {
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
+                                                              .time_since_epoch())
+          .count());
+}
+}  // namespace
+
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "worker_thread_pool"
 #include <axon_log_macros.hpp>
@@ -18,6 +28,10 @@ WorkerThreadPool::WorkerThreadPool(const Config& config)
 
 WorkerThreadPool::~WorkerThreadPool() {
   stop();
+}
+
+void WorkerThreadPool::set_drop_callback(DropCallback callback) {
+  drop_callback_ = std::move(callback);
 }
 
 bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHandler handler) {
@@ -55,6 +69,40 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHand
   if (running_.load(std::memory_order_acquire)) {
     context->running.store(true, std::memory_order_release);
     // Pass shared_ptr to worker thread to prevent use-after-free
+    context->worker_thread = std::thread(&WorkerThreadPool::worker_thread_func, this, context);
+  }
+
+  topic_contexts_[topic] = context;
+  return true;
+}
+
+bool WorkerThreadPool::create_topic_worker(const std::string& topic, LatencyMessageHandler handler) {
+  std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
+
+  auto it = topic_contexts_.find(topic);
+  if (it != topic_contexts_.end()) {
+    auto context = it->second;
+
+    if (context->running.load(std::memory_order_acquire)) {
+      AXON_LOG_DEBUG("Topic worker already running" << axon::logging::kv("topic", topic));
+      return true;
+    }
+
+    context->latency_handler = std::move(handler);
+    context->running.store(true, std::memory_order_release);
+    context->worker_thread = std::thread(&WorkerThreadPool::worker_thread_func, this, context);
+
+    AXON_LOG_INFO("Restarted topic worker with latency tracking" << axon::logging::kv("topic", topic));
+    return true;
+  }
+
+  auto context = std::make_shared<TopicContext>();
+  context->queue = std::make_unique<SPSCQueue<MessageItem>>(config_.queue_capacity_per_topic);
+  context->latency_handler = std::move(handler);
+  context->topic_name = topic;
+
+  if (running_.load(std::memory_order_acquire)) {
+    context->running.store(true, std::memory_order_release);
     context->worker_thread = std::thread(&WorkerThreadPool::worker_thread_func, this, context);
   }
 
@@ -112,13 +160,21 @@ bool WorkerThreadPool::try_push(const std::string& topic, MessageItem&& item) {
 
   context->stats.received.fetch_add(1, std::memory_order_relaxed);
 
+  item.enqueue_time_ns = get_steady_clock_ns();
+
   if (context->queue->try_push(std::move(item))) {
     return true;
   }
 
-  // Queue full - message dropped
-  context->stats.dropped.fetch_add(1, std::memory_order_relaxed);
-  return false;
+    // Queue full - message dropped
+    // Note: item is still valid here — SPSCQueue::try_push() returns false
+    // before moving the item when the queue is full.
+    uint64_t total_dropped =
+      context->stats.dropped.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (drop_callback_) {
+      drop_callback_(topic, item.message_type, total_dropped);
+    }
+    return false;
 }
 
 void WorkerThreadPool::start() {
@@ -286,20 +342,38 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
     if (context->queue->try_pop(item)) {
       consecutive_empty = 0;
 
+      uint64_t dequeue_time_ns = get_steady_clock_ns();
+      item.dequeue_time_ns = dequeue_time_ns;
+
       // Get sequence number
       uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
 
       // Call the message handler
       bool success = false;
       try {
-        success = context->handler(
-          topic,
-          item.message_type,
-          item.timestamp_ns,
-          item.raw_data.data(),
-          item.raw_data.size(),
-          seq
-        );
+        if (context->latency_handler) {
+          success = context->latency_handler(
+            topic,
+            item.message_type,
+            item.timestamp_ns,
+            item.raw_data.data(),
+            item.raw_data.size(),
+            seq,
+            item.publish_time_ns,
+            item.receive_time_ns,
+            item.enqueue_time_ns,
+            item.dequeue_time_ns
+          );
+        } else {
+          success = context->handler(
+            topic,
+            item.message_type,
+            item.timestamp_ns,
+            item.raw_data.data(),
+            item.raw_data.size(),
+            seq
+          );
+        }
       } catch (const std::exception& e) {
         AXON_LOG_ERROR(
           "Worker exception" << axon::logging::kv("topic", topic)
@@ -336,16 +410,34 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
 
   // Drain remaining messages before exiting
   while (context->queue->try_pop(item)) {
+    item.dequeue_time_ns = get_steady_clock_ns();
     uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
     try {
-      if (context->handler(
-            topic,
-            item.message_type,
-            item.timestamp_ns,
-            item.raw_data.data(),
-            item.raw_data.size(),
-            seq
-          )) {
+      bool drain_success = false;
+      if (context->latency_handler) {
+        drain_success = context->latency_handler(
+          topic,
+          item.message_type,
+          item.timestamp_ns,
+          item.raw_data.data(),
+          item.raw_data.size(),
+          seq,
+          item.publish_time_ns,
+          item.receive_time_ns,
+          item.enqueue_time_ns,
+          item.dequeue_time_ns
+        );
+      } else {
+        drain_success = context->handler(
+          topic,
+          item.message_type,
+          item.timestamp_ns,
+          item.raw_data.data(),
+          item.raw_data.size(),
+          seq
+        );
+      }
+      if (drain_success) {
         context->stats.written.fetch_add(1, std::memory_order_relaxed);
       }
     } catch (const std::exception& e) {

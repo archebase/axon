@@ -21,6 +21,7 @@
 #include "../http/http_server.hpp"
 #include "../plugin/plugin_loader.hpp"
 #include "../state/state_machine.hpp"
+#include "latency_monitor.hpp"
 #include "recording_session.hpp"
 #include "worker_thread_pool.hpp"
 
@@ -391,6 +392,16 @@ private:
   );
 
   /**
+   * Latency-aware message handler callback for WorkerThreadPool
+   * Called by per-topic worker threads with full timing information
+   */
+  bool latency_message_handler(
+    const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+    const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
+    uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns
+  );
+
+  /**
    * Handle state transition callbacks
    */
   void on_state_transition(RecorderState from, RecorderState to);
@@ -420,6 +431,20 @@ private:
    */
   void set_error_helper(const std::string& error);
 
+  /**
+   * Report a message drop event to the console log.
+   * Rate-limited per topic to avoid flooding during sustained back-pressure.
+   * Designed as a standalone function for easy future extension
+   * (e.g., broadcasting via WebSocket, escalating to error events).
+   *
+   * @param topic Topic name where the drop occurred
+   * @param message_type ROS message type (e.g., "sensor_msgs::msg::Image")
+   * @param total_dropped Cumulative drop count for this topic in the current session
+   */
+  void report_message_drop(
+    const std::string& topic, const std::string& message_type, uint64_t total_dropped
+  );
+
   RecorderConfig config_;
   PluginLoader plugin_loader_;
 
@@ -435,6 +460,9 @@ private:
   // Worker thread pool manages per-topic workers
   // Use unique_ptr with placement new for late initialization with custom config
   std::unique_ptr<WorkerThreadPool> worker_pool_;
+
+  // Latency monitor for end-to-end latency tracking
+  std::shared_ptr<LatencyMonitor> latency_monitor_;
 
   std::atomic<bool> running_;
 
@@ -461,6 +489,14 @@ private:
 
   uint64_t last_session_final_file_size_ = 0;
   std::chrono::system_clock::time_point last_session_close_time_;
+
+  // Per-topic rate limiting state for drop reporting
+  struct DropReportState {
+    std::chrono::steady_clock::time_point last_report_time;
+    uint64_t suppressed_count = 0;  // Drops unreported since last log line
+  };
+  std::mutex drop_report_mutex_;
+  std::unordered_map<std::string, DropReportState> drop_report_states_;
 };
 
 }  // namespace recorder

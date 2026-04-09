@@ -302,6 +302,8 @@ void WsRpcClient::handle_server_message(const nlohmann::json& msg) {
     response = handle_rpc_get_state(callbacks_, params);
   } else if (action == "get_stats") {
     response = handle_rpc_get_stats(callbacks_, params);
+  } else if (action == "get_drop_stats") {
+    response = handle_rpc_get_drop_stats(callbacks_, params);
   } else if (action == "test") {
     response = handle_rpc_test(callbacks_, params);
   } else {

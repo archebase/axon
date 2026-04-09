@@ -22,6 +22,7 @@
 #include <axon_log_init.hpp>
 #include <axon_log_macros.hpp>
 
+#include "latency_monitor.hpp"
 #include "mcap_writer_wrapper.hpp"
 
 namespace axon {
@@ -66,7 +67,16 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
 
   worker_pool_ = std::make_unique<WorkerThreadPool>(pool_config);
 
+  // Register drop callback for message loss reporting
+  worker_pool_->set_drop_callback(
+    [this](const std::string& topic, const std::string& message_type, uint64_t total_dropped) {
+      report_message_drop(topic, message_type, total_dropped);
+    }
+  );
+
   http_callback_client_ = std::make_shared<HttpCallbackClient>();
+
+  latency_monitor_ = std::make_shared<LatencyMonitor>();
 
   return true;
 }
@@ -286,9 +296,13 @@ void AxonRecorder::stop() {
   // Unload plugins
   plugin_loader_.unload_all();
 
-  // Reset worker pool statistics for next session
+  // Reset worker pool statistics and drop report state for next session
   if (worker_pool_) {
     worker_pool_->reset_stats();
+  }
+  {
+    std::lock_guard<std::mutex> lock(drop_report_mutex_);
+    drop_report_states_.clear();
   }
 
   // Transition back to IDLE
@@ -331,6 +345,36 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     j["messages_dropped"] = stats.messages_dropped;
     j["bytes_written"] = stats.bytes_written;
     return j;
+  };
+
+  callbacks.get_drop_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    nlohmann::json j;
+    j["state"] = this->get_state_string();
+    auto stats = this->get_statistics();
+    j["messages_received"] = stats.messages_received;
+    j["messages_dropped"] = stats.messages_dropped;
+    nlohmann::json topics = nlohmann::json::object();
+    if (worker_pool_) {
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["dropped"] = ts.dropped;
+        t["written"] = ts.written;
+        topics[topic_name] = t;
+      }
+    }
+    j["topics"] = topics;
+    return j;
+  };
+
+  callbacks.get_latency_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    if (latency_monitor_) {
+      return latency_monitor_->get_stats_json();
+    }
+    return nlohmann::json::object();
   };
 
   callbacks.get_task_config = [this]() -> const TaskConfig* {
@@ -635,6 +679,15 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
   return stats;
 }
 
+namespace {
+inline uint64_t get_steady_clock_ns() {
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
+                                                              .time_since_epoch())
+          .count());
+}
+}  // namespace
+
 void AxonRecorder::on_message(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
   const char* message_type, uint64_t timestamp
@@ -645,9 +698,13 @@ void AxonRecorder::on_message(
     return;
   }
 
+  uint64_t receive_time_ns = get_steady_clock_ns();
+
   // Create MessageItem and push to worker pool
   MessageItem item;
   item.timestamp_ns = static_cast<int64_t>(timestamp);
+  item.publish_time_ns = timestamp;
+  item.receive_time_ns = receive_time_ns;
   item.message_type = message_type;  // Save the message type
   item.raw_data.assign(message_data, message_data + message_size);
 
@@ -667,27 +724,75 @@ bool AxonRecorder::message_handler(
     return false;  // No active recording session
   }
 
-  // Note: Depth compression is now handled by the ROS2 plugin
-  // The plugin converts Image to CompressedImage if compression is enabled
-  // message_type may differ from the original subscription type
+  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  uint64_t write_time_ns = get_steady_clock_ns();
 
-  // Get or create channel ID for this topic + message_type combination
   uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
   if (channel_id == 0) {
-    return false;  // Channel not found or failed to create
+    return false;
   }
 
-  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
-
-  // Write message to MCAP via recording session
   bool success =
     recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
 
-  // Update topic statistics for sidecar generation
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
     if (sub_config) {
       recording_session_->update_topic_stats(topic, sub_config->message_type);
+    }
+
+    if (latency_monitor_) {
+      LatencyRecord record;
+      record.topic = topic;
+      record.publish_time_ns = log_time_ns;
+      record.receive_time_ns = 0;
+      record.enqueue_time_ns = 0;
+      record.dequeue_time_ns = 0;
+      record.write_time_ns = write_time_ns;
+      record.record_time_ns = write_time_ns;
+      latency_monitor_->record(record);
+    }
+  }
+
+  return success;
+}
+
+bool AxonRecorder::latency_message_handler(
+  const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+  const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
+  uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns
+) {
+  if (!recording_session_) {
+    return false;
+  }
+
+  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  uint64_t write_time_ns = get_steady_clock_ns();
+
+  uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
+  if (channel_id == 0) {
+    return false;
+  }
+
+  bool success =
+    recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
+
+  if (success) {
+    const SubscriptionConfig* sub_config = get_subscription_config(topic);
+    if (sub_config) {
+      recording_session_->update_topic_stats(topic, sub_config->message_type);
+    }
+
+    if (latency_monitor_) {
+      LatencyRecord record;
+      record.topic = topic;
+      record.publish_time_ns = (publish_time_ns > 0) ? publish_time_ns : log_time_ns;
+      record.receive_time_ns = receive_time_ns;
+      record.enqueue_time_ns = enqueue_time_ns;
+      record.dequeue_time_ns = dequeue_time_ns;
+      record.write_time_ns = write_time_ns;
+      record.record_time_ns = write_time_ns;
+      latency_monitor_->record(record);
     }
   }
 
@@ -734,18 +839,16 @@ bool AxonRecorder::register_topics() {
       return false;
     }
 
-    // Create topic worker in the pool
-    // Use std::bind to bind the message handler member function
-    auto handler = std::bind(
-      &AxonRecorder::message_handler,
-      this,
-      std::placeholders::_1,  // topic
-      std::placeholders::_2,  // message_type
-      std::placeholders::_3,  // timestamp_ns
-      std::placeholders::_4,  // data
-      std::placeholders::_5,  // data_size
-      std::placeholders::_6   // sequence
-    );
+    // Create topic worker in the pool with latency tracking
+    WorkerThreadPool::LatencyMessageHandler handler =
+      [this](
+        const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+        const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
+        uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns) -> bool {
+        return this->latency_message_handler(
+          topic, message_type, timestamp_ns, data, data_size, sequence,
+          publish_time_ns, receive_time_ns, enqueue_time_ns, dequeue_time_ns);
+      };
 
     if (!worker_pool_->create_topic_worker(sub.topic_name, handler)) {
       set_error_helper("Failed to create worker for topic: " + sub.topic_name);
@@ -842,6 +945,57 @@ void AxonRecorder::set_error_helper(const std::string& error) {
   last_error_ = error;
 }
 
+void AxonRecorder::report_message_drop(
+  const std::string& topic, const std::string& message_type, uint64_t total_dropped
+) {
+  // Rate limit: at most one log line per topic per second.
+  // Between two log lines, unreported drops are counted and included
+  // in the next log as `recent_drops` (drops since last report).
+  constexpr auto kMinInterval = std::chrono::seconds(1);
+
+  auto now = std::chrono::steady_clock::now();
+  uint64_t recent_drops = 0;
+
+  {
+    std::lock_guard<std::mutex> lock(drop_report_mutex_);
+    auto& state = drop_report_states_[topic];
+
+    if (now - state.last_report_time < kMinInterval) {
+      ++state.suppressed_count;
+      return;
+    }
+
+    // This drop + previously unreported drops = recent_drops
+    recent_drops = state.suppressed_count + 1;
+    state.suppressed_count = 0;
+    state.last_report_time = now;
+  }
+
+  // Log outside the lock to avoid holding it during I/O
+  //
+  // Fields:
+  //   topic         - topic name where the drop occurred
+  //   message_type  - ROS message type
+  //   total_dropped - cumulative drop count for this topic since recording started
+  //   recent_drops  - number of drops since the last log line (>1 when rate-limited)
+  if (recent_drops > 1) {
+    AXON_LOG_WARN(
+      "Message dropped (queue full)"
+      << axon::logging::kv("topic", topic)
+      << axon::logging::kv("message_type", message_type)
+      << axon::logging::kv("total_dropped", total_dropped)
+      << axon::logging::kv("recent_drops", recent_drops)
+    );
+  } else {
+    AXON_LOG_WARN(
+      "Message dropped (queue full)"
+      << axon::logging::kv("topic", topic)
+      << axon::logging::kv("message_type", message_type)
+      << axon::logging::kv("total_dropped", total_dropped)
+    );
+  }
+}
+
 void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
   std::string task_id;
   if (task_config_.has_value()) {
@@ -914,6 +1068,36 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
     j["messages_dropped"] = stats.messages_dropped;
     j["bytes_written"] = stats.bytes_written;
     return j;
+  };
+
+  callbacks.get_drop_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    nlohmann::json j;
+    j["state"] = this->get_state_string();
+    auto stats = this->get_statistics();
+    j["messages_received"] = stats.messages_received;
+    j["messages_dropped"] = stats.messages_dropped;
+    nlohmann::json topics = nlohmann::json::object();
+    if (worker_pool_) {
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["dropped"] = ts.dropped;
+        t["written"] = ts.written;
+        topics[topic_name] = t;
+      }
+    }
+    j["topics"] = topics;
+    return j;
+  };
+
+  callbacks.get_latency_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    if (latency_monitor_) {
+      return latency_monitor_->get_stats_json();
+    }
+    return nlohmann::json::object();
   };
 
   callbacks.get_task_config = [this]() -> const TaskConfig* {

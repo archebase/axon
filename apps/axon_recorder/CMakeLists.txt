@@ -138,6 +138,11 @@ add_executable(
     src/metadata/metadata_injector.cpp
     src/config/config_injector.cpp
     src/core/worker_thread_pool.cpp
+    src/core/latency_tracker.cpp
+    src/core/percentile_calculator.cpp
+    src/core/latency_anomaly_detector.cpp
+    src/core/latency_hotspot_analyzer.cpp
+    src/core/latency_monitor.cpp
     src/plugin/plugin_loader.cpp
     src/config/config_parser.cpp
     src/http/http_server.cpp

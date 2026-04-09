@@ -294,6 +294,54 @@ RpcResponse handle_rpc_get_stats(const RpcCallbacks& callbacks, const nlohmann::
   return response;
 }
 
+RpcResponse handle_rpc_get_drop_stats(
+  const RpcCallbacks& callbacks, const nlohmann::json& params
+) {
+  (void)params;  // Unused
+  RpcResponse response;
+
+  if (!callbacks.get_drop_stats) {
+    response.success = false;
+    response.message = "Get drop stats callback not registered";
+    return response;
+  }
+
+  try {
+    nlohmann::json drop_stats = callbacks.get_drop_stats();
+    response.success = true;
+    response.message = "Drop statistics retrieved successfully";
+    response.data = drop_stats;
+  } catch (const std::exception& e) {
+    response.success = false;
+    response.message = std::string("Failed to get drop statistics: ") + e.what();
+  }
+
+  return response;
+}
+
+RpcResponse handle_rpc_get_latency_stats(const RpcCallbacks& callbacks, const nlohmann::json& params) {
+  (void)params;
+  RpcResponse response;
+
+  if (!callbacks.get_latency_stats) {
+    response.success = false;
+    response.message = "Get latency stats callback not registered";
+    return response;
+  }
+
+  try {
+    nlohmann::json latency_stats = callbacks.get_latency_stats();
+    response.success = true;
+    response.message = "Latency statistics retrieved successfully";
+    response.data = latency_stats;
+  } catch (const std::exception& e) {
+    response.success = false;
+    response.message = std::string("Failed to get latency statistics: ") + e.what();
+  }
+
+  return response;
+}
+
 RpcResponse handle_rpc_config(const RpcCallbacks& callbacks, const nlohmann::json& params) {
   RpcResponse response;
 
