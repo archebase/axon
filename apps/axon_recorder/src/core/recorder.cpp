@@ -24,6 +24,7 @@
 
 #include "latency_monitor.hpp"
 #include "mcap_writer_wrapper.hpp"
+#include "schema_resolver.hpp"
 
 namespace axon {
 namespace recorder {
@@ -80,6 +81,16 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
   http_callback_client_ = std::make_shared<HttpCallbackClient>();
 
   latency_monitor_ = std::make_shared<LatencyMonitor>();
+
+  // Initialize schema resolver if search paths are configured
+  if (!config_.recording.schema_search_paths.empty()) {
+    schema_resolver_ = std::make_unique<SchemaResolver>(config_.recording.schema_search_paths);
+    AXON_LOG_INFO(
+      "Schema resolver initialized with " <<
+      axon::logging::kv("paths_count", config_.recording.schema_search_paths.size())
+      << " search paths"
+    );
+  }
 
   return true;
 }
@@ -859,8 +870,22 @@ bool AxonRecorder::register_topics() {
     std::string channel_encoding =
       is_json_type ? "json" : (config_.recording.profile == "ros1" ? "ros1" : "cdr");
 
+    // Resolve schema definition from .msg files (if resolver is configured)
+    std::string schema_definition;
+    if (!is_json_type && schema_resolver_) {
+      schema_definition = schema_resolver_->resolve(sub.message_type);
+      if (schema_definition.empty()) {
+        AXON_LOG_WARN(
+          "Could not resolve schema for " << axon::logging::kv("type", sub.message_type)
+          << ": " << axon::logging::kv("error", schema_resolver_->get_last_error())
+          << ". MCAP will have empty schema data."
+        );
+      }
+    }
+
     // Register schema (use message type as schema name)
-    uint16_t schema_id = recording_session_->register_schema(sub.message_type, schema_encoding, "");
+    uint16_t schema_id =
+      recording_session_->register_schema(sub.message_type, schema_encoding, schema_definition);
 
     if (schema_id == 0) {
       set_error_helper(

@@ -277,6 +277,17 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
   if (node["profile"]) {
     recording.profile = node["profile"].as<std::string>();
   }
+
+  // Parse schema search paths for message definition resolution
+  if (node["schema_search_paths"]) {
+    const auto& paths_node = node["schema_search_paths"];
+    if (paths_node.IsSequence()) {
+      for (const auto& path_node : paths_node) {
+        recording.schema_search_paths.push_back(path_node.as<std::string>());
+      }
+    }
+  }
+
   return true;
 }
 

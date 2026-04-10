@@ -104,6 +104,14 @@ recording:
   # Maximum disk usage (ignored by axon_recorder, used by full service)
   max_disk_usage_gb: 100
 
+  # Schema search paths for embedding message definitions in MCAP files
+  # Each path should be a share directory containing ROS package directories.
+  # Supports both ROS1 and ROS2 package layouts.
+  # When configured, MCAP files will contain full .msg definitions for Foxglove compatibility.
+  schema_search_paths:
+    - /opt/ros/humble/share
+    - /opt/ros/noetic/share
+
 # ============================================================================
 # Logging Configuration
 # ============================================================================

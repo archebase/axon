@@ -210,6 +210,12 @@ add_axon_test(test_rpc_handlers
 )
 target_link_libraries(test_rpc_handlers yaml-cpp)
 
+# test_schema_resolver.cpp - Schema definition resolver tests
+add_axon_test(test_schema_resolver
+    SOURCES unit/test_schema_resolver.cpp
+            ../src/core/schema_resolver.cpp
+)
+
 # test_websocket_rpc_handler.cpp - WebSocket RPC handler tests
 add_axon_test(test_websocket_rpc_handler
     SOURCES unit/test_websocket_rpc_handler.cpp
@@ -318,6 +324,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../src/core/recorder.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
+                ../src/core/schema_resolver.cpp
                 ../src/metadata/metadata_injector.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp
@@ -368,6 +375,7 @@ if(
                 ../src/core/recorder.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
+                ../src/core/schema_resolver.cpp
                 ../src/metadata/metadata_injector.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp

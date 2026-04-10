@@ -23,6 +23,7 @@
 #include "../state/state_machine.hpp"
 #include "latency_monitor.hpp"
 #include "recording_session.hpp"
+#include "schema_resolver.hpp"
 #include "worker_thread_pool.hpp"
 
 namespace axon {
@@ -93,6 +94,11 @@ struct RecordingConfig {
   std::string profile = "ros2";
   std::string compression = "zstd";
   int compression_level = 3;
+
+  // Schema resolution: directories to search for .msg files
+  // Each path should be a share directory (e.g., /opt/ros/humble/share)
+  // Supports both ROS1 and ROS2 package layouts
+  std::vector<std::string> schema_search_paths;
 };
 
 /**
@@ -450,6 +456,9 @@ private:
 
   RecorderConfig config_;
   PluginLoader plugin_loader_;
+
+  // Schema resolver for populating MCAP schema definitions from .msg files
+  std::unique_ptr<SchemaResolver> schema_resolver_;
 
   // State machine for recording lifecycle management
   StateManager state_manager_;

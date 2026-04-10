@@ -118,10 +118,19 @@ private:
   // Configuration
   WsClientConfig config_;
 
+  enum class ConnectionState {
+    kStopped,
+    kIdle,
+    kResolving,
+    kConnecting,
+    kHandshaking,
+    kOpen,
+  };
+
   // ASIO components
+  net::strand<net::io_context::executor_type> strand_;
   tcp::resolver resolver_;
   beast::websocket::stream<beast::tcp_stream> ws_;
-  net::strand<net::io_context::executor_type> strand_;
   beast::flat_buffer read_buffer_;
 
   // Write queue
@@ -135,8 +144,10 @@ private:
 
   // State
   std::atomic<bool> connected_{false};
-  std::atomic<bool> stopped_{false};
+  std::atomic<bool> stopped_{true};
   uint32_t reconnect_attempt_{0};
+  bool reconnect_scheduled_{false};
+  ConnectionState state_{ConnectionState::kStopped};
 
   // Callbacks
   RpcCallbacks callbacks_;
