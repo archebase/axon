@@ -112,6 +112,7 @@ function(add_axon_test test_name)
         GTest::gtest_main
         axon_mcap
         axon_logging
+        axon_memory
         pthread
     )
 

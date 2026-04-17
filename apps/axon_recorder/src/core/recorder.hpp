@@ -383,11 +383,30 @@ public:
 
   /**
    * Message callback from plugin (public for C callback wrapper)
-   * Called from plugin thread, pushes to queue
+   * Called from plugin thread, pushes to queue.
+   *
+   * v1.0/v1.1 path: the recorder copies `message_data` into a pool-backed
+   * buffer before returning. `message_data` lifetime need only span the call.
    */
   void on_message(
     const char* topic_name, const uint8_t* message_data, size_t message_size,
     const char* message_type, uint64_t timestamp
+  );
+
+  /**
+   * v1.2 zero-copy message callback.
+   *
+   * The plugin transfers ownership of the buffer to the recorder; the
+   * recorder retains `message_data` in the worker queue and invokes
+   * `release_fn(release_opaque)` exactly once after it is done processing
+   * (post-write or on drop). `release_fn` may be nullptr, in which case
+   * this function falls back to copy semantics (for plugins that advertise
+   * v1.2 but emit occasional borrowed buffers).
+   */
+  void on_message_v2(
+    const char* topic_name, const uint8_t* message_data, size_t message_size,
+    const char* message_type, uint64_t timestamp,
+    void (*release_fn)(void*), void* release_opaque
   );
 
 private:

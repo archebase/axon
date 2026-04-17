@@ -30,7 +30,26 @@ namespace axon {
 namespace recorder {
 
 namespace {
-// C callback wrapper for plugin
+// Serialize a BufferPool stats snapshot into the same JSON shape used by
+// /rpc/status. Centralizing this keeps the two get_stats callbacks below in
+// sync and gives dashboards a stable schema to monitor pool health
+// (allocations per second, hit rate, resident footprint).
+nlohmann::json buffer_pool_stats_json() {
+  const auto pool_stats = axon::memory::BufferPool::instance().stats();
+  nlohmann::json j;
+  j["acquires"] = pool_stats.acquires;
+  j["hits"] = pool_stats.hits;
+  j["misses"] = pool_stats.misses;
+  j["oversized"] = pool_stats.oversized;
+  j["releases"] = pool_stats.releases;
+  j["release_to_pool"] = pool_stats.release_to_pool;
+  j["release_freed"] = pool_stats.release_freed;
+  j["resident_bytes"] = pool_stats.resident_bytes;
+  j["hit_rate"] = pool_stats.hit_rate();
+  return j;
+}
+
+// C callback wrapper for plugin (ABI v1.0 / v1.1 — borrowed buffer, copy-out)
 void message_callback(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
   const char* message_type, uint64_t timestamp, void* user_data
@@ -41,6 +60,26 @@ void message_callback(
 
   auto* recorder = static_cast<AxonRecorder*>(user_data);
   recorder->on_message(topic_name, message_data, message_size, message_type, timestamp);
+}
+
+// C callback wrapper for plugin (ABI v1.2 — ownership transfer, zero-copy)
+void message_callback_v2(
+  const char* topic_name, const uint8_t* message_data, size_t message_size,
+  const char* message_type, uint64_t timestamp,
+  void (*release_fn)(void*), void* release_opaque, void* user_data
+) {
+  if (!user_data) {
+    if (release_fn) {
+      release_fn(release_opaque);
+    }
+    return;
+  }
+
+  auto* recorder = static_cast<AxonRecorder*>(user_data);
+  recorder->on_message_v2(
+    topic_name, message_data, message_size, message_type, timestamp,
+    release_fn, release_opaque
+  );
 }
 
 }  // namespace
@@ -376,6 +415,10 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       }
       j["queue_depths"] = queue_depths;
     }
+
+    // Expose BufferPool counters so operators can track hit rate and
+    // resident memory in real time via /rpc/status.
+    j["buffer_pool"] = buffer_pool_stats_json();
 
     return j;
   };
@@ -756,20 +799,68 @@ void AxonRecorder::on_message(
 
   uint64_t receive_time_ns = get_steady_clock_ns();
 
-  // Create MessageItem and push to worker pool
+  // Acquire a pool-backed buffer sized for this payload. On the steady-state
+  // hot path this avoids `operator new` per message (bucket reuse).
   MessageItem item;
   item.timestamp_ns = static_cast<int64_t>(timestamp);
   item.publish_time_ns = timestamp;
   item.receive_time_ns = receive_time_ns;
-  item.message_type = message_type;  // Save the message type
-  item.raw_data.assign(message_data, message_data + message_size);
+  item.message_type = message_type;
+  item.raw_data = axon::memory::BufferPool::instance().acquire(
+    message_size == 0 ? 1 : message_size
+  );
+  item.raw_data.assign(message_data, message_size);
 
-  // Push to the topic's queue (worker pool handles this)
   if (worker_pool_) {
     worker_pool_->try_push(topic_name, std::move(item));
   }
-  // If queue is full or topic not found, message is dropped
-  // Statistics are tracked by WorkerThreadPool
+  // If queue is full or topic not found, the PooledBuffer returns to the pool
+  // on MessageItem destruction. Statistics tracked by WorkerThreadPool.
+}
+
+void AxonRecorder::on_message_v2(
+  const char* topic_name, const uint8_t* message_data, size_t message_size,
+  const char* message_type, uint64_t timestamp,
+  void (*release_fn)(void*), void* release_opaque
+) {
+  // Drop-and-release if we're not recording: the plugin gave us ownership,
+  // so we must still call the release function even though we don't enqueue.
+  if (!state_manager_.is_state(RecorderState::RECORDING)) {
+    if (release_fn) {
+      release_fn(release_opaque);
+    }
+    return;
+  }
+
+  uint64_t receive_time_ns = get_steady_clock_ns();
+
+  MessageItem item;
+  item.timestamp_ns = static_cast<int64_t>(timestamp);
+  item.publish_time_ns = timestamp;
+  item.receive_time_ns = receive_time_ns;
+  item.message_type = message_type;
+
+  if (release_fn != nullptr && message_data != nullptr) {
+    // Zero-copy path: adopt the plugin's buffer; PooledBuffer will call
+    // release_fn(release_opaque) exactly once when MessageItem is destroyed
+    // (either after MCAP write or on queue-full drop).
+    item.raw_data = axon::memory::PooledBuffer::adopt(
+      const_cast<uint8_t*>(message_data), message_size, release_fn, release_opaque
+    );
+  } else {
+    // Fallback: plugin advertised v1.2 but emitted a borrowed buffer with no
+    // release hook. Treat as v1.x — copy into a pooled buffer.
+    item.raw_data = axon::memory::BufferPool::instance().acquire(
+      message_size == 0 ? 1 : message_size
+    );
+    item.raw_data.assign(message_data, message_size);
+  }
+
+  if (worker_pool_) {
+    worker_pool_->try_push(topic_name, std::move(item));
+  }
+  // On queue-full or unknown-topic drop, MessageItem destruction triggers the
+  // adopted release (or returns the pool slab) — symmetric with v1.1 path.
 }
 
 bool AxonRecorder::message_handler(
@@ -920,7 +1011,13 @@ bool AxonRecorder::register_topics() {
           publish_time_ns, receive_time_ns, enqueue_time_ns, dequeue_time_ns);
       };
 
-    if (!worker_pool_->create_topic_worker(sub.topic_name, handler)) {
+    // Plumb batch_size / flush_interval_ms from SubscriptionConfig into the worker.
+    // This actually activates the batching fields that were previously parsed but unused.
+    WorkerThreadPool::BatchConfig batch_cfg;
+    batch_cfg.batch_size = sub.batch_size;
+    batch_cfg.flush_interval_ms = sub.flush_interval_ms;
+
+    if (!worker_pool_->create_topic_worker(sub.topic_name, handler, batch_cfg)) {
       set_error_helper("Failed to create worker for topic: " + sub.topic_name);
       return false;
     }
@@ -947,6 +1044,16 @@ bool AxonRecorder::setup_subscriptions() {
     return false;
   }
 
+  // Prefer the ABI v1.2 zero-copy subscribe path when the plugin advertises
+  // it; fall back to v1.x copy-out subscribe otherwise. The detection is
+  // fully optional — any v1.0/v1.1 plugin keeps working unchanged.
+  AxonSubscribeV2Fn subscribe_v2 = plugin_subscribe_v2(descriptor);
+  if (subscribe_v2 != nullptr) {
+    AXON_LOG_INFO(
+      "Plugin '" << plugins[0] << "' supports ABI v1.2 zero-copy callback; using subscribe_v2"
+    );
+  }
+
   // Setup subscriptions via plugin
   for (const auto& sub : config_.subscriptions) {
     // Build options JSON for depth compression (if enabled)
@@ -958,13 +1065,24 @@ bool AxonRecorder::setup_subscriptions() {
       options_json = opts.dump();
     }
 
-    AxonStatus status = descriptor->vtable->subscribe(
-      sub.topic_name.c_str(),
-      sub.message_type.c_str(),
-      options_json.empty() ? nullptr : options_json.c_str(),
-      message_callback,
-      this
-    );
+    AxonStatus status = AXON_ERROR_INTERNAL;
+    if (subscribe_v2 != nullptr) {
+      status = subscribe_v2(
+        sub.topic_name.c_str(),
+        sub.message_type.c_str(),
+        options_json.empty() ? nullptr : options_json.c_str(),
+        message_callback_v2,
+        this
+      );
+    } else {
+      status = descriptor->vtable->subscribe(
+        sub.topic_name.c_str(),
+        sub.message_type.c_str(),
+        options_json.empty() ? nullptr : options_json.c_str(),
+        message_callback,
+        this
+      );
+    }
 
     if (status != AXON_SUCCESS) {
       set_error_helper(
@@ -1155,6 +1273,10 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
       }
       j["queue_depths"] = queue_depths;
     }
+
+    // Expose BufferPool counters so operators can track hit rate and
+    // resident memory in real time via /rpc/status.
+    j["buffer_pool"] = buffer_pool_stats_json();
 
     return j;
   };

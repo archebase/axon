@@ -34,7 +34,23 @@ void WorkerThreadPool::set_drop_callback(DropCallback callback) {
   drop_callback_ = std::move(callback);
 }
 
-bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHandler handler) {
+namespace {
+// Reject obviously invalid BatchConfig values; fall back to defaults.
+WorkerThreadPool::BatchConfig normalize_batch_config(WorkerThreadPool::BatchConfig cfg) {
+  if (cfg.batch_size == 0) {
+    cfg.batch_size = 1;
+  }
+  if (cfg.flush_interval_ms < 0) {
+    cfg.flush_interval_ms = 0;
+  }
+  return cfg;
+}
+}  // namespace
+
+bool WorkerThreadPool::create_topic_worker(
+  const std::string& topic, MessageHandler handler, BatchConfig batch
+) {
+  batch = normalize_batch_config(batch);
   std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
 
   // Check if topic already exists
@@ -50,6 +66,7 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHand
 
     // Update handler and restart the worker
     context->handler = std::move(handler);
+    context->batch_config = batch;
 
     // Start the worker thread
     context->running.store(true, std::memory_order_release);
@@ -63,6 +80,7 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHand
   auto context = std::make_shared<TopicContext>();
   context->queue = std::make_unique<SPSCQueue<MessageItem>>(config_.queue_capacity_per_topic);
   context->handler = std::move(handler);
+  context->batch_config = batch;
   context->topic_name = topic;
 
   // If pool is already running, start the worker immediately
@@ -76,7 +94,10 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, MessageHand
   return true;
 }
 
-bool WorkerThreadPool::create_topic_worker(const std::string& topic, LatencyMessageHandler handler) {
+bool WorkerThreadPool::create_topic_worker(
+  const std::string& topic, LatencyMessageHandler handler, BatchConfig batch
+) {
+  batch = normalize_batch_config(batch);
   std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
 
   auto it = topic_contexts_.find(topic);
@@ -89,6 +110,7 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, LatencyMess
     }
 
     context->latency_handler = std::move(handler);
+    context->batch_config = batch;
     context->running.store(true, std::memory_order_release);
     context->worker_thread = std::thread(&WorkerThreadPool::worker_thread_func, this, context);
 
@@ -99,6 +121,7 @@ bool WorkerThreadPool::create_topic_worker(const std::string& topic, LatencyMess
   auto context = std::make_shared<TopicContext>();
   context->queue = std::make_unique<SPSCQueue<MessageItem>>(config_.queue_capacity_per_topic);
   context->latency_handler = std::move(handler);
+  context->batch_config = batch;
   context->topic_name = topic;
 
   if (running_.load(std::memory_order_acquire)) {
@@ -345,14 +368,65 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
   }
 
   const std::string& topic = context->topic_name;
-  MessageItem item;
+  const BatchConfig batch_cfg = context->batch_config;
+
+  // Reusable batch scratch buffer — allocated once, cleared between flushes.
+  // Reserve up-front to avoid reallocation during steady state.
+  std::vector<MessageItem> batch;
+  batch.reserve(batch_cfg.batch_size);
+
+  auto dispatch_one = [&](MessageItem& item) {
+    item.dequeue_time_ns = get_steady_clock_ns();
+    uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
+    bool success = false;
+    try {
+      if (context->latency_handler) {
+        success = context->latency_handler(
+          topic, item.message_type, item.timestamp_ns, item.raw_data.data(), item.raw_data.size(),
+          seq, item.publish_time_ns, item.receive_time_ns, item.enqueue_time_ns,
+          item.dequeue_time_ns
+        );
+      } else if (context->handler) {
+        success = context->handler(
+          topic, item.message_type, item.timestamp_ns, item.raw_data.data(), item.raw_data.size(),
+          seq
+        );
+      }
+    } catch (const std::exception& e) {
+      AXON_LOG_ERROR(
+        "Worker exception" << axon::logging::kv("topic", topic)
+                           << axon::logging::kv("error", e.what())
+      );
+    } catch (...) {
+      AXON_LOG_ERROR("Worker unknown exception" << axon::logging::kv("topic", topic));
+    }
+
+    if (success) {
+      context->stats.written.fetch_add(1, std::memory_order_relaxed);
+      context->stats.bytes_written.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
+    }
+  };
+
+  // Flush the accumulated batch, then clear (keep capacity for reuse).
+  auto flush_batch = [&]() {
+    for (auto& item : batch) {
+      dispatch_one(item);
+    }
+    batch.clear();
+  };
+
   size_t consecutive_empty = 0;
+  auto last_flush_time = std::chrono::steady_clock::now();
 
   while (context->running.load(std::memory_order_acquire)) {
     // Check if paused - use condition variable for efficient waiting
     if (paused_.load(std::memory_order_acquire)) {
+      // Drain anything already buffered before blocking on pause.
+      if (!batch.empty()) {
+        flush_batch();
+        last_flush_time = std::chrono::steady_clock::now();
+      }
       std::unique_lock<std::mutex> pause_lock(pause_mutex_);
-      // Re-check condition after acquiring lock to avoid spurious wakeups
       pause_cv_.wait(pause_lock, [this, &context]() {
         return !paused_.load(std::memory_order_acquire) ||
                !context->running.load(std::memory_order_acquire);
@@ -360,69 +434,41 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
       continue;
     }
 
-    // Try to pop from lock-free queue
+    MessageItem item;
     if (context->queue->try_pop(item)) {
       consecutive_empty = 0;
+      batch.emplace_back(std::move(item));
 
-      uint64_t dequeue_time_ns = get_steady_clock_ns();
-      item.dequeue_time_ns = dequeue_time_ns;
-
-      // Get sequence number
-      uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
-
-      // Call the message handler
-      bool success = false;
-      try {
-        if (context->latency_handler) {
-          success = context->latency_handler(
-            topic,
-            item.message_type,
-            item.timestamp_ns,
-            item.raw_data.data(),
-            item.raw_data.size(),
-            seq,
-            item.publish_time_ns,
-            item.receive_time_ns,
-            item.enqueue_time_ns,
-            item.dequeue_time_ns
-          );
-        } else {
-          success = context->handler(
-            topic,
-            item.message_type,
-            item.timestamp_ns,
-            item.raw_data.data(),
-            item.raw_data.size(),
-            seq
-          );
-        }
-      } catch (const std::exception& e) {
-        AXON_LOG_ERROR(
-          "Worker exception" << axon::logging::kv("topic", topic)
-                             << axon::logging::kv("error", e.what())
-        );
-      } catch (...) {
-        AXON_LOG_ERROR("Worker unknown exception" << axon::logging::kv("topic", topic));
+      // Size-triggered flush.
+      if (batch.size() >= batch_cfg.batch_size) {
+        flush_batch();
+        last_flush_time = std::chrono::steady_clock::now();
       }
-
-      if (success) {
-        context->stats.written.fetch_add(1, std::memory_order_relaxed);
-        context->stats.bytes_written.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
-      }
-
     } else {
-      // Queue empty - use adaptive backoff
+      // Queue empty.
+      // Time-triggered flush: if we have partial batch older than flush_interval_ms.
+      if (!batch.empty() && batch_cfg.flush_interval_ms > 0) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds>(now - last_flush_time).count();
+        if (elapsed_ms >= batch_cfg.flush_interval_ms) {
+          flush_batch();
+          last_flush_time = now;
+        }
+      } else if (!batch.empty() && batch_cfg.flush_interval_ms == 0) {
+        // No time budget: flush as soon as queue drains.
+        flush_batch();
+        last_flush_time = std::chrono::steady_clock::now();
+      }
+
       ++consecutive_empty;
 
       if (config_.use_adaptive_backoff) {
         if (consecutive_empty > 100) {
-          // Long idle - sleep longer to save CPU
           std::this_thread::sleep_for(std::chrono::microseconds(500));
         } else if (consecutive_empty > 10) {
-          // Brief idle - short sleep
           std::this_thread::sleep_for(std::chrono::microseconds(config_.worker_idle_sleep_us));
         } else {
-          // Very brief idle - yield to reduce CPU spinning
           std::this_thread::yield();
         }
       } else {
@@ -431,39 +477,13 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
     }
   }
 
-  // Drain remaining messages before exiting
-  while (context->queue->try_pop(item)) {
-    item.dequeue_time_ns = get_steady_clock_ns();
-    uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
+  // Drain remaining messages before exiting: flush any buffered batch, then
+  // consume anything left in the queue.
+  flush_batch();
+  MessageItem drain_item;
+  while (context->queue->try_pop(drain_item)) {
     try {
-      bool drain_success = false;
-      if (context->latency_handler) {
-        drain_success = context->latency_handler(
-          topic,
-          item.message_type,
-          item.timestamp_ns,
-          item.raw_data.data(),
-          item.raw_data.size(),
-          seq,
-          item.publish_time_ns,
-          item.receive_time_ns,
-          item.enqueue_time_ns,
-          item.dequeue_time_ns
-        );
-      } else {
-        drain_success = context->handler(
-          topic,
-          item.message_type,
-          item.timestamp_ns,
-          item.raw_data.data(),
-          item.raw_data.size(),
-          seq
-        );
-      }
-      if (drain_success) {
-        context->stats.written.fetch_add(1, std::memory_order_relaxed);
-        context->stats.bytes_written.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
-      }
+      dispatch_one(drain_item);
     } catch (const std::exception& e) {
       AXON_LOG_WARN(
         "Exception during drain" << axon::logging::kv("topic", topic)

@@ -17,6 +17,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <buffer_pool.hpp>
+
 #include "spsc_queue.hpp"
 
 namespace axon {
@@ -25,6 +27,14 @@ namespace recorder {
 /**
  * Message item for the lock-free queue.
  * Uses move-only semantics for zero-copy transfer.
+ *
+ * Payload storage is a PooledBuffer (from core/axon_memory). This replaces
+ * the previous std::vector<uint8_t>, eliminating the per-message
+ * `operator new` on the hot path when the selected size class is already
+ * warmed up in the pool.
+ *
+ * The legacy `std::vector<uint8_t>` constructor is kept for test convenience;
+ * it delegates to a heap allocation via a detached PooledBuffer.
  */
 struct MessageItem {
   int64_t timestamp_ns = 0;
@@ -32,25 +42,31 @@ struct MessageItem {
   uint64_t receive_time_ns = 0;
   uint64_t enqueue_time_ns = 0;
   uint64_t dequeue_time_ns = 0;
-  std::string message_type;       // ROS2 message type (e.g., "sensor_msgs::msg::Image")
-  std::vector<uint8_t> raw_data;  // Owned raw message bytes
+  std::string message_type;             // ROS2 message type (e.g., "sensor_msgs::msg::Image")
+  axon::memory::PooledBuffer raw_data;  // Owned raw message bytes (pooled)
 
   MessageItem() = default;
 
+  // Convenience constructor used by tests: acquires a pool buffer and copies
+  // the given bytes in. Prefer direct PooledBuffer assignment on the hot path.
   MessageItem(int64_t ts, const std::string& type, std::vector<uint8_t>&& data)
       : timestamp_ns(ts)
-      , message_type(type)
-      , raw_data(std::move(data)) {}
+      , message_type(type) {
+    raw_data = axon::memory::BufferPool::instance().acquire(data.empty() ? 1 : data.size());
+    raw_data.assign(data.data(), data.size());
+  }
 
   MessageItem(int64_t ts, uint64_t pub_time, uint64_t recv_time, const std::string& type,
               std::vector<uint8_t>&& data)
       : timestamp_ns(ts)
       , publish_time_ns(pub_time)
       , receive_time_ns(recv_time)
-      , message_type(type)
-      , raw_data(std::move(data)) {}
+      , message_type(type) {
+    raw_data = axon::memory::BufferPool::instance().acquire(data.empty() ? 1 : data.size());
+    raw_data.assign(data.data(), data.size());
+  }
 
-  // Move-only for zero-copy
+  // Move-only for zero-copy (PooledBuffer is also noexcept-movable)
   MessageItem(MessageItem&&) = default;
   MessageItem& operator=(MessageItem&&) = default;
   MessageItem(const MessageItem&) = delete;
@@ -193,6 +209,37 @@ public:
         , use_adaptive_backoff(true) {}
   };
 
+  /**
+   * Per-topic batching configuration.
+   *
+   * Controls how the worker thread groups messages before invoking the user
+   * handler. Batching reduces per-message dispatch / mutex overhead and
+   * enables reuse of a pre-sized scratch vector (preallocation strategy).
+   *
+   * - batch_size == 1: dispatch immediately, no batching (default, backward-compatible).
+   * - batch_size  > 1 + flush_interval_ms > 0: accumulate up to batch_size items
+   *   OR force-flush when the oldest buffered item has aged past flush_interval_ms.
+   *
+   * Note: dispatch still happens one-message-at-a-time from the batch; batching
+   * is about amortizing the accumulate/clear/reserve cost and enabling future
+   * batch-write APIs, not about changing per-message semantics.
+   */
+  struct BatchConfig {
+    size_t batch_size;
+    int flush_interval_ms;
+
+    // Explicit default constructor: required because this struct is used as
+    // a default argument for create_topic_worker() while still being a nested
+    // type; NSDMI would not be available yet at that parse point.
+    BatchConfig()
+        : batch_size(1)
+        , flush_interval_ms(100) {}
+
+    BatchConfig(size_t size, int interval_ms)
+        : batch_size(size)
+        , flush_interval_ms(interval_ms) {}
+  };
+
   explicit WorkerThreadPool(const Config& config = Config());
   ~WorkerThreadPool();
 
@@ -213,18 +260,24 @@ public:
    *
    * @param topic Topic name
    * @param handler Message handler callback
+   * @param batch Batching configuration (default: immediate dispatch)
    * @return true if queue was created successfully
    */
-  bool create_topic_worker(const std::string& topic, MessageHandler handler);
+  bool create_topic_worker(
+    const std::string& topic, MessageHandler handler, BatchConfig batch = BatchConfig{}
+  );
 
   /**
    * Create a queue and worker for a topic with latency timing support.
    *
    * @param topic Topic name
    * @param handler Latency message handler callback
+   * @param batch Batching configuration (default: immediate dispatch)
    * @return true if queue was created successfully
    */
-  bool create_topic_worker(const std::string& topic, LatencyMessageHandler handler);
+  bool create_topic_worker(
+    const std::string& topic, LatencyMessageHandler handler, BatchConfig batch = BatchConfig{}
+  );
 
   /**
    * Remove a topic's queue and stop its worker.
@@ -331,6 +384,7 @@ private:
     std::atomic<bool> running{false};
     MessageHandler handler;
     LatencyMessageHandler latency_handler;
+    BatchConfig batch_config;  // Per-topic batching configuration
     WorkerTopicStats stats;
     std::string topic_name;  // Store topic name for logging
     std::mutex push_mutex;   // Serializes pushes to maintain SPSC single-producer guarantee

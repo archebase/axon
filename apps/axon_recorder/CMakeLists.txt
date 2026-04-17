@@ -171,6 +171,7 @@ target_link_libraries(
         axon_plugin_loader
         axon_logging
         axon_mcap
+        axon_memory
         yaml-cpp
         OpenSSL::Crypto
         OpenSSL::SSL

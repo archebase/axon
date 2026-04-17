@@ -173,6 +173,18 @@ bool Ros2Plugin::subscribe(
   return subscription_manager_->subscribe(topic_name, message_type, options, callback);
 }
 
+bool Ros2Plugin::subscribe_v2(
+  const std::string& topic_name, const std::string& message_type,
+  const SubscribeOptions& options, MessageCallbackV2 callback
+) {
+  if (!initialized_.load()) {
+    RCUTILS_LOG_ERROR("Cannot subscribe_v2: plugin not initialized");
+    return false;
+  }
+
+  return subscription_manager_->subscribe_v2(topic_name, message_type, options, callback);
+}
+
 bool Ros2Plugin::unsubscribe(const std::string& topic_name) {
   if (!initialized_.load()) {
     RCUTILS_LOG_ERROR("Cannot unsubscribe: plugin not initialized");

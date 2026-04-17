@@ -52,6 +52,12 @@ public:
     MessageCallback callback
   );
 
+  // ABI v1.2 zero-copy subscribe: see SubscriptionManager::subscribe_v2.
+  bool subscribe_v2(
+    const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+    MessageCallbackV2 callback
+  );
+
   // Unsubscribe from a topic
   bool unsubscribe(const std::string& topic_name);
 

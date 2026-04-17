@@ -27,6 +27,7 @@ set(AXON_CORE_DIR "${AXON_REPO_ROOT}/core")
 set(AXON_LOGGING_DIR "${AXON_CORE_DIR}/axon_logging")
 set(AXON_MCAP_DIR "${AXON_CORE_DIR}/axon_mcap")
 set(AXON_UPLOADER_DIR "${AXON_CORE_DIR}/axon_uploader")
+set(AXON_MEMORY_DIR "${AXON_CORE_DIR}/axon_memory")
 set(AXON_MIDDLEWARES_DIR "${AXON_REPO_ROOT}/middlewares")
 set(AXON_APPS_DIR "${AXON_REPO_ROOT}/apps")
 set(AXON_CMAKE_MODULES_DIR "${AXON_REPO_ROOT}/cmake/Modules")
@@ -37,6 +38,7 @@ set(AXON_CORE_DIR "${AXON_CORE_DIR}" CACHE INTERNAL "")
 set(AXON_LOGGING_DIR "${AXON_LOGGING_DIR}" CACHE INTERNAL "")
 set(AXON_MCAP_DIR "${AXON_MCAP_DIR}" CACHE INTERNAL "")
 set(AXON_UPLOADER_DIR "${AXON_UPLOADER_DIR}" CACHE INTERNAL "")
+set(AXON_MEMORY_DIR "${AXON_MEMORY_DIR}" CACHE INTERNAL "")
 set(AXON_MIDDLEWARES_DIR "${AXON_MIDDLEWARES_DIR}" CACHE INTERNAL "")
 set(AXON_APPS_DIR "${AXON_APPS_DIR}" CACHE INTERNAL "")
 set(AXON_CMAKE_MODULES_DIR "${AXON_CMAKE_MODULES_DIR}" CACHE INTERNAL "")
@@ -109,6 +111,16 @@ FetchContent_MakeAvailable(nlohmann_json)
 # Module Subdirectories
 # =============================================================================
 # Add C++ libraries in dependency order.
+
+# =============================================================================
+# Memory (no dependencies)
+# =============================================================================
+if(EXISTS "${AXON_MEMORY_DIR}/CMakeLists.txt")
+    add_subdirectory(
+        ${AXON_MEMORY_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_memory
+    )
+endif()
 
 # =============================================================================
 # Logging (no dependencies)
