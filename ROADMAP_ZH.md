@@ -167,21 +167,21 @@
   - ✅ 队列深度监控
 
 ### 内存优化
-- [ ] 零拷贝优化
-  - [ ] 避免序列化时的额外拷贝
-- [ ] 内存池与预分配
-  - [ ] 消息 buffer 池化
-  - [ ] 批处理 buffer 复用
-  - [ ] 预分配策略
+- [✅] 零拷贝优化
+  - [✅] 避免序列化时的额外拷贝
+- [✅] 内存池与预分配
+  - [✅] 消息 buffer 池化
+  - [✅] 批处理 buffer 复用
+  - [✅] 预分配策略
 
 ### 拷贝优化
-- [ ] 批量写入
-  - [ ] 多消息聚合后一次性写入
-  - [ ] 减少系统调用次数
-- [ ] 压缩优化
-  - [ ] 压缩与写盘解耦
-  - [ ] Zstd/LZ4 压缩基准对比
-  - [ ] 可选压缩级别调优
+- [✅] 批量写入
+  - [✅] 多消息聚合后一次性写入（`McapWriterWrapper::write_batch()`）
+  - [✅] 减少系统调用次数（单次锁获取 + 批量统计更新，减少 MCAP chunk 边界触发）
+- [✅] 压缩优化
+  - [✅] 压缩与写盘解耦（`AsyncMcapWriter` 通过独立 worker 线程与有界队列）
+  - [✅] Zstd/LZ4 压缩基准对比（`core/axon_mcap/bench/bench_compression`）
+  - [✅] 可选压缩级别调优（`CompressionLevel::{Fastest,Fast,Default,Slow,Slowest}`，Zstd/LZ4 统一预设）
 
 ### 混合录制
 - [ ] 统一录制管道，将 ROS 二进制与 UDP JSON 写入同一个 MCAP 文件
