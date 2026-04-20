@@ -39,6 +39,7 @@ include(AxonCoverage OPTIONAL)
 if(DEFINED AXON_REPO_ROOT)
     set(AXON_LOGGING_DIR "${AXON_REPO_ROOT}/core/axon_logging")
     set(AXON_MCAP_DIR "${AXON_REPO_ROOT}/core/axon_mcap")
+    set(AXON_MEMORY_DIR "${AXON_REPO_ROOT}/core/axon_memory")
 
     # Add axon_logging if not already built
     if(NOT TARGET axon_logging AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
@@ -53,6 +54,14 @@ if(DEFINED AXON_REPO_ROOT)
         add_subdirectory(
             "${AXON_MCAP_DIR}"
             ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap
+        )
+    endif()
+
+    # Add axon_memory (BufferPool used by worker_thread_pool / MessageItem)
+    if(NOT TARGET axon_memory AND EXISTS "${AXON_MEMORY_DIR}/CMakeLists.txt")
+        add_subdirectory(
+            "${AXON_MEMORY_DIR}"
+            ${CMAKE_CURRENT_BINARY_DIR}/axon_memory
         )
     endif()
 endif()

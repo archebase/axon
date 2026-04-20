@@ -6,6 +6,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <optional>
+
 // Define component name for logging
 #define AXON_LOG_COMPONENT "ros1_plugin"
 #include <axon_log_macros.hpp>
@@ -135,15 +137,60 @@ bool Ros1Plugin::stop() {
 bool Ros1Plugin::subscribe(
   const std::string& topic_name, const std::string& message_type, MessageCallback callback
 ) {
+  return subscribe(topic_name, message_type, SubscribeOptions{}, callback);
+}
+
+bool Ros1Plugin::subscribe(
+  const std::string& topic_name, const std::string& message_type,
+  const SubscribeOptions& options, MessageCallback callback
+) {
   if (!initialized_.load()) {
     AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return false;
   }
 
-  // Default queue size: 10
-  uint32_t queue_size = 10;
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+  // When depth compression is compiled in, route through the overload
+  // that accepts a DepthCompressionConfig — but only as a non-empty
+  // std::optional when the caller actually asked for it. This preserves
+  // the wrapper's existing "filter disabled" fast path for the common
+  // case where no depth_compression block was present in options_json.
+  std::optional<DepthCompressionConfig> dc;
+  if (options.depth_compression.enabled) {
+    dc = options.depth_compression;
+  }
+  return subscription_manager_->subscribe(
+    topic_name, message_type, options.queue_size, callback, dc
+  );
+#else
+  // Without depth compression support, the options.depth_compression field
+  // is ignored (a warning is logged at the ABI layer). The only option
+  // currently honored in this build is queue_size.
+  return subscription_manager_->subscribe(
+    topic_name, message_type, options.queue_size, callback
+  );
+#endif
+}
 
-  return subscription_manager_->subscribe(topic_name, message_type, queue_size, callback);
+bool Ros1Plugin::subscribe_v2(
+  const std::string& topic_name, const std::string& message_type,
+  const SubscribeOptions& options, MessageCallbackV2 callback
+) {
+  if (!initialized_.load()) {
+    AXON_LOG_ERROR("Cannot subscribe_v2: plugin not initialized");
+    return false;
+  }
+
+  // The SubscriptionManager::subscribe_v2 always takes an optional<DC>, so
+  // we only wrap the DC when the caller actually enabled it. This matches
+  // the v1 subscribe() behavior above and keeps the filter opt-in.
+  std::optional<DepthCompressionConfig> dc;
+  if (options.depth_compression.enabled) {
+    dc = options.depth_compression;
+  }
+  return subscription_manager_->subscribe_v2(
+    topic_name, message_type, options.queue_size, callback, dc
+  );
 }
 
 bool Ros1Plugin::unsubscribe(const std::string& topic_name) {

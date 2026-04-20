@@ -95,6 +95,17 @@ recording:
   # Maximum disk usage (ignored by axon_recorder, used by full service)
   max_disk_usage_gb: 100
 
+  # Schema search paths for embedding message definitions in MCAP files.
+  # Each path should be a share directory containing ROS package directories.
+  # When configured, MCAP files will contain full .msg definitions so downstream
+  # tools (Foxglove Studio, mcap CLI) can decode messages without access to the
+  # original ROS workspace.
+  #
+  # ROS1 Noetic default install puts .msg files under /opt/ros/noetic/share.
+  # Add workspace-local paths (e.g. ~/catkin_ws/install/share) for custom msgs.
+  schema_search_paths:
+    - /opt/ros/noetic/share
+
 # ============================================================================
 # Logging Configuration
 # ============================================================================

@@ -41,9 +41,43 @@ public:
     return spinning_;
   }
 
-  // Subscribe to a topic with a callback
+  // Options forwarded from the host recorder's subscribe call.
+  // Fields populated from `options_json` in the C ABI entry point
+  // (see ros1_plugin_export.cpp). All fields are optional; unset fields
+  // fall back to ROS1 defaults (queue size 10, no depth compression).
+  //
+  // depth_compression is a plain struct whose own `enabled` bool is the
+  // single source of truth for whether compression is requested. We
+  // intentionally do not wrap it in std::optional because that would pull
+  // a C++17 dependency into this standalone plugin's CMake configuration
+  // when AXON_ENABLE_DEPTH_COMPRESSION is OFF (where std::optional is not
+  // otherwise needed for this struct definition).
+  struct SubscribeOptions {
+    uint32_t queue_size = 10;
+    DepthCompressionConfig depth_compression;  // disabled by default
+  };
+
+  // Subscribe to a topic with a callback (default options)
   bool subscribe(
     const std::string& topic_name, const std::string& message_type, MessageCallback callback
+  );
+
+  // Subscribe to a topic with a callback and options parsed from the host.
+  // This is the entry point used by the C ABI (axon_subscribe) so that
+  // depth_compression and other options_json fields actually take effect.
+  bool subscribe(
+    const std::string& topic_name, const std::string& message_type,
+    const SubscribeOptions& options, MessageCallback callback
+  );
+
+  // ABI v1.2 zero-copy subscribe. The callback receives a raw pointer +
+  // release_fn/release_opaque so the recorder can adopt the buffer without
+  // an extra copy. See SubscriptionManager::subscribe_v2 for the ownership
+  // contract; the recorder must call release_fn(release_opaque) exactly
+  // once per message.
+  bool subscribe_v2(
+    const std::string& topic_name, const std::string& message_type,
+    const SubscribeOptions& options, MessageCallbackV2 callback
   );
 
   // Unsubscribe from a topic
