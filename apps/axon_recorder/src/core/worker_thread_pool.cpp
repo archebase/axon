@@ -267,6 +267,103 @@ void WorkerThreadPool::stop() {
   stopping_.store(false, std::memory_order_release);
 }
 
+size_t WorkerThreadPool::drain_remaining_sync() {
+  // Precondition: workers have been joined (stop() already called) and no
+  // producer is still active (the source plugin has been halted). Under
+  // those assumptions we are the sole consumer and the sole reader of each
+  // context's queue, so lock-free try_pop() is safe here.
+  //
+  // If this precondition is violated — e.g. drain runs while a worker is
+  // still calling try_pop on the same queue — we'd have two concurrent
+  // consumers on an SPSC queue, silently corrupting its indices. Guard
+  // against that at the entry point rather than debugging the fallout.
+  if (running_.load(std::memory_order_acquire)) {
+    AXON_LOG_ERROR(
+      "drain_remaining_sync called while worker pool is still running; "
+      "this violates the SPSC single-consumer invariant. Caller must stop() first."
+    );
+    return 0;
+  }
+
+  // We hold a shared_lock because we're only iterating topic_contexts_ and
+  // not mutating the map itself; concurrent get_topic_stats / get_topics
+  // readers remain allowed.
+  std::shared_lock<std::shared_mutex> lock(contexts_mutex_);
+
+  size_t total_drained = 0;
+
+  for (auto& [topic, context] : topic_contexts_) {
+    if (!context || !context->queue) {
+      continue;
+    }
+
+    size_t drained_here = 0;
+    MessageItem item;
+    while (context->queue->try_pop(item)) {
+      // Residual items were enqueued during a prior shutdown window, possibly
+      // far earlier than "now". Setting dequeue_time_ns to the current clock
+      // would inject a huge spike into LatencyMonitor's queueing-delay
+      // histogram that reflects shutdown timing rather than real backpressure,
+      // triggering spurious alerts. Collapse the apparent queue time to zero
+      // by mirroring enqueue_time_ns so downstream stats treat these items as
+      // instantaneous pass-through.
+      item.dequeue_time_ns = item.enqueue_time_ns;
+      const uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
+      bool success = false;
+
+      try {
+        if (context->latency_handler) {
+          success = context->latency_handler(
+            topic, item.message_type, item.timestamp_ns,
+            item.raw_data.data(), item.raw_data.size(), seq,
+            item.publish_time_ns, item.receive_time_ns,
+            item.enqueue_time_ns, item.dequeue_time_ns
+          );
+        } else if (context->handler) {
+          success = context->handler(
+            topic, item.message_type, item.timestamp_ns,
+            item.raw_data.data(), item.raw_data.size(), seq
+          );
+        }
+      } catch (const std::exception& e) {
+        AXON_LOG_WARN(
+          "Exception during sync drain" << axon::logging::kv("topic", topic)
+                                        << axon::logging::kv("error", e.what())
+        );
+      } catch (...) {
+        AXON_LOG_WARN("Unknown exception during sync drain" << axon::logging::kv("topic", topic));
+      }
+
+      if (success) {
+        context->stats.written.fetch_add(1, std::memory_order_relaxed);
+        context->stats.bytes_written.fetch_add(
+          item.raw_data.size(), std::memory_order_relaxed
+        );
+      }
+
+      ++drained_here;
+      // `item` (and its raw_data PooledBuffer) is destroyed at loop-iteration
+      // end, triggering any adopted external_release_ here — on the caller's
+      // thread, while the producing plugin is still loaded.
+    }
+
+    if (drained_here > 0) {
+      // Residual items indicate that worker_thread_func's own drain loop did
+      // not flush this queue — typically because messages were enqueued
+      // AFTER workers exited but BEFORE this drain ran (i.e., a producer
+      // wasn't stopped before the worker pool). Warn so the regression is
+      // visible in operations.
+      AXON_LOG_WARN(
+        "Drained residual items after worker stop"
+        << axon::logging::kv("topic", topic) << axon::logging::kv("count", drained_here)
+      );
+      total_drained += drained_here;
+    }
+  }
+
+  return total_drained;
+}
+
 bool WorkerThreadPool::is_running() const {
   return running_.load(std::memory_order_acquire);
 }

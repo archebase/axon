@@ -322,12 +322,36 @@ void AxonRecorder::stop() {
 
   std::string error_msg;
 
-  // Stop worker thread pool (drains remaining messages)
-  if (worker_pool_) {
-    worker_pool_->stop();
-  }
+  // Shutdown ordering rationale:
+  //
+  // ABI v1.2 zero-copy messages land in per-topic queues wrapped in
+  // PooledBuffer::adopt(), whose external_release_ is a function pointer
+  // into the producing plugin's .text section. Any MessageItem still
+  // queued when plugin_loader_.unload_all() calls dlclose() will, when
+  // later destroyed, invoke that pointer against unmapped memory and
+  // SIGSEGV.
+  //
+  // To guarantee both zero data loss AND no dangling release_fn on
+  // unload, shutdown proceeds in this order:
+  //
+  //   1. Halt every plugin's producer loop (e.g. the ROS2 executor).
+  //      After plugin->stop() returns, no callback is in flight and no
+  //      further MessageItems will be enqueued.
+  //   2. Stop the worker pool. Each worker exits its main loop and then
+  //      runs its internal drain, dispatching every queued item into the
+  //      still-open recording_session_ — so the messages that legitimately
+  //      arrived before step (1) are all persisted to MCAP.
+  //   3. Call drain_remaining_sync() as defense-in-depth. Under a healthy
+  //      sequence this is a no-op; if a future change ever reintroduces a
+  //      producer/consumer ordering bug, this catches residual items on
+  //      the calling thread while the plugin is still mapped in, so the
+  //      adopted release_fn is still valid.
+  //   4. Close the MCAP session (flush, write metadata, emit sidecar).
+  //   5. dlclose() plugins. At this point every queue is empty; no
+  //      MessageItem exists with an adopted buffer that could become a
+  //      dangling function pointer across future sessions.
 
-  // Stop plugin
+  // 1. Stop plugins so no more messages can be enqueued.
   auto plugins = plugin_loader_.loaded_plugins();
   for (const auto& plugin_name : plugins) {
     const auto* descriptor = plugin_loader_.get_descriptor(plugin_name);
@@ -336,7 +360,22 @@ void AxonRecorder::stop() {
     }
   }
 
-  // Close recording session (injects metadata, generates sidecar)
+  // 2. Stop worker thread pool (workers drain remaining messages into the
+  //    still-open recording_session_ before exiting).
+  if (worker_pool_) {
+    worker_pool_->stop();
+  }
+
+  // 3. Defense-in-depth: synchronously drain any residual items that
+  //    slipped past worker_thread_func's own drain loop. Must run before
+  //    recording_session_->close() (handler writes via the session) and
+  //    before plugin_loader_.unload_all() (adopted release_fn still
+  //    points into the plugin's .text section). Normally a no-op.
+  if (worker_pool_) {
+    worker_pool_->drain_remaining_sync();
+  }
+
+  // 4. Close recording session (injects metadata, generates sidecar).
   if (recording_session_) {
     recording_session_->close();
 
@@ -346,10 +385,11 @@ void AxonRecorder::stop() {
     recording_session_.reset();
   }
 
-  // Unload plugins
+  // 5. Unload plugins. Safe now: queues are empty, so no surviving
+  //    PooledBuffer references plugin code.
   plugin_loader_.unload_all();
 
-  // Reset worker pool statistics and drop report state for next session
+  // Reset worker pool statistics and drop report state for next session.
   if (worker_pool_) {
     worker_pool_->reset_stats();
   }

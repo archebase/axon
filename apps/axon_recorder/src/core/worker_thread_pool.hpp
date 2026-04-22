@@ -308,6 +308,36 @@ public:
   void stop();
 
   /**
+   * Synchronously drain any residual messages remaining in per-topic queues,
+   * dispatching them through each topic's handler on the caller's thread.
+   *
+   * This is a defense-in-depth safety net intended to be invoked by the
+   * recorder's shutdown sequence AFTER stop() has joined all worker threads
+   * but BEFORE any plugin is unloaded (via dlclose). Rationale: `MessageItem`
+   * payloads produced by ABI v1.2 zero-copy callbacks hold adopted
+   * `PooledBuffer`s whose `external_release_` is a function pointer into the
+   * plugin's `.text` section. If the plugin is dlclose'd while any such
+   * item is still queued, that pointer becomes dangling, and the next
+   * consumer (a future session's worker) will crash when the item's
+   * destructor fires.
+   *
+   * Under the normal stop sequence (plugin stopped BEFORE worker pool),
+   * worker_thread_func's own drain loop removes every queued item before
+   * this call runs, so this method is a no-op. It exists so that any
+   * future regression in stop-ordering — or any other path that leaves
+   * items behind — does not silently break the zero-copy contract.
+   *
+   * Must NOT be called while workers or producers are still active:
+   * callers are expected to have already invoked stop() on both the worker
+   * pool and the producing plugin.
+   *
+   * @return Number of residual items that were drained (0 when ordering
+   *         is healthy; a warning is logged for any non-zero count so
+   *         regressions are visible in logs).
+   */
+  size_t drain_remaining_sync();
+
+  /**
    * Check if workers are running.
    */
   bool is_running() const;
