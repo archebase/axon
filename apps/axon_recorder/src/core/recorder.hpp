@@ -382,6 +382,9 @@ public:
     uint64_t bytes_received;
     double receive_rate_mbps;
     double write_rate_mbps;
+    // Elapsed time of the current recording session in seconds.
+    // 0.0 when no session is open (idle / between sessions).
+    double duration_sec;
   };
   Statistics get_statistics() const;
 

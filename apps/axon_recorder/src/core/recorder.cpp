@@ -97,6 +97,12 @@ AxonRecorder::AxonRecorder()
 
 AxonRecorder::~AxonRecorder() {
   stop();
+  // Safety net: ensure ws_thread_ is joined before member destruction.
+  // In normal program flow stop_ws_rpc_client() is called explicitly before
+  // the recorder goes out of scope, making this a no-op.  If an exception
+  // or early-exit path skips that call, the ws_ioc_ / ws_thread_ members
+  // would be destroyed while still running, causing std::terminate().
+  stop_ws_rpc_client();
 }
 
 bool AxonRecorder::initialize(const RecorderConfig& config) {
@@ -440,8 +446,13 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     j["bytes_received"] = stats.bytes_received;
     j["receive_rate_mbps"] = stats.receive_rate_mbps;
     j["write_rate_mbps"] = stats.write_rate_mbps;
+    // Surface the running recording duration and an explicit message_count
+    // alias so clients don't have to infer "数据条数" from messages_written.
+    j["duration_sec"] = stats.duration_sec;
+    j["message_count"] = stats.messages_written;
 
-    // Add queue depth monitoring
+    // Add queue depth monitoring and per-topic message counts so the status
+    // response includes a per-topic breakdown of written/received/dropped.
     if (worker_pool_) {
       auto depths = worker_pool_->get_queue_depths();
       nlohmann::json queue_depths = nlohmann::json::object();
@@ -454,6 +465,17 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
         queue_depths[topic] = q;
       }
       j["queue_depths"] = queue_depths;
+
+      nlohmann::json topic_counts = nlohmann::json::object();
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["written"] = ts.written;
+        t["dropped"] = ts.dropped;
+        topic_counts[topic_name] = t;
+      }
+      j["topic_message_counts"] = topic_counts;
     }
 
     // Expose BufferPool counters so operators can track hit rate and
@@ -813,6 +835,9 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
     auto session_stats = recording_session_->get_stats();
     stats.messages_written = session_stats.messages_written;
     stats.bytes_written = session_stats.bytes_written;
+    // Expose running session duration so /rpc/stats and /rpc/state can
+    // report elapsed time alongside the message/byte counters.
+    stats.duration_sec = recording_session_->get_duration_sec();
   }
 
   return stats;
@@ -1298,8 +1323,13 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
     j["bytes_received"] = stats.bytes_received;
     j["receive_rate_mbps"] = stats.receive_rate_mbps;
     j["write_rate_mbps"] = stats.write_rate_mbps;
+    // Surface the running recording duration and an explicit message_count
+    // alias so clients don't have to infer "数据条数" from messages_written.
+    j["duration_sec"] = stats.duration_sec;
+    j["message_count"] = stats.messages_written;
 
-    // Add queue depth monitoring
+    // Add queue depth monitoring and per-topic message counts so the status
+    // response includes a per-topic breakdown of written/received/dropped.
     if (worker_pool_) {
       auto depths = worker_pool_->get_queue_depths();
       nlohmann::json queue_depths = nlohmann::json::object();
@@ -1312,6 +1342,17 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
         queue_depths[topic] = q;
       }
       j["queue_depths"] = queue_depths;
+
+      nlohmann::json topic_counts = nlohmann::json::object();
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["written"] = ts.written;
+        t["dropped"] = ts.dropped;
+        topic_counts[topic_name] = t;
+      }
+      j["topic_message_counts"] = topic_counts;
     }
 
     // Expose BufferPool counters so operators can track hit rate and
@@ -1407,6 +1448,12 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
 
       // Set the task config
       this->set_task_config(config);
+
+      // Notify keystone that the config was accepted (ws-client equivalent of
+      // HttpServer::broadcast_config_change in HTTP-server mode).
+      if (ws_rpc_client_) {
+        ws_rpc_client_->send_config_update(config);
+      }
 
       // Transition state from IDLE to READY
       auto current_state = this->get_state();

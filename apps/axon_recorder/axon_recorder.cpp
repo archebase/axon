@@ -34,10 +34,15 @@ void signal_handler(int signal) {
       if (g_recorder->is_http_server_running()) {
         g_recorder->stop_http_server();
       }
-      // Stop recording if running
+      // Stop recording first so any RECORDING→IDLE state_update is enqueued
+      // on the WebSocket connection before we tear it down below.
       if (g_recorder->is_running()) {
         g_recorder->stop();
       }
+      // Stop WebSocket RPC client (ws-client mode only; no-op in other modes).
+      // Must come AFTER stop() so the final state_update can still be sent.
+      // Internally guarded — safe to call even if never started.
+      g_recorder->stop_ws_rpc_client();
     }
   }
 }

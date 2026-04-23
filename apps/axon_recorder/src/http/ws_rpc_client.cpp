@@ -6,6 +6,8 @@
 
 #include <boost/beast/websocket.hpp>
 
+#include "../config/task_config.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <future>
@@ -106,6 +108,51 @@ void WsRpcClient::send_state_update(
   data["current"] = state_to_string(to);
   if (!task_id.empty()) {
     data["task_id"] = task_id;
+  }
+  msg["data"] = data;
+
+  send_message(msg);
+}
+
+void WsRpcClient::send_config_update(const TaskConfig& config) {
+  nlohmann::json msg;
+  msg["type"] = "config_applied";
+  msg["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::system_clock::now().time_since_epoch()
+  )
+                       .count();
+
+  // Include identity and recording-context fields so keystone / monitoring
+  // clients can confirm the full config was accepted.  Sensitive fields
+  // (callback URLs, user_token) are intentionally omitted.
+  nlohmann::json data;
+  data["task_id"] = config.task_id;
+  if (!config.device_id.empty()) {
+    data["device_id"] = config.device_id;
+  }
+  if (!config.data_collector_id.empty()) {
+    data["data_collector_id"] = config.data_collector_id;
+  }
+  if (!config.order_id.empty()) {
+    data["order_id"] = config.order_id;
+  }
+  if (!config.operator_name.empty()) {
+    data["operator_name"] = config.operator_name;
+  }
+  if (!config.scene.empty()) {
+    data["scene"] = config.scene;
+  }
+  if (!config.subscene.empty()) {
+    data["subscene"] = config.subscene;
+  }
+  if (!config.skills.empty()) {
+    data["skills"] = config.skills;
+  }
+  if (!config.factory.empty()) {
+    data["factory"] = config.factory;
+  }
+  if (!config.topics.empty()) {
+    data["topics"] = config.topics;
   }
   msg["data"] = data;
 

@@ -79,6 +79,14 @@ public:
   void send_state_update(RecorderState from, RecorderState to, const std::string& task_id);
 
   /**
+   * Send config-applied notification to keystone server (ws-client mode only).
+   * Called after set_config() successfully stores a new TaskConfig so keystone
+   * can confirm the configuration was accepted.  Mirrors the role of
+   * HttpServer::broadcast_config_change() in HTTP-server mode.
+   */
+  void send_config_update(const TaskConfig& config);
+
+  /**
    * Check if connected to keystone
    */
   bool is_connected() const;
