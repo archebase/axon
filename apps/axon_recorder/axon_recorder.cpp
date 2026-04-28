@@ -26,24 +26,7 @@ std::atomic<bool> g_should_exit(false);
 
 void signal_handler(int signal) {
   if (signal == SIGINT || signal == SIGTERM) {
-    std::cout << "\nReceived signal " << signal << ", stopping recorder..." << std::endl;
     g_should_exit.store(true);
-
-    if (g_recorder) {
-      // Stop HTTP server if running
-      if (g_recorder->is_http_server_running()) {
-        g_recorder->stop_http_server();
-      }
-      // Stop recording first so any RECORDING→IDLE state_update is enqueued
-      // on the WebSocket connection before we tear it down below.
-      if (g_recorder->is_running()) {
-        g_recorder->stop();
-      }
-      // Stop WebSocket RPC client (ws-client mode only; no-op in other modes).
-      // Must come AFTER stop() so the final state_update can still be sent.
-      // Internally guarded — safe to call even if never started.
-      g_recorder->stop_ws_rpc_client();
-    }
   }
 }
 
@@ -498,7 +481,10 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    std::cout << "\nStopping WebSocket RPC client..." << std::endl;
+    std::cout << "\nStopping recording..." << std::endl;
+    recorder.stop();
+
+    std::cout << "Stopping WebSocket RPC client..." << std::endl;
     recorder.stop_ws_rpc_client();
 
     return 0;
