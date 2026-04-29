@@ -24,6 +24,12 @@ Ros1Plugin::~Ros1Plugin() {
   stop();
 }
 
+void Ros1Plugin::ensure_subscription_manager() {
+  if (!subscription_manager_ && node_handle_) {
+    subscription_manager_ = std::make_unique<SubscriptionManager>(node_handle_);
+  }
+}
+
 bool Ros1Plugin::init(const char* config_json) {
   if (initialized_.load()) {
     AXON_LOG_ERROR("ROS1 plugin already initialized");
@@ -61,7 +67,7 @@ bool Ros1Plugin::init(const char* config_json) {
     }
 
     // Create subscription manager
-    subscription_manager_ = std::make_unique<SubscriptionManager>(node_handle_);
+    ensure_subscription_manager();
 
     initialized_.store(true);
     AXON_LOG_INFO("ROS1 plugin initialized: " << kv("node", node_name_));
@@ -86,6 +92,8 @@ bool Ros1Plugin::start() {
   }
 
   try {
+    ensure_subscription_manager();
+
     // Create async spinner with 1 thread
     // ROS1 uses AsyncSpinner instead of SingleThreadedExecutor
     async_spinner_ = std::make_unique<ros::AsyncSpinner>(1);
@@ -105,11 +113,28 @@ bool Ros1Plugin::start() {
 }
 
 bool Ros1Plugin::stop() {
+  const bool should_shutdown_ros = initialized_.load();
+  if (!stop_session()) {
+    return false;
+  }
+
+  if (should_shutdown_ros) {
+    AXON_LOG_INFO("Shutting down ROS1 process state");
+    node_handle_.reset();
+    initialized_.store(false);
+    shutdown_ros();
+    AXON_LOG_INFO("ROS1 plugin shut down");
+  }
+
+  return true;
+}
+
+bool Ros1Plugin::stop_session() {
   if (!initialized_.load()) {
     return true;
   }
 
-  AXON_LOG_INFO("Shutting down ROS1 plugin");
+  AXON_LOG_INFO("Stopping ROS1 plugin session");
 
   // Stop spinning
   if (spinning_.load()) {
@@ -122,16 +147,19 @@ bool Ros1Plugin::stop() {
     async_spinner_.reset();
   }
 
-  // Clear subscription manager
+  // Clear per-session subscriptions while preserving the NodeHandle and ROS
+  // process state for subsequent recordings in this process.
   subscription_manager_.reset();
 
-  // Shutdown node handle
-  node_handle_.reset();
-
-  initialized_.store(false);
-  AXON_LOG_INFO("ROS1 plugin shut down");
+  AXON_LOG_INFO("ROS1 plugin session stopped");
 
   return true;
+}
+
+void Ros1Plugin::shutdown_ros() {
+  if (ros::isStarted() || ros::isInitialized()) {
+    ros::shutdown();
+  }
 }
 
 bool Ros1Plugin::subscribe(
@@ -148,6 +176,7 @@ bool Ros1Plugin::subscribe(
     AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return false;
   }
+  ensure_subscription_manager();
 
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
   // When depth compression is compiled in, route through the overload
@@ -180,6 +209,7 @@ bool Ros1Plugin::subscribe_v2(
     AXON_LOG_ERROR("Cannot subscribe_v2: plugin not initialized");
     return false;
   }
+  ensure_subscription_manager();
 
   // The SubscriptionManager::subscribe_v2 always takes an optional<DC>, so
   // we only wrap the DC when the caller actually enabled it. This matches
@@ -198,12 +228,17 @@ bool Ros1Plugin::unsubscribe(const std::string& topic_name) {
     AXON_LOG_ERROR("Cannot unsubscribe: plugin not initialized");
     return false;
   }
+  ensure_subscription_manager();
 
   return subscription_manager_->unsubscribe(topic_name);
 }
 
 std::vector<std::string> Ros1Plugin::get_subscribed_topics() const {
   if (!initialized_.load()) {
+    return {};
+  }
+
+  if (!subscription_manager_) {
     return {};
   }
 

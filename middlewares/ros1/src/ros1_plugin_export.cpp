@@ -133,6 +133,22 @@ static int32_t axon_stop(void) {
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
+// Stop per-recording ROS1 producers without tearing down process-level ROS state.
+static int32_t axon_session_stop(void) {
+  std::lock_guard<std::mutex> lock(g_plugin_mutex);
+
+  if (!g_plugin) {
+    return static_cast<int32_t>(AXON_SUCCESS);
+  }
+
+  if (!g_plugin->stop_session()) {
+    return static_cast<int32_t>(AXON_ERROR_INTERNAL);
+  }
+
+  AXON_LOG_INFO("ROS1 plugin session stopped via C API");
+  return static_cast<int32_t>(AXON_SUCCESS);
+}
+
 // Shared options_json parser for both axon_subscribe and axon_subscribe_v2.
 // Kept file-static so the v1.x and v1.2 entry points stay semantically
 // identical — only the callback-dispatch side differs.
@@ -314,8 +330,12 @@ static int32_t axon_publish(
 // vtable.reserved[0]. The host's plugin_subscribe_v2() helper only
 // probes reserved[0] when abi_version_minor >= 2; older hosts simply
 // continue to use axon_subscribe (backward compatible).
+//
+// Bumped to 1.3 because reserved[1] now exposes AxonSessionStopFn. Hosts use
+// this between recording sessions to keep ROS1 process state alive until final
+// vtable.stop during recorder teardown.
 #define AXON_ABI_VERSION_MAJOR 1
-#define AXON_ABI_VERSION_MINOR 2
+#define AXON_ABI_VERSION_MINOR 3
 
 // Plugin vtable structure (matching loader's expectation).
 // Keep this layout bit-identical with AxonPluginVtable in
@@ -347,9 +367,8 @@ struct AxonPluginDescriptor {
 
 // Static vtable.
 //
-// reserved[0] carries AxonSubscribeV2Fn (ABI v1.2 zero-copy). The recorder
-// probes `abi_version_minor >= 2 && vtable.reserved[0] != nullptr` to
-// decide whether to call axon_subscribe_v2 directly. The remaining
+// reserved[0] carries AxonSubscribeV2Fn (ABI v1.2 zero-copy). reserved[1]
+// carries AxonSessionStopFn (ABI v1.3 per-session stop). The remaining
 // reserved slots are intentionally left null for future ABI growth.
 static AxonPluginVtable ros1_vtable = {
   axon_init,
@@ -359,7 +378,8 @@ static AxonPluginVtable ros1_vtable = {
   axon_publish,
   {
     reinterpret_cast<void*>(&axon_subscribe_v2),  // reserved[0]
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+    reinterpret_cast<void*>(&axon_session_stop),  // reserved[1]
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
   }
 };
 

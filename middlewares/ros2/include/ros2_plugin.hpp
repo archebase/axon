@@ -10,6 +10,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "ros2_subscription_wrapper.hpp"
@@ -30,6 +31,9 @@ public:
 
   // Stop the plugin
   bool stop();
+
+  // Stop per-recording producers/subscriptions while preserving initialized ROS2 state.
+  bool stop_session();
 
   // Check if initialized
   bool is_initialized() const {
@@ -70,6 +74,8 @@ public:
   }
 
 private:
+  bool ensure_subscription_manager();
+
   rclcpp::Node::SharedPtr node_;
   std::unique_ptr<SubscriptionManager> subscription_manager_;
   std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
