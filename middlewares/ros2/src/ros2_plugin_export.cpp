@@ -132,6 +132,22 @@ static int32_t axon_stop(void) {
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
+// ABI v1.3: stop per-recording producers without destroying initialized plugin state.
+static int32_t axon_session_stop(void) {
+  std::lock_guard<std::mutex> lock(g_plugin_mutex);
+
+  if (!g_plugin) {
+    return static_cast<int32_t>(AXON_SUCCESS);
+  }
+
+  if (!g_plugin->stop_session()) {
+    return static_cast<int32_t>(AXON_ERROR_INTERNAL);
+  }
+
+  AXON_LOG_INFO("ROS2 plugin session stopped via C API");
+  return static_cast<int32_t>(AXON_SUCCESS);
+}
+
 // Subscribe to a topic with callback and optional options (JSON string, can be nullptr)
 static int32_t axon_subscribe(
   const char* topic_name, const char* message_type, const char* options_json,
@@ -303,8 +319,9 @@ static int32_t axon_publish(
 // Version information.
 // v1.1: subscribe(options_json, ...) signature change.
 // v1.2: zero-copy AxonSubscribeV2Fn exposed via vtable.reserved[0].
+// v1.3: AxonSessionStopFn exposed via vtable.reserved[1].
 #define AXON_ABI_VERSION_MAJOR 1
-#define AXON_ABI_VERSION_MINOR 2
+#define AXON_ABI_VERSION_MINOR 3
 
 // Plugin vtable structure (matching loader's expectation)
 struct AxonPluginVtable {
@@ -328,9 +345,9 @@ struct AxonPluginDescriptor {
 };
 
 // Static vtable.
-// reserved[0] carries AxonSubscribeV2Fn (ABI v1.2 zero-copy). The recorder
-// probes `abi_version_minor >= 2 && vtable.reserved[0] != nullptr` to decide
-// whether to use the zero-copy path or fall back to v1.x subscribe.
+// reserved[0] carries AxonSubscribeV2Fn (ABI v1.2 zero-copy) and reserved[1]
+// carries AxonSessionStopFn (ABI v1.3 per-session stop). The recorder probes
+// these slots by ABI minor before using them.
 static AxonPluginVtable ros2_vtable = {
   axon_init,
   axon_start,
@@ -339,7 +356,8 @@ static AxonPluginVtable ros2_vtable = {
   axon_publish,
   {
     reinterpret_cast<void*>(&axon_subscribe_v2),
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+    reinterpret_cast<void*>(&axon_session_stop),
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
   }
 };
 

@@ -14,7 +14,7 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.14)
-project(Axon VERSION 0.3.3 LANGUAGES CXX)
+project(Axon VERSION 0.3.4 LANGUAGES CXX)
 
 # =============================================================================
 # Centralized Path Definitions

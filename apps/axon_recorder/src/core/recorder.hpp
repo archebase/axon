@@ -257,7 +257,7 @@ public:
   /**
    * Start recording
    *
-   * Loads plugin, subscribes to topics, starts worker thread.
+   * Uses the process-lifetime plugin, subscribes to topics, starts worker thread.
    *
    * @return true on success, false on failure
    */
@@ -266,7 +266,7 @@ public:
   /**
    * Stop recording
    *
-   * Stops plugin, unsubscribes, flushes queue, closes MCAP.
+   * Stops per-session producers/subscriptions, flushes queue, closes MCAP.
    */
   void stop();
 
@@ -452,6 +452,16 @@ private:
   bool setup_subscriptions();
 
   /**
+   * Load and initialize middleware plugin for the recorder process lifetime.
+   */
+  bool ensure_plugin_loaded();
+
+  /**
+   * Final middleware shutdown for recorder destruction.
+   */
+  void shutdown_plugins();
+
+  /**
    * Get subscription configuration for a topic
    */
   const SubscriptionConfig* get_subscription_config(const std::string& topic_name) const;
@@ -482,6 +492,9 @@ private:
 
   RecorderConfig config_;
   PluginLoader plugin_loader_;
+  std::string active_plugin_name_;
+  bool plugin_initialized_ = false;
+  bool plugins_shutting_down_ = false;
 
   // Schema resolver for populating MCAP schema definitions from .msg files
   std::unique_ptr<SchemaResolver> schema_resolver_;

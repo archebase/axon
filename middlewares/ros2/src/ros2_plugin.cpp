@@ -4,6 +4,8 @@
 
 #include "ros2_plugin.hpp"
 
+#include <cstring>
+
 #include <nlohmann/json.hpp>
 
 // Define component name for logging
@@ -20,6 +22,18 @@ Ros2Plugin::Ros2Plugin()
 
 Ros2Plugin::~Ros2Plugin() {
   stop();
+}
+
+bool Ros2Plugin::ensure_subscription_manager() {
+  if (!node_) {
+    return false;
+  }
+
+  if (!subscription_manager_) {
+    subscription_manager_ = std::make_unique<SubscriptionManager>(node_);
+  }
+
+  return true;
 }
 
 bool Ros2Plugin::init(const char* config_json) {
@@ -63,7 +77,11 @@ bool Ros2Plugin::init(const char* config_json) {
     }
 
     // Create subscription manager
-    subscription_manager_ = std::make_unique<SubscriptionManager>(node_);
+    if (!ensure_subscription_manager()) {
+      AXON_LOG_ERROR("Failed to create ROS2 subscription manager");
+      node_.reset();
+      return false;
+    }
 
     initialized_.store(true);
     AXON_LOG_INFO("ROS2 plugin initialized: " << kv("node", node_->get_fully_qualified_name()));
@@ -111,35 +129,50 @@ bool Ros2Plugin::start() {
 }
 
 bool Ros2Plugin::stop() {
+  const bool should_release_node = initialized_.load();
+  if (!stop_session()) {
+    return false;
+  }
+
+  if (should_release_node) {
+    AXON_LOG_INFO("Shutting down ROS2 plugin");
+
+    // Shutdown node
+    node_.reset();
+
+    initialized_.store(false);
+    AXON_LOG_INFO("ROS2 plugin shut down");
+  }
+
+  return true;
+}
+
+bool Ros2Plugin::stop_session() {
   if (!initialized_.load()) {
     return true;
   }
 
-  AXON_LOG_INFO("Shutting down ROS2 plugin");
+  AXON_LOG_INFO("Stopping ROS2 plugin session");
 
   // Stop spinning
-  if (spinning_.load()) {
-    spinning_.store(false);
-
+  if (spinning_.exchange(false)) {
     if (executor_) {
       executor_->cancel();
     }
-
-    if (executor_thread_.joinable()) {
-      executor_thread_.join();
-    }
-
-    executor_.reset();
+  } else if (executor_) {
+    executor_->cancel();
   }
 
-  // Clear subscription manager
+  if (executor_thread_.joinable()) {
+    executor_thread_.join();
+  }
+
+  executor_.reset();
+
+  // Clear per-session subscriptions while preserving the node for the next recording.
   subscription_manager_.reset();
 
-  // Shutdown node
-  node_.reset();
-
-  initialized_.store(false);
-  AXON_LOG_INFO("ROS2 plugin shut down");
+  AXON_LOG_INFO("ROS2 plugin session stopped");
 
   return true;
 }
@@ -149,6 +182,11 @@ bool Ros2Plugin::subscribe(
 ) {
   if (!initialized_.load()) {
     RCUTILS_LOG_ERROR("Cannot subscribe: plugin not initialized");
+    return false;
+  }
+
+  if (!ensure_subscription_manager()) {
+    AXON_LOG_ERROR("Cannot subscribe: subscription manager unavailable");
     return false;
   }
 
@@ -170,6 +208,11 @@ bool Ros2Plugin::subscribe(
     return false;
   }
 
+  if (!ensure_subscription_manager()) {
+    AXON_LOG_ERROR("Cannot subscribe: subscription manager unavailable");
+    return false;
+  }
+
   return subscription_manager_->subscribe(topic_name, message_type, options, callback);
 }
 
@@ -182,6 +225,11 @@ bool Ros2Plugin::subscribe_v2(
     return false;
   }
 
+  if (!ensure_subscription_manager()) {
+    AXON_LOG_ERROR("Cannot subscribe_v2: subscription manager unavailable");
+    return false;
+  }
+
   return subscription_manager_->subscribe_v2(topic_name, message_type, options, callback);
 }
 
@@ -191,11 +239,16 @@ bool Ros2Plugin::unsubscribe(const std::string& topic_name) {
     return false;
   }
 
+  if (!ensure_subscription_manager()) {
+    AXON_LOG_ERROR("Cannot unsubscribe: subscription manager unavailable");
+    return false;
+  }
+
   return subscription_manager_->unsubscribe(topic_name);
 }
 
 std::vector<std::string> Ros2Plugin::get_subscribed_topics() const {
-  if (!initialized_.load()) {
+  if (!initialized_.load() || !subscription_manager_) {
     return {};
   }
 

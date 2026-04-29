@@ -53,6 +53,11 @@ RECORDER_LOG="$LOG_DIR/recorder.out"
 TRANSFER_LOG="$LOG_DIR/transfer.out"
 PANEL_LOG="$LOG_DIR/panel.out"
 
+# Resolve the directory this script lives in so we can locate sibling helpers
+# (e.g. axon-log-filter.py) regardless of how the user invoked us.
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
+LOG_FILTER=${AXON_LOG_FILTER:-$SCRIPT_DIR/axon-log-filter.py}
+
 # ------------------------------ helpers -----------------------------
 c_green='\033[0;32m'; c_red='\033[0;31m'; c_yel='\033[0;33m'; c_rst='\033[0m'
 info() { echo -e "${c_green}[axon]${c_rst} $*"; }
@@ -109,9 +114,22 @@ INNER_EOF
 
 wrap_ros1_cmd() {
   # $1 = human name, $2 = logfile, $3... = command
+  #
+  # Same as wrap_cmd, but also:
+  #   * sources /opt/ros/noetic/setup.bash if ROS env is not set yet
+  #   * pipes stdout/stderr through axon-log-filter.py so that the noisy
+  #     "Error in XmlRpcDispatch::work: error in poll (-1)." flood from roscpp
+  #     is collapsed and a diagnostics bundle is dumped on first occurrence.
   local name=$1 log=$2; shift 2
   local cmd; cmd=$(printf '%q ' "$@")
   local wrapper="/tmp/.axon_${name}_wrapper.sh"
+
+  if [ ! -f "$LOG_FILTER" ]; then
+    warn "log filter not found at $LOG_FILTER; falling back to plain wrap_cmd"
+    wrap_cmd "$name" "$log" "$@"
+    return
+  fi
+
   cat > "$wrapper" <<INNER_EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -119,10 +137,11 @@ if [ -z "\${ROS_DISTRO:-}" ] && [ -f /opt/ros/noetic/setup.bash ]; then
   source /opt/ros/noetic/setup.bash
 fi
 export ROS_MASTER_URI="\${ROS_MASTER_URI:-http://localhost:11311}"
+export AXON_SESSION='$SESSION'
 printf '\033[1;36m==> %s starting\033[0m\n' '$name'
 printf 'log: %s\n\n' '$log'
 set +e
-eval $cmd 2>&1 | tee -a '$log'
+eval $cmd 2>&1 | AXON_LOG_DIR_FILTER='$LOG_DIR' python3 '$LOG_FILTER' | tee -a '$log'
 ec=\${PIPESTATUS[0]}
 set -e
 printf '\n\033[1;31m==> %s exited with %d\033[0m\n' '$name' "\$ec"

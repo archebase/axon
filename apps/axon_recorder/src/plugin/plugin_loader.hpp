@@ -66,6 +66,7 @@ using AxonSubscribeFn =
   AxonStatus (*)(const char*, const char*, const char*, AxonMessageCallback, void*);
 using AxonSubscribeV2Fn =
   AxonStatus (*)(const char*, const char*, const char*, AxonMessageCallbackV2, void*);
+using AxonSessionStopFn = AxonStatus (*)();
 using AxonPublishFn = AxonStatus (*)(const char*, const uint8_t*, size_t, const char*);
 
 // Plugin vtable structure
@@ -75,6 +76,8 @@ using AxonPublishFn = AxonStatus (*)(const char*, const uint8_t*, size_t, const 
 //
 // Current reserved layout:
 //   reserved[0] = AxonSubscribeV2Fn (ABI v1.2+; nullptr for older plugins)
+//   reserved[1] = AxonSessionStopFn (ABI v1.3+; stops per-session producers
+//                 without tearing down process-lifetime middleware state)
 struct AxonPluginVtable {
   AxonInitFn init;
   AxonStartFn start;
@@ -120,6 +123,25 @@ inline AxonSubscribeV2Fn plugin_subscribe_v2(const AxonPluginDescriptor* descrip
     return nullptr;
   }
   return reinterpret_cast<AxonSubscribeV2Fn>(descriptor->vtable->reserved[0]);
+}
+
+/**
+ * Return the plugin's per-session stop function when available. Unlike the
+ * vtable stop slot, this does not imply final middleware shutdown or dlclose;
+ * it is used between recording sessions to halt producers while keeping
+ * process-lifetime middleware state alive.
+ */
+inline AxonSessionStopFn plugin_session_stop(const AxonPluginDescriptor* descriptor) {
+  if (descriptor == nullptr || descriptor->vtable == nullptr) {
+    return nullptr;
+  }
+  if (descriptor->abi_version_major != 1) {
+    return nullptr;
+  }
+  if (descriptor->abi_version_minor < 3) {
+    return nullptr;
+  }
+  return reinterpret_cast<AxonSessionStopFn>(descriptor->vtable->reserved[1]);
 }
 
 class PluginLoader {

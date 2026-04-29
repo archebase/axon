@@ -31,6 +31,12 @@ public:
   // Stop the plugin
   bool stop();
 
+  // Stop per-session producers/subscriptions while preserving process-level ROS state.
+  bool stop_session();
+
+  // Shutdown process-level ROS state. Intended for recorder process teardown only.
+  void shutdown_ros();
+
   // Check if initialized
   bool is_initialized() const {
     return initialized_;
@@ -92,6 +98,8 @@ public:
   }
 
 private:
+  void ensure_subscription_manager();
+
   ros::NodeHandlePtr node_handle_;
   std::unique_ptr<SubscriptionManager> subscription_manager_;
   std::unique_ptr<ros::AsyncSpinner> async_spinner_;

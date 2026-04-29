@@ -103,6 +103,8 @@ AxonRecorder::~AxonRecorder() {
   // or early-exit path skips that call, the ws_ioc_ / ws_thread_ members
   // would be destroyed while still running, causing std::terminate().
   stop_ws_rpc_client();
+  stop_http_server();
+  shutdown_plugins();
 }
 
 bool AxonRecorder::initialize(const RecorderConfig& config) {
@@ -137,6 +139,55 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
     );
   }
 
+  // Middleware plugins own process-lifetime state such as ROS1 roscpp/xmlrpcpp
+  // singletons. Load and initialize them once instead of rebuilding that state
+  // for every recording session.
+  if (!config_.plugin_path.empty() && !ensure_plugin_loaded()) {
+    return false;
+  }
+
+  return true;
+}
+
+bool AxonRecorder::ensure_plugin_loaded() {
+  if (plugin_initialized_) {
+    return true;
+  }
+
+  if (config_.plugin_path.empty()) {
+    set_error_helper("Plugin path is empty");
+    return false;
+  }
+
+  if (active_plugin_name_.empty() || !plugin_loader_.is_loaded(active_plugin_name_)) {
+    auto plugin_name = plugin_loader_.load(config_.plugin_path);
+    if (!plugin_name.has_value()) {
+      set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+      return false;
+    }
+
+    active_plugin_name_ = plugin_name.value();
+  }
+
+  const auto* descriptor = plugin_loader_.get_descriptor(active_plugin_name_);
+  if (!descriptor || !descriptor->vtable || !descriptor->vtable->init) {
+    set_error_helper("Invalid plugin descriptor");
+    plugin_loader_.unload(active_plugin_name_);
+    active_plugin_name_.clear();
+    return false;
+  }
+
+  AxonStatus status = descriptor->vtable->init(config_.plugin_config.c_str());
+  if (status != AXON_SUCCESS) {
+    set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
+    plugin_loader_.unload(active_plugin_name_);
+    active_plugin_name_.clear();
+    return false;
+  }
+
+  plugin_initialized_ = true;
+  plugins_shutting_down_ = false;
+
   return true;
 }
 
@@ -161,30 +212,23 @@ bool AxonRecorder::start() {
     return false;
   }
 
-  // Load plugin
-  auto plugin_name = plugin_loader_.load(config_.plugin_path);
-  if (!plugin_name.has_value()) {
-    set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+  if (!ensure_plugin_loaded()) {
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     return false;
   }
 
   // Get plugin descriptor
-  const auto* descriptor = plugin_loader_.get_descriptor(plugin_name.value());
+  const auto* descriptor = plugin_loader_.get_descriptor(active_plugin_name_);
   if (!descriptor || !descriptor->vtable) {
     set_error_helper("Invalid plugin descriptor");
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     return false;
   }
 
-  // Initialize plugin
-  if (descriptor->vtable->init) {
-    AxonStatus status = descriptor->vtable->init(config_.plugin_config.c_str());
-    if (status != AXON_SUCCESS) {
-      set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
-      state_manager_.transition_to(RecorderState::IDLE, error_msg);
-      return false;
-    }
+  if (!descriptor->vtable->start) {
+    set_error_helper("Plugin missing start function");
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    return false;
   }
 
   // Create recording session
@@ -304,14 +348,12 @@ bool AxonRecorder::start() {
   }
 
   // Start plugin
-  if (descriptor->vtable->start) {
-    AxonStatus status = descriptor->vtable->start();
-    if (status != AXON_SUCCESS) {
-      set_error_helper(std::string("Plugin start failed: ") + status_to_string(status));
-      state_manager_.transition_to(RecorderState::IDLE, error_msg);
-      recording_session_.reset();
-      return false;
-    }
+  AxonStatus status = descriptor->vtable->start();
+  if (status != AXON_SUCCESS) {
+    set_error_helper(std::string("Plugin start failed: ") + status_to_string(status));
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
+    return false;
   }
 
   // Start worker thread pool
@@ -332,13 +374,13 @@ void AxonRecorder::stop() {
   //
   // ABI v1.2 zero-copy messages land in per-topic queues wrapped in
   // PooledBuffer::adopt(), whose external_release_ is a function pointer
-  // into the producing plugin's .text section. Any MessageItem still
-  // queued when plugin_loader_.unload_all() calls dlclose() will, when
-  // later destroyed, invoke that pointer against unmapped memory and
-  // SIGSEGV.
+  // into the producing plugin's .text section. The plugin now remains loaded
+  // for the AxonRecorder process lifetime, so ordinary finish only stops
+  // producers/subscriptions and drains queues. Final dlclose happens from
+  // shutdown_plugins() during destruction.
   //
-  // To guarantee both zero data loss AND no dangling release_fn on
-  // unload, shutdown proceeds in this order:
+  // To guarantee zero data loss while preserving process-lifetime middleware
+  // state, shutdown proceeds in this order:
   //
   //   1. Halt every plugin's producer loop (e.g. the ROS2 executor).
   //      After plugin->stop() returns, no callback is in flight and no
@@ -353,16 +395,36 @@ void AxonRecorder::stop() {
   //      the calling thread while the plugin is still mapped in, so the
   //      adopted release_fn is still valid.
   //   4. Close the MCAP session (flush, write metadata, emit sidecar).
-  //   5. dlclose() plugins. At this point every queue is empty; no
-  //      MessageItem exists with an adopted buffer that could become a
-  //      dangling function pointer across future sessions.
+  //   5. Keep plugins loaded. This preserves process-lifetime middleware
+  //      state (notably ROS1 roscpp/xmlrpcpp) across sessions.
 
-  // 1. Stop plugins so no more messages can be enqueued.
+  // 1. Stop per-session plugin producers so no more messages can be enqueued.
   auto plugins = plugin_loader_.loaded_plugins();
   for (const auto& plugin_name : plugins) {
     const auto* descriptor = plugin_loader_.get_descriptor(plugin_name);
-    if (descriptor && descriptor->vtable && descriptor->vtable->stop) {
-      descriptor->vtable->stop();
+    if (!descriptor || !descriptor->vtable) {
+      continue;
+    }
+
+    AxonStatus status = AXON_SUCCESS;
+    AxonSessionStopFn session_stop = plugin_session_stop(descriptor);
+    if (session_stop) {
+      status = session_stop();
+    } else if (descriptor->vtable->stop) {
+      // Backward compatibility for plugins that do not yet expose the v1.3
+      // session-stop slot. ROS1 should use session_stop so its process-wide
+      // roscpp/xmlrpcpp state survives between sessions.
+      status = descriptor->vtable->stop();
+      if (status == AXON_SUCCESS && plugin_name == active_plugin_name_) {
+        plugin_initialized_ = false;
+      }
+    }
+
+    if (status != AXON_SUCCESS) {
+      AXON_LOG_ERROR(
+        "Plugin session stop failed" << axon::logging::kv("plugin", plugin_name)
+                                     << axon::logging::kv("status", status_to_string(status))
+      );
     }
   }
 
@@ -374,9 +436,8 @@ void AxonRecorder::stop() {
 
   // 3. Defense-in-depth: synchronously drain any residual items that
   //    slipped past worker_thread_func's own drain loop. Must run before
-  //    recording_session_->close() (handler writes via the session) and
-  //    before plugin_loader_.unload_all() (adopted release_fn still
-  //    points into the plugin's .text section). Normally a no-op.
+  //    recording_session_->close() because the handler writes via the
+  //    session. Normally a no-op.
   if (worker_pool_) {
     worker_pool_->drain_remaining_sync();
   }
@@ -391,9 +452,7 @@ void AxonRecorder::stop() {
     recording_session_.reset();
   }
 
-  // 5. Unload plugins. Safe now: queues are empty, so no surviving
-  //    PooledBuffer references plugin code.
-  plugin_loader_.unload_all();
+  // 5. Keep plugins loaded until AxonRecorder destruction.
 
   // Reset worker pool statistics and drop report state for next session.
   if (worker_pool_) {
@@ -408,6 +467,39 @@ void AxonRecorder::stop() {
   state_manager_.transition_to(RecorderState::IDLE, error_msg);
 
   running_.store(false);
+}
+
+void AxonRecorder::shutdown_plugins() {
+  if (plugins_shutting_down_) {
+    return;
+  }
+  plugins_shutting_down_ = true;
+
+  auto plugins = plugin_loader_.loaded_plugins();
+  for (const auto& plugin_name : plugins) {
+    const auto* descriptor = plugin_loader_.get_descriptor(plugin_name);
+    if (descriptor && descriptor->vtable && descriptor->vtable->stop) {
+      auto plugin = plugin_loader_.get_plugin(plugin_name);
+      if (plugin) {
+        plugin->running = false;
+      }
+
+      AxonStatus status = descriptor->vtable->stop();
+      if (status != AXON_SUCCESS) {
+        AXON_LOG_ERROR(
+          "Plugin final stop failed" << axon::logging::kv("plugin", plugin_name)
+                                     << axon::logging::kv("status", status_to_string(status))
+        );
+      }
+    }
+  }
+
+  auto loaded_plugins = plugin_loader_.loaded_plugins();
+  for (const auto& plugin_name : loaded_plugins) {
+    plugin_loader_.unload(plugin_name);
+  }
+  active_plugin_name_.clear();
+  plugin_initialized_ = false;
 }
 
 bool AxonRecorder::is_running() const {
