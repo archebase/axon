@@ -65,6 +65,7 @@ if(NOT EXISTS "${ROS2_DIR}")
 endif()
 
 # Find ROS2 libraries
+find_package(rcl_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 
