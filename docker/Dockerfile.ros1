@@ -28,8 +28,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install clang-format-21 from LLVM repository
-RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s 21
-RUN apt-get update && apt-get install -y clang-format-21 && rm -rf /var/lib/apt/lists/*
+RUN . /etc/os-release && \
+    wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
+        gpg --dearmor -o /usr/share/keyrings/apt.llvm.org.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-21 main" > \
+        /etc/apt/sources.list.d/llvm-21.list && \
+    apt-get update && \
+    apt-get install -y clang-format-21 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Initialize rosdep
 RUN rosdep init || true && rosdep update
