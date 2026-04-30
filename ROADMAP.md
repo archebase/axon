@@ -152,30 +152,37 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ## Version 0.4.0 (Performance Optimization)
 
+### Advanced Monitoring
+- [ ] Message Integrity Monitoring
+  - [ ] Sequence number tracking
+  - ✅ Message gap detection and reporting
+  - ✅ Packet loss statistics
+  - ✅ Real-time alert notifications
+- [ ] Latency Monitoring
+  - ✅ End-to-end latency tracking
+  - ✅ Per-topic latency percentile reporting
+  - ✅ Latency anomaly detection and alerting
+  - ✅ Latency hotspot analysis
+- [ ] Quality of Service Monitoring
+  - ✅ Bandwidth utilization
+  - ✅ Queue depth monitoring
+
 ### Memory Optimization
-- [ ] Zero-Copy Optimization
-  - [ ] Avoid extra copies during serialization
-- [ ] Memory Pool and Preallocation
-  - [ ] Message buffer pooling
-  - [ ] Batch buffer reuse
-  - [ ] Preallocation strategies
+- [✅] Zero-Copy Optimization
+  - [✅] Avoid extra copies during serialization
+- [✅] Memory Pool and Preallocation
+  - [✅] Message buffer pooling
+  - [✅] Batch buffer reuse
+  - [✅] Preallocation strategies
 
 ### Copy Optimization
-- [ ] Batch Writes
-  - [ ] Multi-message aggregation for single write
-  - [ ] Reduce system call overhead
-- [ ] Compression Optimization
-  - [ ] Compression and write decoupling
-  - [ ] Zstd/LZ4 compression benchmark comparison
-  - [ ] Optional compression level tuning
-
-### Blocking Backpressure
-- [ ] Blocking Boundary Control
-  - [ ] Allow blocking subscription threads
-  - [ ] **Forbid blocking RPC/control threads**
-- [ ] Thread Group Isolation
-  - [ ] Recording subscriptions use separate executor/threads
-  - [ ] Control plane separate thread pool
+- [✅] Batch Writes
+  - [✅] Multi-message aggregation for single write
+  - [✅] Reduce system call overhead
+- [✅] Compression Optimization
+  - [✅] Compression and write decoupling
+  - [✅] Zstd/LZ4 compression benchmark comparison
+  - [✅] Optional compression level tuning
 
 ### Hybrid Recording
 - [ ] Unified recording pipeline for ROS binary + UDP JSON in a single MCAP file
@@ -232,6 +239,14 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - [ ] Topic blacklist/whitelist mechanisms
 - [ ] On-demand subscription
 
+
+### Blocking Backpressure
+- [ ] Blocking Boundary Control
+  - [ ] Allow blocking subscription threads
+  - [ ] **Forbid blocking RPC/control threads**
+- [ ] Thread Group Isolation
+  - [ ] Recording subscriptions use separate executor/threads
+  - [ ] Control plane separate thread pool
 ---
 
 ## Version 0.6.0 (Long-term)
@@ -240,21 +255,6 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - [ ] Multi-tenant support and authentication/authorization
   - [ ] JWT authentication
   - [ ] API key management
-
-### Advanced Monitoring
-- [ ] Message Integrity Monitoring
-  - [ ] Sequence number tracking
-  - [ ] Message gap detection and reporting
-  - [ ] Packet loss statistics
-  - [ ] Real-time alert notifications
-- [ ] Latency Monitoring
-  - [ ] End-to-end latency tracking
-  - [ ] Per-topic latency percentile reporting
-  - [ ] Latency anomaly detection and alerting
-  - [ ] Latency hotspot analysis
-- [ ] Quality of Service Monitoring
-  - [ ] Bandwidth utilization
-  - [ ] Queue depth monitoring
 
 ### Ecosystem and Extensibility
 - [ ] Plugin SDK and Documentation

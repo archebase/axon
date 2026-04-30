@@ -1393,6 +1393,280 @@ TEST_F(WorkerThreadPoolTest, UnknownExceptionDuringDrain) {
   EXPECT_FALSE(pool_->is_running());
 }
 
+// ============================================================================
+// P1: Batching Tests (batch_size / flush_interval_ms)
+// ============================================================================
+
+TEST_F(WorkerThreadPoolTest, BatchSizeTriggersFlush) {
+  // Verify messages are dispatched once batch_size is reached.
+  std::atomic<int> call_count{0};
+  std::vector<int64_t> seen_timestamps;
+  std::mutex seen_mu;
+
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t ts, const uint8_t*, size_t, uint32_t) {
+      std::lock_guard<std::mutex> lk(seen_mu);
+      seen_timestamps.push_back(ts);
+      call_count++;
+      return true;
+    };
+
+  WorkerThreadPool::BatchConfig batch_cfg;
+  batch_cfg.batch_size = 4;
+  batch_cfg.flush_interval_ms = 10000;  // long enough that size trigger is the only reason to flush
+
+  pool_->create_topic_worker("/batch_size", handler, batch_cfg);
+  pool_->start();
+
+  for (int i = 0; i < 8; ++i) {
+    MessageItem item(1000 + i, "t", {0x01});
+    pool_->try_push("/batch_size", std::move(item));
+  }
+
+  // Wait enough time for two size-triggered flushes (batch_size=4, 8 msgs => 2 flushes).
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  pool_->stop();
+
+  EXPECT_EQ(call_count.load(), 8);
+  // Ordering must be preserved in dispatch.
+  std::lock_guard<std::mutex> lk(seen_mu);
+  for (size_t i = 0; i < seen_timestamps.size(); ++i) {
+    EXPECT_EQ(seen_timestamps[i], 1000 + static_cast<int64_t>(i));
+  }
+}
+
+TEST_F(WorkerThreadPoolTest, FlushIntervalTriggersFlushForPartialBatch) {
+  // With batch_size larger than pushed items, the time trigger must fire.
+  std::atomic<int> call_count{0};
+
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      call_count++;
+      return true;
+    };
+
+  WorkerThreadPool::BatchConfig batch_cfg;
+  batch_cfg.batch_size = 100;  // will never be reached
+  batch_cfg.flush_interval_ms = 50;
+
+  pool_->create_topic_worker("/flush_interval", handler, batch_cfg);
+  pool_->start();
+
+  for (int i = 0; i < 3; ++i) {
+    MessageItem item(1000 + i, "t", {0x01});
+    pool_->try_push("/flush_interval", std::move(item));
+  }
+
+  // Wait long enough for a time-triggered flush (>> flush_interval_ms).
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+  EXPECT_EQ(call_count.load(), 3);
+
+  pool_->stop();
+}
+
+TEST_F(WorkerThreadPoolTest, DefaultBatchConfigPreservesImmediateDispatch) {
+  // When no BatchConfig is provided, default batch_size=1 means each message
+  // is dispatched immediately (backward-compatible behavior).
+  std::atomic<int> call_count{0};
+
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      call_count++;
+      return true;
+    };
+
+  pool_->create_topic_worker("/immediate", handler);  // default batch config
+  pool_->start();
+
+  for (int i = 0; i < 5; ++i) {
+    MessageItem item(1000 + i, "t", {0x01});
+    pool_->try_push("/immediate", std::move(item));
+  }
+
+  // Short wait is enough; each message should dispatch as soon as it's popped.
+  for (int i = 0; i < 50 && call_count.load() < 5; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  EXPECT_EQ(call_count.load(), 5);
+  pool_->stop();
+}
+
+TEST_F(WorkerThreadPoolTest, BatchFlushesRemainingOnStop) {
+  // Any buffered but unflushed messages must be drained during stop().
+  std::atomic<int> call_count{0};
+
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      call_count++;
+      return true;
+    };
+
+  WorkerThreadPool::BatchConfig batch_cfg;
+  batch_cfg.batch_size = 100;
+  batch_cfg.flush_interval_ms = 100000;  // effectively disabled
+
+  pool_->create_topic_worker("/drain_batch", handler, batch_cfg);
+  pool_->start();
+
+  // Push fewer than batch_size, so size-trigger won't fire.
+  for (int i = 0; i < 7; ++i) {
+    MessageItem item(1000 + i, "t", {0x01});
+    pool_->try_push("/drain_batch", std::move(item));
+  }
+
+  // Stop promptly; batch must still be flushed from the shutdown drain path.
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  pool_->stop();
+
+  EXPECT_EQ(call_count.load(), 7);
+}
+
+TEST_F(WorkerThreadPoolTest, BatchConfigNormalizesInvalidValues) {
+  // batch_size=0 and negative flush_interval_ms should be normalized,
+  // not propagated as-is. No deadlock / no infinite batch.
+  std::atomic<int> call_count{0};
+
+  auto handler =
+    [&](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      call_count++;
+      return true;
+    };
+
+  WorkerThreadPool::BatchConfig bad_cfg;
+  bad_cfg.batch_size = 0;
+  bad_cfg.flush_interval_ms = -5;
+
+  pool_->create_topic_worker("/normalized", handler, bad_cfg);
+  pool_->start();
+
+  for (int i = 0; i < 3; ++i) {
+    MessageItem item(1000 + i, "t", {0x01});
+    pool_->try_push("/normalized", std::move(item));
+  }
+
+  for (int i = 0; i < 50 && call_count.load() < 3; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  EXPECT_EQ(call_count.load(), 3);
+  pool_->stop();
+}
+
+// ---------------------------------------------------------------------------
+// ABI v1.2 adopt() path: adopted buffers are released after worker dispatch
+// ---------------------------------------------------------------------------
+TEST_F(WorkerThreadPoolTest, AdoptedBufferIsReleasedAfterDispatch) {
+  std::atomic<int> release_count{0};
+  auto release_fn = +[](void* opaque) {
+    static_cast<std::atomic<int>*>(opaque)->fetch_add(1);
+  };
+
+  std::atomic<int> handler_calls{0};
+  std::atomic<bool> saw_expected_bytes{true};
+  auto handler =
+    [&](
+      const std::string&, const std::string&, int64_t, const uint8_t* data, size_t size, uint32_t
+    ) {
+      handler_calls++;
+      if (size != 4 || data[0] != 0xDE || data[1] != 0xAD) {
+        saw_expected_bytes.store(false);
+      }
+      return true;
+    };
+
+  pool_->create_topic_worker("/adopt", handler);
+  pool_->start();
+
+  // Stable external storage for the adopted buffer (simulates a
+  // ros2-side SerializedMessage held for the duration of processing).
+  static uint8_t external_buf[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+
+  MessageItem item;
+  item.timestamp_ns = 42;
+  item.message_type = "t";
+  item.raw_data = axon::memory::PooledBuffer::adopt(
+    external_buf, sizeof(external_buf), release_fn, &release_count
+  );
+
+  EXPECT_TRUE(pool_->try_push("/adopt", std::move(item)));
+
+  for (int i = 0; i < 100 && handler_calls.load() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+
+  EXPECT_EQ(handler_calls.load(), 1);
+  EXPECT_TRUE(saw_expected_bytes.load());
+
+  // Give the worker a tick to destroy the MessageItem after dispatch; the
+  // release function must have fired exactly once.
+  for (int i = 0; i < 50 && release_count.load() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  EXPECT_EQ(release_count.load(), 1);
+
+  pool_->stop();
+  // Still exactly one release after stop (no double-release).
+  EXPECT_EQ(release_count.load(), 1);
+}
+
+TEST_F(WorkerThreadPoolTest, AdoptedBufferReleasedWhenPushToUnknownTopic) {
+  std::atomic<int> release_count{0};
+  auto release_fn = +[](void* opaque) {
+    static_cast<std::atomic<int>*>(opaque)->fetch_add(1);
+  };
+
+  // No topic worker registered: try_push must fail. The caller's MessageItem
+  // is NOT moved-from on failure (try_push returns before calling the inner
+  // queue move), so it releases naturally on scope exit — proving the adopt
+  // contract flows through end-to-end regardless of push outcome.
+  static uint8_t blob[1] = {0};
+  {
+    MessageItem item;
+    item.message_type = "t";
+    item.raw_data =
+      axon::memory::PooledBuffer::adopt(blob, sizeof(blob), release_fn, &release_count);
+
+    bool pushed = pool_->try_push("/nonexistent", std::move(item));
+    EXPECT_FALSE(pushed);
+    EXPECT_EQ(release_count.load(), 0);  // still held by `item`
+  }
+  EXPECT_EQ(release_count.load(), 1);
+}
+
+TEST_F(WorkerThreadPoolTest, UndrainedAdoptedBuffersReleasedOnPoolDestruction) {
+  std::atomic<int> release_count{0};
+  auto release_fn = +[](void* opaque) {
+    static_cast<std::atomic<int>*>(opaque)->fetch_add(1);
+  };
+
+  WorkerThreadPool::Config cfg;
+  cfg.queue_capacity_per_topic = 16;
+  cfg.worker_idle_sleep_us = 10;
+  auto local_pool = std::make_unique<WorkerThreadPool>(cfg);
+
+  auto handler =
+    [](const std::string&, const std::string&, int64_t, const uint8_t*, size_t, uint32_t) {
+      return true;
+    };
+  local_pool->create_topic_worker("/t", handler);
+  // Intentionally don't start(): messages sit in the queue.
+
+  static uint8_t blob[1] = {0};
+  for (int i = 0; i < 3; ++i) {
+    MessageItem ok;
+    ok.message_type = "t";
+    ok.raw_data = axon::memory::PooledBuffer::adopt(blob, sizeof(blob), release_fn, &release_count);
+    EXPECT_TRUE(local_pool->try_push("/t", std::move(ok)));
+  }
+  EXPECT_EQ(release_count.load(), 0);
+
+  // Tearing down the pool must release every queued item exactly once.
+  local_pool.reset();
+  EXPECT_EQ(release_count.load(), 3);
+}
+
 }  // namespace
 }  // namespace recorder
 }  // namespace axon

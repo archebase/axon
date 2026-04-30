@@ -4,7 +4,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <thread>
 #include <vector>
 
@@ -12,6 +15,34 @@
 #include "ros2_subscription_wrapper.hpp"
 
 using namespace ros2_plugin;
+
+extern "C" {
+
+using AxonMessageCallback =
+  void (*)(const char*, const uint8_t*, size_t, const char*, uint64_t, void*);
+
+struct AxonPluginVtable {
+  int32_t (*init)(const char*);
+  int32_t (*start)(void);
+  int32_t (*stop)(void);
+  int32_t (*subscribe)(const char*, const char*, const char*, AxonMessageCallback, void*);
+  int32_t (*publish)(const char*, const uint8_t*, size_t, const char*);
+  void* reserved[9];
+};
+
+struct AxonPluginDescriptor {
+  uint32_t abi_version_major;
+  uint32_t abi_version_minor;
+  const char* middleware_name;
+  const char* middleware_version;
+  const char* plugin_version;
+  AxonPluginVtable* vtable;
+  void* reserved[16];
+};
+
+const AxonPluginDescriptor* axon_get_plugin_descriptor(void);
+
+}  // extern "C"
 
 /**
  * @brief Test fixture for ROS2 Plugin tests
@@ -182,6 +213,49 @@ TEST_F(Ros2PluginTest, StartStopLifecycle) {
   EXPECT_TRUE(plugin.stop());
   EXPECT_FALSE(plugin.is_initialized());
   EXPECT_FALSE(plugin.is_running());
+}
+
+/**
+ * @brief Test ABI v1.3 session stop preserves initialized plugin state
+ */
+TEST_F(Ros2PluginTest, SessionStopPreservesInitialization) {
+  Ros2Plugin plugin;
+
+  ASSERT_TRUE(plugin.init("{}"));
+
+  auto callback =
+    [](const std::string&, const std::string&, const std::vector<uint8_t>&, rclcpp::Time) {};
+  ASSERT_TRUE(plugin.subscribe("/session_topic", "std_msgs/msg/String", callback));
+
+  ASSERT_TRUE(plugin.start());
+  ASSERT_TRUE(plugin.is_running());
+
+  EXPECT_TRUE(plugin.stop_session());
+  EXPECT_TRUE(plugin.is_initialized());
+  EXPECT_FALSE(plugin.is_running());
+  EXPECT_NE(plugin.get_node(), nullptr);
+  EXPECT_TRUE(plugin.get_subscribed_topics().empty());
+
+  // Subscriptions can be recreated for a later recording session.
+  EXPECT_TRUE(plugin.subscribe("/session_topic", "std_msgs/msg/String", callback));
+  EXPECT_EQ(plugin.get_subscribed_topics().size(), 1);
+
+  EXPECT_TRUE(plugin.stop());
+  EXPECT_FALSE(plugin.is_initialized());
+}
+
+/**
+ * @brief Test exported descriptor advertises ABI v1.3 capability slots
+ */
+TEST(Ros2PluginExportTest, DescriptorAdvertisesAbi13) {
+  const auto* descriptor = axon_get_plugin_descriptor();
+
+  ASSERT_NE(descriptor, nullptr);
+  ASSERT_NE(descriptor->vtable, nullptr);
+  EXPECT_EQ(descriptor->abi_version_major, 1U);
+  EXPECT_EQ(descriptor->abi_version_minor, 3U);
+  EXPECT_NE(descriptor->vtable->reserved[0], nullptr);
+  EXPECT_NE(descriptor->vtable->reserved[1], nullptr);
 }
 
 /**

@@ -6,6 +6,7 @@
 #define AXON_RECORDER_WORKER_THREAD_POOL_HPP
 
 #include <atomic>
+#include <buffer_pool.hpp>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -25,20 +26,48 @@ namespace recorder {
 /**
  * Message item for the lock-free queue.
  * Uses move-only semantics for zero-copy transfer.
+ *
+ * Payload storage is a PooledBuffer (from core/axon_memory). This replaces
+ * the previous std::vector<uint8_t>, eliminating the per-message
+ * `operator new` on the hot path when the selected size class is already
+ * warmed up in the pool.
+ *
+ * The legacy `std::vector<uint8_t>` constructor is kept for test convenience;
+ * it delegates to a heap allocation via a detached PooledBuffer.
  */
 struct MessageItem {
   int64_t timestamp_ns = 0;
-  std::string message_type;       // ROS2 message type (e.g., "sensor_msgs::msg::Image")
-  std::vector<uint8_t> raw_data;  // Owned raw message bytes
+  uint64_t publish_time_ns = 0;
+  uint64_t receive_time_ns = 0;
+  uint64_t enqueue_time_ns = 0;
+  uint64_t dequeue_time_ns = 0;
+  std::string message_type;             // ROS2 message type (e.g., "sensor_msgs::msg::Image")
+  axon::memory::PooledBuffer raw_data;  // Owned raw message bytes (pooled)
 
   MessageItem() = default;
 
+  // Convenience constructor used by tests: acquires a pool buffer and copies
+  // the given bytes in. Prefer direct PooledBuffer assignment on the hot path.
   MessageItem(int64_t ts, const std::string& type, std::vector<uint8_t>&& data)
       : timestamp_ns(ts)
-      , message_type(type)
-      , raw_data(std::move(data)) {}
+      , message_type(type) {
+    raw_data = axon::memory::BufferPool::instance().acquire(data.empty() ? 1 : data.size());
+    raw_data.assign(data.data(), data.size());
+  }
 
-  // Move-only for zero-copy
+  MessageItem(
+    int64_t ts, uint64_t pub_time, uint64_t recv_time, const std::string& type,
+    std::vector<uint8_t>&& data
+  )
+      : timestamp_ns(ts)
+      , publish_time_ns(pub_time)
+      , receive_time_ns(recv_time)
+      , message_type(type) {
+    raw_data = axon::memory::BufferPool::instance().acquire(data.empty() ? 1 : data.size());
+    raw_data.assign(data.data(), data.size());
+  }
+
+  // Move-only for zero-copy (PooledBuffer is also noexcept-movable)
   MessageItem(MessageItem&&) = default;
   MessageItem& operator=(MessageItem&&) = default;
   MessageItem(const MessageItem&) = delete;
@@ -52,7 +81,11 @@ struct TopicStatsSnapshot {
   uint64_t received = 0;
   uint64_t dropped = 0;
   uint64_t written = 0;
+  uint64_t bytes_received = 0;
+  uint64_t bytes_written = 0;
   uint32_t sequence = 0;
+  size_t queue_depth = 0;
+  size_t queue_capacity = 0;
 };
 
 /**
@@ -62,6 +95,8 @@ struct WorkerTopicStats {
   std::atomic<uint64_t> received{0};
   std::atomic<uint64_t> dropped{0};
   std::atomic<uint64_t> written{0};
+  std::atomic<uint64_t> bytes_received{0};
+  std::atomic<uint64_t> bytes_written{0};
   std::atomic<uint32_t> sequence{0};
 
   /// Create a copyable snapshot of the current values
@@ -70,6 +105,8 @@ struct WorkerTopicStats {
     s.received = received.load(std::memory_order_relaxed);
     s.dropped = dropped.load(std::memory_order_relaxed);
     s.written = written.load(std::memory_order_relaxed);
+    s.bytes_received = bytes_received.load(std::memory_order_relaxed);
+    s.bytes_written = bytes_written.load(std::memory_order_relaxed);
     s.sequence = sequence.load(std::memory_order_relaxed);
     return s;
   }
@@ -117,6 +154,42 @@ public:
   )>;
 
   /**
+   * Callback type for processing messages with latency timing info.
+   * Called by worker threads when messages are dequeued.
+   *
+   * Parameters:
+   * - topic: The topic name
+   * - timestamp_ns: Message timestamp
+   * - data: Serialized message data (pointer to queue item, valid until callback returns)
+   * - data_size: Size of message data
+   * - sequence: Message sequence number for this topic
+   * - publish_time_ns: Original message publish time (from ROS header)
+   * - receive_time_ns: Time when plugin received the message
+   * - enqueue_time_ns: Time when message was enqueued to SPSC queue
+   * - dequeue_time_ns: Time when message was dequeued from SPSC queue
+   *
+   * Returns: true if message was processed successfully
+   */
+  using LatencyMessageHandler = std::function<bool(
+    const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+    const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
+    uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns
+  )>;
+
+  /**
+   * Callback type for message drop notifications.
+   * Called by try_push() when a message is dropped due to queue full.
+   * Must be lightweight — invoked on the plugin callback thread (hot path).
+   *
+   * Parameters:
+   * - topic: The topic name
+   * - message_type: The ROS message type (e.g., "sensor_msgs::msg::Image")
+   * - total_dropped: Total number of messages dropped for this topic so far
+   */
+  using DropCallback = std::function<
+    void(const std::string& topic, const std::string& message_type, uint64_t total_dropped)>;
+
+  /**
    * Configuration for the thread pool.
    */
   struct Config {
@@ -136,8 +209,45 @@ public:
         , use_adaptive_backoff(true) {}
   };
 
+  /**
+   * Per-topic batching configuration.
+   *
+   * Controls how the worker thread groups messages before invoking the user
+   * handler. Batching reduces per-message dispatch / mutex overhead and
+   * enables reuse of a pre-sized scratch vector (preallocation strategy).
+   *
+   * - batch_size == 1: dispatch immediately, no batching (default, backward-compatible).
+   * - batch_size  > 1 + flush_interval_ms > 0: accumulate up to batch_size items
+   *   OR force-flush when the oldest buffered item has aged past flush_interval_ms.
+   *
+   * Note: dispatch still happens one-message-at-a-time from the batch; batching
+   * is about amortizing the accumulate/clear/reserve cost and enabling future
+   * batch-write APIs, not about changing per-message semantics.
+   */
+  struct BatchConfig {
+    size_t batch_size;
+    int flush_interval_ms;
+
+    // Explicit default constructor: required because this struct is used as
+    // a default argument for create_topic_worker() while still being a nested
+    // type; NSDMI would not be available yet at that parse point.
+    BatchConfig()
+        : batch_size(1)
+        , flush_interval_ms(100) {}
+
+    BatchConfig(size_t size, int interval_ms)
+        : batch_size(size)
+        , flush_interval_ms(interval_ms) {}
+  };
+
   explicit WorkerThreadPool(const Config& config = Config());
   ~WorkerThreadPool();
+
+  /**
+   * Set callback for message drop notifications.
+   * Must be called before start(). Not thread-safe with try_push().
+   */
+  void set_drop_callback(DropCallback callback);
 
   // Non-copyable, non-movable
   WorkerThreadPool(const WorkerThreadPool&) = delete;
@@ -150,9 +260,24 @@ public:
    *
    * @param topic Topic name
    * @param handler Message handler callback
+   * @param batch Batching configuration (default: immediate dispatch)
    * @return true if queue was created successfully
    */
-  bool create_topic_worker(const std::string& topic, MessageHandler handler);
+  bool create_topic_worker(
+    const std::string& topic, MessageHandler handler, BatchConfig batch = BatchConfig{}
+  );
+
+  /**
+   * Create a queue and worker for a topic with latency timing support.
+   *
+   * @param topic Topic name
+   * @param handler Latency message handler callback
+   * @param batch Batching configuration (default: immediate dispatch)
+   * @return true if queue was created successfully
+   */
+  bool create_topic_worker(
+    const std::string& topic, LatencyMessageHandler handler, BatchConfig batch = BatchConfig{}
+  );
 
   /**
    * Remove a topic's queue and stop its worker.
@@ -181,6 +306,36 @@ public:
    * Drains remaining messages before stopping.
    */
   void stop();
+
+  /**
+   * Synchronously drain any residual messages remaining in per-topic queues,
+   * dispatching them through each topic's handler on the caller's thread.
+   *
+   * This is a defense-in-depth safety net intended to be invoked by the
+   * recorder's shutdown sequence AFTER stop() has joined all worker threads
+   * but BEFORE any plugin is unloaded (via dlclose). Rationale: `MessageItem`
+   * payloads produced by ABI v1.2 zero-copy callbacks hold adopted
+   * `PooledBuffer`s whose `external_release_` is a function pointer into the
+   * plugin's `.text` section. If the plugin is dlclose'd while any such
+   * item is still queued, that pointer becomes dangling, and the next
+   * consumer (a future session's worker) will crash when the item's
+   * destructor fires.
+   *
+   * Under the normal stop sequence (plugin stopped BEFORE worker pool),
+   * worker_thread_func's own drain loop removes every queued item before
+   * this call runs, so this method is a no-op. It exists so that any
+   * future regression in stop-ordering — or any other path that leaves
+   * items behind — does not silently break the zero-copy contract.
+   *
+   * Must NOT be called while workers or producers are still active:
+   * callers are expected to have already invoked stop() on both the worker
+   * pool and the producing plugin.
+   *
+   * @return Number of residual items that were drained (0 when ordering
+   *         is healthy; a warning is logged for any non-zero count so
+   *         regressions are visible in logs).
+   */
+  size_t drain_remaining_sync();
 
   /**
    * Check if workers are running.
@@ -217,8 +372,20 @@ public:
     uint64_t total_received = 0;
     uint64_t total_dropped = 0;
     uint64_t total_written = 0;
+    uint64_t total_bytes_received = 0;
+    uint64_t total_bytes_written = 0;
   };
   AggregateStats get_aggregate_stats() const;
+
+  /**
+   * Get per-topic queue depths (for monitoring).
+   * Returns a map from topic name to queue depth and capacity.
+   */
+  struct QueueDepthInfo {
+    size_t depth = 0;
+    size_t capacity = 0;
+  };
+  std::unordered_map<std::string, QueueDepthInfo> get_queue_depths() const;
 
   /**
    * Reset all statistics to zero.
@@ -246,6 +413,8 @@ private:
     std::thread worker_thread;
     std::atomic<bool> running{false};
     MessageHandler handler;
+    LatencyMessageHandler latency_handler;
+    BatchConfig batch_config;  // Per-topic batching configuration
     WorkerTopicStats stats;
     std::string topic_name;  // Store topic name for logging
     std::mutex push_mutex;   // Serializes pushes to maintain SPSC single-producer guarantee
@@ -266,6 +435,7 @@ private:
   void worker_thread_func(std::shared_ptr<TopicContext> context);
 
   Config config_;
+  DropCallback drop_callback_;
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> stopping_{false};  // Prevent concurrent stop() calls

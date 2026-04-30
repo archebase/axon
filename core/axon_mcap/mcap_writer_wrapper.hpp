@@ -28,6 +28,22 @@ namespace mcap_wrapper {
 enum class Compression { None, Zstd, Lz4 };
 
 /**
+ * Compression level presets.
+ *
+ * These map to MCAP's internal `CompressionLevel` enum and apply to both
+ * Zstd and LZ4. Slower levels produce smaller files at the cost of more
+ * CPU time.
+ *
+ * Rule-of-thumb for the recorder hot path:
+ *   - Fastest / Fast : highest throughput, largest files (prefer for high
+ *                      bandwidth sensors like point clouds / images)
+ *   - Default        : balanced (recommended default)
+ *   - Slow / Slowest : smallest files, suitable only for post-processing
+ *                      batches or low-rate topics
+ */
+enum class CompressionLevel { Fastest = 0, Fast = 1, Default = 2, Slow = 3, Slowest = 4 };
+
+/**
  * Configuration options for MCAP writer
  */
 struct McapWriterOptions {
@@ -37,8 +53,15 @@ struct McapWriterOptions {
   /// Compression algorithm
   Compression compression = Compression::Zstd;
 
-  /// Compression level (1-22 for Zstd, 1-12 for LZ4)
-  int compression_level = 3;
+  /// Compression level preset (applies to both Zstd and LZ4).
+  /// The legacy integer field `compression_level` is kept for backward
+  /// compatibility and overrides this when non-zero (see `.cpp`).
+  CompressionLevel compression_preset = CompressionLevel::Default;
+
+  /// Legacy compression level. 0 means "use compression_preset". Non-zero
+  /// values are clamped into the CompressionLevel enum range (0..4) for
+  /// backward compatibility with code that passes raw integers like 3.
+  int compression_level = 0;
 
   /// Chunk size in bytes (default 4MB)
   uint64_t chunk_size = 4 * 1024 * 1024;
@@ -48,6 +71,21 @@ struct McapWriterOptions {
 
   /// Enable statistics in footer
   bool enable_statistics = true;
+};
+
+/**
+ * Single message batch item for write_batch().
+ *
+ * `data` must remain valid for the duration of the write_batch() call.
+ * Ownership is not transferred.
+ */
+struct BatchItem {
+  uint16_t channel_id = 0;
+  uint32_t sequence = 0;
+  uint64_t log_time_ns = 0;
+  uint64_t publish_time_ns = 0;
+  const void* data = nullptr;
+  size_t data_size = 0;
 };
 
 /**
@@ -161,6 +199,32 @@ public:
     uint16_t channel_id, uint32_t sequence, uint64_t log_time_ns, uint64_t publish_time_ns,
     const void* data, size_t data_size
   );
+
+  /**
+   * Write a batch of messages in a single critical section.
+   *
+   * This is an optimization of calling write() N times: it acquires the
+   * write mutex exactly once and invokes the underlying MCAP writer in a
+   * tight loop. The net effect is:
+   *   - Amortized mutex overhead across `count` messages.
+   *   - Better cache behavior (the writer's internal chunk buffer stays hot).
+   *   - Fewer atomic RMW operations on statistics counters.
+   *   - Fewer underlying stream write/syscalls, since MCAP only flushes
+   *     chunk boundaries — staying in the same chunk across N messages
+   *     coalesces all those writes into a single buffered block.
+   *
+   * If any message fails the entire batch stops early and the number of
+   * successfully-written messages is returned via `written_out` (may be
+   * null). The return value is `true` iff ALL items were written.
+   *
+   * Thread-safe: concurrent write/write_batch calls are serialized.
+   *
+   * @param items Array of batch items (must remain valid for the call)
+   * @param count Number of items in the array
+   * @param written_out Optional: number of successfully-written items
+   * @return true if all items were written, false on first failure
+   */
+  bool write_batch(const BatchItem* items, size_t count, size_t* written_out = nullptr);
 
   /**
    * Flush pending data to disk

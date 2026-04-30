@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(axon_recorder VERSION 0.3.0)
+project(axon_recorder VERSION 0.3.4)
 
 # =============================================================================
 # Installation Configuration
@@ -39,6 +39,7 @@ include(AxonCoverage OPTIONAL)
 if(DEFINED AXON_REPO_ROOT)
     set(AXON_LOGGING_DIR "${AXON_REPO_ROOT}/core/axon_logging")
     set(AXON_MCAP_DIR "${AXON_REPO_ROOT}/core/axon_mcap")
+    set(AXON_MEMORY_DIR "${AXON_REPO_ROOT}/core/axon_memory")
 
     # Add axon_logging if not already built
     if(NOT TARGET axon_logging AND EXISTS "${AXON_LOGGING_DIR}/CMakeLists.txt")
@@ -53,6 +54,14 @@ if(DEFINED AXON_REPO_ROOT)
         add_subdirectory(
             "${AXON_MCAP_DIR}"
             ${CMAKE_CURRENT_BINARY_DIR}/axon_mcap
+        )
+    endif()
+
+    # Add axon_memory (BufferPool used by worker_thread_pool / MessageItem)
+    if(NOT TARGET axon_memory AND EXISTS "${AXON_MEMORY_DIR}/CMakeLists.txt")
+        add_subdirectory(
+            "${AXON_MEMORY_DIR}"
+            ${CMAKE_CURRENT_BINARY_DIR}/axon_memory
         )
     endif()
 endif()
@@ -138,6 +147,12 @@ add_executable(
     src/metadata/metadata_injector.cpp
     src/config/config_injector.cpp
     src/core/worker_thread_pool.cpp
+    src/core/latency_tracker.cpp
+    src/core/percentile_calculator.cpp
+    src/core/latency_anomaly_detector.cpp
+    src/core/latency_hotspot_analyzer.cpp
+    src/core/latency_monitor.cpp
+    src/core/schema_resolver.cpp
     src/plugin/plugin_loader.cpp
     src/config/config_parser.cpp
     src/http/http_server.cpp
@@ -165,6 +180,7 @@ target_link_libraries(
         axon_plugin_loader
         axon_logging
         axon_mcap
+        axon_memory
         yaml-cpp
         OpenSSL::Crypto
         OpenSSL::SSL

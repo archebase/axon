@@ -113,8 +113,16 @@ void EventBroadcaster::broadcast_stats(const nlohmann::json& stats) {
   ws_server_.broadcast("stats", stats);
 }
 
+void EventBroadcaster::broadcast_latency_hotspot(const nlohmann::json& hotspots) {
+  ws_server_.broadcast("latency_hotspot", hotspots);
+}
+
 void EventBroadcaster::set_stats_callback(StatsCallback callback) {
   stats_callback_ = std::move(callback);
+}
+
+void EventBroadcaster::set_latency_stats_callback(LatencyStatsCallback callback) {
+  latency_stats_callback_ = std::move(callback);
 }
 
 void EventBroadcaster::set_state_callback(StateCallback callback) {

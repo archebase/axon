@@ -8,8 +8,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <iostream>
 #include <random>
+
+#include "../config/task_config.hpp"
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "ws_rpc_client"
@@ -23,11 +26,11 @@ namespace recorder {
 
 WsRpcClient::WsRpcClient(net::io_context& ioc, const WsClientConfig& config)
     : config_(config)
-    , resolver_(net::make_strand(ioc))
-    , ws_(net::make_strand(ioc))
     , strand_(net::make_strand(ioc))
-    , reconnect_timer_(ioc)
-    , ping_timer_(ioc) {
+    , resolver_(strand_)
+    , ws_(strand_)
+    , reconnect_timer_(strand_)
+    , ping_timer_(strand_) {
   // Set up control callback for pong handling
   ws_.control_callback([](beast::websocket::frame_type type, beast::string_view) {
     if (type == beast::websocket::frame_type::pong) {
@@ -41,18 +44,45 @@ WsRpcClient::~WsRpcClient() {
 }
 
 void WsRpcClient::start() {
-  stopped_ = false;
-  connected_ = false;
-  reconnect_attempt_ = 0;
-  do_resolve();
+  net::post(strand_, [this]() {
+    stopped_ = false;
+    connected_ = false;
+    reconnect_attempt_ = 0;
+    reconnect_scheduled_ = false;
+    state_ = ConnectionState::kIdle;
+    do_resolve();
+  });
 }
 
 void WsRpcClient::stop() {
-  stopped_ = true;
-  reconnect_timer_.cancel();
-  ping_timer_.cancel();
-  beast::error_code ec;
-  ws_.close(beast::websocket::close_code::normal, ec);
+  auto cleanup = [this]() {
+    stopped_ = true;
+    connected_ = false;
+    reconnect_scheduled_ = false;
+    state_ = ConnectionState::kStopped;
+    reconnect_timer_.cancel();
+    ping_timer_.cancel();
+
+    beast::error_code ec;
+    if (ws_.is_open()) {
+      ws_.close(beast::websocket::close_code::normal, ec);
+    }
+    beast::get_lowest_layer(ws_).socket().shutdown(tcp::socket::shutdown_both, ec);
+    beast::get_lowest_layer(ws_).socket().close(ec);
+  };
+
+  if (strand_.running_in_this_thread()) {
+    cleanup();
+    return;
+  }
+
+  auto done = std::make_shared<std::promise<void>>();
+  auto future = done->get_future();
+  net::post(strand_, [cleanup, done]() {
+    cleanup();
+    done->set_value();
+  });
+  future.wait();
 }
 
 bool WsRpcClient::is_connected() const {
@@ -84,10 +114,61 @@ void WsRpcClient::send_state_update(
   send_message(msg);
 }
 
+void WsRpcClient::send_config_update(const TaskConfig& config) {
+  nlohmann::json msg;
+  msg["type"] = "config_applied";
+  msg["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::system_clock::now().time_since_epoch()
+  )
+                       .count();
+
+  // Include identity and recording-context fields so keystone / monitoring
+  // clients can confirm the full config was accepted.  Sensitive fields
+  // (callback URLs, user_token) are intentionally omitted.
+  nlohmann::json data;
+  data["task_id"] = config.task_id;
+  if (!config.device_id.empty()) {
+    data["device_id"] = config.device_id;
+  }
+  if (!config.data_collector_id.empty()) {
+    data["data_collector_id"] = config.data_collector_id;
+  }
+  if (!config.order_id.empty()) {
+    data["order_id"] = config.order_id;
+  }
+  if (!config.operator_name.empty()) {
+    data["operator_name"] = config.operator_name;
+  }
+  if (!config.scene.empty()) {
+    data["scene"] = config.scene;
+  }
+  if (!config.subscene.empty()) {
+    data["subscene"] = config.subscene;
+  }
+  if (!config.skills.empty()) {
+    data["skills"] = config.skills;
+  }
+  if (!config.factory.empty()) {
+    data["factory"] = config.factory;
+  }
+  if (!config.topics.empty()) {
+    data["topics"] = config.topics;
+  }
+  msg["data"] = data;
+
+  send_message(msg);
+}
+
 void WsRpcClient::do_resolve() {
   if (stopped_) {
     return;
   }
+  if (state_ == ConnectionState::kResolving || state_ == ConnectionState::kConnecting ||
+      state_ == ConnectionState::kHandshaking || state_ == ConnectionState::kOpen) {
+    return;
+  }
+
+  state_ = ConnectionState::kResolving;
 
   std::string host, port, path;
   if (!parse_url(config_.url, host, port, path)) {
@@ -102,7 +183,12 @@ void WsRpcClient::do_resolve() {
 }
 
 void WsRpcClient::on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
+  if (stopped_) {
+    return;
+  }
+
   if (ec) {
+    state_ = ConnectionState::kIdle;
     AXON_LOG_ERROR("WebSocket resolve error" << kv("error", ec.message()));
     schedule_reconnect();
     return;
@@ -116,6 +202,11 @@ void WsRpcClient::do_connect(tcp::resolver::results_type results) {
     return;
   }
 
+  state_ = ConnectionState::kConnecting;
+
+  beast::error_code ec;
+  beast::get_lowest_layer(ws_).socket().close(ec);
+
   AXON_LOG_INFO("Connecting to WebSocket server");
 
   beast::get_lowest_layer(ws_).async_connect(
@@ -124,13 +215,18 @@ void WsRpcClient::do_connect(tcp::resolver::results_type results) {
 }
 
 void WsRpcClient::on_connect(beast::error_code ec, tcp::endpoint endpoint) {
+  if (stopped_) {
+    return;
+  }
+
   if (ec) {
+    state_ = ConnectionState::kIdle;
     AXON_LOG_ERROR("WebSocket connect error" << kv("error", ec.message()));
     schedule_reconnect();
     return;
   }
 
-  (void)endpoint;  // Unused
+  (void)endpoint;
 
   do_handshake();
 }
@@ -139,6 +235,8 @@ void WsRpcClient::do_handshake() {
   if (stopped_) {
     return;
   }
+
+  state_ = ConnectionState::kHandshaking;
 
   std::string host, port, path;
   parse_url(config_.url, host, port, path);
@@ -158,7 +256,12 @@ void WsRpcClient::do_handshake() {
 }
 
 void WsRpcClient::on_handshake(beast::error_code ec) {
+  if (stopped_) {
+    return;
+  }
+
   if (ec) {
+    state_ = ConnectionState::kIdle;
     AXON_LOG_ERROR("WebSocket handshake error" << kv("error", ec.message()));
     schedule_reconnect();
     return;
@@ -167,6 +270,8 @@ void WsRpcClient::on_handshake(beast::error_code ec) {
   AXON_LOG_INFO("WebSocket connected successfully");
   connected_ = true;
   reconnect_attempt_ = 0;
+  reconnect_scheduled_ = false;
+  state_ = ConnectionState::kOpen;
 
   // Send an initial state snapshot after connection/reconnection.
   // This allows server-side state to converge immediately even without
@@ -241,10 +346,12 @@ void WsRpcClient::do_write() {
   }
 
   writing_ = true;
-  auto msg = std::move(write_queue_.front());
+  auto msg = std::make_shared<std::string>(std::move(write_queue_.front()));
   write_queue_.pop();
 
-  ws_.async_write(net::buffer(msg), beast::bind_front_handler(&WsRpcClient::on_write, this));
+  ws_.async_write(net::buffer(*msg), [this, msg](beast::error_code ec, std::size_t bytes) {
+    this->on_write(ec, bytes);
+  });
 }
 
 void WsRpcClient::on_write(beast::error_code ec, std::size_t bytes) {
@@ -302,6 +409,10 @@ void WsRpcClient::handle_server_message(const nlohmann::json& msg) {
     response = handle_rpc_get_state(callbacks_, params);
   } else if (action == "get_stats") {
     response = handle_rpc_get_stats(callbacks_, params);
+  } else if (action == "get_drop_stats") {
+    response = handle_rpc_get_drop_stats(callbacks_, params);
+  } else if (action == "get_latency_stats") {
+    response = handle_rpc_get_latency_stats(callbacks_, params);
   } else if (action == "test") {
     response = handle_rpc_test(callbacks_, params);
   } else {
@@ -337,21 +448,41 @@ void WsRpcClient::send_message(const nlohmann::json& msg) {
 }
 
 void WsRpcClient::on_disconnect(beast::error_code ec) {
-  if (!connected_.exchange(false)) {
-    return;  // Already disconnected
-  }
+  net::dispatch(strand_, [this, ec]() {
+    if (stopped_) {
+      return;
+    }
 
-  ping_timer_.cancel();
+    if (!connected_.exchange(false) && state_ == ConnectionState::kIdle) {
+      return;
+    }
 
-  AXON_LOG_WARN("WebSocket disconnected" << kv("error", ec.message()));
+    ping_timer_.cancel();
 
-  schedule_reconnect();
+    beast::error_code close_ec;
+    if (ws_.is_open()) {
+      ws_.close(beast::websocket::close_code::normal, close_ec);
+    }
+    beast::get_lowest_layer(ws_).socket().shutdown(tcp::socket::shutdown_both, close_ec);
+    beast::get_lowest_layer(ws_).socket().close(close_ec);
+
+    state_ = ConnectionState::kIdle;
+
+    AXON_LOG_WARN("WebSocket disconnected" << kv("error", ec.message()));
+
+    schedule_reconnect();
+  });
 }
 
 void WsRpcClient::schedule_reconnect() {
-  if (stopped_) {
+  if (stopped_ || state_ == ConnectionState::kStopped) {
     return;
   }
+  if (reconnect_scheduled_) {
+    return;
+  }
+
+  reconnect_scheduled_ = true;
 
   // Calculate delay with exponential backoff
   long long delay = static_cast<long long>(config_.reconnect_initial_delay_ms);
@@ -381,6 +512,7 @@ void WsRpcClient::schedule_reconnect() {
 
   reconnect_timer_.expires_after(std::chrono::milliseconds(delay));
   reconnect_timer_.async_wait([this](beast::error_code ec) {
+    reconnect_scheduled_ = false;
     if (ec || stopped_) {
       return;
     }
