@@ -28,8 +28,6 @@
 // Defaults: 1_000_000 iterations, 32 KiB payload, 1 thread.
 // -----------------------------------------------------------------------------
 
-#include "buffer_pool.hpp"
-
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -43,6 +41,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include "buffer_pool.hpp"
 
 namespace {
 
@@ -81,7 +81,11 @@ void run_vector_baseline(size_t iters, size_t payload_bytes, int threads, const 
   double secs = seconds_between(t0, t1);
   std::printf(
     "[vector  ] iters=%zu payload=%zuB threads=%d  took=%.3fs  msgs/s=%.0f  bytes/s=%.2f MiB/s\n",
-    total, payload_bytes, threads, secs, static_cast<double>(total) / secs,
+    total,
+    payload_bytes,
+    threads,
+    secs,
+    static_cast<double>(total) / secs,
     (static_cast<double>(total) * payload_bytes / (1024.0 * 1024.0)) / secs
   );
 }
@@ -123,15 +127,21 @@ void run_pool_bench(size_t iters, size_t payload_bytes, int threads, const uint8
   auto s = pool.stats();
   std::printf(
     "[pool    ] iters=%zu payload=%zuB threads=%d  took=%.3fs  msgs/s=%.0f  bytes/s=%.2f MiB/s\n",
-    total, payload_bytes, threads, secs, static_cast<double>(total) / secs,
+    total,
+    payload_bytes,
+    threads,
+    secs,
+    static_cast<double>(total) / secs,
     (static_cast<double>(total) * payload_bytes / (1024.0 * 1024.0)) / secs
   );
   std::printf(
     "           hit_rate=%.4f  acquires=%lu hits=%lu misses=%lu oversized=%lu "
     "release_to_pool=%lu release_freed=%lu resident_bytes=%lu\n",
     s.hit_rate(),
-    static_cast<unsigned long>(s.acquires), static_cast<unsigned long>(s.hits),
-    static_cast<unsigned long>(s.misses), static_cast<unsigned long>(s.oversized),
+    static_cast<unsigned long>(s.acquires),
+    static_cast<unsigned long>(s.hits),
+    static_cast<unsigned long>(s.misses),
+    static_cast<unsigned long>(s.oversized),
     static_cast<unsigned long>(s.release_to_pool),
     static_cast<unsigned long>(s.release_freed),
     static_cast<unsigned long>(s.resident_bytes)
@@ -148,12 +158,14 @@ void run_pool_bench(size_t iters, size_t payload_bytes, int threads, const uint8
 
 constexpr size_t kQueueDepth = 64;
 
-template <typename T>
+template<typename T>
 class BoundedQueue {
 public:
   bool push(T&& item) {
     std::unique_lock<std::mutex> lk(mu_);
-    not_full_.wait(lk, [&] { return q_.size() < kQueueDepth || closed_; });
+    not_full_.wait(lk, [&] {
+      return q_.size() < kQueueDepth || closed_;
+    });
     if (closed_) {
       return false;
     }
@@ -163,7 +175,9 @@ public:
   }
   bool pop(T& out) {
     std::unique_lock<std::mutex> lk(mu_);
-    not_empty_.wait(lk, [&] { return !q_.empty() || closed_; });
+    not_empty_.wait(lk, [&] {
+      return !q_.empty() || closed_;
+    });
     if (q_.empty()) {
       return false;
     }
@@ -210,7 +224,10 @@ void run_vector_crossthread(size_t iters, size_t payload_bytes, const uint8_t* s
   double secs = seconds_between(t0, t1);
   std::printf(
     "[vector/xthread] iters=%zu payload=%zuB  took=%.3fs  msgs/s=%.0f  bytes/s=%.2f MiB/s\n",
-    iters, payload_bytes, secs, static_cast<double>(iters) / secs,
+    iters,
+    payload_bytes,
+    secs,
+    static_cast<double>(iters) / secs,
     (static_cast<double>(iters) * payload_bytes / (1024.0 * 1024.0)) / secs
   );
 }
@@ -240,15 +257,20 @@ void run_pool_crossthread(size_t iters, size_t payload_bytes, const uint8_t* src
   auto s = pool.stats();
   std::printf(
     "[pool/xthread  ] iters=%zu payload=%zuB  took=%.3fs  msgs/s=%.0f  bytes/s=%.2f MiB/s\n",
-    iters, payload_bytes, secs, static_cast<double>(iters) / secs,
+    iters,
+    payload_bytes,
+    secs,
+    static_cast<double>(iters) / secs,
     (static_cast<double>(iters) * payload_bytes / (1024.0 * 1024.0)) / secs
   );
   std::printf(
     "                 hit_rate=%.4f  acquires=%lu hits=%lu misses=%lu oversized=%lu "
     "release_to_pool=%lu release_freed=%lu resident_bytes=%lu\n",
     s.hit_rate(),
-    static_cast<unsigned long>(s.acquires), static_cast<unsigned long>(s.hits),
-    static_cast<unsigned long>(s.misses), static_cast<unsigned long>(s.oversized),
+    static_cast<unsigned long>(s.acquires),
+    static_cast<unsigned long>(s.hits),
+    static_cast<unsigned long>(s.misses),
+    static_cast<unsigned long>(s.oversized),
     static_cast<unsigned long>(s.release_to_pool),
     static_cast<unsigned long>(s.release_freed),
     static_cast<unsigned long>(s.resident_bytes)
@@ -272,7 +294,9 @@ int main(int argc, char** argv) {
   std::printf(
     "--- axon_memory/bench_buffer_pool ---\n"
     "iters=%zu payload=%zu bytes threads=%d\n",
-    iters, payload, threads
+    iters,
+    payload,
+    threads
   );
 
   std::printf("\n--- Scenario 1: single-thread tight loop (tcache-friendly) ---\n");

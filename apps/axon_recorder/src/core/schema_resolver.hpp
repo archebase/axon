@@ -58,7 +58,9 @@ public:
   /**
    * Get the last error message.
    */
-  std::string get_last_error() const { return last_error_; }
+  std::string get_last_error() const {
+    return last_error_;
+  }
 
   /**
    * Clear the internal cache. Useful if .msg files may have changed on disk.
@@ -70,11 +72,13 @@ private:
    * Parsed message type with package and type name separated.
    */
   struct ParsedType {
-    std::string package;   // e.g., "sensor_msgs"
-    std::string type_name; // e.g., "Image"
+    std::string package;    // e.g., "sensor_msgs"
+    std::string type_name;  // e.g., "Image"
 
     // Canonical ROS2 name: "sensor_msgs/msg/Image"
-    std::string canonical_name() const { return package + "/msg/" + type_name; }
+    std::string canonical_name() const {
+      return package + "/msg/" + type_name;
+    }
   };
 
   /**
@@ -128,7 +132,7 @@ private:
   static bool is_ros1_builtin(const std::string& type_name);
 
   std::vector<std::string> search_paths_;
-  std::unordered_map<std::string, std::string> file_cache_; // canonical_name -> content
+  std::unordered_map<std::string, std::string> file_cache_;  // canonical_name -> content
   std::string last_error_;
 };
 

@@ -30,21 +30,32 @@ protected:
     share_path_ = test_dir_ / "share";
 
     // Create standard ROS2 message packages
-    create_msg_file("std_msgs", "Header",
+    create_msg_file(
+      "std_msgs",
+      "Header",
       "# Standard header\n"
       "builtin_interfaces/Time stamp\n"
-      "string frame_id");
+      "string frame_id"
+    );
 
-    create_msg_file("builtin_interfaces", "Time",
+    create_msg_file(
+      "builtin_interfaces",
+      "Time",
       "# Time representation\n"
       "int32 sec\n"
-      "uint32 nanosec");
+      "uint32 nanosec"
+    );
 
-    create_msg_file("builtin_interfaces", "Duration",
+    create_msg_file(
+      "builtin_interfaces",
+      "Duration",
       "int32 sec\n"
-      "uint32 nanosec");
+      "uint32 nanosec"
+    );
 
-    create_msg_file("sensor_msgs", "Image",
+    create_msg_file(
+      "sensor_msgs",
+      "Image",
       "# Image message\n"
       "std_msgs/Header header\n"
       "uint32 height\n"
@@ -52,46 +63,65 @@ protected:
       "string encoding\n"
       "uint8 is_bigendian\n"
       "uint32 step\n"
-      "uint8[] data");
+      "uint8[] data"
+    );
 
-    create_msg_file("sensor_msgs", "Imu",
+    create_msg_file(
+      "sensor_msgs",
+      "Imu",
       "std_msgs/Header header\n"
       "geometry_msgs/Quaternion orientation\n"
       "float64[9] orientation_covariance\n"
       "geometry_msgs/Vector3 angular_velocity\n"
       "float64[9] angular_velocity_covariance\n"
       "geometry_msgs/Vector3 linear_acceleration\n"
-      "float64[9] linear_acceleration_covariance");
+      "float64[9] linear_acceleration_covariance"
+    );
 
-    create_msg_file("geometry_msgs", "Quaternion",
+    create_msg_file(
+      "geometry_msgs",
+      "Quaternion",
       "float64 x 0\n"
       "float64 y 0\n"
       "float64 z 0\n"
-      "float64 w 1");
+      "float64 w 1"
+    );
 
-    create_msg_file("geometry_msgs", "Vector3",
+    create_msg_file(
+      "geometry_msgs",
+      "Vector3",
       "float64 x\n"
       "float64 y\n"
-      "float64 z");
+      "float64 z"
+    );
 
     // A message with constants (should not produce dependencies)
-    create_msg_file("sensor_msgs", "PointField",
+    create_msg_file(
+      "sensor_msgs",
+      "PointField",
       "uint8 INT8=1\n"
       "uint8 UINT8=2\n"
       "uint8 INT16=3\n"
       "string name\n"
       "uint32 offset\n"
       "uint8 datatype\n"
-      "uint32 count");
+      "uint32 count"
+    );
 
     // A message with bare type reference (same package)
-    create_msg_file("custom_msgs", "Compound",
+    create_msg_file(
+      "custom_msgs",
+      "Compound",
       "SubType sub\n"
-      "uint32 value");
+      "uint32 value"
+    );
 
-    create_msg_file("custom_msgs", "SubType",
+    create_msg_file(
+      "custom_msgs",
+      "SubType",
       "string name\n"
-      "float64 data");
+      "float64 data"
+    );
   }
 
   void TearDown() override {
@@ -192,9 +222,12 @@ TEST_F(SchemaResolverTest, ResolveRos2StyleName) {
 
 TEST_F(SchemaResolverTest, Ros1BuiltinTimeMapping) {
   // Create a message that uses ROS1-style "time" type
-  create_msg_file("test_msgs", "WithTime",
+  create_msg_file(
+    "test_msgs",
+    "WithTime",
     "time stamp\n"
-    "string data");
+    "string data"
+  );
 
   SchemaResolver resolver({share_path_.string()});
   std::string result = resolver.resolve("test_msgs/msg/WithTime");
@@ -207,9 +240,12 @@ TEST_F(SchemaResolverTest, Ros1BuiltinTimeMapping) {
 
 TEST_F(SchemaResolverTest, Ros1BuiltinHeaderMapping) {
   // Create a message that uses bare "Header" (ROS1 convention)
-  create_msg_file("test_msgs", "WithHeader",
+  create_msg_file(
+    "test_msgs",
+    "WithHeader",
     "Header header\n"
-    "string data");
+    "string data"
+  );
 
   SchemaResolver resolver({share_path_.string()});
   std::string result = resolver.resolve("test_msgs/msg/WithHeader");
@@ -337,9 +373,12 @@ TEST_F(SchemaResolverTest, MultipleSearchPaths) {
 
 TEST_F(SchemaResolverTest, ArrayTypeDependencyResolved) {
   // Create a message with array of complex type
-  create_msg_file("test_msgs", "WithArray",
+  create_msg_file(
+    "test_msgs",
+    "WithArray",
     "geometry_msgs/Vector3[] points\n"
-    "uint32 count");
+    "uint32 count"
+  );
 
   SchemaResolver resolver({share_path_.string()});
   std::string result = resolver.resolve("test_msgs/msg/WithArray");
@@ -351,8 +390,7 @@ TEST_F(SchemaResolverTest, ArrayTypeDependencyResolved) {
 
 TEST_F(SchemaResolverTest, FixedSizeArrayDependencyResolved) {
   // Create a message with fixed-size array of complex type
-  create_msg_file("test_msgs", "WithFixedArray",
-    "geometry_msgs/Quaternion[4] orientations");
+  create_msg_file("test_msgs", "WithFixedArray", "geometry_msgs/Quaternion[4] orientations");
 
   SchemaResolver resolver({share_path_.string()});
   std::string result = resolver.resolve("test_msgs/msg/WithFixedArray");

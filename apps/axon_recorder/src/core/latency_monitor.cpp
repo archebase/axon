@@ -10,9 +10,9 @@ namespace axon {
 namespace recorder {
 
 LatencyMonitor::LatencyMonitor()
-    : tracker_(std::make_shared<LatencyTracker>()),
-      detector_(std::make_shared<LatencyAnomalyDetector>()),
-      analyzer_(std::make_shared<LatencyHotspotAnalyzer>()) {
+    : tracker_(std::make_shared<LatencyTracker>())
+    , detector_(std::make_shared<LatencyAnomalyDetector>())
+    , analyzer_(std::make_shared<LatencyHotspotAnalyzer>()) {
   analyzer_->set_anomaly_detector(detector_);
 
   auto detector_config = detector_->get_config();
@@ -45,8 +45,8 @@ void LatencyMonitor::start(uint32_t hotspot_report_interval_ms) {
   running_.store(true, std::memory_order_release);
 
   if (hotspot_report_interval_ms > 0) {
-    hotspot_thread_ = std::thread(&LatencyMonitor::hotspot_timer_thread, this,
-                                  hotspot_report_interval_ms);
+    hotspot_thread_ =
+      std::thread(&LatencyMonitor::hotspot_timer_thread, this, hotspot_report_interval_ms);
   }
 }
 
@@ -115,8 +115,10 @@ void LatencyMonitor::reset() {
   analyzer_->reset();
 }
 
-void LatencyMonitor::set_config(const LatencyTracker::Config& tracker_config,
-                                 const LatencyAnomalyDetector::Config& detector_config) {
+void LatencyMonitor::set_config(
+  const LatencyTracker::Config& tracker_config,
+  const LatencyAnomalyDetector::Config& detector_config
+) {
   tracker_->set_config(tracker_config);
   detector_->set_config(detector_config);
 }

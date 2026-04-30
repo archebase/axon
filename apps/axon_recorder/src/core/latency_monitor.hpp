@@ -5,12 +5,13 @@
 #ifndef AXON_RECORDER_LATENCY_MONITOR_HPP
 #define AXON_RECORDER_LATENCY_MONITOR_HPP
 
+#include <nlohmann/json.hpp>
+
 #include <atomic>
 #include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
 #include <vector>
@@ -61,18 +62,26 @@ public:
 
   void reset();
 
-  void set_config(const LatencyTracker::Config& tracker_config,
-                  const LatencyAnomalyDetector::Config& detector_config);
+  void set_config(
+    const LatencyTracker::Config& tracker_config,
+    const LatencyAnomalyDetector::Config& detector_config
+  );
 
   LatencyTracker::Config get_tracker_config() const;
 
   LatencyAnomalyDetector::Config get_detector_config() const;
 
-  std::shared_ptr<LatencyTracker> get_tracker() { return tracker_; }
+  std::shared_ptr<LatencyTracker> get_tracker() {
+    return tracker_;
+  }
 
-  std::shared_ptr<LatencyAnomalyDetector> get_detector() { return detector_; }
+  std::shared_ptr<LatencyAnomalyDetector> get_detector() {
+    return detector_;
+  }
 
-  std::shared_ptr<LatencyHotspotAnalyzer> get_analyzer() { return analyzer_; }
+  std::shared_ptr<LatencyHotspotAnalyzer> get_analyzer() {
+    return analyzer_;
+  }
 
 private:
   void hotspot_timer_thread(uint32_t interval_ms);

@@ -6,13 +6,13 @@
 
 #include <boost/beast/websocket.hpp>
 
-#include "../config/task_config.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <future>
 #include <iostream>
 #include <random>
+
+#include "../config/task_config.hpp"
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "ws_rpc_client"
@@ -163,10 +163,8 @@ void WsRpcClient::do_resolve() {
   if (stopped_) {
     return;
   }
-  if (
-    state_ == ConnectionState::kResolving || state_ == ConnectionState::kConnecting ||
-    state_ == ConnectionState::kHandshaking || state_ == ConnectionState::kOpen
-  ) {
+  if (state_ == ConnectionState::kResolving || state_ == ConnectionState::kConnecting ||
+      state_ == ConnectionState::kHandshaking || state_ == ConnectionState::kOpen) {
     return;
   }
 

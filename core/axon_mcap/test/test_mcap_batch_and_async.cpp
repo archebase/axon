@@ -344,8 +344,11 @@ TEST(McapWriter, CompressionLevelPresetMapping) {
   // across Zstd / LZ4 and all levels.
   const Compression algos[] = {Compression::Zstd, Compression::Lz4};
   const CompressionLevel levels[] = {
-    CompressionLevel::Fastest, CompressionLevel::Fast, CompressionLevel::Default,
-    CompressionLevel::Slow, CompressionLevel::Slowest
+    CompressionLevel::Fastest,
+    CompressionLevel::Fast,
+    CompressionLevel::Default,
+    CompressionLevel::Slow,
+    CompressionLevel::Slowest
   };
   for (auto c : algos) {
     for (auto lv : levels) {

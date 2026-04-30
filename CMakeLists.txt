@@ -116,10 +116,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 # Memory (no dependencies)
 # =============================================================================
 if(EXISTS "${AXON_MEMORY_DIR}/CMakeLists.txt")
-    add_subdirectory(
-        ${AXON_MEMORY_DIR}
-        ${CMAKE_CURRENT_BINARY_DIR}/axon_memory
-    )
+    add_subdirectory(${AXON_MEMORY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/axon_memory)
 endif()
 
 # =============================================================================

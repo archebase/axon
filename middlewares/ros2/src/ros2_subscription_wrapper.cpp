@@ -160,8 +160,8 @@ bool SubscriptionManager::subscribe(
 }
 
 bool SubscriptionManager::subscribe_v2(
-  const std::string& topic_name, const std::string& message_type,
-  const SubscribeOptions& options, MessageCallbackV2 callback
+  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+  MessageCallbackV2 callback
 ) {
   std::lock_guard<std::mutex> lock(mutex_);
 
@@ -184,9 +184,8 @@ bool SubscriptionManager::subscribe_v2(
 #else
     if (options.depth_compression.has_value() && options.depth_compression->enabled) {
       AXON_LOG_WARN(
-        "Depth compression requested (v2) for "
-        << kv("topic", topic_name)
-        << " but not enabled at build time."
+        "Depth compression requested (v2) for " << kv("topic", topic_name)
+                                                << " but not enabled at build time."
       );
     }
     void* captured_filter = nullptr;
@@ -232,10 +231,14 @@ bool SubscriptionManager::subscribe_v2(
                   auto* holder = new std::vector<uint8_t>(filtered_data);
                   rclcpp::Time filtered_timestamp(filtered_timestamp_ns);
                   callback(
-                    filtered_topic, filtered_type,
-                    holder->data(), holder->size(),
+                    filtered_topic,
+                    filtered_type,
+                    holder->data(),
+                    holder->size(),
                     filtered_timestamp,
-                    +[](void* p) { delete static_cast<std::vector<uint8_t>*>(p); },
+                    +[](void* p) {
+                      delete static_cast<std::vector<uint8_t>*>(p);
+                    },
                     holder
                   );
                 }
@@ -252,8 +255,10 @@ bool SubscriptionManager::subscribe_v2(
           auto* holder = new std::shared_ptr<rclcpp::SerializedMessage>(msg);
           const auto& raw = msg->get_rcl_serialized_message();
           callback(
-            topic_name, message_type,
-            raw.buffer, raw.buffer_length,
+            topic_name,
+            message_type,
+            raw.buffer,
+            raw.buffer_length,
             timestamp,
             +[](void* p) {
               delete static_cast<std::shared_ptr<rclcpp::SerializedMessage>*>(p);
@@ -262,8 +267,8 @@ bool SubscriptionManager::subscribe_v2(
           );
         } catch (const std::exception& e) {
           AXON_LOG_ERROR(
-            "Failed to handle message (v2) on topic "
-            << kv("topic", topic_name) << ": " << kv("error", e.what())
+            "Failed to handle message (v2) on topic " << kv("topic", topic_name) << ": "
+                                                      << kv("error", e.what())
           );
         }
       }
@@ -283,7 +288,8 @@ bool SubscriptionManager::subscribe_v2(
     subscriptions_[topic_name] = std::move(info);
 
     AXON_LOG_INFO(
-      "Subscribed (v2) to topic " << kv("topic", topic_name) << " (" << kv("type", message_type) << ")"
+      "Subscribed (v2) to topic " << kv("topic", topic_name) << " (" << kv("type", message_type)
+                                  << ")"
     );
     return true;
 

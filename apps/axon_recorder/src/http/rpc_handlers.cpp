@@ -306,9 +306,7 @@ RpcResponse handle_rpc_get_stats(const RpcCallbacks& callbacks, const nlohmann::
   return response;
 }
 
-RpcResponse handle_rpc_get_drop_stats(
-  const RpcCallbacks& callbacks, const nlohmann::json& params
-) {
+RpcResponse handle_rpc_get_drop_stats(const RpcCallbacks& callbacks, const nlohmann::json& params) {
   (void)params;  // Unused
   RpcResponse response;
 
@@ -331,7 +329,9 @@ RpcResponse handle_rpc_get_drop_stats(
   return response;
 }
 
-RpcResponse handle_rpc_get_latency_stats(const RpcCallbacks& callbacks, const nlohmann::json& params) {
+RpcResponse handle_rpc_get_latency_stats(
+  const RpcCallbacks& callbacks, const nlohmann::json& params
+) {
   (void)params;
   RpcResponse response;
 

@@ -22,10 +22,21 @@ static const std::string kSeparator(80, '=');
 
 // ROS primitive types (no recursion needed)
 static const std::unordered_set<std::string> kPrimitiveTypes = {
-  "bool",    "byte",    "char",    "float32",  "float64",
-  "int8",    "int16",   "int32",   "int64",
-  "uint8",   "uint16",  "uint32",  "uint64",
-  "string",  "wstring",
+  "bool",
+  "byte",
+  "char",
+  "float32",
+  "float64",
+  "int8",
+  "int16",
+  "int32",
+  "int64",
+  "uint8",
+  "uint16",
+  "uint32",
+  "uint64",
+  "string",
+  "wstring",
 };
 
 // =============================================================================
@@ -84,9 +95,9 @@ std::string SchemaResolver::resolve(const std::string& message_type) {
     std::string content = read_msg_file(current);
     if (content.empty()) {
       AXON_LOG_WARN(
-        "Could not resolve dependency " << kv("type", canonical)
-        << " for " << kv("parent", message_type)
-        << ", schema will be incomplete"
+        "Could not resolve dependency " << kv("type", canonical) << " for "
+                                        << kv("parent", message_type)
+                                        << ", schema will be incomplete"
       );
       continue;
     }
@@ -116,8 +127,8 @@ std::string SchemaResolver::resolve(const std::string& message_type) {
   }
 
   AXON_LOG_INFO(
-    "Resolved schema for " << kv("type", message_type)
-    << " with " << kv("dependencies", dep_order.size()) << " dependencies"
+    "Resolved schema for " << kv("type", message_type) << " with "
+                           << kv("dependencies", dep_order.size()) << " dependencies"
   );
 
   return result.str();
@@ -190,8 +201,7 @@ std::string SchemaResolver::find_msg_file(const ParsedType& parsed) const {
     //   <path>/<package>/msg/<Type>.msg
     //   e.g., /opt/ros/humble/share/sensor_msgs/msg/Image.msg
     {
-      std::string path =
-        search_path + "/" + parsed.package + "/msg/" + parsed.type_name + ".msg";
+      std::string path = search_path + "/" + parsed.package + "/msg/" + parsed.type_name + ".msg";
       std::ifstream file(path);
       if (file.good()) {
         return path;
@@ -202,9 +212,8 @@ std::string SchemaResolver::find_msg_file(const ParsedType& parsed) const {
     //   <path>/<package>/share/<package>/msg/<Type>.msg
     //   e.g., install/sensor_msgs/share/sensor_msgs/msg/Image.msg
     {
-      std::string path =
-        search_path + "/" + parsed.package + "/share/" +
-        parsed.package + "/msg/" + parsed.type_name + ".msg";
+      std::string path = search_path + "/" + parsed.package + "/share/" + parsed.package + "/msg/" +
+                         parsed.type_name + ".msg";
       std::ifstream file(path);
       if (file.good()) {
         return path;
@@ -238,11 +247,8 @@ std::string SchemaResolver::read_msg_file(const ParsedType& parsed) {
   // Find the file
   std::string file_path = find_msg_file(parsed);
   if (file_path.empty()) {
-    last_error_ = "Could not find .msg file for: " + canonical +
-                  " in search paths";
-    AXON_LOG_WARN(
-      "Message definition not found: " << kv("type", canonical)
-    );
+    last_error_ = "Could not find .msg file for: " + canonical + " in search paths";
+    AXON_LOG_WARN("Message definition not found: " << kv("type", canonical));
     return "";
   }
 
@@ -266,9 +272,7 @@ std::string SchemaResolver::read_msg_file(const ParsedType& parsed) {
   // Cache it
   file_cache_[canonical] = result;
 
-  AXON_LOG_DEBUG(
-    "Read .msg file: " << kv("type", canonical) << " from " << kv("path", file_path)
-  );
+  AXON_LOG_DEBUG("Read .msg file: " << kv("type", canonical) << " from " << kv("path", file_path));
 
   return result;
 }
@@ -282,8 +286,8 @@ bool SchemaResolver::is_primitive(const std::string& type_name) {
 }
 
 bool SchemaResolver::is_ros1_builtin(const std::string& type_name) {
-  return type_name == "time" || type_name == "duration" ||
-         type_name == "Time" || type_name == "Duration";
+  return type_name == "time" || type_name == "duration" || type_name == "Time" ||
+         type_name == "Duration";
 }
 
 std::vector<SchemaResolver::ParsedType> SchemaResolver::extract_dependencies(

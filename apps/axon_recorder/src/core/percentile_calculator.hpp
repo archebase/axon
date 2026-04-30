@@ -60,7 +60,9 @@ private:
     double mean;
     double weight;
 
-    Centroid(double m = 0.0, double w = 1.0) : mean(m), weight(w) {}
+    Centroid(double m = 0.0, double w = 1.0)
+        : mean(m)
+        , weight(w) {}
   };
 
   double get_percentile(double p) const;

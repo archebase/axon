@@ -56,8 +56,8 @@ using AxonMessageCallback = void (*)(
 // ABI v1.2 zero-copy callback
 using AxonMessageCallbackV2 = void (*)(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
-  const char* message_type, uint64_t timestamp,
-  void (*release_fn)(void*), void* release_opaque, void* user_data
+  const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque,
+  void* user_data
 );
 
 // =============================================================================
@@ -271,8 +271,8 @@ static int32_t axon_subscribe_v2(
 #endif
     } catch (const std::exception& e) {
       AXON_LOG_WARN(
-        "Failed to parse options JSON (v2) for "
-        << kv("topic", topic_name) << ": " << kv("error", e.what())
+        "Failed to parse options JSON (v2) for " << kv("topic", topic_name) << ": "
+                                                 << kv("error", e.what())
       );
     }
   }
@@ -287,12 +287,20 @@ static int32_t axon_subscribe_v2(
                                 void* release_opaque
                               ) {
     callback(
-      topic.c_str(), data, size, type.c_str(), timestamp.nanoseconds(),
-      release_fn, release_opaque, user_data
+      topic.c_str(),
+      data,
+      size,
+      type.c_str(),
+      timestamp.nanoseconds(),
+      release_fn,
+      release_opaque,
+      user_data
     );
   };
 
-  if (!g_plugin->subscribe_v2(std::string(topic_name), std::string(message_type), options, wrapper)) {
+  if (!g_plugin->subscribe_v2(
+        std::string(topic_name), std::string(message_type), options, wrapper
+      )) {
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
 
@@ -354,11 +362,15 @@ static AxonPluginVtable ros2_vtable = {
   axon_stop,
   axon_subscribe,
   axon_publish,
-  {
-    reinterpret_cast<void*>(&axon_subscribe_v2),
-    reinterpret_cast<void*>(&axon_session_stop),
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
-  }
+  {reinterpret_cast<void*>(&axon_subscribe_v2),
+   reinterpret_cast<void*>(&axon_session_stop),
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr}
 };
 
 // Exported plugin descriptor

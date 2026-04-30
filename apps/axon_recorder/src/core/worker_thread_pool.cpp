@@ -9,10 +9,10 @@
 // Clock utilities
 namespace {
 inline uint64_t get_steady_clock_ns() {
-  return static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
-                                                              .time_since_epoch())
-          .count());
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 std::chrono::steady_clock::now().time_since_epoch()
+  )
+                                 .count());
 }
 }  // namespace
 
@@ -114,7 +114,9 @@ bool WorkerThreadPool::create_topic_worker(
     context->running.store(true, std::memory_order_release);
     context->worker_thread = std::thread(&WorkerThreadPool::worker_thread_func, this, context);
 
-    AXON_LOG_INFO("Restarted topic worker with latency tracking" << axon::logging::kv("topic", topic));
+    AXON_LOG_INFO(
+      "Restarted topic worker with latency tracking" << axon::logging::kv("topic", topic)
+    );
     return true;
   }
 
@@ -190,15 +192,14 @@ bool WorkerThreadPool::try_push(const std::string& topic, MessageItem&& item) {
     return true;
   }
 
-    // Queue full - message dropped
-    // Note: item is still valid here — SPSCQueue::try_push() returns false
-    // before moving the item when the queue is full.
-    uint64_t total_dropped =
-      context->stats.dropped.fetch_add(1, std::memory_order_relaxed) + 1;
-    if (drop_callback_) {
-      drop_callback_(topic, item.message_type, total_dropped);
-    }
-    return false;
+  // Queue full - message dropped
+  // Note: item is still valid here — SPSCQueue::try_push() returns false
+  // before moving the item when the queue is full.
+  uint64_t total_dropped = context->stats.dropped.fetch_add(1, std::memory_order_relaxed) + 1;
+  if (drop_callback_) {
+    drop_callback_(topic, item.message_type, total_dropped);
+  }
+  return false;
 }
 
 void WorkerThreadPool::start() {
@@ -314,15 +315,25 @@ size_t WorkerThreadPool::drain_remaining_sync() {
       try {
         if (context->latency_handler) {
           success = context->latency_handler(
-            topic, item.message_type, item.timestamp_ns,
-            item.raw_data.data(), item.raw_data.size(), seq,
-            item.publish_time_ns, item.receive_time_ns,
-            item.enqueue_time_ns, item.dequeue_time_ns
+            topic,
+            item.message_type,
+            item.timestamp_ns,
+            item.raw_data.data(),
+            item.raw_data.size(),
+            seq,
+            item.publish_time_ns,
+            item.receive_time_ns,
+            item.enqueue_time_ns,
+            item.dequeue_time_ns
           );
         } else if (context->handler) {
           success = context->handler(
-            topic, item.message_type, item.timestamp_ns,
-            item.raw_data.data(), item.raw_data.size(), seq
+            topic,
+            item.message_type,
+            item.timestamp_ns,
+            item.raw_data.data(),
+            item.raw_data.size(),
+            seq
           );
         }
       } catch (const std::exception& e) {
@@ -336,9 +347,7 @@ size_t WorkerThreadPool::drain_remaining_sync() {
 
       if (success) {
         context->stats.written.fetch_add(1, std::memory_order_relaxed);
-        context->stats.bytes_written.fetch_add(
-          item.raw_data.size(), std::memory_order_relaxed
-        );
+        context->stats.bytes_written.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
       }
 
       ++drained_here;
@@ -354,8 +363,8 @@ size_t WorkerThreadPool::drain_remaining_sync() {
       // wasn't stopped before the worker pool). Warn so the regression is
       // visible in operations.
       AXON_LOG_WARN(
-        "Drained residual items after worker stop"
-        << axon::logging::kv("topic", topic) << axon::logging::kv("count", drained_here)
+        "Drained residual items after worker stop" << axon::logging::kv("topic", topic)
+                                                   << axon::logging::kv("count", drained_here)
       );
       total_drained += drained_here;
     }
@@ -414,7 +423,8 @@ WorkerThreadPool::AggregateStats WorkerThreadPool::get_aggregate_stats() const {
   return aggregate;
 }
 
-std::unordered_map<std::string, WorkerThreadPool::QueueDepthInfo> WorkerThreadPool::get_queue_depths() const {
+std::unordered_map<std::string, WorkerThreadPool::QueueDepthInfo>
+WorkerThreadPool::get_queue_depths() const {
   std::shared_lock<std::shared_mutex> lock(contexts_mutex_);
 
   std::unordered_map<std::string, QueueDepthInfo> depths;
@@ -479,13 +489,24 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
     try {
       if (context->latency_handler) {
         success = context->latency_handler(
-          topic, item.message_type, item.timestamp_ns, item.raw_data.data(), item.raw_data.size(),
-          seq, item.publish_time_ns, item.receive_time_ns, item.enqueue_time_ns,
+          topic,
+          item.message_type,
+          item.timestamp_ns,
+          item.raw_data.data(),
+          item.raw_data.size(),
+          seq,
+          item.publish_time_ns,
+          item.receive_time_ns,
+          item.enqueue_time_ns,
           item.dequeue_time_ns
         );
       } else if (context->handler) {
         success = context->handler(
-          topic, item.message_type, item.timestamp_ns, item.raw_data.data(), item.raw_data.size(),
+          topic,
+          item.message_type,
+          item.timestamp_ns,
+          item.raw_data.data(),
+          item.raw_data.size(),
           seq
         );
       }

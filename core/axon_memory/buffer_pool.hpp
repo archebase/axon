@@ -30,12 +30,12 @@ struct BufferPoolConfig {
    * treated as oversized to avoid pinning large resident memory.
    */
   std::vector<size_t> size_classes = {
-    1024,         // 1 KiB  - IMU / Odom / TF
-    4 * 1024,     // 4 KiB  - JointState / small control msgs
-    16 * 1024,    // 16 KiB - LaserScan
-    64 * 1024,    // 64 KiB - small compressed image / metadata
-    256 * 1024,   // 256 KiB - small PointCloud2
-    1024 * 1024,  // 1 MiB  - mid-resolution image
+    1024,             // 1 KiB  - IMU / Odom / TF
+    4 * 1024,         // 4 KiB  - JointState / small control msgs
+    16 * 1024,        // 16 KiB - LaserScan
+    64 * 1024,        // 64 KiB - small compressed image / metadata
+    256 * 1024,       // 256 KiB - small PointCloud2
+    1024 * 1024,      // 1 MiB  - mid-resolution image
     4 * 1024 * 1024,  // 4 MiB - large image / full PointCloud2
   };
 

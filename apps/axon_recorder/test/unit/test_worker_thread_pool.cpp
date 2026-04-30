@@ -1446,7 +1446,7 @@ TEST_F(WorkerThreadPoolTest, FlushIntervalTriggersFlushForPartialBatch) {
     };
 
   WorkerThreadPool::BatchConfig batch_cfg;
-  batch_cfg.batch_size = 100;      // will never be reached
+  batch_cfg.batch_size = 100;  // will never be reached
   batch_cfg.flush_interval_ms = 50;
 
   pool_->create_topic_worker("/flush_interval", handler, batch_cfg);
@@ -1565,14 +1565,16 @@ TEST_F(WorkerThreadPoolTest, AdoptedBufferIsReleasedAfterDispatch) {
 
   std::atomic<int> handler_calls{0};
   std::atomic<bool> saw_expected_bytes{true};
-  auto handler = [&](const std::string&, const std::string&, int64_t, const uint8_t* data,
-                     size_t size, uint32_t) {
-    handler_calls++;
-    if (size != 4 || data[0] != 0xDE || data[1] != 0xAD) {
-      saw_expected_bytes.store(false);
-    }
-    return true;
-  };
+  auto handler =
+    [&](
+      const std::string&, const std::string&, int64_t, const uint8_t* data, size_t size, uint32_t
+    ) {
+      handler_calls++;
+      if (size != 4 || data[0] != 0xDE || data[1] != 0xAD) {
+        saw_expected_bytes.store(false);
+      }
+      return true;
+    };
 
   pool_->create_topic_worker("/adopt", handler);
   pool_->start();
@@ -1655,8 +1657,7 @@ TEST_F(WorkerThreadPoolTest, UndrainedAdoptedBuffersReleasedOnPoolDestruction) {
   for (int i = 0; i < 3; ++i) {
     MessageItem ok;
     ok.message_type = "t";
-    ok.raw_data =
-      axon::memory::PooledBuffer::adopt(blob, sizeof(blob), release_fn, &release_count);
+    ok.raw_data = axon::memory::PooledBuffer::adopt(blob, sizeof(blob), release_fn, &release_count);
     EXPECT_TRUE(local_pool->try_push("/t", std::move(ok)));
   }
   EXPECT_EQ(release_count.load(), 0);

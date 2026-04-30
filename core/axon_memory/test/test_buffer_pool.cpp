@@ -147,8 +147,12 @@ TEST(BufferPoolTest, DrainFreesCachedBuffers) {
   cfg.size_classes = {64};
   BufferPool pool(cfg);
 
-  { auto b = pool.acquire(32); }
-  { auto b = pool.acquire(32); }
+  {
+    auto b = pool.acquire(32);
+  }
+  {
+    auto b = pool.acquire(32);
+  }
 
   auto before = pool.stats();
   EXPECT_GT(before.resident_bytes, 0u);
@@ -165,8 +169,12 @@ TEST(BufferPoolTest, StatsReportAcquiresAndHitRate) {
   BufferPool pool(cfg);
 
   // First acquire = miss; release, then acquire again = hit.
-  { auto b = pool.acquire(64); }
-  { auto b = pool.acquire(64); }
+  {
+    auto b = pool.acquire(64);
+  }
+  {
+    auto b = pool.acquire(64);
+  }
 
   auto s = pool.stats();
   EXPECT_EQ(s.acquires, 2u);
