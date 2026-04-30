@@ -46,6 +46,7 @@ bool AsyncMcapWriter::open(
     batches_written_ = 0;
     write_failures_ = 0;
     peak_depth_ = 0;
+    in_flight_ = 0;
   }
   stop_requested_.store(false, std::memory_order_release);
   running_.store(true, std::memory_order_release);
@@ -181,6 +182,7 @@ void AsyncMcapWriter::worker_loop() {
         local_batch.push_back(std::move(q_.front()));
         q_.pop_front();
       }
+      in_flight_ += local_batch.size();
       // Wake any blocked producers waiting for space.
       lk.unlock();
       not_full_.notify_all();
@@ -213,7 +215,9 @@ void AsyncMcapWriter::worker_loop() {
       if (!ok) {
         ++write_failures_;
       }
+      in_flight_ -= local_batch.size();
     }
+    not_full_.notify_all();
     // Any messages after `written` in this batch failed; they're dropped
     // silently (the underlying writer logs rate-limited errors). This
     // matches the best-effort contract documented on the class.
@@ -225,7 +229,7 @@ void AsyncMcapWriter::wait_until_empty() {
   // Re-check periodically so we don't deadlock if the worker exits due
   // to a shutdown while this thread is waiting; 10 ms is well below
   // user-visible latency.
-  while (!q_.empty() && running_.load(std::memory_order_acquire)) {
+  while ((!q_.empty() || in_flight_ > 0) && running_.load(std::memory_order_acquire)) {
     not_full_.wait_for(lk, std::chrono::milliseconds(10));
   }
 }

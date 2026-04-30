@@ -194,6 +194,7 @@ private:
   uint64_t batches_written_ = 0;
   uint64_t write_failures_ = 0;
   uint64_t peak_depth_ = 0;
+  size_t in_flight_ = 0;
 
   // Lifecycle.
   std::thread worker_;
