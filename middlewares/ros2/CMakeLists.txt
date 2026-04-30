@@ -66,6 +66,15 @@ endif()
 
 # Find ROS2 libraries
 find_package(rcl_interfaces REQUIRED)
+
+# Some ROS 2 Rolling package exports reference this aggregate target from
+# rcl::rcl, while rcl_interfaces itself may only export generated per-language
+# targets. Define a no-op compatibility target before loading rclcpp so CMake
+# can resolve rcl's link interface during generation.
+if(NOT TARGET rcl_interfaces::rcl_interfaces)
+    add_library(rcl_interfaces::rcl_interfaces INTERFACE IMPORTED GLOBAL)
+endif()
+
 find_package(rclcpp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 
