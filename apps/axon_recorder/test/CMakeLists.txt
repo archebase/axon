@@ -326,6 +326,11 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
                 ../src/core/schema_resolver.cpp
+                ../src/core/latency_tracker.cpp
+                ../src/core/percentile_calculator.cpp
+                ../src/core/latency_anomaly_detector.cpp
+                ../src/core/latency_hotspot_analyzer.cpp
+                ../src/core/latency_monitor.cpp
                 ../src/metadata/metadata_injector.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp
@@ -377,6 +382,11 @@ if(
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
                 ../src/core/schema_resolver.cpp
+                ../src/core/latency_tracker.cpp
+                ../src/core/percentile_calculator.cpp
+                ../src/core/latency_anomaly_detector.cpp
+                ../src/core/latency_hotspot_analyzer.cpp
+                ../src/core/latency_monitor.cpp
                 ../src/metadata/metadata_injector.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp

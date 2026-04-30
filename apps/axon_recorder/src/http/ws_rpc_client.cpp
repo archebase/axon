@@ -349,11 +349,9 @@ void WsRpcClient::do_write() {
   auto msg = std::make_shared<std::string>(std::move(write_queue_.front()));
   write_queue_.pop();
 
-  ws_.async_write(
-    net::buffer(*msg), [this, msg](beast::error_code ec, std::size_t bytes) {
-      this->on_write(ec, bytes);
-    }
-  );
+  ws_.async_write(net::buffer(*msg), [this, msg](beast::error_code ec, std::size_t bytes) {
+    this->on_write(ec, bytes);
+  });
 }
 
 void WsRpcClient::on_write(beast::error_code ec, std::size_t bytes) {
