@@ -75,7 +75,7 @@ endif()
 #               statistics_msgs::statistics_msgs
 #   rcl::rcl -> type_description_interfaces::type_description_interfaces
 #
-# Two failure modes are possible depending on the distro:
+# Three failure modes are possible depending on the distro:
 #   (a) Package is installed but its Config.cmake was built against an old
 #       rosidl that only emits per-language targets (e.g.
 #       `<pkg>::<pkg>__rosidl_typesupport_cpp`) - the aggregate
@@ -85,15 +85,23 @@ endif()
 #   (b) Package does not exist on this distro at all (e.g.
 #       type_description_interfaces was introduced in Iron, so Humble
 #       lacks it entirely) - a REQUIRED find_package would abort Configure.
+#   (c) An empty INTERFACE IMPORTED stub satisfies Generate but lacks the
+#       per-package include directory, so downstream compilation fails
+#       with e.g.
+#       "fatal error: type_description_interfaces/srv/get_type_description.h:
+#        No such file or directory"
+#       when rcl/rclcpp headers transitively include them.
 #
-# Use a QUIET find_package so missing packages don't error out, then
-# unconditionally define a no-op INTERFACE IMPORTED stub for the aggregate
-# target when it isn't already present. The stub only matters when the
-# aggregate is referenced by a consumer's link interface; on distros that
-# don't reference it, the stub is harmlessly unused. The `NOT TARGET`
-# guard makes the stubs silent no-ops once a distro has synced to the new
-# rosidl. `find_package(rclcpp REQUIRED)` below still fails loudly if the
-# core ROS 2 install is actually broken.
+# Use a QUIET find_package (handles (b) without aborting Configure), then
+# define a no-op INTERFACE IMPORTED stub for the aggregate target when it
+# isn't already present (handles (a)). When find_package did succeed,
+# populate the stub's INTERFACE_LINK_LIBRARIES with the package's
+# per-language targets (`${<pkg>_TARGETS}` set by ament_cmake) so their
+# INTERFACE_INCLUDE_DIRECTORIES propagate through the stub - this mirrors
+# what the upstream ros2/rosidl#947 aggregate target does, and fixes (c).
+# The `NOT TARGET` guard makes the stubs silent no-ops once a distro has
+# synced to the new rosidl. `find_package(rclcpp REQUIRED)` below still
+# fails loudly if the core ROS 2 install is actually broken.
 set(_axon_ros2_rosidl_packages
     rcl_interfaces
     builtin_interfaces
@@ -107,6 +115,16 @@ foreach(_axon_ros2_pkg ${_axon_ros2_rosidl_packages})
         add_library(
             ${_axon_ros2_pkg}::${_axon_ros2_pkg} INTERFACE IMPORTED GLOBAL
         )
+        # Mirror rosidl#947's aggregate target: bundle the per-language
+        # generated targets so their INTERFACE_INCLUDE_DIRECTORIES /
+        # INTERFACE_LINK_LIBRARIES propagate through this stub.
+        if(DEFINED ${_axon_ros2_pkg}_TARGETS)
+            set_target_properties(
+                ${_axon_ros2_pkg}::${_axon_ros2_pkg}
+                PROPERTIES
+                    INTERFACE_LINK_LIBRARIES "${${_axon_ros2_pkg}_TARGETS}"
+            )
+        endif()
     endif()
 endforeach()
 unset(_axon_ros2_pkg)
