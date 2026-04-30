@@ -65,8 +65,8 @@ void message_callback(
 // C callback wrapper for plugin (ABI v1.2 — ownership transfer, zero-copy)
 void message_callback_v2(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
-  const char* message_type, uint64_t timestamp,
-  void (*release_fn)(void*), void* release_opaque, void* user_data
+  const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque,
+  void* user_data
 ) {
   if (!user_data) {
     if (release_fn) {
@@ -77,8 +77,7 @@ void message_callback_v2(
 
   auto* recorder = static_cast<AxonRecorder*>(user_data);
   recorder->on_message_v2(
-    topic_name, message_data, message_size, message_type, timestamp,
-    release_fn, release_opaque
+    topic_name, message_data, message_size, message_type, timestamp, release_fn, release_opaque
   );
 }
 
@@ -133,8 +132,8 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
   if (!config_.recording.schema_search_paths.empty()) {
     schema_resolver_ = std::make_unique<SchemaResolver>(config_.recording.schema_search_paths);
     AXON_LOG_INFO(
-      "Schema resolver initialized with " <<
-      axon::logging::kv("paths_count", config_.recording.schema_search_paths.size())
+      "Schema resolver initialized with "
+      << axon::logging::kv("paths_count", config_.recording.schema_search_paths.size())
       << " search paths"
     );
   }
@@ -368,6 +367,8 @@ void AxonRecorder::stop() {
     return;
   }
 
+  AXON_LOG_INFO("Recorder stop requested");
+
   std::string error_msg;
 
   // Shutdown ordering rationale:
@@ -408,6 +409,10 @@ void AxonRecorder::stop() {
 
     AxonStatus status = AXON_SUCCESS;
     AxonSessionStopFn session_stop = plugin_session_stop(descriptor);
+    AXON_LOG_INFO(
+      "Stopping plugin session" << axon::logging::kv("plugin", plugin_name)
+                                << axon::logging::kv("has_session_stop", session_stop != nullptr)
+    );
     if (session_stop) {
       status = session_stop();
     } else if (descriptor->vtable->stop) {
@@ -425,13 +430,17 @@ void AxonRecorder::stop() {
         "Plugin session stop failed" << axon::logging::kv("plugin", plugin_name)
                                      << axon::logging::kv("status", status_to_string(status))
       );
+    } else {
+      AXON_LOG_INFO("Plugin session stopped" << axon::logging::kv("plugin", plugin_name));
     }
   }
 
   // 2. Stop worker thread pool (workers drain remaining messages into the
   //    still-open recording_session_ before exiting).
   if (worker_pool_) {
+    AXON_LOG_INFO("Stopping worker thread pool");
     worker_pool_->stop();
+    AXON_LOG_INFO("Worker thread pool stopped");
   }
 
   // 3. Defense-in-depth: synchronously drain any residual items that
@@ -439,12 +448,16 @@ void AxonRecorder::stop() {
   //    recording_session_->close() because the handler writes via the
   //    session. Normally a no-op.
   if (worker_pool_) {
-    worker_pool_->drain_remaining_sync();
+    AXON_LOG_INFO("Draining remaining queued messages");
+    const size_t drained = worker_pool_->drain_remaining_sync();
+    AXON_LOG_INFO("Remaining queued messages drained" << axon::logging::kv("count", drained));
   }
 
   // 4. Close recording session (injects metadata, generates sidecar).
   if (recording_session_) {
+    AXON_LOG_INFO("Closing recording session");
     recording_session_->close();
+    AXON_LOG_INFO("Recording session closed");
 
     last_session_final_file_size_ = recording_session_->get_final_file_size();
     last_session_close_time_ = recording_session_->get_close_time();
@@ -467,6 +480,7 @@ void AxonRecorder::stop() {
   state_manager_.transition_to(RecorderState::IDLE, error_msg);
 
   running_.store(false);
+  AXON_LOG_INFO("Recorder stop completed");
 }
 
 void AxonRecorder::shutdown_plugins() {
@@ -552,8 +566,8 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
         nlohmann::json q;
         q["depth"] = info.depth;
         q["capacity"] = info.capacity;
-        q["utilization"] = info.capacity > 0 ?
-          static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
+        q["utilization"] =
+          info.capacity > 0 ? static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
         queue_depths[topic] = q;
       }
       j["queue_depths"] = queue_depths;
@@ -905,8 +919,8 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
   {
     std::lock_guard<std::mutex> qos_lock(qos_mutex_);
     auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - last_rate_calc_time_).count();
+    auto elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - last_rate_calc_time_).count();
 
     if (elapsed > 0) {
       double elapsed_sec = elapsed / 1000.0;
@@ -937,10 +951,10 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
 
 namespace {
 inline uint64_t get_steady_clock_ns() {
-  return static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()
-                                                              .time_since_epoch())
-          .count());
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 std::chrono::steady_clock::now().time_since_epoch()
+  )
+                                 .count());
 }
 }  // namespace
 
@@ -963,9 +977,8 @@ void AxonRecorder::on_message(
   item.publish_time_ns = timestamp;
   item.receive_time_ns = receive_time_ns;
   item.message_type = message_type;
-  item.raw_data = axon::memory::BufferPool::instance().acquire(
-    message_size == 0 ? 1 : message_size
-  );
+  item.raw_data =
+    axon::memory::BufferPool::instance().acquire(message_size == 0 ? 1 : message_size);
   item.raw_data.assign(message_data, message_size);
 
   if (worker_pool_) {
@@ -977,8 +990,7 @@ void AxonRecorder::on_message(
 
 void AxonRecorder::on_message_v2(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
-  const char* message_type, uint64_t timestamp,
-  void (*release_fn)(void*), void* release_opaque
+  const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque
 ) {
   // Drop-and-release if we're not recording: the plugin gave us ownership,
   // so we must still call the release function even though we don't enqueue.
@@ -1007,9 +1019,8 @@ void AxonRecorder::on_message_v2(
   } else {
     // Fallback: plugin advertised v1.2 but emitted a borrowed buffer with no
     // release hook. Treat as v1.x — copy into a pooled buffer.
-    item.raw_data = axon::memory::BufferPool::instance().acquire(
-      message_size == 0 ? 1 : message_size
-    );
+    item.raw_data =
+      axon::memory::BufferPool::instance().acquire(message_size == 0 ? 1 : message_size);
     item.raw_data.assign(message_data, message_size);
   }
 
@@ -1124,8 +1135,9 @@ bool AxonRecorder::register_topics() {
       schema_definition = schema_resolver_->resolve(sub.message_type);
       if (schema_definition.empty()) {
         AXON_LOG_WARN(
-          "Could not resolve schema for " << axon::logging::kv("type", sub.message_type)
-          << ": " << axon::logging::kv("error", schema_resolver_->get_last_error())
+          "Could not resolve schema for "
+          << axon::logging::kv("type", sub.message_type) << ": "
+          << axon::logging::kv("error", schema_resolver_->get_last_error())
           << ". MCAP will have empty schema data."
         );
       }
@@ -1158,15 +1170,31 @@ bool AxonRecorder::register_topics() {
     }
 
     // Create topic worker in the pool with latency tracking
-    WorkerThreadPool::LatencyMessageHandler handler =
-      [this](
-        const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
-        const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
-        uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns) -> bool {
-        return this->latency_message_handler(
-          topic, message_type, timestamp_ns, data, data_size, sequence,
-          publish_time_ns, receive_time_ns, enqueue_time_ns, dequeue_time_ns);
-      };
+    WorkerThreadPool::LatencyMessageHandler handler = [this](
+                                                        const std::string& topic,
+                                                        const std::string& message_type,
+                                                        int64_t timestamp_ns,
+                                                        const uint8_t* data,
+                                                        size_t data_size,
+                                                        uint32_t sequence,
+                                                        uint64_t publish_time_ns,
+                                                        uint64_t receive_time_ns,
+                                                        uint64_t enqueue_time_ns,
+                                                        uint64_t dequeue_time_ns
+                                                      ) -> bool {
+      return this->latency_message_handler(
+        topic,
+        message_type,
+        timestamp_ns,
+        data,
+        data_size,
+        sequence,
+        publish_time_ns,
+        receive_time_ns,
+        enqueue_time_ns,
+        dequeue_time_ns
+      );
+    };
 
     // Plumb batch_size / flush_interval_ms from SubscriptionConfig into the worker.
     // This actually activates the batching fields that were previously parsed but unused.
@@ -1325,18 +1353,16 @@ void AxonRecorder::report_message_drop(
   //   recent_drops  - number of drops since the last log line (>1 when rate-limited)
   if (recent_drops > 1) {
     AXON_LOG_WARN(
-      "Message dropped (queue full)"
-      << axon::logging::kv("topic", topic)
-      << axon::logging::kv("message_type", message_type)
-      << axon::logging::kv("total_dropped", total_dropped)
-      << axon::logging::kv("recent_drops", recent_drops)
+      "Message dropped (queue full)" << axon::logging::kv("topic", topic)
+                                     << axon::logging::kv("message_type", message_type)
+                                     << axon::logging::kv("total_dropped", total_dropped)
+                                     << axon::logging::kv("recent_drops", recent_drops)
     );
   } else {
     AXON_LOG_WARN(
-      "Message dropped (queue full)"
-      << axon::logging::kv("topic", topic)
-      << axon::logging::kv("message_type", message_type)
-      << axon::logging::kv("total_dropped", total_dropped)
+      "Message dropped (queue full)" << axon::logging::kv("topic", topic)
+                                     << axon::logging::kv("message_type", message_type)
+                                     << axon::logging::kv("total_dropped", total_dropped)
     );
   }
 }
@@ -1429,8 +1455,8 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
         nlohmann::json q;
         q["depth"] = info.depth;
         q["capacity"] = info.capacity;
-        q["utilization"] = info.capacity > 0 ?
-          static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
+        q["utilization"] =
+          info.capacity > 0 ? static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
         queue_depths[topic] = q;
       }
       j["queue_depths"] = queue_depths;
