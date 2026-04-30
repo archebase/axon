@@ -185,6 +185,7 @@ private:
   mutable std::mutex q_mu_;
   std::condition_variable not_full_;
   std::condition_variable not_empty_;
+  std::condition_variable drained_;
   std::deque<QueuedMsg> q_;
 
   // Stats (guarded by q_mu_ except where noted).

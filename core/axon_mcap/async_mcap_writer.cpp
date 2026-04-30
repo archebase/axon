@@ -5,7 +5,6 @@
 #include "async_mcap_writer.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cstring>
 #include <utility>
 
@@ -71,6 +70,7 @@ void AsyncMcapWriter::close() {
   }
   not_empty_.notify_all();
   not_full_.notify_all();
+  drained_.notify_all();
 
   if (worker_.joinable()) {
     worker_.join();
@@ -218,6 +218,7 @@ void AsyncMcapWriter::worker_loop() {
       in_flight_ -= local_batch.size();
     }
     not_full_.notify_all();
+    drained_.notify_all();
     // Any messages after `written` in this batch failed; they're dropped
     // silently (the underlying writer logs rate-limited errors). This
     // matches the best-effort contract documented on the class.
@@ -226,12 +227,9 @@ void AsyncMcapWriter::worker_loop() {
 
 void AsyncMcapWriter::wait_until_empty() {
   std::unique_lock<std::mutex> lk(q_mu_);
-  // Re-check periodically so we don't deadlock if the worker exits due
-  // to a shutdown while this thread is waiting; 10 ms is well below
-  // user-visible latency.
-  while ((!q_.empty() || in_flight_ > 0) && running_.load(std::memory_order_acquire)) {
-    not_full_.wait_for(lk, std::chrono::milliseconds(10));
-  }
+  drained_.wait(lk, [&] {
+    return (q_.empty() && in_flight_ == 0) || !running_.load(std::memory_order_acquire);
+  });
 }
 
 AsyncWriterStats AsyncMcapWriter::get_async_stats() const {
