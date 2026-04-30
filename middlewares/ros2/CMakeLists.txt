@@ -65,27 +65,45 @@ if(NOT EXISTS "${ROS2_DIR}")
 endif()
 
 # Find ROS2 libraries
-find_package(rcl_interfaces REQUIRED)
-find_package(type_description_interfaces REQUIRED)
-
-# ROS 2 Rolling exports link-interface references to aggregate targets
-# (e.g. `rclcpp` -> `rcl_interfaces::rcl_interfaces`,
-#        `rcl::rcl` -> `type_description_interfaces::type_description_interfaces`)
-# that are introduced by ros2/rosidl#947. Older package installs only expose
-# the per-language generated targets (e.g. `<pkg>::<pkg>__rosidl_typesupport_cpp`),
-# so CMake fails at the Generate step with
-# "The link interface of target \"rcl::rcl\" contains: <pkg>::<pkg> but the
-# target was not found". Define no-op compatibility targets before loading
-# rclcpp so the link interface can be resolved.
-foreach(_axon_ros2_aggregate_target
-    rcl_interfaces::rcl_interfaces
-    type_description_interfaces::type_description_interfaces
+#
+# ROS 2 Rolling (and eventually backported to kilted/jazzy/humble) exports
+# link-interface references to aggregate rosidl targets introduced by
+# ros2/rosidl#947, e.g.:
+#   rclcpp   -> rcl_interfaces::rcl_interfaces,
+#               builtin_interfaces::builtin_interfaces,
+#               rosgraph_msgs::rosgraph_msgs,
+#               statistics_msgs::statistics_msgs
+#   rcl::rcl -> type_description_interfaces::type_description_interfaces
+#
+# When a consumer (rcl / rclcpp) is rebuilt with the new rosidl but a
+# referenced interface package still ships its older Config.cmake, only the
+# per-language targets (e.g. `<pkg>::<pkg>__rosidl_typesupport_cpp`) get
+# created - the aggregate `<pkg>::<pkg>` is missing and CMake fails at the
+# Generate step with:
+#   The link interface of target "rcl::rcl" contains: <pkg>::<pkg>
+#   but the target was not found.
+#
+# Find each package (ensures per-language targets exist) and, if the
+# aggregate target is still absent, define a no-op INTERFACE IMPORTED stub
+# so CMake can resolve the link interface. The `NOT TARGET` guard makes the
+# stubs silent no-ops once a distro has synced to the new rosidl.
+set(_axon_ros2_rosidl_packages
+    rcl_interfaces
+    builtin_interfaces
+    rosgraph_msgs
+    statistics_msgs
+    type_description_interfaces
 )
-    if(NOT TARGET ${_axon_ros2_aggregate_target})
-        add_library(${_axon_ros2_aggregate_target} INTERFACE IMPORTED GLOBAL)
+foreach(_axon_ros2_pkg ${_axon_ros2_rosidl_packages})
+    find_package(${_axon_ros2_pkg} REQUIRED)
+    if(NOT TARGET ${_axon_ros2_pkg}::${_axon_ros2_pkg})
+        add_library(
+            ${_axon_ros2_pkg}::${_axon_ros2_pkg} INTERFACE IMPORTED GLOBAL
+        )
     endif()
 endforeach()
-unset(_axon_ros2_aggregate_target)
+unset(_axon_ros2_pkg)
+unset(_axon_ros2_rosidl_packages)
 
 find_package(rclcpp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
