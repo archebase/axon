@@ -199,7 +199,7 @@ build-mcap:
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=OFF && \
-		cmake --build . -j$(NPROC) --target axon_mcap test_mcap_writer test_mcap_validator test_mcap_validator_mocked
+		cmake --build . -j$(NPROC) --target axon_mcap test_mcap_batch_and_async test_mcap_writer test_mcap_validator test_mcap_validator_mocked
 	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
 
 build-logging:
