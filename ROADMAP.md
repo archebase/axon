@@ -168,21 +168,21 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - ✅ Queue depth monitoring
 
 ### Memory Optimization
-- [ ] Zero-Copy Optimization
-  - [ ] Avoid extra copies during serialization
-- [ ] Memory Pool and Preallocation
-  - [ ] Message buffer pooling
-  - [ ] Batch buffer reuse
-  - [ ] Preallocation strategies
+- [✅] Zero-Copy Optimization
+  - [✅] Avoid extra copies during serialization
+- [✅] Memory Pool and Preallocation
+  - [✅] Message buffer pooling
+  - [✅] Batch buffer reuse
+  - [✅] Preallocation strategies
 
 ### Copy Optimization
-- [ ] Batch Writes
-  - [ ] Multi-message aggregation for single write
-  - [ ] Reduce system call overhead
-- [ ] Compression Optimization
-  - [ ] Compression and write decoupling
-  - [ ] Zstd/LZ4 compression benchmark comparison
-  - [ ] Optional compression level tuning
+- [✅] Batch Writes
+  - [✅] Multi-message aggregation for single write
+  - [✅] Reduce system call overhead
+- [✅] Compression Optimization
+  - [✅] Compression and write decoupling
+  - [✅] Zstd/LZ4 compression benchmark comparison
+  - [✅] Optional compression level tuning
 
 ### Hybrid Recording
 - [ ] Unified recording pipeline for ROS binary + UDP JSON in a single MCAP file
