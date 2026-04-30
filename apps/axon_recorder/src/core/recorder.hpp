@@ -412,8 +412,7 @@ public:
    */
   void on_message_v2(
     const char* topic_name, const uint8_t* message_data, size_t message_size,
-    const char* message_type, uint64_t timestamp,
-    void (*release_fn)(void*), void* release_opaque
+    const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque
   );
 
 private:

@@ -4,9 +4,9 @@
 
 #include "ros2_plugin.hpp"
 
-#include <cstring>
-
 #include <nlohmann/json.hpp>
+
+#include <cstring>
 
 // Define component name for logging
 #define AXON_LOG_COMPONENT "ros2_plugin"
@@ -217,8 +217,8 @@ bool Ros2Plugin::subscribe(
 }
 
 bool Ros2Plugin::subscribe_v2(
-  const std::string& topic_name, const std::string& message_type,
-  const SubscribeOptions& options, MessageCallbackV2 callback
+  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+  MessageCallbackV2 callback
 ) {
   if (!initialized_.load()) {
     RCUTILS_LOG_ERROR("Cannot subscribe_v2: plugin not initialized");

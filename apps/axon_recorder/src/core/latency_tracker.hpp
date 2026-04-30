@@ -137,7 +137,8 @@ private:
     std::atomic<uint64_t> anomaly_count_1ms{0};
     std::atomic<uint64_t> anomaly_count_10ms{0};
 
-    PerTopicData(size_t max_samples) : calculator(max_samples) {}
+    PerTopicData(size_t max_samples)
+        : calculator(max_samples) {}
   };
 
   mutable std::mutex mutex_;

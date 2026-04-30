@@ -45,13 +45,13 @@ struct AsyncWriterConfig {
  * Runtime statistics for AsyncMcapWriter.
  */
 struct AsyncWriterStats {
-  uint64_t enqueued = 0;        // total messages successfully enqueued
-  uint64_t dequeued = 0;        // total messages successfully written by worker
-  uint64_t dropped_full = 0;    // messages dropped because queue was full (drop policy)
+  uint64_t enqueued = 0;         // total messages successfully enqueued
+  uint64_t dequeued = 0;         // total messages successfully written by worker
+  uint64_t dropped_full = 0;     // messages dropped because queue was full (drop policy)
   uint64_t batches_written = 0;  // number of write_batch() calls by worker
-  uint64_t write_failures = 0;  // write_batch() calls that reported failure
-  uint64_t current_depth = 0;   // current queue depth (snapshot)
-  uint64_t peak_depth = 0;      // peak queue depth observed
+  uint64_t write_failures = 0;   // write_batch() calls that reported failure
+  uint64_t current_depth = 0;    // current queue depth (snapshot)
+  uint64_t peak_depth = 0;       // peak queue depth observed
 };
 
 /**

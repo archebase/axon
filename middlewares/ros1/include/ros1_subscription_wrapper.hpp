@@ -58,9 +58,8 @@ using MessageCallback = std::function<void(
 // produced by that serialize is what we adopt here, so the recorder never
 // re-copies it.
 using MessageCallbackV2 = std::function<void(
-  const std::string& topic_name, const std::string& message_type,
-  const uint8_t* message_data, size_t message_size, uint64_t timestamp,
-  void (*release_fn)(void*), void* release_opaque
+  const std::string& topic_name, const std::string& message_type, const uint8_t* message_data,
+  size_t message_size, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque
 )>;
 
 class SubscriptionManager {

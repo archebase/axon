@@ -176,7 +176,9 @@ RpcResponse handle_rpc_get_drop_stats(const RpcCallbacks& callbacks, const nlohm
  * @param params Request parameters (unused)
  * @return RPC response with latency statistics
  */
-RpcResponse handle_rpc_get_latency_stats(const RpcCallbacks& callbacks, const nlohmann::json& params);
+RpcResponse handle_rpc_get_latency_stats(
+  const RpcCallbacks& callbacks, const nlohmann::json& params
+);
 
 /**
  * Handle RPC test command (connectivity check)

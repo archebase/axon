@@ -532,9 +532,7 @@ bool McapWriterWrapper::write(
   return impl_->write(channel_id, sequence, log_time_ns, publish_time_ns, data, data_size);
 }
 
-bool McapWriterWrapper::write_batch(
-  const BatchItem* items, size_t count, size_t* written_out
-) {
+bool McapWriterWrapper::write_batch(const BatchItem* items, size_t count, size_t* written_out) {
   return impl_->write_batch(items, count, written_out);
 }
 

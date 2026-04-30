@@ -22,7 +22,9 @@ endif()
 if(NOT DEFINED AXON_LOGGING_DIR)
     # Try to auto-detect from relative path
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../core/axon_logging")
-        set(AXON_LOGGING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/axon_logging")
+        set(AXON_LOGGING_DIR
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../core/axon_logging"
+        )
     else()
         message(
             FATAL_ERROR
@@ -32,7 +34,11 @@ if(NOT DEFINED AXON_LOGGING_DIR)
     endif()
 endif()
 
-find_package(Boost REQUIRED COMPONENTS log log_setup thread filesystem system)
+find_package(
+    Boost
+    REQUIRED
+    COMPONENTS log log_setup thread filesystem system
+)
 find_package(Threads REQUIRED)
 
 # Try to find nlohmann_json (works when built from parent project)
@@ -69,7 +75,11 @@ if(NOT AXON_LOGGING_LIBRARY)
     set(AXON_LOGGING_LIBRARY "axon_logging")
 else()
     # Get the directory containing the library for linker path
-    get_filename_component(AXON_LOGGING_LIB_DIR "${AXON_LOGGING_LIBRARY}" DIRECTORY)
+    get_filename_component(
+        AXON_LOGGING_LIB_DIR
+        "${AXON_LOGGING_LIBRARY}"
+        DIRECTORY
+    )
     link_directories("${AXON_LOGGING_LIB_DIR}")
     message(STATUS "Found axon_logging library: ${AXON_LOGGING_LIBRARY}")
 endif()
@@ -78,10 +88,7 @@ endif()
 # Build Plugin Library
 # =============================================================================
 
-set(CORE_SOURCES
-    src/mock_plugin.cpp
-    src/mock_plugin_export.cpp
-)
+set(CORE_SOURCES src/mock_plugin.cpp src/mock_plugin_export.cpp)
 
 add_library(axon_mock_plugin SHARED ${CORE_SOURCES})
 
@@ -92,7 +99,8 @@ set_target_properties(
         VERSION ${PROJECT_VERSION}
         SOVERSION 0
         VISIBILITY_INLINES_HIDDEN ON
-        OUTPUT_NAME "mock_plugin"  # Produces libmock_plugin.so
+        OUTPUT_NAME
+            "mock_plugin" # Produces libmock_plugin.so
 )
 
 target_include_directories(
@@ -196,8 +204,14 @@ if(AXON_BUILD_TESTS)
     # Register tests
     add_test(NAME test_mock_plugin_load COMMAND test_mock_plugin_load)
     add_test(NAME test_mock_plugin_e2e COMMAND test_mock_plugin_e2e)
-    set_tests_properties(test_mock_plugin_load PROPERTIES LABELS "unit;mock_plugin")
-    set_tests_properties(test_mock_plugin_e2e PROPERTIES LABELS "e2e;mock_plugin")
+    set_tests_properties(
+        test_mock_plugin_load
+        PROPERTIES LABELS "unit;mock_plugin"
+    )
+    set_tests_properties(
+        test_mock_plugin_e2e
+        PROPERTIES LABELS "e2e;mock_plugin"
+    )
 endif()
 
 # =============================================================================

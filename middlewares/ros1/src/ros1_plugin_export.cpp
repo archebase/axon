@@ -57,8 +57,8 @@ using AxonMessageCallback = void (*)(
 // done with the buffer).
 using AxonMessageCallbackV2 = void (*)(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
-  const char* message_type, uint64_t timestamp,
-  void (*release_fn)(void*), void* release_opaque, void* user_data
+  const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque,
+  void* user_data
 );
 
 // =============================================================================
@@ -178,8 +178,8 @@ static Ros1Plugin::SubscribeOptions parse_subscribe_options(
       options.depth_compression = dc_config;
       if (dc_config.enabled) {
         AXON_LOG_INFO(
-          "Depth compression config for " << kv("topic", topic_name) << ": enabled="
-                                          << kv("enabled", "true")
+          "Depth compression config for " << kv("topic", topic_name)
+                                          << ": enabled=" << kv("enabled", "true")
                                           << ", level=" << kv("level", dc_config.level)
         );
       }
@@ -245,9 +245,7 @@ static int32_t axon_subscribe(
     callback(topic.c_str(), data.data(), data.size(), type.c_str(), timestamp, user_data);
   };
 
-  if (!g_plugin->subscribe(
-        std::string(topic_name), std::string(message_type), options, wrapper
-      )) {
+  if (!g_plugin->subscribe(std::string(topic_name), std::string(message_type), options, wrapper)) {
     return static_cast<int32_t>(AXON_ERROR_INTERNAL);
   }
 
@@ -287,14 +285,14 @@ static int32_t axon_subscribe_v2(
   MessageCallbackV2 wrapper = [callback, user_data](
                                 const std::string& topic,
                                 const std::string& type,
-                                const uint8_t* data, size_t size,
+                                const uint8_t* data,
+                                size_t size,
                                 uint64_t timestamp,
                                 void (*release_fn)(void*),
                                 void* release_opaque
                               ) {
     callback(
-      topic.c_str(), data, size, type.c_str(), timestamp,
-      release_fn, release_opaque, user_data
+      topic.c_str(), data, size, type.c_str(), timestamp, release_fn, release_opaque, user_data
     );
   };
 
@@ -347,9 +345,7 @@ struct AxonPluginVtable {
   int32_t (*init)(const char*);
   int32_t (*start)(void);
   int32_t (*stop)(void);
-  int32_t (*subscribe)(
-    const char*, const char*, const char*, AxonMessageCallback, void*
-  );
+  int32_t (*subscribe)(const char*, const char*, const char*, AxonMessageCallback, void*);
   int32_t (*publish)(const char*, const uint8_t*, size_t, const char*);
   void* reserved[9];
 };
@@ -376,11 +372,15 @@ static AxonPluginVtable ros1_vtable = {
   axon_stop,
   axon_subscribe,
   axon_publish,
-  {
-    reinterpret_cast<void*>(&axon_subscribe_v2),  // reserved[0]
-    reinterpret_cast<void*>(&axon_session_stop),  // reserved[1]
-    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
-  }
+  {reinterpret_cast<void*>(&axon_subscribe_v2),  // reserved[0]
+   reinterpret_cast<void*>(&axon_session_stop),  // reserved[1]
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr}
 };
 
 // Exported plugin descriptor

@@ -9,7 +9,8 @@
 namespace axon {
 namespace recorder {
 
-LatencyTracker::LatencyTracker() : global_calculator_(100000) {}
+LatencyTracker::LatencyTracker()
+    : global_calculator_(100000) {}
 
 void LatencyTracker::record(const LatencyRecord& record) {
   uint64_t total_latency = record.latency_total_ns();

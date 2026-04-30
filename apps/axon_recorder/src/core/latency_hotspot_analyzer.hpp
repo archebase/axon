@@ -110,7 +110,7 @@ inline std::string LatencyHeatmap::to_ascii_string() const {
   }
   result += "\n";
 
-    for (size_t i = 0; i < bucket_counts.size(); ++i) {
+  for (size_t i = 0; i < bucket_counts.size(); ++i) {
     if (i % 5 == 0 && i < bucket_boundaries.size()) {
       result += std::to_string(bucket_boundaries[i] / 1000000) + "ms";
     } else {

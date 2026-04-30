@@ -72,8 +72,8 @@ public:
   // This is the entry point used by the C ABI (axon_subscribe) so that
   // depth_compression and other options_json fields actually take effect.
   bool subscribe(
-    const std::string& topic_name, const std::string& message_type,
-    const SubscribeOptions& options, MessageCallback callback
+    const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+    MessageCallback callback
   );
 
   // ABI v1.2 zero-copy subscribe. The callback receives a raw pointer +
@@ -82,8 +82,8 @@ public:
   // contract; the recorder must call release_fn(release_opaque) exactly
   // once per message.
   bool subscribe_v2(
-    const std::string& topic_name, const std::string& message_type,
-    const SubscribeOptions& options, MessageCallbackV2 callback
+    const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+    MessageCallbackV2 callback
   );
 
   // Unsubscribe from a topic

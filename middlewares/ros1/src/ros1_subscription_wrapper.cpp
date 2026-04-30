@@ -226,8 +226,7 @@ bool SubscriptionManager::subscribe(
 //     and hand that off; the recorder pipeline treats it identically.
 bool SubscriptionManager::subscribe_v2(
   const std::string& topic_name, const std::string& message_type, uint32_t queue_size,
-  MessageCallbackV2 callback,
-  const std::optional<DepthCompressionConfig>& depth_compression
+  MessageCallbackV2 callback, const std::optional<DepthCompressionConfig>& depth_compression
 ) {
   std::lock_guard<std::mutex> lock(mutex_);
 
@@ -241,8 +240,8 @@ bool SubscriptionManager::subscribe_v2(
   if (depth_compression && depth_compression->enabled) {
     depth_filter = std::make_shared<DepthCompressionFilter>(*depth_compression);
     AXON_LOG_INFO(
-      "Depth compression enabled (v2) for topic: " << kv("topic", topic_name)
-      << " (level: " << kv("level", depth_compression->level) << ")"
+      "Depth compression enabled (v2) for topic: " << kv("topic", topic_name) << " (level: "
+                                                   << kv("level", depth_compression->level) << ")"
     );
   }
 #else
@@ -260,11 +259,14 @@ bool SubscriptionManager::subscribe_v2(
     auto subscriber = node_handle_->subscribe<topic_tools::ShapeShifter>(
       topic_name,
       queue_size,
-      [topic_name, message_type, callback
+      [topic_name,
+       message_type,
+       callback
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
-       , depth_filter
+       ,
+       depth_filter
 #endif
-      ](const typename topic_tools::ShapeShifter::ConstPtr& msg) {
+    ](const typename topic_tools::ShapeShifter::ConstPtr& msg) {
         if (!callback || !msg) {
           return;
         }
@@ -287,16 +289,26 @@ bool SubscriptionManager::subscribe_v2(
             // the compressed frame, then we transfer ownership of a fresh
             // buffer containing the filter output.
             depth_filter->filter_and_process(
-              topic_name, actual_type, *holder, timestamp,
+              topic_name,
+              actual_type,
+              *holder,
+              timestamp,
               [&callback](
-                const std::string& out_topic, const std::string& out_type,
-                const std::vector<uint8_t>& out_data, uint64_t out_ts
+                const std::string& out_topic,
+                const std::string& out_type,
+                const std::vector<uint8_t>& out_data,
+                uint64_t out_ts
               ) {
                 auto* out_holder = new std::vector<uint8_t>(out_data);
                 callback(
-                  out_topic, out_type,
-                  out_holder->data(), out_holder->size(), out_ts,
-                  +[](void* p) { delete static_cast<std::vector<uint8_t>*>(p); },
+                  out_topic,
+                  out_type,
+                  out_holder->data(),
+                  out_holder->size(),
+                  out_ts,
+                  +[](void* p) {
+                    delete static_cast<std::vector<uint8_t>*>(p);
+                  },
                   out_holder
                 );
               }
@@ -310,16 +322,21 @@ bool SubscriptionManager::subscribe_v2(
           // Zero-copy pass-through: hand the recorder raw bytes + a
           // release trampoline that frees the std::vector holder.
           callback(
-            topic_name, actual_type,
-            holder->data(), holder->size(), timestamp,
-            +[](void* p) { delete static_cast<std::vector<uint8_t>*>(p); },
+            topic_name,
+            actual_type,
+            holder->data(),
+            holder->size(),
+            timestamp,
+            +[](void* p) {
+              delete static_cast<std::vector<uint8_t>*>(p);
+            },
             holder
           );
 
         } catch (const std::exception& e) {
           AXON_LOG_ERROR(
-            "Failed to handle message (v2) on topic " << kv("topic", topic_name)
-            << ": " << kv("error", e.what())
+            "Failed to handle message (v2) on topic " << kv("topic", topic_name) << ": "
+                                                      << kv("error", e.what())
           );
         }
       }
@@ -340,15 +357,14 @@ bool SubscriptionManager::subscribe_v2(
     subscriptions_[topic_name] = std::move(info);
 
     AXON_LOG_INFO(
-      "Subscribed (v2) to topic " << kv("topic", topic_name)
-      << " (" << kv("type", message_type) << ")"
+      "Subscribed (v2) to topic " << kv("topic", topic_name) << " (" << kv("type", message_type)
+                                  << ")"
     );
     return true;
 
   } catch (const std::exception& e) {
     AXON_LOG_ERROR(
-      "Exception subscribing (v2) to " << kv("topic", topic_name)
-      << ": " << kv("error", e.what())
+      "Exception subscribing (v2) to " << kv("topic", topic_name) << ": " << kv("error", e.what())
     );
     return false;
   }

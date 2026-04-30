@@ -54,7 +54,8 @@ void LatencyAnomalyDetector::set_alert_callback(AlertCallback callback) {
 }
 
 LatencyAnomalyDetector::Severity LatencyAnomalyDetector::check_latency(
-    const std::string& topic, uint64_t latency_ns) {
+  const std::string& topic, uint64_t latency_ns
+) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto it = topic_windows_.find(topic);
@@ -92,7 +93,8 @@ LatencyAnomalyDetector::Severity LatencyAnomalyDetector::check_latency(
 }
 
 std::optional<LatencyAnomalyDetector::Alert> LatencyAnomalyDetector::check_window_anomaly(
-    const std::string& topic) {
+  const std::string& topic
+) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto it = topic_windows_.find(topic);
@@ -140,7 +142,8 @@ std::optional<LatencyAnomalyDetector::Alert> LatencyAnomalyDetector::check_windo
 }
 
 LatencyAnomalyDetector::Severity LatencyAnomalyDetector::get_topic_status(
-    const std::string& topic) const {
+  const std::string& topic
+) const {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto it = topic_windows_.find(topic);
@@ -177,14 +180,13 @@ void LatencyAnomalyDetector::record_latency(const std::string& topic, uint64_t l
     alert.topic = topic;
     alert.severity = severity;
     alert.latency_ns = latency_ns;
-    alert.threshold_ns = (severity == Severity::Critical)
-                              ? config_.critical_threshold_ns
-                              : config_.warning_threshold_ns;
+    alert.threshold_ns = (severity == Severity::Critical) ? config_.critical_threshold_ns
+                                                          : config_.warning_threshold_ns;
     alert.timestamp_ns = 0;
     alert.detection_method = "threshold";
     alert.message = "Latency anomaly on " + topic + ": " + std::to_string(latency_ns / 1000000.0) +
-                    "ms exceeds " +
-                    (severity == Severity::Critical ? "critical" : "warning") + " threshold";
+                    "ms exceeds " + (severity == Severity::Critical ? "critical" : "warning") +
+                    " threshold";
 
     alert_callback_(alert);
   }

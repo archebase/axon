@@ -6,6 +6,7 @@
 #define AXON_RECORDER_WORKER_THREAD_POOL_HPP
 
 #include <atomic>
+#include <buffer_pool.hpp>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -16,8 +17,6 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-
-#include <buffer_pool.hpp>
 
 #include "spsc_queue.hpp"
 
@@ -56,8 +55,10 @@ struct MessageItem {
     raw_data.assign(data.data(), data.size());
   }
 
-  MessageItem(int64_t ts, uint64_t pub_time, uint64_t recv_time, const std::string& type,
-              std::vector<uint8_t>&& data)
+  MessageItem(
+    int64_t ts, uint64_t pub_time, uint64_t recv_time, const std::string& type,
+    std::vector<uint8_t>&& data
+  )
       : timestamp_ns(ts)
       , publish_time_ns(pub_time)
       , receive_time_ns(recv_time)
@@ -185,9 +186,8 @@ public:
    * - message_type: The ROS message type (e.g., "sensor_msgs::msg::Image")
    * - total_dropped: Total number of messages dropped for this topic so far
    */
-  using DropCallback = std::function<void(
-    const std::string& topic, const std::string& message_type, uint64_t total_dropped
-  )>;
+  using DropCallback = std::function<
+    void(const std::string& topic, const std::string& message_type, uint64_t total_dropped)>;
 
   /**
    * Configuration for the thread pool.

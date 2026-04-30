@@ -19,8 +19,7 @@ AsyncMcapWriter::~AsyncMcapWriter() {
 }
 
 bool AsyncMcapWriter::open(
-  const std::string& path, const McapWriterOptions& options,
-  const AsyncWriterConfig& async_config
+  const std::string& path, const McapWriterOptions& options, const AsyncWriterConfig& async_config
 ) {
   if (open_.load(std::memory_order_acquire)) {
     return false;
@@ -135,8 +134,7 @@ bool AsyncMcapWriter::enqueue_(QueuedMsg&& msg) {
     } else {
       // Block until space appears or we're told to stop.
       not_full_.wait(lk, [&] {
-        return q_.size() < async_config_.queue_capacity ||
-               !open_.load(std::memory_order_acquire) ||
+        return q_.size() < async_config_.queue_capacity || !open_.load(std::memory_order_acquire) ||
                stop_requested_.load(std::memory_order_acquire);
       });
       if (!open_.load(std::memory_order_acquire) ||

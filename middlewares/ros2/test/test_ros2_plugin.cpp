@@ -18,9 +18,8 @@ using namespace ros2_plugin;
 
 extern "C" {
 
-using AxonMessageCallback = void (*)(
-  const char*, const uint8_t*, size_t, const char*, uint64_t, void*
-);
+using AxonMessageCallback =
+  void (*)(const char*, const uint8_t*, size_t, const char*, uint64_t, void*);
 
 struct AxonPluginVtable {
   int32_t (*init)(const char*);

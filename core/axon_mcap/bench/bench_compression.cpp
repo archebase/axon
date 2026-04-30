@@ -15,8 +15,6 @@
 // Defaults: 20'000 iterations, 64 KiB payload, batch_size 64.
 // -----------------------------------------------------------------------------
 
-#include "mcap_writer_wrapper.hpp"
-
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -26,6 +24,8 @@
 #include <random>
 #include <string>
 #include <vector>
+
+#include "mcap_writer_wrapper.hpp"
 
 namespace fs = std::filesystem;
 using axon::mcap_wrapper::BatchItem;
@@ -198,8 +198,16 @@ void print_result(
   std::printf(
     "  [%s] comp=%s level=%s iters=%zu payload=%zuB  "
     "%.3fs  throughput=%.1f MiB/s  in=%.1f MiB  out=%.1f MiB  ratio=%.2fx\n",
-    mode, comp_name(comp), level_name(level), iters, payload_bytes, r.seconds, mbs, mib_in,
-    mib_out, ratio
+    mode,
+    comp_name(comp),
+    level_name(level),
+    iters,
+    payload_bytes,
+    r.seconds,
+    mbs,
+    mib_in,
+    mib_out,
+    ratio
   );
 }
 
@@ -220,7 +228,9 @@ int main(int argc, char** argv) {
   std::printf(
     "--- axon_mcap/bench_compression ---\n"
     "iters=%zu payload=%zu bytes batch=%zu\n",
-    iters, payload_bytes, batch_size
+    iters,
+    payload_bytes,
+    batch_size
   );
 
   auto compressible = make_compressible(payload_bytes);

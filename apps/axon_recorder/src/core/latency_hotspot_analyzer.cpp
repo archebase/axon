@@ -22,7 +22,8 @@ void LatencyHotspotAnalyzer::update_from_tracker(const LatencyTracker& tracker) 
 }
 
 HotspotReport LatencyHotspotAnalyzer::create_report(
-    const std::string& topic, const TopicLatencyStats& stats) const {
+  const std::string& topic, const TopicLatencyStats& stats
+) const {
   HotspotReport report;
   report.topic = topic;
   report.message_count = stats.message_count;
@@ -31,12 +32,12 @@ HotspotReport LatencyHotspotAnalyzer::create_report(
 
   if (stats.message_count > 0) {
     report.anomaly_rate_bps =
-        (static_cast<double>(stats.anomaly_count_p99) / static_cast<double>(stats.message_count)) *
-        10000.0;
+      (static_cast<double>(stats.anomaly_count_p99) / static_cast<double>(stats.message_count)) *
+      10000.0;
   }
 
-  bool is_hotspot = report.p99_latency_ns > kElevatedP99Threshold ||
-                    report.anomaly_rate_bps > kElevatedAnomalyRate;
+  bool is_hotspot =
+    report.p99_latency_ns > kElevatedP99Threshold || report.anomaly_rate_bps > kElevatedAnomalyRate;
 
   if (report.p99_latency_ns > kCriticalP99Threshold ||
       report.anomaly_rate_bps > kCriticalAnomalyRate) {
@@ -93,7 +94,8 @@ std::vector<std::string> LatencyHotspotAnalyzer::get_hotspot_topics() const {
 }
 
 std::optional<HotspotReport> LatencyHotspotAnalyzer::get_topic_report(
-    const std::string& topic) const {
+  const std::string& topic
+) const {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto it = reports_.find(topic);
@@ -115,8 +117,9 @@ std::vector<LatencyHeatmap> LatencyHotspotAnalyzer::generate_heatmaps() const {
     hm.topic = topic;
     hm.total_messages = report.message_count;
 
-    std::vector<uint64_t> boundaries = {0,    100000,  500000,  1000000,  2000000,
-                                        5000000, 10000000, 20000000, 50000000, 100000000};
+    std::vector<uint64_t> boundaries = {
+      0, 100000, 500000, 1000000, 2000000, 5000000, 10000000, 20000000, 50000000, 100000000
+    };
 
     hm.bucket_boundaries = boundaries;
     hm.bucket_counts.assign(boundaries.size(), 0);
@@ -133,7 +136,8 @@ void LatencyHotspotAnalyzer::reset() {
 }
 
 void LatencyHotspotAnalyzer::set_anomaly_detector(
-    std::shared_ptr<LatencyAnomalyDetector> detector) {
+  std::shared_ptr<LatencyAnomalyDetector> detector
+) {
   anomaly_detector_ = detector;
 }
 

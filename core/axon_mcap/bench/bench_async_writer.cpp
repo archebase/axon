@@ -16,9 +16,6 @@
 // Defaults: 20'000 iterations, 64 KiB payload, queue_cap 1024.
 // -----------------------------------------------------------------------------
 
-#include "async_mcap_writer.hpp"
-#include "mcap_writer_wrapper.hpp"
-
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -27,6 +24,9 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+
+#include "async_mcap_writer.hpp"
+#include "mcap_writer_wrapper.hpp"
 
 namespace fs = std::filesystem;
 using axon::mcap_wrapper::AsyncMcapWriter;
@@ -99,8 +99,8 @@ struct AsyncResult {
 };
 
 AsyncResult run_async(
-  const std::string& path, Compression comp, CompressionLevel level, size_t iters,
-  size_t queue_cap, const std::vector<uint8_t>& payload
+  const std::string& path, Compression comp, CompressionLevel level, size_t iters, size_t queue_cap,
+  const std::vector<uint8_t>& payload
 ) {
   McapWriterOptions opts;
   opts.compression = comp;
@@ -171,7 +171,9 @@ int main(int argc, char** argv) {
   std::printf(
     "--- axon_mcap/bench_async_writer ---\n"
     "iters=%zu payload=%zu bytes queue_cap=%zu\n",
-    iters, payload_bytes, queue_cap
+    iters,
+    payload_bytes,
+    queue_cap
   );
 
   const Compression algos[] = {Compression::Zstd, Compression::Lz4};
@@ -186,8 +188,12 @@ int main(int argc, char** argv) {
         (static_cast<double>(iters) * payload_bytes / (1024.0 * 1024.0)) / sr.producer_seconds;
       std::printf(
         "[sync ] comp=%s level=%d  producer=%.3fs (%.1f MiB/s)  total=%.3fs  out=%.1f MiB\n",
-        comp_name(c), static_cast<int>(lv), sr.producer_seconds, sync_prod_mbs,
-        sr.total_seconds, static_cast<double>(sr.file_bytes) / (1024.0 * 1024.0)
+        comp_name(c),
+        static_cast<int>(lv),
+        sr.producer_seconds,
+        sync_prod_mbs,
+        sr.total_seconds,
+        static_cast<double>(sr.file_bytes) / (1024.0 * 1024.0)
       );
       fs::remove(sync_path);
 
@@ -199,9 +205,14 @@ int main(int argc, char** argv) {
       std::printf(
         "[async] comp=%s level=%d  producer=%.3fs (%.1f MiB/s)  total=%.3fs  out=%.1f MiB  "
         "peak_depth=%lu dropped=%lu\n",
-        comp_name(c), static_cast<int>(lv), ar.producer_seconds, async_prod_mbs,
-        ar.total_seconds, static_cast<double>(ar.file_bytes) / (1024.0 * 1024.0),
-        static_cast<unsigned long>(ar.peak_depth), static_cast<unsigned long>(ar.dropped_full)
+        comp_name(c),
+        static_cast<int>(lv),
+        ar.producer_seconds,
+        async_prod_mbs,
+        ar.total_seconds,
+        static_cast<double>(ar.file_bytes) / (1024.0 * 1024.0),
+        static_cast<unsigned long>(ar.peak_depth),
+        static_cast<unsigned long>(ar.dropped_full)
       );
       fs::remove(async_path);
     }
