@@ -66,14 +66,26 @@ endif()
 
 # Find ROS2 libraries
 find_package(rcl_interfaces REQUIRED)
+find_package(type_description_interfaces REQUIRED)
 
-# Some ROS 2 Rolling package exports reference this aggregate target from
-# rcl::rcl, while rcl_interfaces itself may only export generated per-language
-# targets. Define a no-op compatibility target before loading rclcpp so CMake
-# can resolve rcl's link interface during generation.
-if(NOT TARGET rcl_interfaces::rcl_interfaces)
-    add_library(rcl_interfaces::rcl_interfaces INTERFACE IMPORTED GLOBAL)
-endif()
+# ROS 2 Rolling exports link-interface references to aggregate targets
+# (e.g. `rclcpp` -> `rcl_interfaces::rcl_interfaces`,
+#        `rcl::rcl` -> `type_description_interfaces::type_description_interfaces`)
+# that are introduced by ros2/rosidl#947. Older package installs only expose
+# the per-language generated targets (e.g. `<pkg>::<pkg>__rosidl_typesupport_cpp`),
+# so CMake fails at the Generate step with
+# "The link interface of target \"rcl::rcl\" contains: <pkg>::<pkg> but the
+# target was not found". Define no-op compatibility targets before loading
+# rclcpp so the link interface can be resolved.
+foreach(_axon_ros2_aggregate_target
+    rcl_interfaces::rcl_interfaces
+    type_description_interfaces::type_description_interfaces
+)
+    if(NOT TARGET ${_axon_ros2_aggregate_target})
+        add_library(${_axon_ros2_aggregate_target} INTERFACE IMPORTED GLOBAL)
+    endif()
+endforeach()
+unset(_axon_ros2_aggregate_target)
 
 find_package(rclcpp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
