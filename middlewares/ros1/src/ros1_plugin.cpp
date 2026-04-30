@@ -53,10 +53,18 @@ bool Ros1Plugin::init(const char* config_json) {
       }
     }
 
-    // Initialize ROS1 if not already initialized
+    // Initialize ROS1 if not already initialized. The recorder process owns
+    // SIGINT/SIGTERM handling; letting roscpp install its SIGINT handler would
+    // swallow Ctrl+C and leave the recorder main loop waiting forever.
     if (!ros::isInitialized()) {
       int argc = 0;
-      ros::init(argc, nullptr, node_name_, ros::init_options::AnonymousName);
+      ros::init(
+        argc,
+        nullptr,
+        node_name_,
+        ros::init_options::AnonymousName | ros::init_options::NoSigintHandler
+      );
+      AXON_LOG_INFO("ROS1 initialized without installing SIGINT handler");
     }
 
     // Create node handle with namespace if provided
@@ -141,7 +149,9 @@ bool Ros1Plugin::stop_session() {
     spinning_.store(false);
 
     if (async_spinner_) {
+      AXON_LOG_INFO("Stopping ROS1 async spinner");
       async_spinner_->stop();
+      AXON_LOG_INFO("ROS1 async spinner stopped");
     }
 
     async_spinner_.reset();
@@ -149,7 +159,9 @@ bool Ros1Plugin::stop_session() {
 
   // Clear per-session subscriptions while preserving the NodeHandle and ROS
   // process state for subsequent recordings in this process.
+  AXON_LOG_INFO("Clearing ROS1 subscriptions");
   subscription_manager_.reset();
+  AXON_LOG_INFO("ROS1 subscriptions cleared");
 
   AXON_LOG_INFO("ROS1 plugin session stopped");
 
@@ -169,8 +181,8 @@ bool Ros1Plugin::subscribe(
 }
 
 bool Ros1Plugin::subscribe(
-  const std::string& topic_name, const std::string& message_type,
-  const SubscribeOptions& options, MessageCallback callback
+  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+  MessageCallback callback
 ) {
   if (!initialized_.load()) {
     AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
@@ -195,15 +207,13 @@ bool Ros1Plugin::subscribe(
   // Without depth compression support, the options.depth_compression field
   // is ignored (a warning is logged at the ABI layer). The only option
   // currently honored in this build is queue_size.
-  return subscription_manager_->subscribe(
-    topic_name, message_type, options.queue_size, callback
-  );
+  return subscription_manager_->subscribe(topic_name, message_type, options.queue_size, callback);
 #endif
 }
 
 bool Ros1Plugin::subscribe_v2(
-  const std::string& topic_name, const std::string& message_type,
-  const SubscribeOptions& options, MessageCallbackV2 callback
+  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
+  MessageCallbackV2 callback
 ) {
   if (!initialized_.load()) {
     AXON_LOG_ERROR("Cannot subscribe_v2: plugin not initialized");
