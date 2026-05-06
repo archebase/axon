@@ -185,9 +185,9 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - [✅] Optional compression level tuning
 
 ### Hybrid Recording
-- [ ] Unified recording pipeline for ROS binary + UDP JSON in a single MCAP file
-- [ ] Time-synchronized message interleaving across sources
-- [ ] Per-source topic namespace isolation
+- [✅] Unified recording pipeline for ROS binary + UDP JSON in a single MCAP file
+- [✅] Time-synchronized message interleaving across sources
+- [✅] Per-source topic namespace isolation
 
 ### Robot Configuration Management via Web UI
 - [ ] **AxonPanel Config Integration**

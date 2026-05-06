@@ -1,0 +1,59 @@
+# Hybrid recording: ROS2 + UDP JSON into a single MCAP file.
+# Build/install plugin paths on your machine (examples below are placeholders).
+#
+# Usage:
+#   ./axon_recorder --config config/default_config_hybrid.yaml
+
+# Ordered plugin list — required for hybrid (ROS middleware first is typical).
+plugins:
+  - path: "/usr/local/lib/axon/plugins/libaxon_ros2_plugin.so"
+  - path: "/usr/local/lib/axon/plugins/libaxon_udp.so"
+
+dataset:
+  path: /tmp/axon/recording
+  output_file: recording.mcap
+  queue_size: 8192
+
+recording:
+  profile: ros2
+  compression: zstd
+  compression_level: 3
+
+# Subscribe to ROS topics and UDP-backed JSON channels (per udp.streams below).
+subscriptions:
+  - name: /imu/data
+    message_type: sensor_msgs/msg/Imu
+    batch_size: 500
+    flush_interval_ms: 1000
+  - name: /udp/gps
+    message_type: axon_udp/json
+    batch_size: 1
+    flush_interval_ms: 100
+  - name: /udp/can
+    message_type: axon_udp/json
+    batch_size: 1
+    flush_interval_ms: 100
+
+udp:
+  enabled: true
+  bind_address: "0.0.0.0"
+  buffer_size: 65536
+  timestamp_extraction:
+    source: "field"
+    field: "timestamp"
+  streams:
+    - name: "gps"
+      port: 4242
+      topic: "/udp/gps"
+      enabled: true
+    - name: "can_bridge"
+      port: 4243
+      topic: "/udp/can"
+      enabled: true
+
+rpc:
+  mode: http_server
+
+http_server:
+  host: "0.0.0.0"
+  port: 8765

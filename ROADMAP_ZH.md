@@ -184,9 +184,9 @@
   - [✅] 可选压缩级别调优（`CompressionLevel::{Fastest,Fast,Default,Slow,Slowest}`，Zstd/LZ4 统一预设）
 
 ### 混合录制
-- [ ] 统一录制管道，将 ROS 二进制与 UDP JSON 写入同一个 MCAP 文件
-- [ ] 跨数据源的时间同步消息交织
-- [ ] 每数据源主题命名空间隔离
+- [✅] 统一录制管道，将 ROS 二进制与 UDP JSON 写入同一个 MCAP 文件
+- [✅] 跨数据源的时间同步消息交织
+- [✅] 每数据源主题命名空间隔离
 
 ### Web UI 机器人配置管理
 - [ ] **AxonPanel 配置集成**

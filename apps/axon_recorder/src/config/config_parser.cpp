@@ -88,10 +88,32 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
   try {
     YAML::Node node = YAML::Load(yaml_content);
 
+    // Hybrid recording: ordered plugin list (exclusive with plugin.path + auxiliary_paths)
+    if (node["plugins"] && node["plugins"].IsSequence()) {
+      config.plugin_paths_ordered.clear();
+      for (const auto& item : node["plugins"]) {
+        std::string p;
+        if (item.IsMap() && item["path"]) {
+          p = item["path"].as<std::string>();
+        } else if (item.IsScalar()) {
+          p = item.as<std::string>();
+        }
+        if (!p.empty()) {
+          config.plugin_paths_ordered.push_back(p);
+        }
+      }
+    }
+
     // Parse plugin configuration (optional, for backwards compatibility)
     if (node["plugin"]) {
-      if (node["plugin"]["path"]) {
+      if (config.plugin_paths_ordered.empty() && node["plugin"]["path"]) {
         config.plugin_path = node["plugin"]["path"].as<std::string>();
+      }
+      if (config.plugin_paths_ordered.empty() && node["plugin"]["auxiliary_paths"] &&
+          node["plugin"]["auxiliary_paths"].IsSequence()) {
+        for (const auto& ap : node["plugin"]["auxiliary_paths"]) {
+          config.auxiliary_plugin_paths.push_back(ap.as<std::string>());
+        }
       }
     }
 
