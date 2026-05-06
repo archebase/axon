@@ -316,6 +316,15 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
     }
   }
 
+  if (node["subtract_pause_duration_from_timestamps"]) {
+    recording.subtract_pause_duration_from_timestamps =
+      node["subtract_pause_duration_from_timestamps"].as<bool>();
+  }
+  if (node["enforce_monotonic_timestamps_per_topic"]) {
+    recording.enforce_monotonic_timestamps_per_topic =
+      node["enforce_monotonic_timestamps_per_topic"].as<bool>();
+  }
+
   return true;
 }
 

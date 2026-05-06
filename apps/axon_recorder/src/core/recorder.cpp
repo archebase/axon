@@ -254,6 +254,7 @@ bool AxonRecorder::start() {
   }
 
   reset_pause_tracking();
+  reset_topic_monotonic_timestamps();
   last_session_active_duration_sec_ = 0.0;
   last_session_final_file_size_ = 0;
   last_session_close_time_ = std::chrono::system_clock::time_point{};
@@ -1004,6 +1005,30 @@ uint64_t AxonRecorder::adjust_message_timestamp(uint64_t timestamp_ns) const {
   return timestamp_ns > offset_ns ? timestamp_ns - offset_ns : 0;
 }
 
+void AxonRecorder::reset_topic_monotonic_timestamps() {
+  std::lock_guard<std::mutex> lock(topic_monotonic_mutex_);
+  last_written_log_time_ns_by_topic_.clear();
+}
+
+uint64_t AxonRecorder::apply_monotonic_timestamp_for_topic(
+  const std::string& topic, uint64_t stamp_ns
+) {
+  if (!config_.recording.enforce_monotonic_timestamps_per_topic) {
+    return stamp_ns;
+  }
+
+  std::lock_guard<std::mutex> lock(topic_monotonic_mutex_);
+  uint64_t& last = last_written_log_time_ns_by_topic_[topic];
+  if (stamp_ns <= last) {
+    if (last == UINT64_MAX) {
+      return UINT64_MAX;
+    }
+    stamp_ns = last + 1;
+  }
+  last = stamp_ns;
+  return stamp_ns;
+}
+
 void AxonRecorder::set_task_config(const TaskConfig& config) {
   std::lock_guard<std::mutex> lock(recorder_mutex_);
   task_config_ = config;
@@ -1099,7 +1124,10 @@ void AxonRecorder::on_message(
   // Acquire a pool-backed buffer sized for this payload. On the steady-state
   // hot path this avoids `operator new` per message (bucket reuse).
   MessageItem item;
-  const uint64_t adjusted_timestamp = adjust_message_timestamp(timestamp);
+  const uint64_t adjusted_timestamp =
+    config_.recording.subtract_pause_duration_from_timestamps
+      ? adjust_message_timestamp(timestamp)
+      : timestamp;
   item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
   item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
@@ -1131,7 +1159,10 @@ void AxonRecorder::on_message_v2(
   uint64_t receive_time_ns = get_steady_clock_ns();
 
   MessageItem item;
-  const uint64_t adjusted_timestamp = adjust_message_timestamp(timestamp);
+  const uint64_t adjusted_timestamp =
+    config_.recording.subtract_pause_duration_from_timestamps
+      ? adjust_message_timestamp(timestamp)
+      : timestamp;
   item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
   item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
@@ -1167,7 +1198,8 @@ bool AxonRecorder::message_handler(
     return false;  // No active recording session
   }
 
-  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t msg_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t mcap_time_ns = apply_monotonic_timestamp_for_topic(topic, msg_time_ns);
   uint64_t write_time_ns = get_steady_clock_ns();
 
   uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
@@ -1175,8 +1207,9 @@ bool AxonRecorder::message_handler(
     return false;
   }
 
-  bool success =
-    recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
+  bool success = recording_session_->write(
+    channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size
+  );
 
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
@@ -1187,7 +1220,7 @@ bool AxonRecorder::message_handler(
     if (latency_monitor_) {
       LatencyRecord record;
       record.topic = topic;
-      record.publish_time_ns = log_time_ns;
+      record.publish_time_ns = msg_time_ns;
       record.receive_time_ns = 0;
       record.enqueue_time_ns = 0;
       record.dequeue_time_ns = 0;
@@ -1209,7 +1242,8 @@ bool AxonRecorder::latency_message_handler(
     return false;
   }
 
-  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t msg_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t mcap_time_ns = apply_monotonic_timestamp_for_topic(topic, msg_time_ns);
   uint64_t write_time_ns = get_steady_clock_ns();
 
   uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
@@ -1217,8 +1251,9 @@ bool AxonRecorder::latency_message_handler(
     return false;
   }
 
-  bool success =
-    recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
+  bool success = recording_session_->write(
+    channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size
+  );
 
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
@@ -1229,7 +1264,7 @@ bool AxonRecorder::latency_message_handler(
     if (latency_monitor_) {
       LatencyRecord record;
       record.topic = topic;
-      record.publish_time_ns = (publish_time_ns > 0) ? publish_time_ns : log_time_ns;
+      record.publish_time_ns = (publish_time_ns > 0) ? publish_time_ns : msg_time_ns;
       record.receive_time_ns = receive_time_ns;
       record.enqueue_time_ns = enqueue_time_ns;
       record.dequeue_time_ns = dequeue_time_ns;

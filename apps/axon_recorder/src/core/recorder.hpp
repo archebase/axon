@@ -103,6 +103,16 @@ struct RecordingConfig {
   // Each path should be a share directory (e.g., /opt/ros/humble/share)
   // Supports both ROS1 and ROS2 package layouts
   std::vector<std::string> schema_search_paths;
+
+  /// Subtract cumulative recorder pause duration (steady_clock) from each
+  /// message timestamp used for MCAP log/publish. Disable when ROS stamps do
+  /// not track wall pause (e.g. sim), or to keep raw receive-time stamps.
+  bool subtract_pause_duration_from_timestamps = true;
+
+  /// If true, bump each topic's MCAP log/publish time forward so they never
+  /// decrease within a topic (reduces playback backward skips after pause
+  /// compensation).
+  bool enforce_monotonic_timestamps_per_topic = false;
 };
 
 /**
@@ -508,6 +518,8 @@ private:
   void mark_pause_finished();
   uint64_t current_pause_offset_ns() const;
   uint64_t adjust_message_timestamp(uint64_t timestamp_ns) const;
+  void reset_topic_monotonic_timestamps();
+  uint64_t apply_monotonic_timestamp_for_topic(const std::string& topic, uint64_t stamp_ns);
 
   /**
    * Convert ABI status to string
@@ -590,6 +602,10 @@ private:
   mutable std::mutex pause_time_mutex_;
   std::optional<std::chrono::steady_clock::time_point> pause_started_at_;
   std::atomic<uint64_t> total_pause_offset_ns_{0};
+
+  /// Last MCAP log time written per topic (session-local) for optional monotonic fix.
+  mutable std::mutex topic_monotonic_mutex_;
+  std::unordered_map<std::string, uint64_t> last_written_log_time_ns_by_topic_;
 
   // Per-topic rate limiting state for drop reporting
   struct DropReportState {

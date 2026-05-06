@@ -203,6 +203,8 @@ subscriptions:
 
   // Recording defaults
   EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 100.0);
+  EXPECT_TRUE(config.recording.subtract_pause_duration_from_timestamps);
+  EXPECT_FALSE(config.recording.enforce_monotonic_timestamps_per_topic);
 
   // Logging defaults
   EXPECT_TRUE(config.logging.console_enabled);
@@ -298,6 +300,25 @@ TEST_F(ConfigParserTest, ValidateFailsWithInvalidMode) {
   std::string error_msg;
   EXPECT_FALSE(ConfigParser::validate(config, error_msg));
   EXPECT_EQ(error_msg, "Dataset mode must be 'create' or 'append'");
+}
+
+TEST_F(ConfigParserTest, ParseRecordingTimestampOptions) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+subscriptions:
+  - name: /test
+    message_type: std_msgs/String
+recording:
+  subtract_pause_duration_from_timestamps: false
+  enforce_monotonic_timestamps_per_topic: true
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  ASSERT_TRUE(parser.load_from_string(yaml, config));
+  EXPECT_FALSE(config.recording.subtract_pause_duration_from_timestamps);
+  EXPECT_TRUE(config.recording.enforce_monotonic_timestamps_per_topic);
 }
 
 // ============================================================================
