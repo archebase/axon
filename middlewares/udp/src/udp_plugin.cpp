@@ -66,6 +66,8 @@ bool UdpPlugin::init(const std::string& config_json) {
 }
 
 bool UdpPlugin::start() {
+  std::lock_guard<std::mutex> lock(mutex_);
+
   if (!initialized_.load()) {
     AXON_LOG_ERROR("UDP plugin not initialized");
     return false;
@@ -76,13 +78,13 @@ bool UdpPlugin::start() {
     return true;
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-
   if (!config_.enabled) {
     AXON_LOG_INFO("UDP plugin disabled, not starting");
     running_.store(true);
     return true;
   }
+
+  io_context_->restart();
 
   // Start UDP server with configured bind address
   if (!server_->start(config_.bind_address, config_.streams)) {
@@ -103,11 +105,15 @@ bool UdpPlugin::start() {
 }
 
 bool UdpPlugin::stop() {
+  return stop_session();
+}
+
+bool UdpPlugin::stop_session() {
+  std::lock_guard<std::mutex> lock(mutex_);
+
   if (!running_.load()) {
     return true;
   }
-
-  std::lock_guard<std::mutex> lock(mutex_);
 
   // Stop UDP server first
   if (server_) {
@@ -126,6 +132,7 @@ bool UdpPlugin::stop() {
   if (io_thread_ && io_thread_->joinable()) {
     io_thread_->join();
   }
+  io_thread_.reset();
 
   running_.store(false);
   AXON_LOG_INFO("UDP plugin stopped");

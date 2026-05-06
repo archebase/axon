@@ -6,14 +6,77 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "axon_udp/udp_plugin.hpp"
 #include "axon_udp/udp_server.hpp"
 
+extern "C" {
+using AxonMessageCallback = void (*)(
+  const char*, const uint8_t*, size_t, const char*, uint64_t, void*
+);
+
+struct AxonPluginVtable {
+  int32_t (*init)(const char*);
+  int32_t (*start)(void);
+  int32_t (*stop)(void);
+  int32_t (*subscribe)(const char*, const char*, const char*, AxonMessageCallback, void*);
+  int32_t (*publish)(const char*, const uint8_t*, size_t, const char*);
+  void* reserved[9];
+};
+
+struct AxonPluginDescriptor {
+  uint32_t abi_version_major;
+  uint32_t abi_version_minor;
+  const char* middleware_name;
+  const char* middleware_version;
+  const char* plugin_version;
+  AxonPluginVtable* vtable;
+  void* reserved[16];
+};
+
+const AxonPluginDescriptor* axon_get_plugin_descriptor(void);
+}
+
 namespace {
+
+void SendUdpPacket(uint16_t port, const std::string& message) {
+  boost::asio::io_context send_io;
+  boost::asio::ip::udp::socket socket(
+    send_io, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0)
+  );
+
+  boost::asio::ip::udp::endpoint receiver(boost::asio::ip::make_address("127.0.0.1"), port);
+  socket.send_to(boost::asio::buffer(message), receiver);
+}
+
+bool WaitForCountAtLeast(const std::atomic<int>& count, int expected) {
+  for (int i = 0; i < 20; ++i) {
+    if (count.load() >= expected) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  return count.load() >= expected;
+}
+
+bool SendUntilCountAtLeast(
+  uint16_t port, const std::string& message, const std::atomic<int>& count, int expected
+) {
+  for (int i = 0; i < 5; ++i) {
+    SendUdpPacket(port, message);
+    if (WaitForCountAtLeast(count, expected)) {
+      return true;
+    }
+  }
+  return count.load() >= expected;
+}
 
 // =============================================================================
 // Test Fixtures
@@ -181,6 +244,63 @@ TEST_F(UdpPluginTest, StartAndStop) {
   EXPECT_FALSE(plugin.is_running());
 }
 
+TEST_F(UdpPluginTest, StopAndRestartReceivesMessages) {
+  const uint16_t test_port = 4291;
+  std::string config = R"({
+            "udp": {
+                "enabled": true,
+                "bind_address": "0.0.0.0",
+                "buffer_size": 65536,
+                "timestamp_extraction": {
+                    "source": "field",
+                    "field": "timestamp"
+                },
+                "streams": [
+                    {
+                        "name": "restart_stream",
+                        "port": 4291,
+                        "topic": "/udp/restart",
+                        "schema": "raw_json",
+                        "enabled": true
+                    }
+                ]
+            }
+        })";
+
+  axon::udp::UdpPlugin plugin;
+  std::atomic<int> callback_count{0};
+  plugin.set_message_callback([&callback_count](
+                                const std::string& topic,
+                                const std::vector<uint8_t>& data,
+                                const std::string& message_type,
+                                uint64_t timestamp
+                              ) {
+    (void)topic;
+    (void)data;
+    (void)message_type;
+    (void)timestamp;
+    callback_count.fetch_add(1);
+  });
+
+  ASSERT_TRUE(plugin.init(config));
+  ASSERT_TRUE(plugin.start());
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  EXPECT_TRUE(
+    SendUntilCountAtLeast(test_port, R"({"timestamp": 1, "data": "first"})", callback_count, 1)
+  );
+
+  ASSERT_TRUE(plugin.stop_session());
+  EXPECT_FALSE(plugin.is_running());
+
+  ASSERT_TRUE(plugin.start());
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  EXPECT_TRUE(
+    SendUntilCountAtLeast(test_port, R"({"timestamp": 2, "data": "second"})", callback_count, 2)
+  );
+
+  EXPECT_TRUE(plugin.stop());
+}
+
 TEST_F(UdpPluginTest, StartWithoutInitFails) {
   axon::udp::UdpPlugin plugin;
   EXPECT_FALSE(plugin.start());
@@ -238,6 +358,27 @@ TEST_F(UdpPluginTest, SetMessageCallback) {
   // This is tested in integration tests
 }
 
+TEST(UdpPluginAbiTest, DescriptorAdvertisesAbiV13SessionStop) {
+  const AxonPluginDescriptor* descriptor = axon_get_plugin_descriptor();
+  ASSERT_NE(descriptor, nullptr);
+  ASSERT_NE(descriptor->vtable, nullptr);
+
+  EXPECT_EQ(descriptor->abi_version_major, 1U);
+  EXPECT_EQ(descriptor->abi_version_minor, 3U);
+  ASSERT_NE(descriptor->vtable->reserved[1], nullptr);
+
+  auto session_stop = reinterpret_cast<int32_t (*)()>(descriptor->vtable->reserved[1]);
+
+  ASSERT_EQ(descriptor->vtable->stop(), 0);
+  ASSERT_EQ(descriptor->vtable->init("{}"), 0);
+  ASSERT_EQ(descriptor->vtable->start(), 0);
+  ASSERT_EQ(session_stop(), 0);
+
+  // session_stop must preserve initialized state so the next recording can start.
+  EXPECT_EQ(descriptor->vtable->start(), 0);
+  EXPECT_EQ(descriptor->vtable->stop(), 0);
+}
+
 // =============================================================================
 // Timestamp Extraction Tests
 // =============================================================================
@@ -285,17 +426,6 @@ protected:
     if (io_thread_ && io_thread_->joinable()) {
       io_thread_->join();
     }
-  }
-
-  void SendUdpPacket(uint16_t port, const std::string& message) {
-    boost::asio::io_context send_io;
-    boost::asio::ip::udp::socket socket(
-      send_io, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0)
-    );
-
-    boost::asio::ip::udp::endpoint receiver(boost::asio::ip::make_address("127.0.0.1"), port);
-
-    socket.send_to(boost::asio::buffer(message), receiver);
   }
 
   using work_guard_type = boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
