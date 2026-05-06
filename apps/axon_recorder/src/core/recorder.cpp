@@ -253,6 +253,11 @@ bool AxonRecorder::start() {
     return false;
   }
 
+  reset_pause_tracking();
+  last_session_active_duration_sec_ = 0.0;
+  last_session_final_file_size_ = 0;
+  last_session_close_time_ = std::chrono::system_clock::time_point{};
+
   for (const auto& name : plugin_startup_order_) {
     const auto* pd = plugin_loader_.get_descriptor(name);
     if (!pd || !pd->vtable || !pd->vtable->start) {
@@ -495,6 +500,11 @@ void AxonRecorder::stop() {
   // 4. Close recording session (injects metadata, generates sidecar).
   if (recording_session_) {
     AXON_LOG_INFO("Closing recording session");
+    const double wall_duration_sec = recording_session_->get_duration_sec();
+    const double paused_duration_sec = static_cast<double>(current_pause_offset_ns()) / 1e9;
+    last_session_active_duration_sec_ =
+      wall_duration_sec > paused_duration_sec ? wall_duration_sec - paused_duration_sec : 0.0;
+
     recording_session_->close();
     AXON_LOG_INFO("Recording session closed");
 
@@ -517,6 +527,8 @@ void AxonRecorder::stop() {
 
   // Transition back to IDLE
   state_manager_.transition_to(RecorderState::IDLE, error_msg);
+
+  reset_pause_tracking();
 
   running_.store(false);
   AXON_LOG_INFO("Recorder stop completed");
@@ -803,7 +815,9 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       double duration_sec = 0.0;
       if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
         finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
-        if (start_time != std::chrono::system_clock::time_point{}) {
+        if (last_session_active_duration_sec_ > 0.0) {
+          duration_sec = last_session_active_duration_sec_;
+        } else if (start_time != std::chrono::system_clock::time_point{}) {
           duration_sec =
             std::chrono::duration<double>(last_session_close_time_ - start_time).count();
         }
@@ -856,23 +870,11 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
   };
 
   callbacks.pause_recording = [this]() -> bool {
-    // Check if we're in RECORDING state
-    if (this->get_state() != RecorderState::RECORDING) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::PAUSED, error_msg);
+    return this->pause_recording();
   };
 
   callbacks.resume_recording = [this]() -> bool {
-    // Check if we're in PAUSED state
-    if (this->get_state() != RecorderState::PAUSED) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::RECORDING, error_msg);
+    return this->resume_recording();
   };
 
   callbacks.clear_config = [this]() -> bool {
@@ -918,6 +920,88 @@ bool AxonRecorder::is_http_server_running() const {
 
 bool AxonRecorder::transition_to(RecorderState to, std::string& error_msg) {
   return state_manager_.transition_to(to, error_msg);
+}
+
+bool AxonRecorder::pause_recording() {
+  if (get_state() != RecorderState::RECORDING) {
+    return false;
+  }
+
+  std::string error_msg;
+  const bool success =
+    state_manager_.transition(RecorderState::RECORDING, RecorderState::PAUSED, error_msg);
+  if (success) {
+    mark_pause_started();
+  }
+  return success;
+}
+
+bool AxonRecorder::resume_recording() {
+  if (get_state() != RecorderState::PAUSED) {
+    return false;
+  }
+
+  mark_pause_finished();
+
+  std::string error_msg;
+  const bool success =
+    state_manager_.transition(RecorderState::PAUSED, RecorderState::RECORDING, error_msg);
+  if (!success && get_state() == RecorderState::PAUSED) {
+    mark_pause_started();
+  }
+  return success;
+}
+
+void AxonRecorder::reset_pause_tracking() {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  pause_started_at_.reset();
+  total_pause_offset_ns_.store(0, std::memory_order_release);
+}
+
+void AxonRecorder::mark_pause_started() {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  if (!pause_started_at_.has_value()) {
+    pause_started_at_ = std::chrono::steady_clock::now();
+  }
+}
+
+void AxonRecorder::mark_pause_finished() {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  if (!pause_started_at_.has_value()) {
+    return;
+  }
+
+  const auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - pause_started_at_.value()
+  )
+                            .count();
+  if (elapsed_ns > 0) {
+    total_pause_offset_ns_.fetch_add(
+      static_cast<uint64_t>(elapsed_ns), std::memory_order_acq_rel
+    );
+  }
+  pause_started_at_.reset();
+}
+
+uint64_t AxonRecorder::current_pause_offset_ns() const {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  uint64_t offset_ns = total_pause_offset_ns_.load(std::memory_order_acquire);
+  if (pause_started_at_.has_value()) {
+    const auto active_pause_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                   std::chrono::steady_clock::now() - pause_started_at_.value()
+    )
+                                   .count();
+    if (active_pause_ns > 0) {
+      offset_ns += static_cast<uint64_t>(active_pause_ns);
+    }
+  }
+
+  return offset_ns;
+}
+
+uint64_t AxonRecorder::adjust_message_timestamp(uint64_t timestamp_ns) const {
+  const uint64_t offset_ns = total_pause_offset_ns_.load(std::memory_order_acquire);
+  return timestamp_ns > offset_ns ? timestamp_ns - offset_ns : 0;
 }
 
 void AxonRecorder::set_task_config(const TaskConfig& config) {
@@ -981,8 +1065,11 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
     stats.messages_written = session_stats.messages_written;
     stats.bytes_written = session_stats.bytes_written;
     // Expose running session duration so /rpc/stats and /rpc/state can
-    // report elapsed time alongside the message/byte counters.
-    stats.duration_sec = recording_session_->get_duration_sec();
+    // report active recording time alongside the message/byte counters.
+    const double wall_duration_sec = recording_session_->get_duration_sec();
+    const double paused_duration_sec = static_cast<double>(current_pause_offset_ns()) / 1e9;
+    stats.duration_sec =
+      wall_duration_sec > paused_duration_sec ? wall_duration_sec - paused_duration_sec : 0.0;
   }
 
   return stats;
@@ -1012,8 +1099,9 @@ void AxonRecorder::on_message(
   // Acquire a pool-backed buffer sized for this payload. On the steady-state
   // hot path this avoids `operator new` per message (bucket reuse).
   MessageItem item;
-  item.timestamp_ns = static_cast<int64_t>(timestamp);
-  item.publish_time_ns = timestamp;
+  const uint64_t adjusted_timestamp = adjust_message_timestamp(timestamp);
+  item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
+  item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
   item.message_type = message_type;
   item.raw_data =
@@ -1043,8 +1131,9 @@ void AxonRecorder::on_message_v2(
   uint64_t receive_time_ns = get_steady_clock_ns();
 
   MessageItem item;
-  item.timestamp_ns = static_cast<int64_t>(timestamp);
-  item.publish_time_ns = timestamp;
+  const uint64_t adjusted_timestamp = adjust_message_timestamp(timestamp);
+  item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
+  item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
   item.message_type = message_type;
 
@@ -1767,7 +1856,9 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
       double duration_sec = 0.0;
       if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
         finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
-        if (start_time != std::chrono::system_clock::time_point{}) {
+        if (last_session_active_duration_sec_ > 0.0) {
+          duration_sec = last_session_active_duration_sec_;
+        } else if (start_time != std::chrono::system_clock::time_point{}) {
           duration_sec =
             std::chrono::duration<double>(last_session_close_time_ - start_time).count();
         }
@@ -1820,23 +1911,11 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
   };
 
   callbacks.pause_recording = [this]() -> bool {
-    // Check if we're in RECORDING state
-    if (this->get_state() != RecorderState::RECORDING) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::PAUSED, error_msg);
+    return this->pause_recording();
   };
 
   callbacks.resume_recording = [this]() -> bool {
-    // Check if we're in PAUSED state
-    if (this->get_state() != RecorderState::PAUSED) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::RECORDING, error_msg);
+    return this->resume_recording();
   };
 
   callbacks.clear_config = [this]() -> bool {

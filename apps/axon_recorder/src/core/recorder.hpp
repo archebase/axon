@@ -499,6 +499,17 @@ private:
   const SubscriptionConfig* get_subscription_config(const std::string& topic_name) const;
 
   /**
+   * Pause/resume helpers that keep the recorded timeline contiguous.
+   */
+  bool pause_recording();
+  bool resume_recording();
+  void reset_pause_tracking();
+  void mark_pause_started();
+  void mark_pause_finished();
+  uint64_t current_pause_offset_ns() const;
+  uint64_t adjust_message_timestamp(uint64_t timestamp_ns) const;
+
+  /**
    * Convert ABI status to string
    */
   static const char* status_to_string(AxonStatus status);
@@ -573,7 +584,12 @@ private:
   mutable std::mutex recorder_mutex_;
 
   uint64_t last_session_final_file_size_ = 0;
+  double last_session_active_duration_sec_ = 0.0;
   std::chrono::system_clock::time_point last_session_close_time_;
+
+  mutable std::mutex pause_time_mutex_;
+  std::optional<std::chrono::steady_clock::time_point> pause_started_at_;
+  std::atomic<uint64_t> total_pause_offset_ns_{0};
 
   // Per-topic rate limiting state for drop reporting
   struct DropReportState {
