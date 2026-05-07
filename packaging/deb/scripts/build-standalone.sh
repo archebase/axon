@@ -13,6 +13,7 @@ set -e
 # - axon-panel
 # - axon-transfer
 # - axon-dispatcher
+# - axon-agent
 # - axon-all (meta-package)
 #
 # Environment:
@@ -42,7 +43,7 @@ fi
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
 DISTRO="${DISTRO:-jammy}"
 OUTPUT_DIR="${PACKAGE_DIR}/output/${DISTRO}"
-BUILD_DIR="${PACKAGE_DIR}/build"
+BUILD_DIR="${PACKAGE_DIR}/build/${DISTRO}"
 SCRIPT_DIR="${PACKAGE_DIR}/scripts"
 
 # Map distro names to display names
@@ -69,6 +70,34 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+dump_cmake_logs_on_failure() {
+    local pkg_name="$1"
+    local build_area="$2"
+    local cmake_base="${build_area}/obj-x86_64-linux-gnu/CMakeFiles"
+
+    log_warn "CMake configure/build failed for ${pkg_name}, dumping diagnostics if available"
+
+    if [ -f "${cmake_base}/CMakeError.log" ]; then
+        echo ""
+        echo "========== ${pkg_name}: CMakeError.log =========="
+        cat "${cmake_base}/CMakeError.log" || true
+        echo "========== end CMakeError.log =========="
+        echo ""
+    else
+        log_warn "CMakeError.log not found: ${cmake_base}/CMakeError.log"
+    fi
+
+    if [ -f "${cmake_base}/CMakeOutput.log" ]; then
+        echo ""
+        echo "========== ${pkg_name}: CMakeOutput.log =========="
+        cat "${cmake_base}/CMakeOutput.log" || true
+        echo "========== end CMakeOutput.log =========="
+        echo ""
+    else
+        log_warn "CMakeOutput.log not found: ${cmake_base}/CMakeOutput.log"
+    fi
 }
 
 # Create output and build directories
@@ -167,7 +196,7 @@ build_app_package() {
         sed -i "s/^Source: ${pkg_name}$/Source: ${suffixed_pkg_name}/" "${build_area}/debian/control"
         # Update dependencies that reference other axon packages (add distro suffix)
         # Use perl for better regex support (handles end-of-line and various delimiters)
-        perl -i -pe 's/\b(axon-recorder|axon-config|axon-panel|axon-transfer|axon-dispatcher)\b(?!-)/${1}-'"${DISTRO}"'/g unless /^\s*Provides:/' "${build_area}/debian/control"
+        perl -i -pe 's/\b(axon-recorder|axon-config|axon-panel|axon-transfer|axon-dispatcher|axon-agent)\b(?!-)/${1}-'"${DISTRO}"'/g unless /^\s*Provides:/' "${build_area}/debian/control"
     fi
 
     # Modify changelog to add distro suffix and update version
@@ -183,6 +212,7 @@ build_app_package() {
         log_info "Successfully built ${suffixed_pkg_name}"
         build_success=1
     else
+        dump_cmake_logs_on_failure "${suffixed_pkg_name}" "${build_area}"
         # Check if package was created despite the error
         if find .. -maxdepth 1 -name "${suffixed_pkg_name}_*.deb" -type f -exec test -f {} \; -print | head -1 | grep -q .; then
             log_info "Package ${suffixed_pkg_name} was created (ignoring post-package error)"
@@ -223,7 +253,10 @@ build_app_package "axon-panel" "${PROJECT_ROOT}/apps/axon_panel" "panel" || exit
 # 5. axon-dispatcher (unified CLI dispatcher)
 build_app_package "axon-dispatcher" "${PROJECT_ROOT}/apps/axon_dispatcher" "dispatcher" || exit 1
 
-# 6. axon-all (meta-package)
+# 6. axon-agent (orchestration and process management agent)
+build_app_package "axon-agent" "${PROJECT_ROOT}/apps/axon_agent" "agent" || exit 1
+
+# 7. axon-all (meta-package)
 log_info "Building axon-all-${DISTRO} (meta-package)..."
 meta_pkg_name="axon-all-${DISTRO}"
 temp_meta_dir="${BUILD_DIR}/${meta_pkg_name}"
@@ -242,6 +275,7 @@ Package: ${meta_pkg_name}
 Architecture: any
 Depends: axon-recorder-${DISTRO}, axon-config-${DISTRO}, axon-panel-${DISTRO},
          axon-transfer-${DISTRO}, axon-dispatcher-${DISTRO},
+         axon-agent-${DISTRO},
          \${misc:Depends}
 Description: Axon - Complete installation for Ubuntu ${DISTRO_DISPLAY}
  This meta-package installs all core Axon tools:
@@ -250,6 +284,7 @@ Description: Axon - Complete installation for Ubuntu ${DISTRO_DISPLAY}
  - axon-panel: Web-based control interface
  - axon-transfer: S3 transfer daemon
  - axon-dispatcher: Unified CLI entry point
+ - axon-agent: Orchestration and process management agent
  .
  Built for Ubuntu ${DISTRO_DISPLAY}.
  Plugin packages must be installed separately based on your needs.

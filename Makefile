@@ -1069,7 +1069,7 @@ ci-local-reuse-sbom:
 
 PACKAGE_DIR := packaging/deb
 
-# package-core: Build core packages in Docker (recorder, config, panel, transfer, dispatcher)
+# package-core: Build core packages in Docker (recorder, config, panel, transfer, dispatcher, agent)
 .PHONY: package-core
 package-core:
 	@printf "%s\n" "$(YELLOW)Building core packages in Docker (parallel)...$(NC)"
@@ -1093,14 +1093,14 @@ package-plugins:
 # package-all: Build all packages in Docker (core + plugins for all distros)
 .PHONY: package-all
 package-all:
-	@printf "%s\n" "$(YELLOW)Building all packages in Docker...$(NC)"
-	@$(PACKAGE_DIR)/scripts/build-in-docker.sh all
+	@bash $(PACKAGE_DIR)/scripts/build-all-in-docker-parallel.sh
 
 # package-clean: Clean package build artifacts
 .PHONY: package-clean
 package-clean:
 	@printf "%s\n" "$(YELLOW)Cleaning package build artifacts...$(NC)"
 	@rm -rf $(PACKAGE_DIR)/output/*.deb
+	@rm -rf $(PACKAGE_DIR)/logs
 	@rm -rf $(PACKAGE_DIR)/build
 	@find . -name ".debian-build" -type d -exec rm -rf {} + 2>/dev/null || true
 	@find . -name "debian" -type d -path "*/apps/*" -exec rm -rf {} + 2>/dev/null || true

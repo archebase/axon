@@ -24,7 +24,7 @@ PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
 # ROS1 Noetic runs on Ubuntu 20.04 (Focal)
 UBUNTU_DISTRO="focal"
 OUTPUT_DIR="${PACKAGE_DIR}/output/${UBUNTU_DISTRO}"
-BUILD_DIR="${PACKAGE_DIR}/build"
+BUILD_DIR="${PACKAGE_DIR}/build/${UBUNTU_DISTRO}"
 
 # Colors for output
 RED='\033[0;31m'

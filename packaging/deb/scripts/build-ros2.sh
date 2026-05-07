@@ -37,7 +37,7 @@ case "$ROS_DISTRO" in
         ;;
 esac
 OUTPUT_DIR="${PACKAGE_DIR}/output/${UBUNTU_DISTRO}"
-BUILD_DIR="${PACKAGE_DIR}/build"
+BUILD_DIR="${PACKAGE_DIR}/build/${UBUNTU_DISTRO}"
 
 # Colors for output
 RED='\033[0;31m'
