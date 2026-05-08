@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# This profile-level file carries recorder defaults only. Per-task config is
+# still expected to come from upstream Keystone via recorder RPC.
+keystone_path: /opt/axon/keystone
+topics:
+  - /camera/image_raw
+  - /imu/data
+
+process:
+  executable: axon-recorder
+  args:
+    - --config
+    - recorder.yaml
+  working_directory: .
+  env:
+    AXON_PROFILE: demo_robot

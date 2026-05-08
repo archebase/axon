@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+process:
+  executable: axon-transfer
+  args:
+    - --config
+    - transfer.yaml
+  working_directory: .
+  env:
+    AXON_PROFILE: demo_robot
