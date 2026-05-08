@@ -151,7 +151,6 @@ void PluginLoader::unload_all() {
   for (auto& [name, plugin] : plugins_) {
     if (plugin->running && plugin->descriptor->vtable->stop) {
       plugin->descriptor->vtable->stop();
-      plugin->running = false;
     }
     if (plugin->handle) {
       dlclose(plugin->handle);

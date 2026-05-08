@@ -591,61 +591,7 @@ GET /rpc/stats HTTP/1.1
 
 ---
 
-### 11. GET /rpc/drop_stats
-
-Query per-topic message drop statistics and current recording state
-
-**Request:**
-```http
-GET /rpc/drop_stats HTTP/1.1
-```
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "message": "Drop statistics retrieved successfully",
-  "data": {
-    "state": "recording",
-    "messages_received": 1523456,
-    "messages_dropped": 6,
-    "topics": {
-      "/camera/image_raw": {
-        "received": 1000000,
-        "dropped": 5,
-        "written": 999995
-      },
-      "/lidar/scan": {
-        "received": 523456,
-        "dropped": 1,
-        "written": 523455
-      }
-    }
-  }
-}
-```
-
-**Response Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `state` | string | Current recorder state (idle/ready/recording/paused) |
-| `messages_received` | uint64 | Total messages received across all topics |
-| `messages_dropped` | uint64 | Total messages dropped across all topics |
-| `topics` | object | Per-topic breakdown (keyed by topic name) |
-| `topics[*].received` | uint64 | Messages received for this topic |
-| `topics[*].dropped` | uint64 | Messages dropped for this topic (queue full) |
-| `topics[*].written` | uint64 | Messages written to MCAP for this topic |
-
-**WebSocket RPC:** Also available via WebSocket with `{"action": "get_drop_stats"}`.
-
-**Notes:**
-- Returns empty `topics` object when not recording (IDLE state)
-- Drop counts are cumulative for the current recording session
-- Counts reset to zero when a new recording starts
-
----
-
-### 12. GET / or /health
+### 11. GET / or /health
 
 Health check
 

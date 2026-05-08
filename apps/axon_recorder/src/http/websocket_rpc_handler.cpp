@@ -97,10 +97,6 @@ nlohmann::json WebSocketRpcHandler::route_action(
     return handle_rpc_get_state(callbacks_, params).to_json();
   } else if (action == "get_stats") {
     return handle_rpc_get_stats(callbacks_, params).to_json();
-  } else if (action == "get_drop_stats") {
-    return handle_rpc_get_drop_stats(callbacks_, params).to_json();
-  } else if (action == "get_latency_stats") {
-    return handle_rpc_get_latency_stats(callbacks_, params).to_json();
   } else {
     // Unknown action
     nlohmann::json error_response;

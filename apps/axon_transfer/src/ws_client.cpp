@@ -29,11 +29,11 @@ std::string random_jitter(double factor) {
 
 WsClient::WsClient(net::io_context& ioc, const WsConfig& config)
     : config_(config)
+    , resolver_(net::make_strand(ioc))
+    , ws_(net::make_strand(ioc))
     , strand_(net::make_strand(ioc))
-    , resolver_(strand_)
-    , ws_(strand_)
-    , reconnect_timer_(strand_)
-    , ping_timer_(strand_) {
+    , reconnect_timer_(ioc)
+    , ping_timer_(ioc) {
   ws_.control_callback([](beast::websocket::frame_type type, beast::string_view) {
     if (type == beast::websocket::frame_type::pong) {
     }
@@ -41,28 +41,18 @@ WsClient::WsClient(net::io_context& ioc, const WsConfig& config)
 }
 
 void WsClient::start() {
-  net::post(strand_, [this]() {
-    stopped_ = false;
-    connected_ = false;
-    reconnect_attempt_ = 0;
-    do_resolve();
-  });
+  stopped_ = false;
+  connected_ = false;
+  reconnect_attempt_ = 0;
+  do_resolve();
 }
 
 void WsClient::stop() {
-  net::dispatch(strand_, [this]() {
-    stopped_ = true;
-    connected_ = false;
-    reconnect_timer_.cancel();
-    ping_timer_.cancel();
-
-    beast::error_code ec;
-    if (ws_.is_open()) {
-      ws_.close(beast::websocket::close_code::normal, ec);
-    }
-    beast::get_lowest_layer(ws_).socket().shutdown(tcp::socket::shutdown_both, ec);
-    beast::get_lowest_layer(ws_).socket().close(ec);
-  });
+  stopped_ = true;
+  reconnect_timer_.cancel();
+  ping_timer_.cancel();
+  beast::error_code ec;
+  ws_.close(beast::websocket::close_code::normal, ec);
 }
 
 bool WsClient::is_connected() const {
@@ -110,10 +100,6 @@ void WsClient::do_resolve() {
 }
 
 void WsClient::on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
-  if (stopped_) {
-    return;
-  }
-
   if (ec) {
     std::cerr << "WsClient resolve error: " << ec.message() << "\n";
     schedule_reconnect();
@@ -134,17 +120,12 @@ void WsClient::do_connect(tcp::resolver::results_type results) {
 }
 
 void WsClient::on_connect(beast::error_code ec, tcp::endpoint endpoint) {
-  if (stopped_) {
-    return;
-  }
-
   if (ec) {
     std::cerr << "WsClient connect error: " << ec.message() << "\n";
     schedule_reconnect();
     return;
   }
 
-  (void)endpoint;
   do_handshake();
 }
 
@@ -239,8 +220,6 @@ void WsClient::on_write(beast::error_code ec, std::size_t bytes) {
     return;
   }
 
-  (void)bytes;
-
   std::lock_guard<std::mutex> lock(write_mutex_);
   if (!write_queue_.empty()) {
     net::post(strand_, [self = this]() {
@@ -250,31 +229,17 @@ void WsClient::on_write(beast::error_code ec, std::size_t bytes) {
 }
 
 void WsClient::on_disconnect(beast::error_code ec) {
-  net::dispatch(strand_, [this, ec]() {
-    if (stopped_) {
-      return;
-    }
+  if (!connected_.exchange(false)) {
+    return;
+  }
 
-    if (!connected_.exchange(false)) {
-      return;
-    }
+  ping_timer_.cancel();
 
-    ping_timer_.cancel();
-    ping_pending_ = false;
+  if (disconnect_handler_) {
+    disconnect_handler_();
+  }
 
-    beast::error_code close_ec;
-    if (ws_.is_open()) {
-      ws_.close(beast::websocket::close_code::normal, close_ec);
-    }
-    beast::get_lowest_layer(ws_).socket().shutdown(tcp::socket::shutdown_both, close_ec);
-    beast::get_lowest_layer(ws_).socket().close(close_ec);
-
-    if (disconnect_handler_) {
-      disconnect_handler_();
-    }
-
-    schedule_reconnect();
-  });
+  schedule_reconnect();
 }
 
 void WsClient::schedule_reconnect() {
@@ -309,24 +274,29 @@ void WsClient::schedule_reconnect() {
 }
 
 void WsClient::start_ping_timer() {
-  if (config_.ping_interval_ms.count() <= 0) {
-    return;
-  }
-
   ping_timer_.expires_after(config_.ping_interval_ms);
   ping_timer_.async_wait([this](beast::error_code ec) {
     if (ec || stopped_ || !connected_) {
       return;
     }
 
-    ws_.async_ping(beast::websocket::ping_data{}, [this](beast::error_code ping_ec) {
-      if (ping_ec) {
-        std::cerr << "WsClient: ping error: " << ping_ec.message() << "\n";
-        on_disconnect(ping_ec);
+    if (ping_pending_.exchange(true)) {
+      std::cerr << "WsClient: pong not received, closing connection\n";
+      on_disconnect(beast::error_code{});
+      return;
+    }
+
+    ws_.async_pong(beast::websocket::ping_data{}, [this](beast::error_code ec) {
+      ping_pending_ = false;
+      if (ec) {
+        std::cerr << "WsClient: pong error: " << ec.message() << "\n";
+        on_disconnect(ec);
         return;
       }
       start_ping_timer();
     });
+
+    start_ping_timer();
   });
 }
 
@@ -335,9 +305,16 @@ void WsClient::on_ping_timer(beast::error_code ec) {
     return;
   }
 
-  ws_.async_ping(beast::websocket::ping_data{}, [this](beast::error_code ping_ec) {
-    if (ping_ec) {
-      on_disconnect(ping_ec);
+  if (ping_pending_.exchange(true)) {
+    std::cerr << "WsClient: pong timeout, disconnecting\n";
+    on_disconnect(beast::error_code{});
+    return;
+  }
+
+  ws_.async_pong(beast::websocket::ping_data{}, [this](beast::error_code ec) {
+    ping_pending_ = false;
+    if (ec) {
+      on_disconnect(ec);
       return;
     }
     start_ping_timer();

@@ -105,7 +105,6 @@ endif()
 add_library(
     axon_mcap
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_writer_wrapper.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/async_mcap_writer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/mcap_validator.cpp
 )
 
@@ -119,10 +118,6 @@ target_include_directories(
 )
 
 target_link_libraries(axon_mcap PUBLIC mcap_headers)
-
-# AsyncMcapWriter uses std::thread / std::condition_variable.
-find_package(Threads REQUIRED)
-target_link_libraries(axon_mcap PUBLIC Threads::Threads)
 
 # Link axon_logging if available
 if(TARGET axon_logging)
@@ -209,16 +204,6 @@ if(AXON_MCAP_BUILD_TESTS OR AXON_BUILD_TESTS)
 
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     endforeach()
-endif()
-
-# =============================================================================
-# Benchmarks (optional) — standalone micro-benchmarks for compression and
-# batch-write throughput. Enable with -DAXON_MCAP_BUILD_BENCH=ON.
-# =============================================================================
-option(AXON_MCAP_BUILD_BENCH "Build axon_mcap micro-benchmarks" OFF)
-
-if(AXON_MCAP_BUILD_BENCH OR AXON_BUILD_BENCH)
-    add_subdirectory(bench)
 endif()
 
 # =============================================================================

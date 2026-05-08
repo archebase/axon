@@ -6,8 +6,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <optional>
-
 // Define component name for logging
 #define AXON_LOG_COMPONENT "ros1_plugin"
 #include <axon_log_macros.hpp>
@@ -22,12 +20,6 @@ Ros1Plugin::Ros1Plugin()
 
 Ros1Plugin::~Ros1Plugin() {
   stop();
-}
-
-void Ros1Plugin::ensure_subscription_manager() {
-  if (!subscription_manager_ && node_handle_) {
-    subscription_manager_ = std::make_unique<SubscriptionManager>(node_handle_);
-  }
 }
 
 bool Ros1Plugin::init(const char* config_json) {
@@ -53,18 +45,10 @@ bool Ros1Plugin::init(const char* config_json) {
       }
     }
 
-    // Initialize ROS1 if not already initialized. The recorder process owns
-    // SIGINT/SIGTERM handling; letting roscpp install its SIGINT handler would
-    // swallow Ctrl+C and leave the recorder main loop waiting forever.
+    // Initialize ROS1 if not already initialized
     if (!ros::isInitialized()) {
       int argc = 0;
-      ros::init(
-        argc,
-        nullptr,
-        node_name_,
-        ros::init_options::AnonymousName | ros::init_options::NoSigintHandler
-      );
-      AXON_LOG_INFO("ROS1 initialized without installing SIGINT handler");
+      ros::init(argc, nullptr, node_name_, ros::init_options::AnonymousName);
     }
 
     // Create node handle with namespace if provided
@@ -75,7 +59,7 @@ bool Ros1Plugin::init(const char* config_json) {
     }
 
     // Create subscription manager
-    ensure_subscription_manager();
+    subscription_manager_ = std::make_unique<SubscriptionManager>(node_handle_);
 
     initialized_.store(true);
     AXON_LOG_INFO("ROS1 plugin initialized: " << kv("node", node_name_));
@@ -100,8 +84,6 @@ bool Ros1Plugin::start() {
   }
 
   try {
-    ensure_subscription_manager();
-
     // Create async spinner with 1 thread
     // ROS1 uses AsyncSpinner instead of SingleThreadedExecutor
     async_spinner_ = std::make_unique<ros::AsyncSpinner>(1);
@@ -121,116 +103,47 @@ bool Ros1Plugin::start() {
 }
 
 bool Ros1Plugin::stop() {
-  const bool should_shutdown_ros = initialized_.load();
-  if (!stop_session()) {
-    return false;
-  }
-
-  if (should_shutdown_ros) {
-    AXON_LOG_INFO("Shutting down ROS1 process state");
-    node_handle_.reset();
-    initialized_.store(false);
-    shutdown_ros();
-    AXON_LOG_INFO("ROS1 plugin shut down");
-  }
-
-  return true;
-}
-
-bool Ros1Plugin::stop_session() {
   if (!initialized_.load()) {
     return true;
   }
 
-  AXON_LOG_INFO("Stopping ROS1 plugin session");
+  AXON_LOG_INFO("Shutting down ROS1 plugin");
 
   // Stop spinning
   if (spinning_.load()) {
     spinning_.store(false);
 
     if (async_spinner_) {
-      AXON_LOG_INFO("Stopping ROS1 async spinner");
       async_spinner_->stop();
-      AXON_LOG_INFO("ROS1 async spinner stopped");
     }
 
     async_spinner_.reset();
   }
 
-  // Clear per-session subscriptions while preserving the NodeHandle and ROS
-  // process state for subsequent recordings in this process.
-  AXON_LOG_INFO("Clearing ROS1 subscriptions");
+  // Clear subscription manager
   subscription_manager_.reset();
-  AXON_LOG_INFO("ROS1 subscriptions cleared");
 
-  AXON_LOG_INFO("ROS1 plugin session stopped");
+  // Shutdown node handle
+  node_handle_.reset();
+
+  initialized_.store(false);
+  AXON_LOG_INFO("ROS1 plugin shut down");
 
   return true;
-}
-
-void Ros1Plugin::shutdown_ros() {
-  if (ros::isStarted() || ros::isInitialized()) {
-    ros::shutdown();
-  }
 }
 
 bool Ros1Plugin::subscribe(
   const std::string& topic_name, const std::string& message_type, MessageCallback callback
 ) {
-  return subscribe(topic_name, message_type, SubscribeOptions{}, callback);
-}
-
-bool Ros1Plugin::subscribe(
-  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
-  MessageCallback callback
-) {
   if (!initialized_.load()) {
     AXON_LOG_ERROR("Cannot subscribe: plugin not initialized");
     return false;
   }
-  ensure_subscription_manager();
 
-#ifdef AXON_ENABLE_DEPTH_COMPRESSION
-  // When depth compression is compiled in, route through the overload
-  // that accepts a DepthCompressionConfig — but only as a non-empty
-  // std::optional when the caller actually asked for it. This preserves
-  // the wrapper's existing "filter disabled" fast path for the common
-  // case where no depth_compression block was present in options_json.
-  std::optional<DepthCompressionConfig> dc;
-  if (options.depth_compression.enabled) {
-    dc = options.depth_compression;
-  }
-  return subscription_manager_->subscribe(
-    topic_name, message_type, options.queue_size, callback, dc
-  );
-#else
-  // Without depth compression support, the options.depth_compression field
-  // is ignored (a warning is logged at the ABI layer). The only option
-  // currently honored in this build is queue_size.
-  return subscription_manager_->subscribe(topic_name, message_type, options.queue_size, callback);
-#endif
-}
+  // Default queue size: 10
+  uint32_t queue_size = 10;
 
-bool Ros1Plugin::subscribe_v2(
-  const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
-  MessageCallbackV2 callback
-) {
-  if (!initialized_.load()) {
-    AXON_LOG_ERROR("Cannot subscribe_v2: plugin not initialized");
-    return false;
-  }
-  ensure_subscription_manager();
-
-  // The SubscriptionManager::subscribe_v2 always takes an optional<DC>, so
-  // we only wrap the DC when the caller actually enabled it. This matches
-  // the v1 subscribe() behavior above and keeps the filter opt-in.
-  std::optional<DepthCompressionConfig> dc;
-  if (options.depth_compression.enabled) {
-    dc = options.depth_compression;
-  }
-  return subscription_manager_->subscribe_v2(
-    topic_name, message_type, options.queue_size, callback, dc
-  );
+  return subscription_manager_->subscribe(topic_name, message_type, queue_size, callback);
 }
 
 bool Ros1Plugin::unsubscribe(const std::string& topic_name) {
@@ -238,17 +151,12 @@ bool Ros1Plugin::unsubscribe(const std::string& topic_name) {
     AXON_LOG_ERROR("Cannot unsubscribe: plugin not initialized");
     return false;
   }
-  ensure_subscription_manager();
 
   return subscription_manager_->unsubscribe(topic_name);
 }
 
 std::vector<std::string> Ros1Plugin::get_subscribed_topics() const {
   if (!initialized_.load()) {
-    return {};
-  }
-
-  if (!subscription_manager_) {
     return {};
   }
 

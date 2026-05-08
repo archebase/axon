@@ -26,7 +26,19 @@ std::atomic<bool> g_should_exit(false);
 
 void signal_handler(int signal) {
   if (signal == SIGINT || signal == SIGTERM) {
+    std::cout << "\nReceived signal " << signal << ", stopping recorder..." << std::endl;
     g_should_exit.store(true);
+
+    if (g_recorder) {
+      // Stop HTTP server if running
+      if (g_recorder->is_http_server_running()) {
+        g_recorder->stop_http_server();
+      }
+      // Stop recording if running
+      if (g_recorder->is_running()) {
+        g_recorder->stop();
+      }
+    }
   }
 }
 
@@ -49,9 +61,7 @@ void print_usage(const char* program_name) {
     << "  --path PATH            Output directory path (default: .)\n"
     << "  --profile PROFILE      ROS profile: ros1 or ros2 (default: ros2)\n"
     << "  --compression ALG      Compression: none, zstd, lz4 (default: zstd)\n"
-    << "  --level LEVEL          Compression preset 0-4 (default: 3)\n"
-    << "                         0=Default, 1=Fastest, 2=Fast, 3=Default, 4=Slow/Slowest\n"
-    << "                         (applies to both zstd and lz4; values >4 are clamped)\n"
+    << "  --level LEVEL          Compression level (default: 3)\n"
     << "  --queue-size SIZE      Message queue capacity (default: 1024)\n"
     << "  --ws-url URL           WebSocket server URL for --ws-client mode\n"
     << "  --ws-auth-token TOKEN  Authentication token for WebSocket handshake\n"
@@ -114,7 +124,7 @@ void print_usage(const char* program_name) {
     << "  recording:\n"
     << "    profile: ros2\n"
     << "    compression: zstd\n"
-    << "    compression_level: 3  # preset 0-4 (see config/README.md)\n"
+    << "    compression_level: 3\n"
     << "\n"
     << "Output File Naming:\n"
     << "  Simple mode (--simple):\n"
@@ -481,10 +491,7 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    std::cout << "\nStopping recording..." << std::endl;
-    recorder.stop();
-
-    std::cout << "Stopping WebSocket RPC client..." << std::endl;
+    std::cout << "\nStopping WebSocket RPC client..." << std::endl;
     recorder.stop_ws_rpc_client();
 
     return 0;

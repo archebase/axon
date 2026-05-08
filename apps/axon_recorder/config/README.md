@@ -66,10 +66,7 @@ List of topics to record with batching settings:
 ### Recording
 - `profile`: ROS profile (`ros1` or `ros2`)
 - `compression`: MCAP compression (`none`, `zstd`, `lz4`)
-- `compression_level`: Compression level preset, range **0-4** (applies to both zstd and lz4).
-  Maps to MCAP's `CompressionLevel` enum: `0`=Default, `1`=Fastest, `2`=Fast, `3`=Default, `4`=Slow/Slowest.
-  Values greater than 4 are silently clamped. This is *not* the native zstd (1-19) or lz4 (1-12)
-  range — the underlying MCAP C++ library only exposes 5 presets.
+- `compression_level`: Compression level (zstd: 1-19, lz4: 1-12)
 
 ### Logging
 - `console`: Console logging configuration

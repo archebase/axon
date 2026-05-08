@@ -9,22 +9,6 @@ cmake_minimum_required(VERSION 3.14)
 project(axon_ros1_plugin VERSION 0.3.0 LANGUAGES CXX)
 
 # =============================================================================
-# C++ Standard
-# =============================================================================
-# Explicitly require C++17 in both standalone and parent-project builds.
-# Unlike ROS2's ament targets which propagate C++17 via compile features,
-# ROS1 roscpp does not set this, so a bare `cmake ..` here defaults to the
-# compiler's default (C++14 on noetic/gcc-9). Keep this in sync with the
-# top-level AxonStdLib.cmake to avoid header incompatibilities (e.g.
-# std::optional, structured bindings) when this CMakeLists is consumed as
-# a subdirectory or standalone.
-if(NOT DEFINED CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 17)
-endif()
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# =============================================================================
 # Installation Configuration
 # =============================================================================
 # Set install prefix for packaging (defaults to /opt/axon)

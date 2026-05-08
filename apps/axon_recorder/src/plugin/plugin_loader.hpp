@@ -30,32 +30,10 @@ enum AxonStatus : int32_t {
   AXON_ERROR_INTERNAL = -100,
 };
 
-// ---------------------------------------------------------------------------
-// Callback types
-// ---------------------------------------------------------------------------
-
-// v1.0 / v1.1 callback: plugin retains buffer ownership; recorder must copy
-// out synchronously from within the callback.
+// Message callback type
 using AxonMessageCallback = void (*)(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
   const char* message_type, uint64_t timestamp, void* user_data
-);
-
-// v1.2 zero-copy callback: plugin transfers buffer ownership to the recorder.
-// The recorder invokes `release_fn(release_opaque)` exactly once when it is
-// done with `message_data` (post-write or on drop). `release_fn` may run on
-// any thread. It is the plugin's responsibility to ensure release is valid
-// concurrently with any plugin shutdown (typically via stable buffer owners
-// held by the plugin itself).
-//
-// If `release_fn` is nullptr, the callback is treated as v1.x-style: the
-// recorder will copy the bytes immediately and not call any release.
-using AxonMessageCallbackV2 = void (*)(
-  const char* topic_name, const uint8_t* message_data, size_t message_size,
-  const char* message_type, uint64_t timestamp,
-  void (*release_fn)(void*),  // may be nullptr
-  void* release_opaque,       // passed to release_fn, opaque to recorder
-  void* user_data
 );
 
 // Plugin function types
@@ -64,20 +42,9 @@ using AxonStartFn = AxonStatus (*)();
 using AxonStopFn = AxonStatus (*)();
 using AxonSubscribeFn =
   AxonStatus (*)(const char*, const char*, const char*, AxonMessageCallback, void*);
-using AxonSubscribeV2Fn =
-  AxonStatus (*)(const char*, const char*, const char*, AxonMessageCallbackV2, void*);
-using AxonSessionStopFn = AxonStatus (*)();
 using AxonPublishFn = AxonStatus (*)(const char*, const uint8_t*, size_t, const char*);
 
 // Plugin vtable structure
-//
-// Layout is append-only: never reorder or resize existing members. New
-// function slots are placed in `reserved[]` and occupied from the front.
-//
-// Current reserved layout:
-//   reserved[0] = AxonSubscribeV2Fn (ABI v1.2+; nullptr for older plugins)
-//   reserved[1] = AxonSessionStopFn (ABI v1.3+; stops per-session producers
-//                 without tearing down process-lifetime middleware state)
 struct AxonPluginVtable {
   AxonInitFn init;
   AxonStartFn start;
@@ -102,47 +69,6 @@ struct AxonPluginDescriptor {
 const AxonPluginDescriptor* axon_get_plugin_descriptor(void);
 
 }  // extern "C"
-
-// ---------------------------------------------------------------------------
-// ABI v1.2 helpers (host side)
-// ---------------------------------------------------------------------------
-
-/**
- * Return the plugin's AxonSubscribeV2Fn if it advertises zero-copy support,
- * otherwise nullptr. Safe on plugins built against older ABIs because we
- * only probe when abi_version_minor >= 2.
- */
-inline AxonSubscribeV2Fn plugin_subscribe_v2(const AxonPluginDescriptor* descriptor) {
-  if (descriptor == nullptr || descriptor->vtable == nullptr) {
-    return nullptr;
-  }
-  if (descriptor->abi_version_major != 1) {
-    return nullptr;
-  }
-  if (descriptor->abi_version_minor < 2) {
-    return nullptr;
-  }
-  return reinterpret_cast<AxonSubscribeV2Fn>(descriptor->vtable->reserved[0]);
-}
-
-/**
- * Return the plugin's per-session stop function when available. Unlike the
- * vtable stop slot, this does not imply final middleware shutdown or dlclose;
- * it is used between recording sessions to halt producers while keeping
- * process-lifetime middleware state alive.
- */
-inline AxonSessionStopFn plugin_session_stop(const AxonPluginDescriptor* descriptor) {
-  if (descriptor == nullptr || descriptor->vtable == nullptr) {
-    return nullptr;
-  }
-  if (descriptor->abi_version_major != 1) {
-    return nullptr;
-  }
-  if (descriptor->abi_version_minor < 3) {
-    return nullptr;
-  }
-  return reinterpret_cast<AxonSessionStopFn>(descriptor->vtable->reserved[1]);
-}
 
 class PluginLoader {
 public:

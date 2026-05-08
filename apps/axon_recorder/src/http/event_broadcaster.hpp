@@ -106,19 +106,6 @@ public:
   void broadcast_stats(const nlohmann::json& stats);
 
   /**
-   * Broadcast latency hotspot alerts
-   * @param hotspots Hotspot alerts JSON
-   */
-  void broadcast_latency_hotspot(const nlohmann::json& hotspots);
-
-  /**
-   * Register callback for latency stats
-   * @param callback Function that returns current latency stats
-   */
-  using LatencyStatsCallback = std::function<nlohmann::json()>;
-  void set_latency_stats_callback(LatencyStatsCallback callback);
-
-  /**
    * Register callback for statistics
    * @param callback Function that returns current stats
    */
@@ -161,7 +148,6 @@ private:
   StatsCallback stats_callback_;
   StateCallback state_callback_;
   ConfigCallback config_callback_;
-  LatencyStatsCallback latency_stats_callback_;
 };
 
 }  // namespace recorder

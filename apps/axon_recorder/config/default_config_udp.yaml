@@ -123,14 +123,7 @@ recording:
   # - lz4:  Faster compression, larger files
   # - none: No compression, fastest, largest files
   compression: zstd
-  # Compression level preset (applies to both zstd and lz4, range: 0-4).
-  # Internally maps to MCAP's CompressionLevel enum:
-  #   0 = use library default (Default)
-  #   1 = Fastest    2 = Fast    3 = Default    4 = Slow/Slowest
-  # Values > 4 are silently clamped to 4. This is NOT the native
-  # zstd (1-19) / lz4 (1-12) range -- the MCAP C++ library only exposes
-  # 5 presets. See core/axon_mcap/mcap_writer_wrapper.hpp.
-  compression_level: 3
+  compression_level: 3  # zstd: 1-19, lz4: 1-12
 
   # Maximum disk usage (ignored by axon_recorder, used by full service)
   max_disk_usage_gb: 100

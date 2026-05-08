@@ -86,13 +86,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y lsb-release wget software-properties-common gnupg
-          . /etc/os-release
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
-            gpg --dearmor | \
-            sudo tee /usr/share/keyrings/apt.llvm.org.gpg >/dev/null
-          echo "deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-21 main" | \
-            sudo tee /etc/apt/sources.list.d/llvm-21.list >/dev/null
-          sudo apt-get update
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
           sudo apt-get install -y clang-format-21
           clang-format-21 --version
 

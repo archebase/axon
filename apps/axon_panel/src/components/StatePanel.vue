@@ -51,31 +51,6 @@
           <div class="stat-value">{{ formatBytes(stats.bytes_written) }}</div>
           <div class="stat-label">Size</div>
         </div>
-        <div class="stat-item">
-          <div class="stat-value">{{ formatMbps(stats.receive_rate_mbps) }}</div>
-          <div class="stat-label">Recv Rate</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-value">{{ formatMbps(stats.write_rate_mbps) }}</div>
-          <div class="stat-label">Write Rate</div>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="stats && stats.queue_depths" class="queue-stats">
-      <h4>Queue Depth Monitoring</h4>
-      <div class="queue-list">
-        <div v-for="(info, topic) in stats.queue_depths" :key="topic" class="queue-item">
-          <div class="queue-name">{{ topic }}</div>
-          <div class="queue-bar-container">
-            <div class="queue-bar" :style="{ width: Math.min(info.utilization, 100) + '%' }" 
-                 :class="getUtilizationClass(info.utilization)"></div>
-          </div>
-          <div class="queue-info">
-            <span>{{ info.depth }} / {{ info.capacity }}</span>
-            <span class="utilization">{{ info.utilization.toFixed(1) }}%</span>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -95,29 +70,15 @@ const props = defineProps({
 defineEmits(['refresh'])
 
 function formatNumber(num) {
-  return new Intl.NumberFormat().format(num || 0)
+  return new Intl.NumberFormat().format(num)
 }
 
 function formatBytes(bytes) {
-  if (bytes === 0 || bytes === undefined) return '0 B'
+  if (bytes === 0) return '0 B'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-function formatMbps(mbps) {
-  if (mbps === undefined || mbps === 0) return '0 MB/s'
-  if (mbps >= 1000) {
-    return mbps.toFixed(1) + ' GB/s'
-  }
-  return mbps.toFixed(1) + ' MB/s'
-}
-
-function getUtilizationClass(utilization) {
-  if (utilization >= 90) return 'utilization-high'
-  if (utilization >= 70) return 'utilization-medium'
-  return 'utilization-low'
 }
 </script>
 
@@ -216,71 +177,6 @@ h4 {
   font-size: 0.75rem;
   color: var(--text-secondary);
   text-transform: uppercase;
-}
-
-.queue-stats {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(7, 51, 140, 0.15);
-}
-
-.queue-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.queue-item {
-  background: rgba(7, 51, 140, 0.04);
-  padding: 0.75rem;
-  border-radius: 6px;
-}
-
-.queue-name {
-  font-family: monospace;
-  font-size: 0.8rem;
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
-  word-break: break-all;
-}
-
-.queue-bar-container {
-  width: 100%;
-  height: 8px;
-  background: rgba(7, 51, 140, 0.1);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 0.5rem;
-}
-
-.queue-bar {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.queue-bar.utilization-low {
-  background: #4caf50;
-}
-
-.queue-bar.utilization-medium {
-  background: #ff9800;
-}
-
-.queue-bar.utilization-high {
-  background: #f44336;
-}
-
-.queue-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.utilization {
-  font-weight: 600;
 }
 
 .refresh-btn {

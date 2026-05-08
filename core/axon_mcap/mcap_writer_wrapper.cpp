@@ -65,25 +65,6 @@ static mcap::Compression to_mcap_compression(Compression compression) {
   }
 }
 
-// Convert our compression level enum to MCAP's CompressionLevel.
-//
-// Legacy path: if options.compression_level is non-zero, clamp it into the
-// enum range (0..4) and use that. This keeps backward compatibility with
-// callers that historically passed values like `3` meaning "Slow-ish".
-static mcap::CompressionLevel resolve_compression_level(const McapWriterOptions& options) {
-  int level = options.compression_level;
-  if (level == 0) {
-    level = static_cast<int>(options.compression_preset);
-  }
-  if (level < 0) {
-    level = 0;
-  }
-  if (level > 4) {
-    level = 4;
-  }
-  return static_cast<mcap::CompressionLevel>(level);
-}
-
 /**
  * Implementation class (PIMPL pattern)
  *
@@ -116,11 +97,9 @@ public:
     mcap_opts.compression = to_mcap_compression(options.compression);
     mcap_opts.chunkSize = options.chunk_size;
 
-    // Compression level applies to BOTH Zstd and LZ4 in the underlying
-    // MCAP library (it's a single shared preset enum). No-op when
-    // compression is None.
-    if (options.compression != Compression::None) {
-      mcap_opts.compressionLevel = resolve_compression_level(options);
+    // Set compression level if supported
+    if (options.compression == Compression::Zstd) {
+      mcap_opts.compressionLevel = mcap::CompressionLevel(options.compression_level);
     }
 
     // Create parent directories if they don't exist
@@ -281,77 +260,6 @@ public:
     messages_written_.fetch_add(1, std::memory_order_relaxed);
     bytes_written_.fetch_add(data_size, std::memory_order_relaxed);
     return true;
-  }
-
-  bool write_batch(const BatchItem* items, size_t count, size_t* written_out) {
-    if (written_out) {
-      *written_out = 0;
-    }
-    if (count == 0 || items == nullptr) {
-      return true;
-    }
-
-    // Single critical section: amortize mutex + atomic overhead across the
-    // whole batch. This is the main payoff of the batch API on the hot path.
-    std::lock_guard<std::mutex> lock(write_mutex_);
-
-    if (!is_open_.load(std::memory_order_acquire)) {
-      return false;
-    }
-
-    size_t ok_count = 0;
-    uint64_t ok_bytes = 0;
-    bool all_ok = true;
-    std::string first_error;
-    mcap::Message msg;
-
-    for (size_t i = 0; i < count; ++i) {
-      const BatchItem& it = items[i];
-      msg.channelId = it.channel_id;
-      msg.sequence = it.sequence;
-      msg.logTime = it.log_time_ns;
-      msg.publishTime = it.publish_time_ns;
-      msg.data = reinterpret_cast<const std::byte*>(it.data);
-      msg.dataSize = it.data_size;
-
-      auto status = writer_.write(msg);
-      if (!status.ok()) {
-        all_ok = false;
-        first_error = status.message;
-        break;
-      }
-      ++ok_count;
-      ok_bytes += it.data_size;
-    }
-
-    // Aggregate stats once per batch (cheaper than N atomic fetch_adds).
-    if (ok_count > 0) {
-      messages_written_.fetch_add(ok_count, std::memory_order_relaxed);
-      bytes_written_.fetch_add(ok_bytes, std::memory_order_relaxed);
-    }
-
-    if (!all_ok) {
-      last_error_ = "Failed to write message in batch: " + first_error;
-      write_errors_.fetch_add(1, std::memory_order_relaxed);
-      auto now = std::chrono::steady_clock::now();
-      auto last = last_write_error_log_.load(std::memory_order_relaxed);
-      if (now - last > std::chrono::seconds(1)) {
-        if (last_write_error_log_.compare_exchange_weak(last, now)) {
-          auto error_count = write_errors_.exchange(0, std::memory_order_relaxed);
-          AXON_LOG_ERROR(
-            "Failed to write batch" << axon::logging::kv("error", first_error)
-                                    << axon::logging::kv("error_count", error_count)
-                                    << axon::logging::kv("written", ok_count)
-                                    << axon::logging::kv("batch_size", count)
-          );
-        }
-      }
-    }
-
-    if (written_out) {
-      *written_out = ok_count;
-    }
-    return all_ok;
   }
 
   void flush() {
@@ -530,10 +438,6 @@ bool McapWriterWrapper::write(
   const void* data, size_t data_size
 ) {
   return impl_->write(channel_id, sequence, log_time_ns, publish_time_ns, data, data_size);
-}
-
-bool McapWriterWrapper::write_batch(const BatchItem* items, size_t count, size_t* written_out) {
-  return impl_->write_batch(items, count, written_out);
 }
 
 void McapWriterWrapper::flush() {

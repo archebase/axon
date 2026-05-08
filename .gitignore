@@ -142,9 +142,6 @@ core/build_uploader/
 # Claude Code user-specific settings
 .claude/settings.local.json
 
-# Kilo Code agent runtime artifacts (local per-user config, not shared state)
-.kilo/
-
 # Serena runtime artifacts
 .serena/cache/
 .serena/memories/

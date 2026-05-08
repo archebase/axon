@@ -45,19 +45,6 @@ using MessageCallback = std::function<void(
 )>;
 
 /**
- * Zero-copy message callback (ABI v1.2).
- *
- * The callback must take ownership of the buffer by eventually invoking
- * release_fn(release_opaque) exactly once. While the buffer is outstanding
- * its contents remain valid (backed by a held rclcpp::SerializedMessage or
- * heap allocation).
- */
-using MessageCallbackV2 = std::function<void(
-  const std::string& topic_name, const std::string& message_type, const uint8_t* message_data,
-  std::size_t message_size, rclcpp::Time timestamp, void (*release_fn)(void*), void* release_opaque
-)>;
-
-/**
  * @brief Subscription options
  */
 struct SubscribeOptions {
@@ -78,24 +65,6 @@ public:
   bool subscribe(
     const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
     MessageCallback callback
-  );
-
-  /**
-   * Subscribe with a zero-copy (ABI v1.2) callback.
-   *
-   * Fast path (no depth compression): retains the rclcpp::SerializedMessage
-   * shared_ptr and hands the recorder a pointer into its `buffer` along with
-   * a release function that drops the shared_ptr. No payload copy happens
-   * between rcl and the recorder's worker queue.
-   *
-   * Compression path (depth_compression.enabled): transparently falls back
-   * to the v1.x copy semantics internally (the compressor allocates a new
-   * buffer, which is then adopted by the v2 callback), so callers do not
-   * need to special-case topics.
-   */
-  bool subscribe_v2(
-    const std::string& topic_name, const std::string& message_type, const SubscribeOptions& options,
-    MessageCallbackV2 callback
   );
 
   // Unsubscribe from a topic

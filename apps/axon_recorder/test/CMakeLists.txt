@@ -112,7 +112,6 @@ function(add_axon_test test_name)
         GTest::gtest_main
         axon_mcap
         axon_logging
-        axon_memory
         pthread
     )
 
@@ -210,12 +209,6 @@ add_axon_test(test_rpc_handlers
             ../src/http/rpc_handlers.cpp
 )
 target_link_libraries(test_rpc_handlers yaml-cpp)
-
-# test_schema_resolver.cpp - Schema definition resolver tests
-add_axon_test(test_schema_resolver
-    SOURCES unit/test_schema_resolver.cpp
-            ../src/core/schema_resolver.cpp
-)
 
 # test_websocket_rpc_handler.cpp - WebSocket RPC handler tests
 add_axon_test(test_websocket_rpc_handler
@@ -325,12 +318,6 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../src/core/recorder.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
-                ../src/core/schema_resolver.cpp
-                ../src/core/latency_tracker.cpp
-                ../src/core/percentile_calculator.cpp
-                ../src/core/latency_anomaly_detector.cpp
-                ../src/core/latency_hotspot_analyzer.cpp
-                ../src/core/latency_monitor.cpp
                 ../src/metadata/metadata_injector.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp
@@ -381,12 +368,6 @@ if(
                 ../src/core/recorder.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
-                ../src/core/schema_resolver.cpp
-                ../src/core/latency_tracker.cpp
-                ../src/core/percentile_calculator.cpp
-                ../src/core/latency_anomaly_detector.cpp
-                ../src/core/latency_hotspot_analyzer.cpp
-                ../src/core/latency_monitor.cpp
                 ../src/metadata/metadata_injector.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp

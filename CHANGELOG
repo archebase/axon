@@ -12,64 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
-## [0.3.4] - 2026-04-29
-
-### Added
-- **recorder**: Add schema resolver for MCAP message definitions.
-- **recorder**: Add QoS monitoring for bandwidth utilization, per-topic queue depth, capacity, and utilization.
-- **monitor**: Add message integrity and latency monitoring, including gap detection, packet-loss statistics, percentile reports, anomaly detection, and hotspot analysis.
-- **recorder**: Send recorder state when running as a WebSocket client.
-- **panel**: Add `--rpc` CLI argument to configure the recorder RPC port.
-- **mcap**: Add batch writes and asynchronous writer pipeline to decouple compression and disk I/O from producer threads.
-- **mcap**: Add compression benchmarks for sync, batch, async, algorithm, level, and data-shape combinations.
-- **memory**: Add `BufferPool` and `PooledBuffer` RAII utilities for recorder message buffers.
-- **plugin**: Add ABI v1.2 zero-copy subscription support with ownership transfer.
-- **recorder**: Expose buffer-pool and enriched recorder statistics through RPC status surfaces.
-
-### Changed
-- **build**: Support parallel builds for packages targeting different ROS distributions.
-- **mcap**: Unify compression-level handling for Zstd and LZ4 with preset levels.
-- **recorder**: Reduce message-path copies and allocations with pooled buffers and per-topic batch writes.
-- **docs**: Clarify `compression_level` as the 0-4 MCAP preset range.
-
-### Fixed
-- **recorder**: Route `get_latency_stats` through WebSocket RPC handlers.
-- **uploader**: Serialize transfer WebSocket lifecycle to avoid Beast open-state assertions.
-- **plugin/ros1**: Align ROS1 plugin with host ABI and zero-copy subscription support.
-- **recorder**: Prevent dangling `release_fn` crashes when plugins are reloaded across sessions.
-- **recorder**: Fix WebSocket client bugs and enrich the stats surface.
-- **recorder**: Harden Ctrl+C shutdown handling.
-- **recorder**: Keep ROS middleware alive across repeated recording sessions.
-
-
-## [0.3.0] - 2026-03-19
-
-### Added
-- **panel**: Add the Axon panel UI with CSS custom properties theme system.
-- **panel**: Implement standalone deployment with embedded assets.
-- **panel/recorder**: Add WebSocket RPC support with a mode toggle.
-- **recorder**: Add WebSocket real-time push for panel updates.
-- **recorder**: Add WebSocket RPC client mode for Keystone server integration.
-- **recorder**: Add start and finish callbacks for recording lifecycle events.
-- **transfer**: Implement transfer daemon and ACK-gated upload flow.
-- **udp**: Add UDP JSON recording middleware plugin.
-- **config**: Add config injection system and `axon_config` CLI tool.
-- **packaging**: Add Debian packaging with systemd and CI/CD support.
-
-### Changed
-- **logging**: Migrate middleware plugins to the unified Axon logging system.
-- **ci**: Split Makefile CI scripts and align Zenoh CI.
-- **packaging**: Update package source naming with ROS distribution suffixes and bump version to 0.3.0.
-- **packaging**: Generate Debian changelog version from `CMakeLists.txt`.
-
-### Fixed
-- **panel**: Update dependencies to resolve security vulnerabilities.
-- **panel**: Fix WebSocket/RPC URLs and add CORS support for standalone deployment.
-- **config**: Parse compression settings from the `recording` config section.
-- **ci**: Use recursive globs for Debian artifact paths.
-- **packaging**: Add `Provides` field for plugin dependency resolution.
-
-## [0.2.1] - 2026-02-03
+## [0.2.1] - 2025-02-03
 
 ### Added
 - **filters**: Implement depth image compression filter (opt-in feature)
@@ -198,9 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.3.4...HEAD
-[0.3.4]: https://github.com/ArcheBase/Axon/compare/v0.3.0...v0.3.4
-[0.3.0]: https://github.com/ArcheBase/Axon/compare/v0.2.1...v0.3.0
+[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.2.1...HEAD
 [0.2.1]: https://github.com/ArcheBase/Axon/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ArcheBase/Axon/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ArcheBase/Axon/compare/v0.0.1...v0.1.0

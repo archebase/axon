@@ -21,9 +21,7 @@
 #include "../http/http_server.hpp"
 #include "../plugin/plugin_loader.hpp"
 #include "../state/state_machine.hpp"
-#include "latency_monitor.hpp"
 #include "recording_session.hpp"
-#include "schema_resolver.hpp"
 #include "worker_thread_pool.hpp"
 
 namespace axon {
@@ -93,16 +91,7 @@ struct RecordingConfig {
   double max_disk_usage_gb = 100.0;
   std::string profile = "ros2";
   std::string compression = "zstd";
-  // Compression preset, range 0-4 (applies to both zstd and lz4).
-  // Maps to axon::mcap_wrapper::CompressionLevel: 0=Default, 1=Fastest,
-  // 2=Fast, 3=Default, 4=Slow/Slowest. Values >4 are clamped to 4.
-  // NOT the native zstd/lz4 1-19 / 1-12 range.
   int compression_level = 3;
-
-  // Schema resolution: directories to search for .msg files
-  // Each path should be a share directory (e.g., /opt/ros/humble/share)
-  // Supports both ROS1 and ROS2 package layouts
-  std::vector<std::string> schema_search_paths;
 };
 
 /**
@@ -257,7 +246,7 @@ public:
   /**
    * Start recording
    *
-   * Uses the process-lifetime plugin, subscribes to topics, starts worker thread.
+   * Loads plugin, subscribes to topics, starts worker thread.
    *
    * @return true on success, false on failure
    */
@@ -266,7 +255,7 @@ public:
   /**
    * Stop recording
    *
-   * Stops per-session producers/subscriptions, flushes queue, closes MCAP.
+   * Stops plugin, unsubscribes, flushes queue, closes MCAP.
    */
   void stop();
 
@@ -379,40 +368,16 @@ public:
     uint64_t messages_written;
     uint64_t messages_dropped;
     uint64_t bytes_written;
-    uint64_t bytes_received;
-    double receive_rate_mbps;
-    double write_rate_mbps;
-    // Elapsed time of the current recording session in seconds.
-    // 0.0 when no session is open (idle / between sessions).
-    double duration_sec;
   };
   Statistics get_statistics() const;
 
   /**
    * Message callback from plugin (public for C callback wrapper)
-   * Called from plugin thread, pushes to queue.
-   *
-   * v1.0/v1.1 path: the recorder copies `message_data` into a pool-backed
-   * buffer before returning. `message_data` lifetime need only span the call.
+   * Called from plugin thread, pushes to queue
    */
   void on_message(
     const char* topic_name, const uint8_t* message_data, size_t message_size,
     const char* message_type, uint64_t timestamp
-  );
-
-  /**
-   * v1.2 zero-copy message callback.
-   *
-   * The plugin transfers ownership of the buffer to the recorder; the
-   * recorder retains `message_data` in the worker queue and invokes
-   * `release_fn(release_opaque)` exactly once after it is done processing
-   * (post-write or on drop). `release_fn` may be nullptr, in which case
-   * this function falls back to copy semantics (for plugins that advertise
-   * v1.2 but emit occasional borrowed buffers).
-   */
-  void on_message_v2(
-    const char* topic_name, const uint8_t* message_data, size_t message_size,
-    const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque
   );
 
 private:
@@ -423,16 +388,6 @@ private:
   bool message_handler(
     const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
     const uint8_t* data, size_t data_size, uint32_t sequence
-  );
-
-  /**
-   * Latency-aware message handler callback for WorkerThreadPool
-   * Called by per-topic worker threads with full timing information
-   */
-  bool latency_message_handler(
-    const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
-    const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
-    uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns
   );
 
   /**
@@ -451,16 +406,6 @@ private:
   bool setup_subscriptions();
 
   /**
-   * Load and initialize middleware plugin for the recorder process lifetime.
-   */
-  bool ensure_plugin_loaded();
-
-  /**
-   * Final middleware shutdown for recorder destruction.
-   */
-  void shutdown_plugins();
-
-  /**
    * Get subscription configuration for a topic
    */
   const SubscriptionConfig* get_subscription_config(const std::string& topic_name) const;
@@ -475,28 +420,8 @@ private:
    */
   void set_error_helper(const std::string& error);
 
-  /**
-   * Report a message drop event to the console log.
-   * Rate-limited per topic to avoid flooding during sustained back-pressure.
-   * Designed as a standalone function for easy future extension
-   * (e.g., broadcasting via WebSocket, escalating to error events).
-   *
-   * @param topic Topic name where the drop occurred
-   * @param message_type ROS message type (e.g., "sensor_msgs::msg::Image")
-   * @param total_dropped Cumulative drop count for this topic in the current session
-   */
-  void report_message_drop(
-    const std::string& topic, const std::string& message_type, uint64_t total_dropped
-  );
-
   RecorderConfig config_;
   PluginLoader plugin_loader_;
-  std::string active_plugin_name_;
-  bool plugin_initialized_ = false;
-  bool plugins_shutting_down_ = false;
-
-  // Schema resolver for populating MCAP schema definitions from .msg files
-  std::unique_ptr<SchemaResolver> schema_resolver_;
 
   // State machine for recording lifecycle management
   StateManager state_manager_;
@@ -510,9 +435,6 @@ private:
   // Worker thread pool manages per-topic workers
   // Use unique_ptr with placement new for late initialization with custom config
   std::unique_ptr<WorkerThreadPool> worker_pool_;
-
-  // Latency monitor for end-to-end latency tracking
-  std::shared_ptr<LatencyMonitor> latency_monitor_;
 
   std::atomic<bool> running_;
 
@@ -539,20 +461,6 @@ private:
 
   uint64_t last_session_final_file_size_ = 0;
   std::chrono::system_clock::time_point last_session_close_time_;
-
-  // Per-topic rate limiting state for drop reporting
-  struct DropReportState {
-    std::chrono::steady_clock::time_point last_report_time;
-    uint64_t suppressed_count = 0;  // Drops unreported since last log line
-  };
-  std::mutex drop_report_mutex_;
-  std::unordered_map<std::string, DropReportState> drop_report_states_;
-
-  // QoS monitoring state (bandwidth utilization)
-  mutable std::mutex qos_mutex_;
-  mutable std::chrono::steady_clock::time_point last_rate_calc_time_;
-  mutable uint64_t last_bytes_received_ = 0;
-  mutable uint64_t last_bytes_written_ = 0;
 };
 
 }  // namespace recorder
