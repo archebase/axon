@@ -22,13 +22,34 @@
 #include <axon_log_init.hpp>
 #include <axon_log_macros.hpp>
 
+#include "latency_monitor.hpp"
 #include "mcap_writer_wrapper.hpp"
+#include "schema_resolver.hpp"
 
 namespace axon {
 namespace recorder {
 
 namespace {
-// C callback wrapper for plugin
+// Serialize a BufferPool stats snapshot into the same JSON shape used by
+// /rpc/status. Centralizing this keeps the two get_stats callbacks below in
+// sync and gives dashboards a stable schema to monitor pool health
+// (allocations per second, hit rate, resident footprint).
+nlohmann::json buffer_pool_stats_json() {
+  const auto pool_stats = axon::memory::BufferPool::instance().stats();
+  nlohmann::json j;
+  j["acquires"] = pool_stats.acquires;
+  j["hits"] = pool_stats.hits;
+  j["misses"] = pool_stats.misses;
+  j["oversized"] = pool_stats.oversized;
+  j["releases"] = pool_stats.releases;
+  j["release_to_pool"] = pool_stats.release_to_pool;
+  j["release_freed"] = pool_stats.release_freed;
+  j["resident_bytes"] = pool_stats.resident_bytes;
+  j["hit_rate"] = pool_stats.hit_rate();
+  return j;
+}
+
+// C callback wrapper for plugin (ABI v1.0 / v1.1 — borrowed buffer, copy-out)
 void message_callback(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
   const char* message_type, uint64_t timestamp, void* user_data
@@ -41,10 +62,32 @@ void message_callback(
   recorder->on_message(topic_name, message_data, message_size, message_type, timestamp);
 }
 
+// C callback wrapper for plugin (ABI v1.2 — ownership transfer, zero-copy)
+void message_callback_v2(
+  const char* topic_name, const uint8_t* message_data, size_t message_size,
+  const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque,
+  void* user_data
+) {
+  if (!user_data) {
+    if (release_fn) {
+      release_fn(release_opaque);
+    }
+    return;
+  }
+
+  auto* recorder = static_cast<AxonRecorder*>(user_data);
+  recorder->on_message_v2(
+    topic_name, message_data, message_size, message_type, timestamp, release_fn, release_opaque
+  );
+}
+
 }  // namespace
 
 AxonRecorder::AxonRecorder()
-    : running_(false) {
+    : running_(false)
+    , last_rate_calc_time_(std::chrono::steady_clock::now())
+    , last_bytes_received_(0)
+    , last_bytes_written_(0) {
   // Register state transition callback
   state_manager_.register_transition_callback([this](RecorderState from, RecorderState to) {
     on_state_transition(from, to);
@@ -53,6 +96,14 @@ AxonRecorder::AxonRecorder()
 
 AxonRecorder::~AxonRecorder() {
   stop();
+  // Safety net: ensure ws_thread_ is joined before member destruction.
+  // In normal program flow stop_ws_rpc_client() is called explicitly before
+  // the recorder goes out of scope, making this a no-op.  If an exception
+  // or early-exit path skips that call, the ws_ioc_ / ws_thread_ members
+  // would be destroyed while still running, causing std::terminate().
+  stop_ws_rpc_client();
+  stop_http_server();
+  shutdown_plugins();
 }
 
 bool AxonRecorder::initialize(const RecorderConfig& config) {
@@ -66,7 +117,75 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
 
   worker_pool_ = std::make_unique<WorkerThreadPool>(pool_config);
 
+  // Register drop callback for message loss reporting
+  worker_pool_->set_drop_callback(
+    [this](const std::string& topic, const std::string& message_type, uint64_t total_dropped) {
+      report_message_drop(topic, message_type, total_dropped);
+    }
+  );
+
   http_callback_client_ = std::make_shared<HttpCallbackClient>();
+
+  latency_monitor_ = std::make_shared<LatencyMonitor>();
+
+  // Initialize schema resolver if search paths are configured
+  if (!config_.recording.schema_search_paths.empty()) {
+    schema_resolver_ = std::make_unique<SchemaResolver>(config_.recording.schema_search_paths);
+    AXON_LOG_INFO(
+      "Schema resolver initialized with "
+      << axon::logging::kv("paths_count", config_.recording.schema_search_paths.size())
+      << " search paths"
+    );
+  }
+
+  // Middleware plugins own process-lifetime state such as ROS1 roscpp/xmlrpcpp
+  // singletons. Load and initialize them once instead of rebuilding that state
+  // for every recording session.
+  if (!config_.plugin_path.empty() && !ensure_plugin_loaded()) {
+    return false;
+  }
+
+  return true;
+}
+
+bool AxonRecorder::ensure_plugin_loaded() {
+  if (plugin_initialized_) {
+    return true;
+  }
+
+  if (config_.plugin_path.empty()) {
+    set_error_helper("Plugin path is empty");
+    return false;
+  }
+
+  if (active_plugin_name_.empty() || !plugin_loader_.is_loaded(active_plugin_name_)) {
+    auto plugin_name = plugin_loader_.load(config_.plugin_path);
+    if (!plugin_name.has_value()) {
+      set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+      return false;
+    }
+
+    active_plugin_name_ = plugin_name.value();
+  }
+
+  const auto* descriptor = plugin_loader_.get_descriptor(active_plugin_name_);
+  if (!descriptor || !descriptor->vtable || !descriptor->vtable->init) {
+    set_error_helper("Invalid plugin descriptor");
+    plugin_loader_.unload(active_plugin_name_);
+    active_plugin_name_.clear();
+    return false;
+  }
+
+  AxonStatus status = descriptor->vtable->init(config_.plugin_config.c_str());
+  if (status != AXON_SUCCESS) {
+    set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
+    plugin_loader_.unload(active_plugin_name_);
+    active_plugin_name_.clear();
+    return false;
+  }
+
+  plugin_initialized_ = true;
+  plugins_shutting_down_ = false;
 
   return true;
 }
@@ -92,30 +211,23 @@ bool AxonRecorder::start() {
     return false;
   }
 
-  // Load plugin
-  auto plugin_name = plugin_loader_.load(config_.plugin_path);
-  if (!plugin_name.has_value()) {
-    set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+  if (!ensure_plugin_loaded()) {
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     return false;
   }
 
   // Get plugin descriptor
-  const auto* descriptor = plugin_loader_.get_descriptor(plugin_name.value());
+  const auto* descriptor = plugin_loader_.get_descriptor(active_plugin_name_);
   if (!descriptor || !descriptor->vtable) {
     set_error_helper("Invalid plugin descriptor");
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     return false;
   }
 
-  // Initialize plugin
-  if (descriptor->vtable->init) {
-    AxonStatus status = descriptor->vtable->init(config_.plugin_config.c_str());
-    if (status != AXON_SUCCESS) {
-      set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
-      state_manager_.transition_to(RecorderState::IDLE, error_msg);
-      return false;
-    }
+  if (!descriptor->vtable->start) {
+    set_error_helper("Plugin missing start function");
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    return false;
   }
 
   // Create recording session
@@ -235,14 +347,12 @@ bool AxonRecorder::start() {
   }
 
   // Start plugin
-  if (descriptor->vtable->start) {
-    AxonStatus status = descriptor->vtable->start();
-    if (status != AXON_SUCCESS) {
-      set_error_helper(std::string("Plugin start failed: ") + status_to_string(status));
-      state_manager_.transition_to(RecorderState::IDLE, error_msg);
-      recording_session_.reset();
-      return false;
-    }
+  AxonStatus status = descriptor->vtable->start();
+  if (status != AXON_SUCCESS) {
+    set_error_helper(std::string("Plugin start failed: ") + status_to_string(status));
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
+    return false;
   }
 
   // Start worker thread pool
@@ -257,25 +367,97 @@ void AxonRecorder::stop() {
     return;
   }
 
+  AXON_LOG_INFO("Recorder stop requested");
+
   std::string error_msg;
 
-  // Stop worker thread pool (drains remaining messages)
-  if (worker_pool_) {
-    worker_pool_->stop();
-  }
+  // Shutdown ordering rationale:
+  //
+  // ABI v1.2 zero-copy messages land in per-topic queues wrapped in
+  // PooledBuffer::adopt(), whose external_release_ is a function pointer
+  // into the producing plugin's .text section. The plugin now remains loaded
+  // for the AxonRecorder process lifetime, so ordinary finish only stops
+  // producers/subscriptions and drains queues. Final dlclose happens from
+  // shutdown_plugins() during destruction.
+  //
+  // To guarantee zero data loss while preserving process-lifetime middleware
+  // state, shutdown proceeds in this order:
+  //
+  //   1. Halt every plugin's producer loop (e.g. the ROS2 executor).
+  //      After plugin->stop() returns, no callback is in flight and no
+  //      further MessageItems will be enqueued.
+  //   2. Stop the worker pool. Each worker exits its main loop and then
+  //      runs its internal drain, dispatching every queued item into the
+  //      still-open recording_session_ — so the messages that legitimately
+  //      arrived before step (1) are all persisted to MCAP.
+  //   3. Call drain_remaining_sync() as defense-in-depth. Under a healthy
+  //      sequence this is a no-op; if a future change ever reintroduces a
+  //      producer/consumer ordering bug, this catches residual items on
+  //      the calling thread while the plugin is still mapped in, so the
+  //      adopted release_fn is still valid.
+  //   4. Close the MCAP session (flush, write metadata, emit sidecar).
+  //   5. Keep plugins loaded. This preserves process-lifetime middleware
+  //      state (notably ROS1 roscpp/xmlrpcpp) across sessions.
 
-  // Stop plugin
+  // 1. Stop per-session plugin producers so no more messages can be enqueued.
   auto plugins = plugin_loader_.loaded_plugins();
   for (const auto& plugin_name : plugins) {
     const auto* descriptor = plugin_loader_.get_descriptor(plugin_name);
-    if (descriptor && descriptor->vtable && descriptor->vtable->stop) {
-      descriptor->vtable->stop();
+    if (!descriptor || !descriptor->vtable) {
+      continue;
+    }
+
+    AxonStatus status = AXON_SUCCESS;
+    AxonSessionStopFn session_stop = plugin_session_stop(descriptor);
+    AXON_LOG_INFO(
+      "Stopping plugin session" << axon::logging::kv("plugin", plugin_name)
+                                << axon::logging::kv("has_session_stop", session_stop != nullptr)
+    );
+    if (session_stop) {
+      status = session_stop();
+    } else if (descriptor->vtable->stop) {
+      // Backward compatibility for plugins that do not yet expose the v1.3
+      // session-stop slot. ROS1 should use session_stop so its process-wide
+      // roscpp/xmlrpcpp state survives between sessions.
+      status = descriptor->vtable->stop();
+      if (status == AXON_SUCCESS && plugin_name == active_plugin_name_) {
+        plugin_initialized_ = false;
+      }
+    }
+
+    if (status != AXON_SUCCESS) {
+      AXON_LOG_ERROR(
+        "Plugin session stop failed" << axon::logging::kv("plugin", plugin_name)
+                                     << axon::logging::kv("status", status_to_string(status))
+      );
+    } else {
+      AXON_LOG_INFO("Plugin session stopped" << axon::logging::kv("plugin", plugin_name));
     }
   }
 
-  // Close recording session (injects metadata, generates sidecar)
+  // 2. Stop worker thread pool (workers drain remaining messages into the
+  //    still-open recording_session_ before exiting).
+  if (worker_pool_) {
+    AXON_LOG_INFO("Stopping worker thread pool");
+    worker_pool_->stop();
+    AXON_LOG_INFO("Worker thread pool stopped");
+  }
+
+  // 3. Defense-in-depth: synchronously drain any residual items that
+  //    slipped past worker_thread_func's own drain loop. Must run before
+  //    recording_session_->close() because the handler writes via the
+  //    session. Normally a no-op.
+  if (worker_pool_) {
+    AXON_LOG_INFO("Draining remaining queued messages");
+    const size_t drained = worker_pool_->drain_remaining_sync();
+    AXON_LOG_INFO("Remaining queued messages drained" << axon::logging::kv("count", drained));
+  }
+
+  // 4. Close recording session (injects metadata, generates sidecar).
   if (recording_session_) {
+    AXON_LOG_INFO("Closing recording session");
     recording_session_->close();
+    AXON_LOG_INFO("Recording session closed");
 
     last_session_final_file_size_ = recording_session_->get_final_file_size();
     last_session_close_time_ = recording_session_->get_close_time();
@@ -283,18 +465,55 @@ void AxonRecorder::stop() {
     recording_session_.reset();
   }
 
-  // Unload plugins
-  plugin_loader_.unload_all();
+  // 5. Keep plugins loaded until AxonRecorder destruction.
 
-  // Reset worker pool statistics for next session
+  // Reset worker pool statistics and drop report state for next session.
   if (worker_pool_) {
     worker_pool_->reset_stats();
+  }
+  {
+    std::lock_guard<std::mutex> lock(drop_report_mutex_);
+    drop_report_states_.clear();
   }
 
   // Transition back to IDLE
   state_manager_.transition_to(RecorderState::IDLE, error_msg);
 
   running_.store(false);
+  AXON_LOG_INFO("Recorder stop completed");
+}
+
+void AxonRecorder::shutdown_plugins() {
+  if (plugins_shutting_down_) {
+    return;
+  }
+  plugins_shutting_down_ = true;
+
+  auto plugins = plugin_loader_.loaded_plugins();
+  for (const auto& plugin_name : plugins) {
+    const auto* descriptor = plugin_loader_.get_descriptor(plugin_name);
+    if (descriptor && descriptor->vtable && descriptor->vtable->stop) {
+      auto plugin = plugin_loader_.get_plugin(plugin_name);
+      if (plugin) {
+        plugin->running = false;
+      }
+
+      AxonStatus status = descriptor->vtable->stop();
+      if (status != AXON_SUCCESS) {
+        AXON_LOG_ERROR(
+          "Plugin final stop failed" << axon::logging::kv("plugin", plugin_name)
+                                     << axon::logging::kv("status", status_to_string(status))
+        );
+      }
+    }
+  }
+
+  auto loaded_plugins = plugin_loader_.loaded_plugins();
+  for (const auto& plugin_name : loaded_plugins) {
+    plugin_loader_.unload(plugin_name);
+  }
+  active_plugin_name_.clear();
+  plugin_initialized_ = false;
 }
 
 bool AxonRecorder::is_running() const {
@@ -330,7 +549,76 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     j["messages_written"] = stats.messages_written;
     j["messages_dropped"] = stats.messages_dropped;
     j["bytes_written"] = stats.bytes_written;
+    j["bytes_received"] = stats.bytes_received;
+    j["receive_rate_mbps"] = stats.receive_rate_mbps;
+    j["write_rate_mbps"] = stats.write_rate_mbps;
+    // Surface the running recording duration and an explicit message_count
+    // alias so clients don't have to infer "数据条数" from messages_written.
+    j["duration_sec"] = stats.duration_sec;
+    j["message_count"] = stats.messages_written;
+
+    // Add queue depth monitoring and per-topic message counts so the status
+    // response includes a per-topic breakdown of written/received/dropped.
+    if (worker_pool_) {
+      auto depths = worker_pool_->get_queue_depths();
+      nlohmann::json queue_depths = nlohmann::json::object();
+      for (const auto& [topic, info] : depths) {
+        nlohmann::json q;
+        q["depth"] = info.depth;
+        q["capacity"] = info.capacity;
+        q["utilization"] =
+          info.capacity > 0 ? static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
+        queue_depths[topic] = q;
+      }
+      j["queue_depths"] = queue_depths;
+
+      nlohmann::json topic_counts = nlohmann::json::object();
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["written"] = ts.written;
+        t["dropped"] = ts.dropped;
+        topic_counts[topic_name] = t;
+      }
+      j["topic_message_counts"] = topic_counts;
+    }
+
+    // Expose BufferPool counters so operators can track hit rate and
+    // resident memory in real time via /rpc/status.
+    j["buffer_pool"] = buffer_pool_stats_json();
+
     return j;
+  };
+
+  callbacks.get_drop_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    nlohmann::json j;
+    j["state"] = this->get_state_string();
+    auto stats = this->get_statistics();
+    j["messages_received"] = stats.messages_received;
+    j["messages_dropped"] = stats.messages_dropped;
+    nlohmann::json topics = nlohmann::json::object();
+    if (worker_pool_) {
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["dropped"] = ts.dropped;
+        t["written"] = ts.written;
+        topics[topic_name] = t;
+      }
+    }
+    j["topics"] = topics;
+    return j;
+  };
+
+  callbacks.get_latency_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    if (latency_monitor_) {
+      return latency_monitor_->get_stats_json();
+    }
+    return nlohmann::json::object();
   };
 
   callbacks.get_task_config = [this]() -> const TaskConfig* {
@@ -623,6 +911,29 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
     stats.messages_received = pool_stats.total_received;
     stats.messages_written = pool_stats.total_written;
     stats.messages_dropped = pool_stats.total_dropped;
+    stats.bytes_received = pool_stats.total_bytes_received;
+    stats.bytes_written = pool_stats.total_bytes_written;
+  }
+
+  // Calculate bandwidth rates
+  {
+    std::lock_guard<std::mutex> qos_lock(qos_mutex_);
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - last_rate_calc_time_).count();
+
+    if (elapsed > 0) {
+      double elapsed_sec = elapsed / 1000.0;
+      uint64_t bytes_recv_delta = stats.bytes_received - last_bytes_received_;
+      uint64_t bytes_write_delta = stats.bytes_written - last_bytes_written_;
+
+      stats.receive_rate_mbps = (bytes_recv_delta / elapsed_sec) / (1024.0 * 1024.0);
+      stats.write_rate_mbps = (bytes_write_delta / elapsed_sec) / (1024.0 * 1024.0);
+
+      last_rate_calc_time_ = now;
+      last_bytes_received_ = stats.bytes_received;
+      last_bytes_written_ = stats.bytes_written;
+    }
   }
 
   // Get statistics from recording session
@@ -630,10 +941,22 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
     auto session_stats = recording_session_->get_stats();
     stats.messages_written = session_stats.messages_written;
     stats.bytes_written = session_stats.bytes_written;
+    // Expose running session duration so /rpc/stats and /rpc/state can
+    // report elapsed time alongside the message/byte counters.
+    stats.duration_sec = recording_session_->get_duration_sec();
   }
 
   return stats;
 }
+
+namespace {
+inline uint64_t get_steady_clock_ns() {
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                 std::chrono::steady_clock::now().time_since_epoch()
+  )
+                                 .count());
+}
+}  // namespace
 
 void AxonRecorder::on_message(
   const char* topic_name, const uint8_t* message_data, size_t message_size,
@@ -645,18 +968,67 @@ void AxonRecorder::on_message(
     return;
   }
 
-  // Create MessageItem and push to worker pool
+  uint64_t receive_time_ns = get_steady_clock_ns();
+
+  // Acquire a pool-backed buffer sized for this payload. On the steady-state
+  // hot path this avoids `operator new` per message (bucket reuse).
   MessageItem item;
   item.timestamp_ns = static_cast<int64_t>(timestamp);
-  item.message_type = message_type;  // Save the message type
-  item.raw_data.assign(message_data, message_data + message_size);
+  item.publish_time_ns = timestamp;
+  item.receive_time_ns = receive_time_ns;
+  item.message_type = message_type;
+  item.raw_data =
+    axon::memory::BufferPool::instance().acquire(message_size == 0 ? 1 : message_size);
+  item.raw_data.assign(message_data, message_size);
 
-  // Push to the topic's queue (worker pool handles this)
   if (worker_pool_) {
     worker_pool_->try_push(topic_name, std::move(item));
   }
-  // If queue is full or topic not found, message is dropped
-  // Statistics are tracked by WorkerThreadPool
+  // If queue is full or topic not found, the PooledBuffer returns to the pool
+  // on MessageItem destruction. Statistics tracked by WorkerThreadPool.
+}
+
+void AxonRecorder::on_message_v2(
+  const char* topic_name, const uint8_t* message_data, size_t message_size,
+  const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque
+) {
+  // Drop-and-release if we're not recording: the plugin gave us ownership,
+  // so we must still call the release function even though we don't enqueue.
+  if (!state_manager_.is_state(RecorderState::RECORDING)) {
+    if (release_fn) {
+      release_fn(release_opaque);
+    }
+    return;
+  }
+
+  uint64_t receive_time_ns = get_steady_clock_ns();
+
+  MessageItem item;
+  item.timestamp_ns = static_cast<int64_t>(timestamp);
+  item.publish_time_ns = timestamp;
+  item.receive_time_ns = receive_time_ns;
+  item.message_type = message_type;
+
+  if (release_fn != nullptr && message_data != nullptr) {
+    // Zero-copy path: adopt the plugin's buffer; PooledBuffer will call
+    // release_fn(release_opaque) exactly once when MessageItem is destroyed
+    // (either after MCAP write or on queue-full drop).
+    item.raw_data = axon::memory::PooledBuffer::adopt(
+      const_cast<uint8_t*>(message_data), message_size, release_fn, release_opaque
+    );
+  } else {
+    // Fallback: plugin advertised v1.2 but emitted a borrowed buffer with no
+    // release hook. Treat as v1.x — copy into a pooled buffer.
+    item.raw_data =
+      axon::memory::BufferPool::instance().acquire(message_size == 0 ? 1 : message_size);
+    item.raw_data.assign(message_data, message_size);
+  }
+
+  if (worker_pool_) {
+    worker_pool_->try_push(topic_name, std::move(item));
+  }
+  // On queue-full or unknown-topic drop, MessageItem destruction triggers the
+  // adopted release (or returns the pool slab) — symmetric with v1.1 path.
 }
 
 bool AxonRecorder::message_handler(
@@ -667,27 +1039,75 @@ bool AxonRecorder::message_handler(
     return false;  // No active recording session
   }
 
-  // Note: Depth compression is now handled by the ROS2 plugin
-  // The plugin converts Image to CompressedImage if compression is enabled
-  // message_type may differ from the original subscription type
+  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  uint64_t write_time_ns = get_steady_clock_ns();
 
-  // Get or create channel ID for this topic + message_type combination
   uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
   if (channel_id == 0) {
-    return false;  // Channel not found or failed to create
+    return false;
   }
 
-  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
-
-  // Write message to MCAP via recording session
   bool success =
     recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
 
-  // Update topic statistics for sidecar generation
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
     if (sub_config) {
       recording_session_->update_topic_stats(topic, sub_config->message_type);
+    }
+
+    if (latency_monitor_) {
+      LatencyRecord record;
+      record.topic = topic;
+      record.publish_time_ns = log_time_ns;
+      record.receive_time_ns = 0;
+      record.enqueue_time_ns = 0;
+      record.dequeue_time_ns = 0;
+      record.write_time_ns = write_time_ns;
+      record.record_time_ns = write_time_ns;
+      latency_monitor_->record(record);
+    }
+  }
+
+  return success;
+}
+
+bool AxonRecorder::latency_message_handler(
+  const std::string& topic, const std::string& message_type, int64_t timestamp_ns,
+  const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
+  uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns
+) {
+  if (!recording_session_) {
+    return false;
+  }
+
+  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  uint64_t write_time_ns = get_steady_clock_ns();
+
+  uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
+  if (channel_id == 0) {
+    return false;
+  }
+
+  bool success =
+    recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
+
+  if (success) {
+    const SubscriptionConfig* sub_config = get_subscription_config(topic);
+    if (sub_config) {
+      recording_session_->update_topic_stats(topic, sub_config->message_type);
+    }
+
+    if (latency_monitor_) {
+      LatencyRecord record;
+      record.topic = topic;
+      record.publish_time_ns = (publish_time_ns > 0) ? publish_time_ns : log_time_ns;
+      record.receive_time_ns = receive_time_ns;
+      record.enqueue_time_ns = enqueue_time_ns;
+      record.dequeue_time_ns = dequeue_time_ns;
+      record.write_time_ns = write_time_ns;
+      record.record_time_ns = write_time_ns;
+      latency_monitor_->record(record);
     }
   }
 
@@ -709,8 +1129,23 @@ bool AxonRecorder::register_topics() {
     std::string channel_encoding =
       is_json_type ? "json" : (config_.recording.profile == "ros1" ? "ros1" : "cdr");
 
+    // Resolve schema definition from .msg files (if resolver is configured)
+    std::string schema_definition;
+    if (!is_json_type && schema_resolver_) {
+      schema_definition = schema_resolver_->resolve(sub.message_type);
+      if (schema_definition.empty()) {
+        AXON_LOG_WARN(
+          "Could not resolve schema for "
+          << axon::logging::kv("type", sub.message_type) << ": "
+          << axon::logging::kv("error", schema_resolver_->get_last_error())
+          << ". MCAP will have empty schema data."
+        );
+      }
+    }
+
     // Register schema (use message type as schema name)
-    uint16_t schema_id = recording_session_->register_schema(sub.message_type, schema_encoding, "");
+    uint16_t schema_id =
+      recording_session_->register_schema(sub.message_type, schema_encoding, schema_definition);
 
     if (schema_id == 0) {
       set_error_helper(
@@ -734,20 +1169,40 @@ bool AxonRecorder::register_topics() {
       return false;
     }
 
-    // Create topic worker in the pool
-    // Use std::bind to bind the message handler member function
-    auto handler = std::bind(
-      &AxonRecorder::message_handler,
-      this,
-      std::placeholders::_1,  // topic
-      std::placeholders::_2,  // message_type
-      std::placeholders::_3,  // timestamp_ns
-      std::placeholders::_4,  // data
-      std::placeholders::_5,  // data_size
-      std::placeholders::_6   // sequence
-    );
+    // Create topic worker in the pool with latency tracking
+    WorkerThreadPool::LatencyMessageHandler handler = [this](
+                                                        const std::string& topic,
+                                                        const std::string& message_type,
+                                                        int64_t timestamp_ns,
+                                                        const uint8_t* data,
+                                                        size_t data_size,
+                                                        uint32_t sequence,
+                                                        uint64_t publish_time_ns,
+                                                        uint64_t receive_time_ns,
+                                                        uint64_t enqueue_time_ns,
+                                                        uint64_t dequeue_time_ns
+                                                      ) -> bool {
+      return this->latency_message_handler(
+        topic,
+        message_type,
+        timestamp_ns,
+        data,
+        data_size,
+        sequence,
+        publish_time_ns,
+        receive_time_ns,
+        enqueue_time_ns,
+        dequeue_time_ns
+      );
+    };
 
-    if (!worker_pool_->create_topic_worker(sub.topic_name, handler)) {
+    // Plumb batch_size / flush_interval_ms from SubscriptionConfig into the worker.
+    // This actually activates the batching fields that were previously parsed but unused.
+    WorkerThreadPool::BatchConfig batch_cfg;
+    batch_cfg.batch_size = sub.batch_size;
+    batch_cfg.flush_interval_ms = sub.flush_interval_ms;
+
+    if (!worker_pool_->create_topic_worker(sub.topic_name, handler, batch_cfg)) {
       set_error_helper("Failed to create worker for topic: " + sub.topic_name);
       return false;
     }
@@ -774,6 +1229,16 @@ bool AxonRecorder::setup_subscriptions() {
     return false;
   }
 
+  // Prefer the ABI v1.2 zero-copy subscribe path when the plugin advertises
+  // it; fall back to v1.x copy-out subscribe otherwise. The detection is
+  // fully optional — any v1.0/v1.1 plugin keeps working unchanged.
+  AxonSubscribeV2Fn subscribe_v2 = plugin_subscribe_v2(descriptor);
+  if (subscribe_v2 != nullptr) {
+    AXON_LOG_INFO(
+      "Plugin '" << plugins[0] << "' supports ABI v1.2 zero-copy callback; using subscribe_v2"
+    );
+  }
+
   // Setup subscriptions via plugin
   for (const auto& sub : config_.subscriptions) {
     // Build options JSON for depth compression (if enabled)
@@ -785,13 +1250,24 @@ bool AxonRecorder::setup_subscriptions() {
       options_json = opts.dump();
     }
 
-    AxonStatus status = descriptor->vtable->subscribe(
-      sub.topic_name.c_str(),
-      sub.message_type.c_str(),
-      options_json.empty() ? nullptr : options_json.c_str(),
-      message_callback,
-      this
-    );
+    AxonStatus status = AXON_ERROR_INTERNAL;
+    if (subscribe_v2 != nullptr) {
+      status = subscribe_v2(
+        sub.topic_name.c_str(),
+        sub.message_type.c_str(),
+        options_json.empty() ? nullptr : options_json.c_str(),
+        message_callback_v2,
+        this
+      );
+    } else {
+      status = descriptor->vtable->subscribe(
+        sub.topic_name.c_str(),
+        sub.message_type.c_str(),
+        options_json.empty() ? nullptr : options_json.c_str(),
+        message_callback,
+        this
+      );
+    }
 
     if (status != AXON_SUCCESS) {
       set_error_helper(
@@ -842,13 +1318,62 @@ void AxonRecorder::set_error_helper(const std::string& error) {
   last_error_ = error;
 }
 
-void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
-  // Broadcast state change via WebSocket
-  if (http_server_) {
-    std::string task_id;
-    if (task_config_.has_value()) {
-      task_id = task_config_->task_id;
+void AxonRecorder::report_message_drop(
+  const std::string& topic, const std::string& message_type, uint64_t total_dropped
+) {
+  // Rate limit: at most one log line per topic per second.
+  // Between two log lines, unreported drops are counted and included
+  // in the next log as `recent_drops` (drops since last report).
+  constexpr auto kMinInterval = std::chrono::seconds(1);
+
+  auto now = std::chrono::steady_clock::now();
+  uint64_t recent_drops = 0;
+
+  {
+    std::lock_guard<std::mutex> lock(drop_report_mutex_);
+    auto& state = drop_report_states_[topic];
+
+    if (now - state.last_report_time < kMinInterval) {
+      ++state.suppressed_count;
+      return;
     }
+
+    // This drop + previously unreported drops = recent_drops
+    recent_drops = state.suppressed_count + 1;
+    state.suppressed_count = 0;
+    state.last_report_time = now;
+  }
+
+  // Log outside the lock to avoid holding it during I/O
+  //
+  // Fields:
+  //   topic         - topic name where the drop occurred
+  //   message_type  - ROS message type
+  //   total_dropped - cumulative drop count for this topic since recording started
+  //   recent_drops  - number of drops since the last log line (>1 when rate-limited)
+  if (recent_drops > 1) {
+    AXON_LOG_WARN(
+      "Message dropped (queue full)" << axon::logging::kv("topic", topic)
+                                     << axon::logging::kv("message_type", message_type)
+                                     << axon::logging::kv("total_dropped", total_dropped)
+                                     << axon::logging::kv("recent_drops", recent_drops)
+    );
+  } else {
+    AXON_LOG_WARN(
+      "Message dropped (queue full)" << axon::logging::kv("topic", topic)
+                                     << axon::logging::kv("message_type", message_type)
+                                     << axon::logging::kv("total_dropped", total_dropped)
+    );
+  }
+}
+
+void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
+  std::string task_id;
+  if (task_config_.has_value()) {
+    task_id = task_config_->task_id;
+  }
+
+  if (http_server_) {
     http_server_->broadcast_state_change(from, to, task_id);
 
     // Broadcast log for important state transitions
@@ -863,6 +1388,12 @@ void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
     } else if (to == RecorderState::READY) {
       http_server_->broadcast_log("info", "Configuration set, ready to record");
     }
+  }
+
+  AXON_LOG_INFO("State transition: " << state_to_string(from) << " -> " << state_to_string(to));
+  if (ws_rpc_client_) {
+    AXON_LOG_INFO("Sending state update to WebSocket RPC server");
+    ws_rpc_client_->send_state_update(from, to, task_id);
   }
 }
 
@@ -907,7 +1438,76 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
     j["messages_written"] = stats.messages_written;
     j["messages_dropped"] = stats.messages_dropped;
     j["bytes_written"] = stats.bytes_written;
+    j["bytes_received"] = stats.bytes_received;
+    j["receive_rate_mbps"] = stats.receive_rate_mbps;
+    j["write_rate_mbps"] = stats.write_rate_mbps;
+    // Surface the running recording duration and an explicit message_count
+    // alias so clients don't have to infer "数据条数" from messages_written.
+    j["duration_sec"] = stats.duration_sec;
+    j["message_count"] = stats.messages_written;
+
+    // Add queue depth monitoring and per-topic message counts so the status
+    // response includes a per-topic breakdown of written/received/dropped.
+    if (worker_pool_) {
+      auto depths = worker_pool_->get_queue_depths();
+      nlohmann::json queue_depths = nlohmann::json::object();
+      for (const auto& [topic, info] : depths) {
+        nlohmann::json q;
+        q["depth"] = info.depth;
+        q["capacity"] = info.capacity;
+        q["utilization"] =
+          info.capacity > 0 ? static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
+        queue_depths[topic] = q;
+      }
+      j["queue_depths"] = queue_depths;
+
+      nlohmann::json topic_counts = nlohmann::json::object();
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["written"] = ts.written;
+        t["dropped"] = ts.dropped;
+        topic_counts[topic_name] = t;
+      }
+      j["topic_message_counts"] = topic_counts;
+    }
+
+    // Expose BufferPool counters so operators can track hit rate and
+    // resident memory in real time via /rpc/status.
+    j["buffer_pool"] = buffer_pool_stats_json();
+
     return j;
+  };
+
+  callbacks.get_drop_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    nlohmann::json j;
+    j["state"] = this->get_state_string();
+    auto stats = this->get_statistics();
+    j["messages_received"] = stats.messages_received;
+    j["messages_dropped"] = stats.messages_dropped;
+    nlohmann::json topics = nlohmann::json::object();
+    if (worker_pool_) {
+      for (const auto& topic_name : worker_pool_->get_topics()) {
+        auto ts = worker_pool_->get_topic_stats(topic_name);
+        nlohmann::json t;
+        t["received"] = ts.received;
+        t["dropped"] = ts.dropped;
+        t["written"] = ts.written;
+        topics[topic_name] = t;
+      }
+    }
+    j["topics"] = topics;
+    return j;
+  };
+
+  callbacks.get_latency_stats = [this]() -> nlohmann::json {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    if (latency_monitor_) {
+      return latency_monitor_->get_stats_json();
+    }
+    return nlohmann::json::object();
   };
 
   callbacks.get_task_config = [this]() -> const TaskConfig* {
@@ -966,6 +1566,12 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
 
       // Set the task config
       this->set_task_config(config);
+
+      // Notify keystone that the config was accepted (ws-client equivalent of
+      // HttpServer::broadcast_config_change in HTTP-server mode).
+      if (ws_rpc_client_) {
+        ws_rpc_client_->send_config_update(config);
+      }
 
       // Transition state from IDLE to READY
       auto current_state = this->get_state();

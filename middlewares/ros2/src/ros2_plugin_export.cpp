@@ -53,6 +53,13 @@ using AxonMessageCallback = void (*)(
   const char* message_type, uint64_t timestamp, void* user_data
 );
 
+// ABI v1.2 zero-copy callback
+using AxonMessageCallbackV2 = void (*)(
+  const char* topic_name, const uint8_t* message_data, size_t message_size,
+  const char* message_type, uint64_t timestamp, void (*release_fn)(void*), void* release_opaque,
+  void* user_data
+);
+
 // =============================================================================
 // Global plugin state
 // =============================================================================
@@ -122,6 +129,22 @@ static int32_t axon_stop(void) {
   g_plugin.reset();
 
   AXON_LOG_INFO("ROS2 plugin stopped via C API");
+  return static_cast<int32_t>(AXON_SUCCESS);
+}
+
+// ABI v1.3: stop per-recording producers without destroying initialized plugin state.
+static int32_t axon_session_stop(void) {
+  std::lock_guard<std::mutex> lock(g_plugin_mutex);
+
+  if (!g_plugin) {
+    return static_cast<int32_t>(AXON_SUCCESS);
+  }
+
+  if (!g_plugin->stop_session()) {
+    return static_cast<int32_t>(AXON_ERROR_INTERNAL);
+  }
+
+  AXON_LOG_INFO("ROS2 plugin session stopped via C API");
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
@@ -206,6 +229,84 @@ static int32_t axon_subscribe(
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
+// ABI v1.2: zero-copy subscribe. Shares config parsing with axon_subscribe.
+static int32_t axon_subscribe_v2(
+  const char* topic_name, const char* message_type, const char* options_json,
+  AxonMessageCallbackV2 callback, void* user_data
+) {
+  if (!topic_name || !message_type || !callback) {
+    AXON_LOG_ERROR(
+      "Invalid argument (v2): topic=" << kv("ptr", (void*)topic_name)
+                                      << ", type=" << kv("ptr", (void*)message_type)
+                                      << ", callback=" << kv("ptr", (void*)callback)
+    );
+    return static_cast<int32_t>(AXON_ERROR_INVALID_ARGUMENT);
+  }
+
+  std::lock_guard<std::mutex> lock(g_plugin_mutex);
+
+  if (!g_plugin) {
+    AXON_LOG_ERROR("Cannot subscribe_v2: plugin not initialized");
+    return static_cast<int32_t>(AXON_ERROR_NOT_INITIALIZED);
+  }
+
+  SubscribeOptions options;
+  options.qos = rclcpp::QoS(10);
+  options.qos.reliable();
+  options.qos.durability_volatile();
+
+  if (options_json && strlen(options_json) > 0) {
+    try {
+      nlohmann::json opts = nlohmann::json::parse(options_json);
+#ifdef AXON_ENABLE_DEPTH_COMPRESSION
+      if (opts.contains("depth_compression")) {
+        auto dc = opts["depth_compression"];
+        DepthCompressionConfig dc_config;
+        dc_config.enabled = dc.value("enabled", false);
+        dc_config.level = dc.value("level", "medium");
+        options.depth_compression = dc_config;
+      }
+#else
+      (void)options;
+#endif
+    } catch (const std::exception& e) {
+      AXON_LOG_WARN(
+        "Failed to parse options JSON (v2) for " << kv("topic", topic_name) << ": "
+                                                 << kv("error", e.what())
+      );
+    }
+  }
+
+  MessageCallbackV2 wrapper = [callback, user_data](
+                                const std::string& topic,
+                                const std::string& type,
+                                const uint8_t* data,
+                                std::size_t size,
+                                rclcpp::Time timestamp,
+                                void (*release_fn)(void*),
+                                void* release_opaque
+                              ) {
+    callback(
+      topic.c_str(),
+      data,
+      size,
+      type.c_str(),
+      timestamp.nanoseconds(),
+      release_fn,
+      release_opaque,
+      user_data
+    );
+  };
+
+  if (!g_plugin->subscribe_v2(
+        std::string(topic_name), std::string(message_type), options, wrapper
+      )) {
+    return static_cast<int32_t>(AXON_ERROR_INTERNAL);
+  }
+
+  return static_cast<int32_t>(AXON_SUCCESS);
+}
+
 // Publish a message (placeholder for future implementation)
 static int32_t axon_publish(
   const char* topic_name, const uint8_t* message_data, size_t message_size, const char* message_type
@@ -223,9 +324,12 @@ static int32_t axon_publish(
 // Plugin descriptor export
 // =============================================================================
 
-// Version information (incremented minor version for subscribe signature change)
+// Version information.
+// v1.1: subscribe(options_json, ...) signature change.
+// v1.2: zero-copy AxonSubscribeV2Fn exposed via vtable.reserved[0].
+// v1.3: AxonSessionStopFn exposed via vtable.reserved[1].
 #define AXON_ABI_VERSION_MAJOR 1
-#define AXON_ABI_VERSION_MINOR 1
+#define AXON_ABI_VERSION_MINOR 3
 
 // Plugin vtable structure (matching loader's expectation)
 struct AxonPluginVtable {
@@ -248,14 +352,25 @@ struct AxonPluginDescriptor {
   void* reserved[16];
 };
 
-// Static vtable
+// Static vtable.
+// reserved[0] carries AxonSubscribeV2Fn (ABI v1.2 zero-copy) and reserved[1]
+// carries AxonSessionStopFn (ABI v1.3 per-session stop). The recorder probes
+// these slots by ABI minor before using them.
 static AxonPluginVtable ros2_vtable = {
   axon_init,
   axon_start,
   axon_stop,
   axon_subscribe,
   axon_publish,
-  {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}
+  {reinterpret_cast<void*>(&axon_subscribe_v2),
+   reinterpret_cast<void*>(&axon_session_stop),
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr}
 };
 
 // Exported plugin descriptor

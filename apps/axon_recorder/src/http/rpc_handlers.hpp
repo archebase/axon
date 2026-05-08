@@ -43,6 +43,8 @@ struct RpcResponse {
  */
 using GetStateCallback = std::function<std::string()>;
 using GetStatsCallback = std::function<nlohmann::json()>;
+using GetDropStatsCallback = std::function<nlohmann::json()>;
+using GetLatencyStatsCallback = std::function<nlohmann::json()>;
 using GetTaskConfigCallback = std::function<const TaskConfig*()>;
 using SetConfigCallback = std::function<bool(const std::string&, const nlohmann::json&)>;
 using BeginRecordingCallback = std::function<bool(const std::string&)>;
@@ -59,6 +61,8 @@ using QuitCallback = std::function<void()>;
 struct RpcCallbacks {
   GetStateCallback get_state;
   GetStatsCallback get_stats;
+  GetDropStatsCallback get_drop_stats;
+  GetLatencyStatsCallback get_latency_stats;
   GetTaskConfigCallback get_task_config;
   SetConfigCallback set_config;
   BeginRecordingCallback begin_recording;
@@ -155,6 +159,26 @@ RpcResponse handle_rpc_get_state(const RpcCallbacks& callbacks, const nlohmann::
  * @return RPC response
  */
 RpcResponse handle_rpc_get_stats(const RpcCallbacks& callbacks, const nlohmann::json& params);
+
+/**
+ * Handle RPC get_drop_stats command
+ * Returns per-topic drop statistics and current recording state.
+ * @param callbacks RPC callbacks to invoke
+ * @param params Request parameters (unused)
+ * @return RPC response with drop statistics
+ */
+RpcResponse handle_rpc_get_drop_stats(const RpcCallbacks& callbacks, const nlohmann::json& params);
+
+/**
+ * Handle RPC get_latency_stats command
+ * Returns per-topic latency statistics including percentiles and anomaly counts.
+ * @param callbacks RPC callbacks to invoke
+ * @param params Request parameters (unused)
+ * @return RPC response with latency statistics
+ */
+RpcResponse handle_rpc_get_latency_stats(
+  const RpcCallbacks& callbacks, const nlohmann::json& params
+);
 
 /**
  * Handle RPC test command (connectivity check)

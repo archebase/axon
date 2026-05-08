@@ -79,6 +79,14 @@ public:
   void send_state_update(RecorderState from, RecorderState to, const std::string& task_id);
 
   /**
+   * Send config-applied notification to keystone server (ws-client mode only).
+   * Called after set_config() successfully stores a new TaskConfig so keystone
+   * can confirm the configuration was accepted.  Mirrors the role of
+   * HttpServer::broadcast_config_change() in HTTP-server mode.
+   */
+  void send_config_update(const TaskConfig& config);
+
+  /**
    * Check if connected to keystone
    */
   bool is_connected() const;
@@ -118,10 +126,19 @@ private:
   // Configuration
   WsClientConfig config_;
 
+  enum class ConnectionState {
+    kStopped,
+    kIdle,
+    kResolving,
+    kConnecting,
+    kHandshaking,
+    kOpen,
+  };
+
   // ASIO components
+  net::strand<net::io_context::executor_type> strand_;
   tcp::resolver resolver_;
   beast::websocket::stream<beast::tcp_stream> ws_;
-  net::strand<net::io_context::executor_type> strand_;
   beast::flat_buffer read_buffer_;
 
   // Write queue
@@ -135,8 +152,10 @@ private:
 
   // State
   std::atomic<bool> connected_{false};
-  std::atomic<bool> stopped_{false};
+  std::atomic<bool> stopped_{true};
   uint32_t reconnect_attempt_{0};
+  bool reconnect_scheduled_{false};
+  ConnectionState state_{ConnectionState::kStopped};
 
   // Callbacks
   RpcCallbacks callbacks_;

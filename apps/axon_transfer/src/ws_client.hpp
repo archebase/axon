@@ -68,9 +68,9 @@ private:
   void on_ping_timer(beast::error_code ec);
 
   WsConfig config_;
+  net::strand<net::io_context::executor_type> strand_;
   tcp::resolver resolver_;
   beast::websocket::stream<beast::tcp_stream> ws_;
-  net::strand<net::io_context::executor_type> strand_;
   beast::flat_buffer read_buffer_;
 
   std::queue<std::string> write_queue_;

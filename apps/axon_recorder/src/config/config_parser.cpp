@@ -136,6 +136,12 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
         config.output_file = node["dataset"]["output_file"].as<std::string>();
         config.output_file_is_explicit = true;
       }
+      // Map dataset.queue_size to queue_capacity (per-topic SPSC queue depth).
+      // This field was documented in default_config_ros1.yaml but previously
+      // silently ignored because parse_dataset() only touches DatasetConfig.
+      if (node["dataset"]["queue_size"]) {
+        config.queue_capacity = node["dataset"]["queue_size"].as<size_t>();
+      }
     }
 
     // Parse subscriptions
@@ -277,6 +283,17 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
   if (node["profile"]) {
     recording.profile = node["profile"].as<std::string>();
   }
+
+  // Parse schema search paths for message definition resolution
+  if (node["schema_search_paths"]) {
+    const auto& paths_node = node["schema_search_paths"];
+    if (paths_node.IsSequence()) {
+      for (const auto& path_node : paths_node) {
+        recording.schema_search_paths.push_back(path_node.as<std::string>());
+      }
+    }
+  }
+
   return true;
 }
 

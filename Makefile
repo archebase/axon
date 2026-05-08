@@ -199,7 +199,7 @@ build-mcap:
 			-DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
 			-DAXON_BUILD_TESTS=ON \
 			-DAXON_BUILD_UPLOADER=OFF && \
-		cmake --build . -j$(NPROC) --target axon_mcap test_mcap_writer test_mcap_validator test_mcap_validator_mocked
+		cmake --build . -j$(NPROC) --target axon_mcap test_mcap_batch_and_async test_mcap_writer test_mcap_validator test_mcap_validator_mocked
 	@printf "%s\n" "$(GREEN)✓ axon_mcap built$(NC)"
 
 build-logging:
@@ -1072,24 +1072,23 @@ PACKAGE_DIR := packaging/deb
 # package-core: Build core packages in Docker (recorder, config, panel, transfer, dispatcher)
 .PHONY: package-core
 package-core:
-	@printf "%s\n" "$(YELLOW)Building core packages in Docker...$(NC)"
-	@for distro in focal jammy noble; do \
-		echo "Building core packages for Ubuntu $$distro..."; \
-		$(PACKAGE_DIR)/scripts/build-in-docker.sh standalone-$$distro || echo "Warning: $$distro build failed"; \
-	done
+	@printf "%s\n" "$(YELLOW)Building core packages in Docker (parallel)...$(NC)"
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh standalone-focal > /dev/null 2>&1 &
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh standalone-jammy > /dev/null 2>&1 &
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh standalone-noble > /dev/null 2>&1 &
+	@wait || true
+	@printf "%s\n" "$(GREEN)✓ Core packages built$(NC)"
 
 # package-plugins: Build all plugin packages in Docker (ROS1 + ROS2 + UDP)
 .PHONY: package-plugins
 package-plugins:
-	@printf "%s\n" "$(YELLOW)Building plugin packages in Docker...$(NC)"
-	@echo "Building ROS1 plugin..."
-	@$(PACKAGE_DIR)/scripts/build-in-docker.sh ros1 || echo "Warning: ROS1 build failed"
-	@echo "Building ROS2 Humble plugin..."
-	@$(PACKAGE_DIR)/scripts/build-in-docker.sh --distro humble || echo "Warning: ROS2 Humble build failed"
-	@echo "Building ROS2 Jazzy plugin..."
-	@$(PACKAGE_DIR)/scripts/build-in-docker.sh --distro jazzy || echo "Warning: ROS2 Jazzy build failed"
-	@echo "Building UDP plugin..."
-	@$(PACKAGE_DIR)/scripts/build-in-docker.sh udp || echo "Warning: UDP build failed"
+	@printf "%s\n" "$(YELLOW)Building plugin packages in Docker (parallel)...$(NC)"
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh ros1 > /dev/null 2>&1 &
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh --distro humble > /dev/null 2>&1 &
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh --distro jazzy > /dev/null 2>&1 &
+	@$(PACKAGE_DIR)/scripts/build-in-docker.sh udp > /dev/null 2>&1 &
+	@wait || true
+	@printf "%s\n" "$(GREEN)✓ Plugin packages built$(NC)"
 
 # package-all: Build all packages in Docker (core + plugins for all distros)
 .PHONY: package-all

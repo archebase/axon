@@ -1,38 +1,50 @@
 import axios from 'axios'
 
+let cachedBaseUrl = null
+
 function getBaseUrl() {
+  // Return cached value if already computed
+  if (cachedBaseUrl !== null) {
+    return cachedBaseUrl
+  }
+
+  // Explicit API base URL override (full URL)
   if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL
+    cachedBaseUrl = import.meta.env.VITE_API_BASE_URL
+    return cachedBaseUrl
   }
-  // Dev mode: use relative URL so Vite proxy forwards /rpc → localhost:8080
+  // Dev mode: use relative URL so Vite proxy forwards /rpc → recorder
   if (import.meta.env.DEV) {
-    return ''
+    cachedBaseUrl = ''
+    return cachedBaseUrl
   }
-  // Production: panel is served on port N+2, RPC is on port N (N=8080 default)
-  const port = parseInt(window.location.port, 10) || 8082
-  return `${window.location.protocol}//${window.location.hostname}:${port - 2}`
+  // Production: check runtime config from server first
+  // window.__AXON_CONFIG__ is set by /config.js served from the C++ server
+  if (typeof window.__AXON_CONFIG__ !== 'undefined') {
+    const port = window.__AXON_CONFIG__
+    cachedBaseUrl = `${window.location.protocol}//${window.location.hostname}:${port}`
+    return cachedBaseUrl
+  }
+  // Fallback: derive from panel port (default: panel port - 2)
+  const recorderPort = (parseInt(window.location.port, 10) || 8082) - 2
+  cachedBaseUrl = `${window.location.protocol}//${window.location.hostname}:${recorderPort}`
+  return cachedBaseUrl
 }
 
-// Create axios instance with interceptors for debugging
+// Create axios instance - baseURL is evaluated lazily via interceptor
 const apiClient = axios.create({
-  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json'
   }
 })
 
-// Request interceptor
+// Inject baseURL on each request (lazy evaluation after config.js loads)
 apiClient.interceptors.request.use(
   (config) => {
-    if (import.meta.env.DEV) {
-      console.log('[API Request]', config.method.toUpperCase(), config.url, config.data)
-    }
+    config.baseURL = getBaseUrl()
     return config
   },
   (error) => {
-    if (import.meta.env.DEV) {
-      console.error('[API Request Error]', error)
-    }
     return Promise.reject(error)
   }
 )
@@ -40,18 +52,9 @@ apiClient.interceptors.request.use(
 // Response interceptor
 apiClient.interceptors.response.use(
   (response) => {
-    if (import.meta.env.DEV) {
-      console.log('[API Response]', response.config.url, response.data)
-    }
     return response
   },
   (error) => {
-    if (import.meta.env.DEV) {
-      console.error('[API Response Error]', error.config?.url, error.message)
-      if (error.response) {
-        console.error('[API Error Response]', error.response.data)
-      }
-    }
     return Promise.reject(error)
   }
 )
