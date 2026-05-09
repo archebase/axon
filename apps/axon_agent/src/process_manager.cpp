@@ -174,16 +174,15 @@ void ProcessManager::discover(const ManagedProcessConfig& config) {
   const auto runtime_config = normalize_config(config);
   pid_t pid = -1;
   ManagedProcessState state = state_from_config(runtime_config);
-  apply_metadata(&state);
+  const bool metadata_matches = apply_metadata(&state);
 
   std::vector<std::string> proc_argv;
   const bool has_pid = read_pid_file(runtime_config.pid_file, &pid);
   const bool pid_running = has_pid && is_running(pid);
   const bool cmdline_read = pid_running && read_proc_cmdline(pid, &proc_argv);
   const bool cmdline_matches = cmdline_read && proc_cmdline_matches(runtime_config, proc_argv);
-  const bool fingerprint_matches = state.fingerprint == runtime_config.fingerprint;
 
-  if (pid_running && cmdline_matches && fingerprint_matches) {
+  if (pid_running && cmdline_matches && metadata_matches) {
     state.pid = pid;
     state.process_group = pid;
     state.state = "running";
@@ -194,11 +193,34 @@ void ProcessManager::discover(const ManagedProcessConfig& config) {
     state.pid = -1;
     state.process_group = -1;
     if (pid_running) {
-      state.last_error = cmdline_matches ? "metadata fingerprint mismatch" : "pid file points to an unrelated process";
+      if (!cmdline_matches) {
+        state.last_error = "pid file points to an unrelated process";
+      } else if (state.last_error.empty()) {
+        state.last_error = "metadata fingerprint mismatch";
+      }
       state.proc_cmdline = join_cmdline(proc_argv);
     }
   }
   states_[runtime_config.process_id] = state;
+}
+
+void ProcessManager::forget(const std::string& process_id) {
+  states_.erase(process_id);
+}
+
+bool ProcessManager::is_process_running(const std::string& process_id) const {
+  const auto it = states_.find(process_id);
+  return it != states_.end() && it->second.pid > 0 && is_running(it->second.pid);
+}
+
+std::vector<std::string> ProcessManager::running_processes() const {
+  std::vector<std::string> result;
+  for (const auto& pair : states_) {
+    if (pair.second.pid > 0 && is_running(pair.second.pid)) {
+      result.push_back(pair.first);
+    }
+  }
+  return result;
 }
 
 nlohmann::json ProcessManager::state_to_json() const {
@@ -209,6 +231,7 @@ nlohmann::json ProcessManager::state_to_json() const {
       {"pid", pair.second.pid},
       {"process_group", pair.second.process_group},
       {"state", pair.second.state},
+      {"running", pair.second.pid > 0 && is_running(pair.second.pid)},
       {"last_error", pair.second.last_error},
       {"executable", pair.second.executable},
       {"args", pair.second.args},
@@ -325,27 +348,31 @@ ManagedProcessState ProcessManager::state_from_config(const ManagedProcessConfig
   return state;
 }
 
-void ProcessManager::apply_metadata(ManagedProcessState* state) const {
+bool ProcessManager::apply_metadata(ManagedProcessState* state) const {
   if (state == nullptr || state->metadata_file.empty()) {
-    return;
+    return true;
   }
   std::ifstream input(state->metadata_file);
   if (!input) {
-    return;
+    return true;
   }
   try {
     const auto metadata = nlohmann::json::parse(input);
+    const auto metadata_fingerprint = metadata.value("fingerprint", std::string());
+    if (!metadata_fingerprint.empty() && metadata_fingerprint != state->fingerprint) {
+      state->last_error = "metadata fingerprint mismatch";
+      return false;
+    }
     state->started_at = metadata.value("started_at", state->started_at);
     state->stopped_at = metadata.value("stopped_at", state->stopped_at);
     state->exit_code = metadata.value("exit_code", state->exit_code);
     state->term_signal = metadata.value("term_signal", state->term_signal);
     state->last_error = metadata.value("last_error", state->last_error);
-    state->fingerprint = metadata.value("fingerprint", state->fingerprint);
-    state->stdout_log = metadata.value("stdout_log", state->stdout_log.string());
-    state->stderr_log = metadata.value("stderr_log", state->stderr_log.string());
     state->force_stopped = metadata.value("force_stopped", state->force_stopped);
+    return true;
   } catch (const std::exception& ex) {
     state->last_error = std::string("failed to parse metadata: ") + ex.what();
+    return false;
   }
 }
 

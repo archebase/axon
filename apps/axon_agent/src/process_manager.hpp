@@ -62,6 +62,9 @@ public:
   bool start(const ManagedProcessConfig& config, std::string* error);
   bool stop(const std::string& process_id, bool force, std::string* error);
   void discover(const ManagedProcessConfig& config);
+  void forget(const std::string& process_id);
+  bool is_process_running(const std::string& process_id) const;
+  std::vector<std::string> running_processes() const;
   nlohmann::json state_to_json() const;
   bool read_log(
     const std::string& process_id, const std::string& stream, std::size_t tail_bytes, nlohmann::json* output,
@@ -71,7 +74,7 @@ public:
 private:
   ManagedProcessConfig normalize_config(const ManagedProcessConfig& config) const;
   ManagedProcessState state_from_config(const ManagedProcessConfig& config) const;
-  void apply_metadata(ManagedProcessState* state) const;
+  bool apply_metadata(ManagedProcessState* state) const;
   void update_exit_state(ManagedProcessState* state, int wait_status, bool force);
   bool write_metadata_file(const ManagedProcessState& state, std::string* error) const;
   static bool is_running(pid_t pid);

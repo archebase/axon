@@ -34,6 +34,7 @@ public:
   RpcResponse read_process_log(const nlohmann::json& params);
 
 private:
+  RpcResponse auto_start_robot_process(const RobotProfile& profile, const std::string& trigger);
   RpcResponse start_robot_process(const RobotProfile& profile);
   RpcResponse stop_robot_process(const RobotProfile& profile, bool force);
   ManagedProcessConfig build_process_config(const RobotProfile& profile, const std::string& process_id);

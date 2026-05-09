@@ -133,6 +133,10 @@ bool AdapterLoader::is_loaded() const {
   return handle_ != nullptr && adapter_ != nullptr;
 }
 
+bool AdapterLoader::is_loaded_for_profile(const std::string& profile_id) const {
+  return is_loaded() && loaded_profile_id_ == profile_id;
+}
+
 nlohmann::json AdapterLoader::status_to_json() const {
   nlohmann::json status = {
     {"loaded", is_loaded()},

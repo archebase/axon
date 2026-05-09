@@ -27,6 +27,7 @@ public:
   bool load(const RobotProfile& profile, std::string* error);
   void unload();
   bool is_loaded() const;
+  bool is_loaded_for_profile(const std::string& profile_id) const;
   nlohmann::json status_to_json() const;
   nlohmann::json runtime_status_to_json(const RobotAdapterContext& context) const;
 

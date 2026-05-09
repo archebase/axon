@@ -23,6 +23,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #ifndef AXON_AGENT_VERSION
 #define AXON_AGENT_VERSION "0.4.0-dev"
@@ -76,6 +77,17 @@ std::string connect_host_for_bind_host(const std::string& host) {
 std::string endpoint_url(const std::string& host, std::uint16_t port) {
   std::ostringstream stream;
   stream << "http://" << host << ":" << port << "/rpc/state";
+  return stream.str();
+}
+
+std::string join_strings(const std::vector<std::string>& items, const std::string& delimiter) {
+  std::ostringstream stream;
+  for (std::size_t i = 0; i < items.size(); ++i) {
+    if (i > 0) {
+      stream << delimiter;
+    }
+    stream << items[i];
+  }
   return stream.str();
 }
 
@@ -348,8 +360,46 @@ RpcResponse AgentService::select_profile(const nlohmann::json& params) {
   RpcResponse response;
   try {
     const auto profile_id = require_string(params, "profile_id");
+    const auto* target_profile = profiles_.find_profile(profile_id);
+    if (target_profile == nullptr) {
+      const auto error = "profile not found: " + profile_id;
+      last_error_ = error;
+      return {false, error, nullptr};
+    }
+
+    const auto* current_profile = profiles_.active_profile();
+    const bool switching_profile =
+      current_profile != nullptr && current_profile->profile_id != target_profile->profile_id;
+    if (switching_profile) {
+      const auto running_processes = processes_.running_processes();
+      if (!running_processes.empty()) {
+        const auto error =
+          "cannot switch active profile while processes are running: " + join_strings(running_processes, ", ");
+        last_error_ = error;
+        return {
+          false,
+          error,
+          {
+            {"active_profile", profiles_.active_profile_to_json()},
+            {"requested_profile_id", target_profile->profile_id},
+            {"running_processes", running_processes},
+            {"processes", processes_.state_to_json()},
+          },
+        };
+      }
+    }
+
     std::string error;
-    if (!profiles_.select_profile(profile_id, &error)) {
+    if (!persist_active_profile(*target_profile, &error)) {
+      last_error_ = error;
+      return {false, error, nullptr};
+    }
+
+    if (switching_profile) {
+      adapter_loader_.unload();
+    }
+
+    if (!profiles_.select_profile(target_profile->profile_id, &error)) {
       last_error_ = error;
       return {false, error, nullptr};
     }
@@ -360,18 +410,38 @@ RpcResponse AgentService::select_profile(const nlohmann::json& params) {
     }
 
     discover_active_processes(*profile);
-    if (profile->auto_start && !adapter_loader_.load(*profile, &error)) {
-      last_error_ = error;
-      return {false, error, nullptr};
-    }
 
-    if (!persist_active_profile(*profile, &error)) {
-      last_error_ = error;
-      return {false, error, nullptr};
+    nlohmann::json auto_start = {
+      {"enabled", profile->auto_start},
+      {"trigger", "profile_select"},
+      {"attempted", false},
+      {"started", false},
+      {"skipped", false},
+    };
+    if (profile->auto_start) {
+      const auto auto_start_response = auto_start_robot_process(*profile, "profile_select");
+      auto_start = auto_start_response.data;
+      if (!auto_start_response.success) {
+        return {
+          false,
+          "profile selected; " + auto_start_response.message,
+          {
+            {"active_profile", profiles_.active_profile_to_json()},
+            {"adapter", adapter_loader_.status_to_json()},
+            {"processes", processes_.state_to_json()},
+            {"auto_start", auto_start},
+          },
+        };
+      }
     }
 
     response.message = "profile selected";
-    response.data = {{"active_profile", profiles_.active_profile_to_json()}, {"adapter", adapter_loader_.status_to_json()}};
+    response.data = {
+      {"active_profile", profiles_.active_profile_to_json()},
+      {"adapter", adapter_loader_.status_to_json()},
+      {"processes", processes_.state_to_json()},
+      {"auto_start", auto_start},
+    };
     return response;
   } catch (const std::exception& ex) {
     last_error_ = ex.what();
@@ -389,7 +459,7 @@ RpcResponse AgentService::start_process(const nlohmann::json& params) {
     }
 
     std::string error;
-    if (process_id == "robot_startup" && !adapter_loader_.is_loaded()) {
+    if (process_id == "robot_startup" && !adapter_loader_.is_loaded_for_profile(profile->profile_id)) {
       if (!adapter_loader_.load(*profile, &error)) {
         last_error_ = error;
         return {false, error, nullptr};
@@ -437,6 +507,48 @@ RpcResponse AgentService::stop_process(const nlohmann::json& params, bool force)
   }
 }
 
+RpcResponse AgentService::auto_start_robot_process(const RobotProfile& profile, const std::string& trigger) {
+  nlohmann::json auto_start = {
+    {"enabled", profile.auto_start},
+    {"trigger", trigger},
+    {"attempted", profile.auto_start},
+    {"started", false},
+    {"skipped", false},
+  };
+  if (!profile.auto_start) {
+    auto_start["reason"] = "disabled";
+    return {true, "auto_start disabled", auto_start};
+  }
+
+  std::string error;
+  if (!adapter_loader_.is_loaded_for_profile(profile.profile_id) && !adapter_loader_.load(profile, &error)) {
+    last_error_ = error;
+    auto_start["error"] = error;
+    auto_start["adapter"] = adapter_loader_.status_to_json();
+    auto_start["processes"] = processes_.state_to_json();
+    return {false, "auto_start failed: " + error, auto_start};
+  }
+
+  if (processes_.is_process_running("robot_startup")) {
+    auto_start["skipped"] = true;
+    auto_start["reason"] = "robot_startup already running";
+    auto_start["adapter"] = adapter_loader_.status_to_json();
+    auto_start["processes"] = processes_.state_to_json();
+    return {true, "auto_start skipped: robot_startup already running", auto_start};
+  }
+
+  const auto start_response = start_robot_process(profile);
+  auto_start["adapter"] = adapter_loader_.status_to_json();
+  auto_start["processes"] = processes_.state_to_json();
+  if (!start_response.success) {
+    auto_start["error"] = start_response.message;
+    return {false, "auto_start failed: " + start_response.message, auto_start};
+  }
+
+  auto_start["started"] = true;
+  return {true, "auto_start started robot_startup", auto_start};
+}
+
 RpcResponse AgentService::start_robot_process(const RobotProfile& profile) {
   std::string error;
   const auto context = build_adapter_context(profile);
@@ -466,7 +578,7 @@ RpcResponse AgentService::start_robot_process(const RobotProfile& profile) {
 
 RpcResponse AgentService::stop_robot_process(const RobotProfile& profile, bool force) {
   std::string error;
-  if (!adapter_loader_.is_loaded() && !adapter_loader_.load(profile, &error)) {
+  if (!adapter_loader_.is_loaded_for_profile(profile.profile_id) && !adapter_loader_.load(profile, &error)) {
     last_error_ = error;
     return {false, error, nullptr};
   }
@@ -517,6 +629,7 @@ ManagedProcessConfig AgentService::load_yaml_process_config(
   ManagedProcessConfig config;
   config.process_id = process_id;
   config.pid_file = state_dir_ / (profile.profile_id + "_" + process_id + ".pid");
+  config.metadata_file = state_dir_ / (profile.profile_id + "_" + process_id + ".json");
   config.working_directory = profile.root_dir;
 
   if (!std::filesystem::exists(yaml_path)) {
@@ -554,6 +667,7 @@ ManagedProcessConfig AgentService::load_adapter_process_config(
   ManagedProcessConfig config;
   config.process_id = process_id;
   config.pid_file = state_dir_ / (profile.profile_id + "_" + process_id + ".pid");
+  config.metadata_file = state_dir_ / (profile.profile_id + "_" + process_id + ".json");
   config.working_directory = profile.root_dir;
 
   const auto yaml = YAML::LoadFile(profile.adapter_yaml.string());
@@ -597,6 +711,9 @@ void AgentService::discover_active_processes(const RobotProfile& profile) {
     try {
       processes_.discover(build_process_config(profile, process_id));
     } catch (const std::exception&) {
+      if (!processes_.is_process_running(process_id)) {
+        processes_.forget(process_id);
+      }
       // Optional process configs should not block profile selection.
     }
   }
@@ -643,11 +760,11 @@ bool AgentService::restore_active_profile(std::string* error) {
     }
 
     discover_active_processes(*profile);
-    if (profile->auto_start && !adapter_loader_.is_loaded()) {
-      std::string load_error;
-      if (!adapter_loader_.load(*profile, &load_error)) {
+    if (profile->auto_start) {
+      const auto auto_start_response = auto_start_robot_process(*profile, "restore");
+      if (!auto_start_response.success) {
         if (error != nullptr) {
-          *error = "failed to restore active adapter: " + load_error;
+          *error = "failed to restore active profile auto_start: " + auto_start_response.message;
         }
         return false;
       }
