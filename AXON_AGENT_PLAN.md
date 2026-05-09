@@ -117,6 +117,7 @@ RPC 建议：
 - `POST /agent/rpc/process/start`：按 `process_id` 拉起配置好的程序，例如 `robot_startup`、`recorder`、`transfer`。
 - `POST /agent/rpc/process/stop`：按 `process_id` 优雅停止。
 - `POST /agent/rpc/process/force_stop`：按 `process_id` 强制停止进程组并清理状态。
+- `POST /agent/rpc/process/log`：读取 managed process 的 stdout/stderr 日志尾部，参数为 `process_id`、`stream` 和 `tail_bytes`，用于页面排障和运行闭环观察。
 
 agent 不提供 `config/scan`、`config/enable`、`config/disable` RPC。这些能力不属于 supervisor 边界，后续由 `axon_config` 独立提供，agent 页面如需展示配置状态也应通过 `axon_config` 的公开接口读取。
 

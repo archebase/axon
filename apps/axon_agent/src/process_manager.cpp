@@ -278,6 +278,21 @@ bool ProcessManager::read_log(
     return false;
   }
 
+  if (!std::filesystem::exists(log_path)) {
+    if (output != nullptr) {
+      *output = {
+        {"process_id", process_id},
+        {"stream", stream},
+        {"log_path", log_path.string()},
+        {"exists", false},
+        {"size", 0},
+        {"tail_bytes", 0},
+        {"content", ""},
+      };
+    }
+    return true;
+  }
+
   std::ifstream input(log_path, std::ios::binary);
   if (!input) {
     if (error != nullptr) {
@@ -302,6 +317,7 @@ bool ProcessManager::read_log(
       {"process_id", process_id},
       {"stream", stream},
       {"log_path", log_path.string()},
+      {"exists", true},
       {"size", size},
       {"tail_bytes", bytes},
       {"content", content},

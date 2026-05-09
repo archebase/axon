@@ -48,6 +48,10 @@ args = parse_args()
 client = AgentClient(args.agent_url)
 
 profile_select: ui.select
+log_process_select: ui.select
+log_stream_select: ui.select
+log_tail_input: ui.number
+log_view: ui.textarea
 state_view: ui.json_editor
 profiles_view: ui.json_editor
 status_label: ui.label
@@ -87,6 +91,20 @@ def refresh() -> None:
 
     profiles_view.content = {"json": profiles}
     state_view.content = {"json": state}
+
+    process_items = state.get("data", {}).get("processes", {})
+    process_options = {process_id: process_id for process_id in process_items.keys()}
+    if not process_options:
+        process_options = {
+            "robot_startup": "robot_startup",
+            "recorder": "recorder",
+            "transfer": "transfer",
+        }
+    log_process_select.options = process_options
+    if log_process_select.value not in process_options:
+        log_process_select.value = next(iter(process_options))
+    log_process_select.update()
+
     show_status("refreshed")
 
 
@@ -110,8 +128,31 @@ def stop_process(process_id: str, *, force: bool = False) -> None:
     call_agent(action, lambda: client.rpc_post(endpoint, {"process_id": process_id}))
 
 
+def read_log() -> None:
+    if not log_process_select.value:
+        show_status("read log failed: no process selected", error=True)
+        return
+
+    try:
+        tail_bytes = int(log_tail_input.value or 0)
+        result = client.rpc_post(
+            "process/log",
+            {
+                "process_id": log_process_select.value,
+                "stream": log_stream_select.value or "stdout",
+                "tail_bytes": tail_bytes,
+            },
+        )
+        log_view.value = result.get("data", {}).get("content", "")
+        log_view.update()
+        show_status(f"read log: {result.get('message', 'ok')}", error=not result.get("success", False))
+    except Exception as exc:  # noqa: BLE001 - validation panel should surface raw errors.
+        show_status(f"read log failed: {exc}", error=True)
+
+
 @ui.page("/")
 def main_page() -> None:
+    global log_process_select, log_stream_select, log_tail_input, log_view
     global profile_select, profiles_view, state_view, status_label
 
     ui.page_title("Axon Agent Validation Panel")
@@ -145,12 +186,24 @@ def main_page() -> None:
         with ui.tabs().classes("w-full") as tabs:
             state_tab = ui.tab("State")
             profiles_tab = ui.tab("Profiles")
+            logs_tab = ui.tab("Logs")
 
         with ui.tab_panels(tabs, value=state_tab).classes("w-full"):
             with ui.tab_panel(state_tab):
                 state_view = ui.json_editor({"content": {"json": {}}}).classes("w-full")
             with ui.tab_panel(profiles_tab):
                 profiles_view = ui.json_editor({"content": {"json": {}}}).classes("w-full")
+            with ui.tab_panel(logs_tab):
+                with ui.row().classes("items-end gap-2"):
+                    log_process_select = ui.select(label="Process", options={}).classes("w-64")
+                    log_stream_select = ui.select(
+                        label="Stream",
+                        options={"stdout": "stdout", "stderr": "stderr"},
+                        value="stdout",
+                    ).classes("w-40")
+                    log_tail_input = ui.number(label="Tail Bytes", value=65536, min=0, max=4194304).classes("w-40")
+                    ui.button("Read Log", on_click=read_log)
+                log_view = ui.textarea(label="Log").props("readonly").classes("w-full h-96 font-mono")
 
     refresh()
 

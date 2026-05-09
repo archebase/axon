@@ -173,6 +173,9 @@ RpcResponse HttpServer::route_rpc(const std::string& path, const std::string& me
   if (path == "process/force_stop" && method == "POST") {
     return service_.stop_process(params, true);
   }
+  if (path == "process/log" && method == "POST") {
+    return service_.read_process_log(params);
+  }
   return {false, "unknown agent rpc: " + path, nullptr};
 }
 
@@ -196,9 +199,11 @@ std::string HttpServer::index_html() {
   <title>Axon Agent</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
-    button, select { margin: 0.25rem; padding: 0.45rem 0.7rem; }
+    button, input, select { margin: 0.25rem; padding: 0.45rem 0.7rem; }
+    input, select { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; }
     pre { background: #111827; padding: 1rem; border-radius: 8px; overflow: auto; }
     .card { background: #1e293b; padding: 1rem; border-radius: 10px; margin-bottom: 1rem; }
+    .log { min-height: 12rem; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -216,6 +221,20 @@ std::string HttpServer::index_html() {
     <button onclick="stopProcess('recorder', false)">Stop Recorder</button>
     <button onclick="stopProcess('transfer', false)">Stop Transfer</button>
   </div>
+  <div class="card">
+    <select id="logProcess">
+      <option value="robot_startup">robot_startup</option>
+      <option value="recorder">recorder</option>
+      <option value="transfer">transfer</option>
+    </select>
+    <select id="logStream">
+      <option value="stdout">stdout</option>
+      <option value="stderr">stderr</option>
+    </select>
+    <input id="logTail" type="number" min="0" max="4194304" value="65536">
+    <button onclick="readLog()">Read Log</button>
+  </div>
+  <pre id="logOutput" class="log"></pre>
   <pre id="output"></pre>
   <script>
     async function rpc(path, method = 'GET', body = undefined) {
@@ -248,6 +267,14 @@ std::string HttpServer::index_html() {
     }
     async function stopProcess(process_id, force) {
       await rpc(force ? 'process/force_stop' : 'process/stop', 'POST', {process_id});
+    }
+    async function readLog() {
+      const process_id = document.getElementById('logProcess').value;
+      const stream = document.getElementById('logStream').value;
+      const tail_bytes = Number(document.getElementById('logTail').value || 0);
+      const result = await rpc('process/log', 'POST', {process_id, stream, tail_bytes});
+      const data = result.data || {};
+      document.getElementById('logOutput').textContent = result.success ? (data.content || '') : result.message;
     }
     refresh();
   </script>

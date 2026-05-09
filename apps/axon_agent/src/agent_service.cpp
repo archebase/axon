@@ -91,6 +91,24 @@ std::string join_strings(const std::vector<std::string>& items, const std::strin
   return stream.str();
 }
 
+std::size_t optional_tail_bytes(const nlohmann::json& params) {
+  constexpr std::size_t kDefaultTailBytes = 64 * 1024;
+  constexpr std::size_t kMaxTailBytes = 4 * 1024 * 1024;
+
+  if (!params.contains("tail_bytes") || params["tail_bytes"].is_null()) {
+    return kDefaultTailBytes;
+  }
+  if (!params["tail_bytes"].is_number_unsigned()) {
+    throw std::runtime_error("tail_bytes must be an unsigned integer");
+  }
+
+  const auto tail_bytes = params["tail_bytes"].get<std::size_t>();
+  if (tail_bytes > kMaxTailBytes) {
+    throw std::runtime_error("tail_bytes exceeds max limit: 4194304");
+  }
+  return tail_bytes;
+}
+
 RecorderRpcEndpoint load_recorder_rpc_endpoint(const std::filesystem::path& recorder_yaml) {
   RecorderRpcEndpoint endpoint;
   endpoint.config_path = recorder_yaml;
@@ -501,6 +519,32 @@ RpcResponse AgentService::stop_process(const nlohmann::json& params, bool force)
       return {false, error, nullptr};
     }
     return {true, force ? "process force stopped" : "process stopped", processes_.state_to_json()};
+  } catch (const std::exception& ex) {
+    last_error_ = ex.what();
+    return {false, ex.what(), nullptr};
+  }
+}
+
+RpcResponse AgentService::read_process_log(const nlohmann::json& params) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  try {
+    const auto process_id = require_string(params, "process_id");
+    const auto stream = params.value("stream", std::string("stdout"));
+    const auto tail_bytes = optional_tail_bytes(params);
+
+    const auto* profile = profiles_.active_profile();
+    if (profile != nullptr) {
+      discover_active_processes(*profile);
+    }
+
+    nlohmann::json output;
+    std::string error;
+    if (!processes_.read_log(process_id, stream, tail_bytes, &output, &error)) {
+      last_error_ = error;
+      return {false, error, {{"process_id", process_id}, {"stream", stream}, {"tail_bytes", tail_bytes}}};
+    }
+
+    return {true, "process log read", output};
   } catch (const std::exception& ex) {
     last_error_ = ex.what();
     return {false, ex.what(), nullptr};
