@@ -16,6 +16,13 @@ endif
 override_dh_auto_configure:
 	dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT)
 
+override_dh_install:
+	dh_install
+	install -D -m 644 $(REPO_ROOT)/packaging/deb/systemd/axon-agent.service \
+		debian/$(shell dh_listpackages)/lib/systemd/system/axon-agent.service
+	install -D -m 644 $(REPO_ROOT)/packaging/deb/agent/default/axon-agent \
+		debian/$(shell dh_listpackages)/etc/default/axon-agent
+
 override_dh_auto_clean:
 	dh_auto_clean || true
 	rm -rf obj-* debian/.debhelper debian/debhelper-build-stamp debian/files 2>/dev/null || true

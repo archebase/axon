@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+[Unit]
+Description=Axon Agent Supervisor
+Documentation=https://github.com/archebase/axon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=AXON_AGENT_HOST=0.0.0.0
+Environment=AXON_AGENT_PORT=8090
+Environment=AXON_AGENT_PROFILE_PATH=/opt/axon/robots
+Environment=AXON_AGENT_STATE_DIR=/var/lib/axon/agent
+Environment=PATH=/opt/axon/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/default/axon-agent
+ExecStart=/opt/axon/bin/axon-agent --host ${AXON_AGENT_HOST} --port ${AXON_AGENT_PORT} --robot-profile-path ${AXON_AGENT_PROFILE_PATH} --state-dir ${AXON_AGENT_STATE_DIR}
+Restart=always
+RestartSec=5
+User=axon
+Group=axon
+
+# axon-agent supervises robot-specific child processes. Keep the service
+# sandbox modest so deployments can adapt permissions with systemd drop-ins.
+WorkingDirectory=/opt/axon
+RuntimeDirectory=axon-agent
+RuntimeDirectoryMode=0755
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

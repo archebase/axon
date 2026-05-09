@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+# Local bind address and port for axon-agent HTTP RPC.
+AXON_AGENT_HOST=0.0.0.0
+AXON_AGENT_PORT=8090
+
+# Robot profiles live under this directory. Each profile directory should
+# contain adapter.yaml and optional recorder.yaml / transfer.yaml files.
+AXON_AGENT_PROFILE_PATH=/opt/axon/robots
+
+# Runtime state, active_profile.json, child pid files, metadata, and logs.
+AXON_AGENT_STATE_DIR=/var/lib/axon/agent
