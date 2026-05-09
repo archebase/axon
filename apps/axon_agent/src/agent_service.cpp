@@ -109,6 +109,16 @@ std::size_t optional_tail_bytes(const nlohmann::json& params) {
   return tail_bytes;
 }
 
+std::filesystem::path resolve_profile_path(const RobotProfile& profile, const std::string& value) {
+  const std::filesystem::path path(value);
+  return path.is_absolute() ? path : profile.root_dir / path;
+}
+
+std::filesystem::path resolve_state_path(const std::filesystem::path& state_dir, const std::string& value) {
+  const std::filesystem::path path(value);
+  return path.is_absolute() ? path : state_dir / path;
+}
+
 RecorderRpcEndpoint load_recorder_rpc_endpoint(const std::filesystem::path& recorder_yaml) {
   RecorderRpcEndpoint endpoint;
   endpoint.config_path = recorder_yaml;
@@ -682,26 +692,9 @@ ManagedProcessConfig AgentService::load_yaml_process_config(
 
   const auto yaml = YAML::LoadFile(yaml_path.string());
   const auto process = yaml["process"] ? yaml["process"] : yaml;
-  config.executable =
-    process["executable"] ? process["executable"].as<std::string>() : (process_id == "recorder" ? "axon-recorder" : "axon-transfer");
-
-  if (process["args"]) {
-    for (const auto& arg : process["args"]) {
-      config.args.push_back(arg.as<std::string>());
-    }
-  } else {
-    config.args.push_back("--config");
-    config.args.push_back(yaml_path.string());
-  }
-
-  if (process["working_directory"]) {
-    config.working_directory = profile.root_dir / process["working_directory"].as<std::string>();
-  }
-  if (process["env"]) {
-    for (const auto& item : process["env"]) {
-      config.env[item.first.as<std::string>()] = item.second.as<std::string>();
-    }
-  }
+  config.executable = process_id == "recorder" ? "axon-recorder" : "axon-transfer";
+  config.args = {"--config", yaml_path.string()};
+  apply_process_yaml(profile, process, yaml_path, &config);
   return config;
 }
 
@@ -722,21 +715,73 @@ ManagedProcessConfig AgentService::load_adapter_process_config(
     throw std::runtime_error("adapter.yaml does not declare managed_processes." + process_id);
   }
 
-  config.executable = process["executable"].as<std::string>();
+  apply_process_yaml(profile, process, profile.adapter_yaml, &config);
+  if (config.executable.empty()) {
+    throw std::runtime_error("adapter.yaml managed_processes." + process_id + " is missing executable");
+  }
+  return config;
+}
+
+void AgentService::apply_process_yaml(
+  const RobotProfile& profile, const YAML::Node& process, const std::filesystem::path& config_path,
+  ManagedProcessConfig* config
+) {
+  if (config == nullptr) {
+    throw std::runtime_error("internal error: null process config");
+  }
+  if (!process || process.IsNull()) {
+    return;
+  }
+  if (!process.IsMap()) {
+    throw std::runtime_error("managed process config must be a map: " + path_string(config_path));
+  }
+
+  if (process["executable"]) {
+    config->executable = process["executable"].as<std::string>();
+  }
   if (process["args"]) {
+    if (!process["args"].IsSequence()) {
+      throw std::runtime_error("managed process args must be a sequence: " + path_string(config_path));
+    }
+    config->args.clear();
     for (const auto& arg : process["args"]) {
-      config.args.push_back(arg.as<std::string>());
+      config->args.push_back(arg.as<std::string>());
     }
   }
   if (process["working_directory"]) {
-    config.working_directory = profile.root_dir / process["working_directory"].as<std::string>();
+    config->working_directory = resolve_profile_path(profile, process["working_directory"].as<std::string>());
+  }
+  if (process["pid_file"]) {
+    config->pid_file = resolve_state_path(state_dir_, process["pid_file"].as<std::string>());
+  }
+  if (process["metadata_file"]) {
+    config->metadata_file = resolve_state_path(state_dir_, process["metadata_file"].as<std::string>());
+  }
+  if (process["stdout_log"]) {
+    config->stdout_log = resolve_state_path(state_dir_, process["stdout_log"].as<std::string>());
+  }
+  if (process["stderr_log"]) {
+    config->stderr_log = resolve_state_path(state_dir_, process["stderr_log"].as<std::string>());
   }
   if (process["env"]) {
+    if (!process["env"].IsMap()) {
+      throw std::runtime_error("managed process env must be a map: " + path_string(config_path));
+    }
+    config->env.clear();
     for (const auto& item : process["env"]) {
-      config.env[item.first.as<std::string>()] = item.second.as<std::string>();
+      config->env[item.first.as<std::string>()] = item.second.as<std::string>();
     }
   }
-  return config;
+  if (process["stop_timeout_sec"]) {
+    const auto timeout_sec = process["stop_timeout_sec"].as<int>();
+    if (timeout_sec <= 0) {
+      throw std::runtime_error("managed process stop_timeout_sec must be positive: " + path_string(config_path));
+    }
+    config->stop_timeout_sec = timeout_sec;
+  }
+  if (process["fingerprint"]) {
+    config->fingerprint = process["fingerprint"].as<std::string>();
+  }
 }
 
 RobotAdapterContext AgentService::build_adapter_context(const RobotProfile& profile) const {

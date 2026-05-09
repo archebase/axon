@@ -90,6 +90,27 @@ capabilities:
   - recorder_profile
 ```
 
+managed process 字段：
+
+```yaml
+process:
+  executable: axon-recorder
+  args:
+    - --config
+    - recorder.yaml
+  working_directory: .
+  env:
+    AXON_PROFILE: robot_a
+  pid_file: robot_a_recorder.pid
+  metadata_file: robot_a_recorder.json
+  stdout_log: logs/robot_a_recorder.stdout.log
+  stderr_log: logs/robot_a_recorder.stderr.log
+  stop_timeout_sec: 5
+  fingerprint: optional-explicit-fingerprint
+```
+
+`adapter.yaml` 下的 `managed_processes.<process_id>` 使用同一组字段。`working_directory` 的相对路径按 profile 根目录解析；`pid_file`、`metadata_file`、`stdout_log`、`stderr_log` 的相对路径按 agent `state_dir` 解析。未配置 `pid_file`、`metadata_file` 和日志路径时，agent 会自动按 `profile_id + process_id` 生成隔离路径。
+
 ## 状态与 RPC 语义
 
 建议按组件维护状态，而不是只有一个 robot 状态：
