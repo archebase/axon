@@ -782,6 +782,40 @@ void AgentService::apply_process_yaml(
   if (process["fingerprint"]) {
     config->fingerprint = process["fingerprint"].as<std::string>();
   }
+  if (process["health_check"]) {
+    const auto health_check = process["health_check"];
+    if (!health_check.IsMap()) {
+      throw std::runtime_error("managed process health_check must be a map: " + path_string(config_path));
+    }
+    if (health_check["enabled"]) {
+      config->health_check.enabled = health_check["enabled"].as<bool>();
+    }
+    if (health_check["type"]) {
+      config->health_check.type = health_check["type"].as<std::string>();
+    } else if (health_check["mode"]) {
+      config->health_check.type = health_check["mode"].as<std::string>();
+    }
+    if (health_check["url"]) {
+      config->health_check.url = health_check["url"].as<std::string>();
+    }
+    if (health_check["timeout_ms"]) {
+      config->health_check.timeout_ms = health_check["timeout_ms"].as<int>();
+      if (config->health_check.timeout_ms <= 0) {
+        throw std::runtime_error("managed process health_check.timeout_ms must be positive: " + path_string(config_path));
+      }
+    }
+    if (health_check["expected_status"]) {
+      config->health_check.expected_status = health_check["expected_status"].as<int>();
+      if (config->health_check.expected_status <= 0) {
+        throw std::runtime_error(
+          "managed process health_check.expected_status must be positive: " + path_string(config_path)
+        );
+      }
+    }
+    if (config->health_check.type == "http" && config->health_check.url.empty()) {
+      throw std::runtime_error("managed process health_check.url is required for http: " + path_string(config_path));
+    }
+  }
 }
 
 RobotAdapterContext AgentService::build_adapter_context(const RobotProfile& profile) const {

@@ -17,6 +17,14 @@
 namespace axon {
 namespace agent {
 
+struct ManagedProcessHealthCheckConfig {
+  bool enabled = true;
+  std::string type = "process";
+  std::string url;
+  int timeout_ms = 500;
+  int expected_status = 200;
+};
+
 struct ManagedProcessConfig {
   std::string process_id;
   std::string executable;
@@ -29,6 +37,7 @@ struct ManagedProcessConfig {
   std::map<std::string, std::string> env;
   int stop_timeout_sec = 5;
   std::string fingerprint;
+  ManagedProcessHealthCheckConfig health_check;
 };
 
 struct ManagedProcessState {
@@ -53,6 +62,7 @@ struct ManagedProcessState {
   bool discovered = false;
   bool force_stopped = false;
   std::string proc_cmdline;
+  ManagedProcessHealthCheckConfig health_check;
 };
 
 class ProcessManager {
@@ -83,6 +93,9 @@ private:
   static std::string now_iso8601();
   static std::string build_fingerprint(const ManagedProcessConfig& config);
   static std::string join_cmdline(const std::vector<std::string>& argv);
+  static nlohmann::json health_check_to_json(const ManagedProcessHealthCheckConfig& config);
+  static nlohmann::json evaluate_health(const ManagedProcessState& state);
+  static nlohmann::json evaluate_http_health(const ManagedProcessState& state);
   static std::vector<std::string> expected_argv(const ManagedProcessConfig& config);
   static bool read_proc_cmdline(pid_t pid, std::vector<std::string>* argv);
   static bool proc_cmdline_matches(const ManagedProcessConfig& config, const std::vector<std::string>& argv);

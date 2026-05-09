@@ -83,6 +83,12 @@ install(TARGETS axon_agent RUNTIME DESTINATION bin)
 install(DIRECTORY examples/robots DESTINATION share/axon_agent/examples)
 install(DIRECTORY ${AXON_ROBOT_ADAPTER_INTERFACE_DIR}/include DESTINATION share/axon_agent/plugin_interface/robot_adapter)
 
+option(AXON_AGENT_BUILD_TESTS "Build axon_agent tests" OFF)
+if(AXON_AGENT_BUILD_TESTS OR AXON_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(test)
+endif()
+
 message(STATUS "")
 message(STATUS "=== Axon Agent Configuration ===")
 message(STATUS "  Install Prefix: ${CMAKE_INSTALL_PREFIX}")

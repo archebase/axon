@@ -8,6 +8,11 @@
 
 #include "process_manager.hpp"
 
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/version.hpp>
+
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -28,6 +33,62 @@ extern char** environ;
 
 namespace axon {
 namespace agent {
+
+namespace {
+
+namespace asio = boost::asio;
+namespace beast = boost::beast;
+namespace http = beast::http;
+using tcp = asio::ip::tcp;
+
+struct HttpUrl {
+  std::string host;
+  std::string port = "80";
+  std::string target = "/";
+};
+
+bool parse_http_url(const std::string& url, HttpUrl* output, std::string* error) {
+  constexpr const char* kScheme = "http://";
+  if (output == nullptr) {
+    return false;
+  }
+  if (url.rfind(kScheme, 0) != 0) {
+    if (error != nullptr) {
+      *error = "only http:// health check URLs are supported";
+    }
+    return false;
+  }
+
+  const auto authority_start = std::string(kScheme).size();
+  const auto path_start = url.find('/', authority_start);
+  const auto authority = url.substr(
+    authority_start, path_start == std::string::npos ? std::string::npos : path_start - authority_start
+  );
+  if (authority.empty()) {
+    if (error != nullptr) {
+      *error = "health check URL host is empty";
+    }
+    return false;
+  }
+
+  const auto colon = authority.rfind(':');
+  if (colon == std::string::npos) {
+    output->host = authority;
+  } else {
+    output->host = authority.substr(0, colon);
+    output->port = authority.substr(colon + 1);
+  }
+  if (output->host.empty() || output->port.empty()) {
+    if (error != nullptr) {
+      *error = "health check URL host or port is empty";
+    }
+    return false;
+  }
+  output->target = path_start == std::string::npos ? "/" : url.substr(path_start);
+  return true;
+}
+
+}  // namespace
 
 ProcessManager::ProcessManager(std::filesystem::path state_dir) : state_dir_(std::move(state_dir)) {
   std::filesystem::create_directories(state_dir_);
@@ -249,6 +310,8 @@ nlohmann::json ProcessManager::state_to_json() const {
       {"discovered", pair.second.discovered},
       {"force_stopped", pair.second.force_stopped},
       {"proc_cmdline", pair.second.proc_cmdline},
+      {"health_check", health_check_to_json(pair.second.health_check)},
+      {"health", evaluate_health(pair.second)},
     };
   }
   return processes;
@@ -346,6 +409,18 @@ ManagedProcessConfig ProcessManager::normalize_config(const ManagedProcessConfig
   if (normalized.stop_timeout_sec <= 0) {
     normalized.stop_timeout_sec = 5;
   }
+  if (normalized.health_check.type.empty()) {
+    normalized.health_check.type = "process";
+  }
+  if (normalized.health_check.type == "none") {
+    normalized.health_check.enabled = false;
+  }
+  if (normalized.health_check.timeout_ms <= 0) {
+    normalized.health_check.timeout_ms = 500;
+  }
+  if (normalized.health_check.expected_status <= 0) {
+    normalized.health_check.expected_status = 200;
+  }
   return normalized;
 }
 
@@ -361,6 +436,7 @@ ManagedProcessState ProcessManager::state_from_config(const ManagedProcessConfig
   state.stderr_log = config.stderr_log;
   state.fingerprint = config.fingerprint;
   state.stop_timeout_sec = config.stop_timeout_sec;
+  state.health_check = config.health_check;
   return state;
 }
 
@@ -443,6 +519,7 @@ bool ProcessManager::write_metadata_file(const ManagedProcessState& state, std::
     {"stop_timeout_sec", state.stop_timeout_sec},
     {"last_error", state.last_error},
     {"force_stopped", state.force_stopped},
+    {"health_check", health_check_to_json(state.health_check)},
   };
   output << metadata.dump(2) << '\n';
   return true;
@@ -497,6 +574,106 @@ std::string ProcessManager::join_cmdline(const std::vector<std::string>& argv) {
     stream << argv[i];
   }
   return stream.str();
+}
+
+nlohmann::json ProcessManager::health_check_to_json(const ManagedProcessHealthCheckConfig& config) {
+  return {
+    {"enabled", config.enabled},
+    {"type", config.type},
+    {"url", config.url},
+    {"timeout_ms", config.timeout_ms},
+    {"expected_status", config.expected_status},
+  };
+}
+
+nlohmann::json ProcessManager::evaluate_health(const ManagedProcessState& state) {
+  nlohmann::json health = {
+    {"enabled", state.health_check.enabled},
+    {"type", state.health_check.type},
+    {"checked_at", now_iso8601()},
+    {"healthy", nullptr},
+    {"status", "disabled"},
+    {"message", "health check disabled"},
+  };
+
+  if (!state.health_check.enabled) {
+    return health;
+  }
+
+  const bool running = state.pid > 0 && is_running(state.pid);
+  if (!running) {
+    health["healthy"] = false;
+    health["status"] = state.state == "failed" ? "failed" : "stopped";
+    health["message"] = state.state == "failed" ? "process is failed" : "process is not running";
+    return health;
+  }
+
+  if (state.health_check.type == "process") {
+    health["healthy"] = true;
+    health["status"] = "healthy";
+    health["message"] = "process is running";
+    return health;
+  }
+  if (state.health_check.type == "http") {
+    return evaluate_http_health(state);
+  }
+
+  health["healthy"] = false;
+  health["status"] = "unsupported";
+  health["message"] = "unsupported health check type: " + state.health_check.type;
+  return health;
+}
+
+nlohmann::json ProcessManager::evaluate_http_health(const ManagedProcessState& state) {
+  nlohmann::json health = {
+    {"enabled", true},
+    {"type", "http"},
+    {"checked_at", now_iso8601()},
+    {"healthy", false},
+    {"status", "unhealthy"},
+    {"url", state.health_check.url},
+    {"expected_status", state.health_check.expected_status},
+  };
+
+  HttpUrl url;
+  std::string parse_error;
+  if (!parse_http_url(state.health_check.url, &url, &parse_error)) {
+    health["message"] = parse_error;
+    return health;
+  }
+
+  try {
+    asio::io_context io_context;
+    tcp::resolver resolver(io_context);
+    beast::tcp_stream stream(io_context);
+    stream.expires_after(std::chrono::milliseconds(state.health_check.timeout_ms));
+
+    const auto resolved = resolver.resolve(url.host, url.port);
+    stream.connect(resolved);
+
+    http::request<http::empty_body> request{http::verb::get, url.target, 11};
+    request.set(http::field::host, url.host + ":" + url.port);
+    request.set(http::field::user_agent, "axon-agent-health");
+    http::write(stream, request);
+
+    beast::flat_buffer buffer;
+    http::response<http::string_body> response;
+    http::read(stream, buffer, response);
+
+    beast::error_code shutdown_ec;
+    stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+
+    const int status = response.result_int();
+    health["http_status"] = status;
+    health["healthy"] = status == state.health_check.expected_status;
+    health["status"] = status == state.health_check.expected_status ? "healthy" : "unhealthy";
+    health["message"] = status == state.health_check.expected_status ? "http health check passed"
+                                                                     : "unexpected http status";
+    return health;
+  } catch (const std::exception& ex) {
+    health["message"] = ex.what();
+    return health;
+  }
 }
 
 std::vector<std::string> ProcessManager::expected_argv(const ManagedProcessConfig& config) {
