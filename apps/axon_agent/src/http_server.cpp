@@ -116,6 +116,14 @@ HttpServer::Response HttpServer::route_request(const Request& request) {
     return make_response(http::status::ok, "application/json", body.dump(2), request.version(), request.keep_alive());
   }
 
+  if (target == "/rpc/state" && method == "GET") {
+    const auto rpc_response = service_.get_state();
+    return make_response(
+      rpc_response.success ? http::status::ok : http::status::bad_request, "application/json",
+      rpc_response.to_json().dump(2), request.version(), request.keep_alive()
+    );
+  }
+
   if (target.rfind("/agent/rpc/", 0) == 0) {
     nlohmann::json params = nlohmann::json::object();
     if (!request.body().empty()) {

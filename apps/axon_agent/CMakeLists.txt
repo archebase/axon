@@ -4,6 +4,12 @@
 cmake_minimum_required(VERSION 3.14)
 project(axon_agent LANGUAGES CXX)
 
+if(CMAKE_PROJECT_VERSION)
+    set(AXON_AGENT_VERSION "${CMAKE_PROJECT_VERSION}")
+else()
+    set(AXON_AGENT_VERSION "0.4.0-dev")
+endif()
+
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/opt/axon" CACHE PATH "Installation prefix" FORCE)
 endif()
@@ -25,6 +31,12 @@ find_package(Boost REQUIRED COMPONENTS system)
 find_package(yaml-cpp REQUIRED)
 find_package(Threads REQUIRED)
 
+if(DEFINED AXON_REPO_ROOT)
+    set(AXON_ROBOT_ADAPTER_INTERFACE_DIR "${AXON_REPO_ROOT}/plugin_interface/robot_adapter")
+else()
+    set(AXON_ROBOT_ADAPTER_INTERFACE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../plugin_interface/robot_adapter")
+endif()
+
 add_library(
     axon_agent_core
     src/adapter_loader.cpp
@@ -34,9 +46,15 @@ add_library(
     src/profile_manager.cpp
 )
 
-target_include_directories(axon_agent_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(
+    axon_agent_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${AXON_ROBOT_ADAPTER_INTERFACE_DIR}/include
+)
 target_compile_features(axon_agent_core PUBLIC cxx_std_17)
 target_compile_options(axon_agent_core PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_definitions(axon_agent_core PUBLIC AXON_AGENT_VERSION="${AXON_AGENT_VERSION}")
 
 target_link_libraries(
     axon_agent_core
@@ -63,6 +81,7 @@ set_target_properties(axon_agent PROPERTIES OUTPUT_NAME "axon-agent")
 
 install(TARGETS axon_agent RUNTIME DESTINATION bin)
 install(DIRECTORY examples/robots DESTINATION share/axon_agent/examples)
+install(DIRECTORY ${AXON_ROBOT_ADAPTER_INTERFACE_DIR}/include DESTINATION share/axon_agent/plugin_interface/robot_adapter)
 
 message(STATUS "")
 message(STATUS "=== Axon Agent Configuration ===")

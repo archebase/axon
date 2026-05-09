@@ -4,17 +4,249 @@
 
 #include "agent_service.hpp"
 
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/version.hpp>
 #include <yaml-cpp/yaml.h>
 
+#include <unistd.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <ctime>
 #include <exception>
+#include <fstream>
+#include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
+
+#ifndef AXON_AGENT_VERSION
+#define AXON_AGENT_VERSION "0.4.0-dev"
+#endif
 
 namespace axon {
 namespace agent {
 
+namespace {
+
+namespace asio = boost::asio;
+namespace beast = boost::beast;
+namespace http = beast::http;
+using tcp = asio::ip::tcp;
+
+struct RecorderRpcEndpoint {
+  bool configured = false;
+  bool queryable = false;
+  std::string mode = "http_server";
+  std::string bind_host = "0.0.0.0";
+  std::string connect_host = "127.0.0.1";
+  std::string auth_token;
+  std::filesystem::path config_path;
+  std::uint16_t port = 8080;
+  std::string url;
+  std::string error;
+};
+
+std::string path_string(const std::filesystem::path& path) {
+  return path.lexically_normal().string();
+}
+
+std::string now_iso8601() {
+  const auto now = std::chrono::system_clock::now();
+  const std::time_t time = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+  gmtime_r(&time, &tm);
+
+  char buffer[32];
+  std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm);
+  return buffer;
+}
+
+std::string connect_host_for_bind_host(const std::string& host) {
+  if (host.empty() || host == "0.0.0.0" || host == "*" || host == "::") {
+    return "127.0.0.1";
+  }
+  return host;
+}
+
+std::string endpoint_url(const std::string& host, std::uint16_t port) {
+  std::ostringstream stream;
+  stream << "http://" << host << ":" << port << "/rpc/state";
+  return stream.str();
+}
+
+RecorderRpcEndpoint load_recorder_rpc_endpoint(const std::filesystem::path& recorder_yaml) {
+  RecorderRpcEndpoint endpoint;
+  endpoint.config_path = recorder_yaml;
+
+  if (!std::filesystem::exists(recorder_yaml)) {
+    endpoint.error = "recorder config not found: " + path_string(recorder_yaml);
+    return endpoint;
+  }
+
+  endpoint.configured = true;
+  try {
+    const auto yaml = YAML::LoadFile(path_string(recorder_yaml));
+    if (yaml["rpc"] && yaml["rpc"]["mode"]) {
+      endpoint.mode = yaml["rpc"]["mode"].as<std::string>();
+    }
+
+    if (yaml["http_server"]) {
+      const auto http_server = yaml["http_server"];
+      if (http_server["host"]) {
+        endpoint.bind_host = http_server["host"].as<std::string>();
+      }
+      if (http_server["port"]) {
+        endpoint.port = http_server["port"].as<std::uint16_t>();
+      }
+      if (http_server["auth_token"]) {
+        endpoint.auth_token = http_server["auth_token"].as<std::string>();
+      }
+    }
+
+    endpoint.connect_host = connect_host_for_bind_host(endpoint.bind_host);
+    endpoint.url = endpoint_url(endpoint.connect_host, endpoint.port);
+
+    if (endpoint.mode != "http_server") {
+      endpoint.error = "recorder rpc mode is not http_server: " + endpoint.mode;
+      return endpoint;
+    }
+
+    endpoint.queryable = true;
+    return endpoint;
+  } catch (const std::exception& ex) {
+    endpoint.error = std::string("failed to parse recorder config: ") + ex.what();
+    return endpoint;
+  }
+}
+
+nlohmann::json fetch_recorder_rpc_state(
+  const RecorderRpcEndpoint& endpoint, std::chrono::milliseconds timeout
+) {
+  nlohmann::json result = {
+    {"configured", endpoint.configured},
+    {"queryable", endpoint.queryable},
+    {"mode", endpoint.mode},
+    {"bind_host", endpoint.bind_host},
+    {"connect_host", endpoint.connect_host},
+    {"port", endpoint.port},
+    {"url", endpoint.url},
+    {"config_path", path_string(endpoint.config_path)},
+    {"reachable", false},
+  };
+
+  if (!endpoint.error.empty()) {
+    result["last_error"] = endpoint.error;
+  }
+  if (!endpoint.queryable) {
+    return result;
+  }
+
+  try {
+    asio::io_context io_context;
+    tcp::resolver resolver(io_context);
+    beast::tcp_stream stream(io_context);
+
+    stream.expires_after(timeout);
+    const auto resolved = resolver.resolve(endpoint.connect_host, std::to_string(endpoint.port));
+    stream.connect(resolved);
+
+    http::request<http::empty_body> request{http::verb::get, "/rpc/state", 11};
+    request.set(http::field::host, endpoint.connect_host + ":" + std::to_string(endpoint.port));
+    request.set(http::field::user_agent, "axon-agent/" AXON_AGENT_VERSION);
+    if (!endpoint.auth_token.empty()) {
+      request.set(http::field::authorization, "Bearer " + endpoint.auth_token);
+    }
+
+    http::write(stream, request);
+
+    beast::flat_buffer buffer;
+    http::response<http::string_body> response;
+    http::read(stream, buffer, response);
+
+    beast::error_code shutdown_ec;
+    stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+
+    result["http_status"] = response.result_int();
+    result["reachable"] = response.result_int() >= 200 && response.result_int() < 400;
+
+    auto parsed = nlohmann::json::parse(response.body(), nullptr, false);
+    if (parsed.is_discarded()) {
+      result["last_error"] = "recorder /rpc/state returned invalid JSON";
+      result["body"] = response.body();
+      return result;
+    }
+
+    result["response"] = parsed;
+    if (parsed.contains("success")) {
+      result["success"] = parsed["success"];
+    }
+    if (parsed.contains("message")) {
+      result["message"] = parsed["message"];
+    }
+    if (parsed.contains("data") && parsed["data"].is_object()) {
+      result["data"] = parsed["data"];
+      const auto& data = parsed["data"];
+      if (data.contains("state")) {
+        result["state"] = data["state"];
+      }
+      if (data.contains("version")) {
+        result["version"] = data["version"];
+      }
+      if (data.contains("running")) {
+        result["running"] = data["running"];
+      }
+      if (data.contains("duration_sec")) {
+        result["duration_sec"] = data["duration_sec"];
+      }
+      if (data.contains("message_count")) {
+        result["message_count"] = data["message_count"];
+      }
+      if (data.contains("bytes_written")) {
+        result["bytes_written"] = data["bytes_written"];
+      }
+    }
+
+    return result;
+  } catch (const std::exception& ex) {
+    result["last_error"] = ex.what();
+    return result;
+  }
+}
+
+nlohmann::json build_components_state(const std::optional<RobotProfile>& active_profile) {
+  nlohmann::json components = nlohmann::json::object();
+
+  nlohmann::json recorder = {
+    {"kind", "managed_process"},
+    {"rpc_state", {{"configured", false}, {"queryable", false}, {"reachable", false}}},
+  };
+  if (active_profile.has_value()) {
+    const auto endpoint = load_recorder_rpc_endpoint(active_profile->recorder_yaml);
+    recorder["rpc_state"] = fetch_recorder_rpc_state(endpoint, std::chrono::milliseconds(350));
+  } else {
+    recorder["rpc_state"]["last_error"] = "no active profile selected";
+  }
+  components["recorder"] = recorder;
+
+  components["transfer"] = {{"kind", "managed_process"}};
+  components["robot_startup"] = {{"kind", "managed_process"}};
+
+  return components;
+}
+
+}  // namespace
+
 AgentService::AgentService(std::filesystem::path profile_root, std::filesystem::path state_dir)
-  : profiles_(std::move(profile_root)), processes_(state_dir), state_dir_(std::move(state_dir)) {}
+  : profile_root_(profile_root)
+  , profiles_(std::move(profile_root))
+  , processes_(state_dir)
+  , state_dir_(std::move(state_dir))
+  , started_at_iso_(now_iso8601()) {}
 
 bool AgentService::initialize(std::string* error) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -24,18 +256,63 @@ bool AgentService::initialize(std::string* error) {
     }
     return false;
   }
+
+  std::string restore_error;
+  if (!restore_active_profile(&restore_error)) {
+    last_error_ = restore_error;
+    if (error != nullptr) {
+      *error = restore_error;
+    }
+  }
   return true;
 }
 
 RpcResponse AgentService::get_state() {
-  std::lock_guard<std::mutex> lock(mutex_);
   RpcResponse response;
+  std::optional<RobotProfile> active_profile;
+  nlohmann::json active_profile_json;
+  nlohmann::json adapter_state;
+  nlohmann::json processes_state;
+  std::string last_error;
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto* profile = profiles_.active_profile();
+    active_profile_json = profiles_.active_profile_to_json();
+    adapter_state = adapter_loader_.status_to_json();
+    if (profile != nullptr) {
+      active_profile = *profile;
+      if (adapter_loader_.is_loaded()) {
+        adapter_state["runtime"] = adapter_loader_.runtime_status_to_json(build_adapter_context(*profile));
+      }
+    }
+    processes_state = processes_.state_to_json();
+    last_error = last_error_;
+  }
+
+  const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+    std::chrono::steady_clock::now() - started_at_
+  );
+  const nlohmann::json agent_state = {
+    {"name", "axon-agent"},
+    {"version", AXON_AGENT_VERSION},
+    {"state", "running"},
+    {"pid", static_cast<int>(getpid())},
+    {"started_at", started_at_iso_},
+    {"uptime_sec", uptime.count()},
+    {"profile_root", path_string(profile_root_)},
+    {"state_dir", path_string(state_dir_)},
+    {"active_profile_state_file", path_string(active_profile_state_file())},
+  };
+
   response.message = "ok";
   response.data = {
-    {"active_profile", profiles_.active_profile_to_json()},
-    {"adapter", adapter_loader_.status_to_json()},
-    {"processes", processes_.state_to_json()},
-    {"last_error", last_error_},
+    {"agent", agent_state},
+    {"active_profile", active_profile_json},
+    {"adapter", adapter_state},
+    {"processes", processes_state},
+    {"components", build_components_state(active_profile)},
+    {"last_error", last_error},
   };
   return response;
 }
@@ -43,11 +320,16 @@ RpcResponse AgentService::get_state() {
 RpcResponse AgentService::get_report() {
   std::lock_guard<std::mutex> lock(mutex_);
   RpcResponse response;
+  const auto* profile = profiles_.active_profile();
+  auto adapter_state = adapter_loader_.status_to_json();
+  if (profile != nullptr && adapter_loader_.is_loaded()) {
+    adapter_state["runtime"] = adapter_loader_.runtime_status_to_json(build_adapter_context(*profile));
+  }
   response.message = "ok";
   response.data = {
     {"profiles", profiles_.profiles_to_json()},
     {"active_profile", profiles_.active_profile_to_json()},
-    {"adapter", adapter_loader_.status_to_json()},
+    {"adapter", adapter_state},
     {"processes", processes_.state_to_json()},
   };
   return response;
@@ -83,6 +365,11 @@ RpcResponse AgentService::select_profile(const nlohmann::json& params) {
       return {false, error, nullptr};
     }
 
+    if (!persist_active_profile(*profile, &error)) {
+      last_error_ = error;
+      return {false, error, nullptr};
+    }
+
     response.message = "profile selected";
     response.data = {{"active_profile", profiles_.active_profile_to_json()}, {"adapter", adapter_loader_.status_to_json()}};
     return response;
@@ -109,6 +396,10 @@ RpcResponse AgentService::start_process(const nlohmann::json& params) {
       }
     }
 
+    if (process_id == "robot_startup") {
+      return start_robot_process(*profile);
+    }
+
     const auto config = build_process_config(*profile, process_id);
     if (!processes_.start(config, &error)) {
       last_error_ = error;
@@ -126,6 +417,14 @@ RpcResponse AgentService::stop_process(const nlohmann::json& params, bool force)
   std::lock_guard<std::mutex> lock(mutex_);
   try {
     const auto process_id = require_string(params, "process_id");
+    const auto* profile = profiles_.active_profile();
+    if (process_id == "robot_startup") {
+      if (profile == nullptr) {
+        return {false, "no active profile selected", nullptr};
+      }
+      return stop_robot_process(*profile, force);
+    }
+
     std::string error;
     if (!processes_.stop(process_id, force, &error)) {
       last_error_ = error;
@@ -136,6 +435,67 @@ RpcResponse AgentService::stop_process(const nlohmann::json& params, bool force)
     last_error_ = ex.what();
     return {false, ex.what(), nullptr};
   }
+}
+
+RpcResponse AgentService::start_robot_process(const RobotProfile& profile) {
+  std::string error;
+  const auto context = build_adapter_context(profile);
+  if (!adapter_loader_.start(context, &error)) {
+    last_error_ = error;
+    return {false, "robot adapter start failed: " + error, nullptr};
+  }
+
+  const auto config = build_process_config(profile, "robot_startup");
+  if (!processes_.start(config, &error)) {
+    std::string cleanup_error;
+    (void)adapter_loader_.force_stop(context, &cleanup_error);
+    last_error_ = error;
+    return {false, error, nullptr};
+  }
+
+  return {
+    true,
+    "robot process started",
+    {
+      {"process_id", "robot_startup"},
+      {"adapter", adapter_loader_.status_to_json()},
+      {"processes", processes_.state_to_json()},
+    },
+  };
+}
+
+RpcResponse AgentService::stop_robot_process(const RobotProfile& profile, bool force) {
+  std::string error;
+  if (!adapter_loader_.is_loaded() && !adapter_loader_.load(profile, &error)) {
+    last_error_ = error;
+    return {false, error, nullptr};
+  }
+
+  const auto context = build_adapter_context(profile);
+  if (!force && !adapter_loader_.stop(context, 5000, &error)) {
+    last_error_ = error;
+    return {false, "robot adapter stop failed: " + error, nullptr};
+  }
+
+  if (!processes_.stop("robot_startup", force, &error)) {
+    last_error_ = error;
+    return {false, error, nullptr};
+  }
+
+  if (force) {
+    std::string adapter_error;
+    (void)adapter_loader_.force_stop(context, &adapter_error);
+  }
+
+  return {
+    true,
+    force ? "robot process force stopped" : "robot process stopped",
+    {
+      {"process_id", "robot_startup"},
+      {"adapter", adapter_loader_.status_to_json()},
+      {"processes", processes_.state_to_json()},
+    },
+  };
 }
 
 ManagedProcessConfig AgentService::build_process_config(const RobotProfile& profile, const std::string& process_id) {
@@ -221,6 +581,17 @@ ManagedProcessConfig AgentService::load_adapter_process_config(
   return config;
 }
 
+RobotAdapterContext AgentService::build_adapter_context(const RobotProfile& profile) const {
+  return {
+    profile.profile_id,
+    profile.adapter_id,
+    profile.robot_model,
+    profile.root_dir.string(),
+    profile.adapter_yaml.string(),
+    state_dir_.string(),
+  };
+}
+
 void AgentService::discover_active_processes(const RobotProfile& profile) {
   for (const auto& process_id : {"robot_startup", "recorder", "transfer"}) {
     try {
@@ -229,6 +600,98 @@ void AgentService::discover_active_processes(const RobotProfile& profile) {
       // Optional process configs should not block profile selection.
     }
   }
+}
+
+bool AgentService::restore_active_profile(std::string* error) {
+  const auto state_file = active_profile_state_file();
+  if (!std::filesystem::exists(state_file)) {
+    return true;
+  }
+
+  try {
+    std::ifstream input(state_file);
+    if (!input) {
+      if (error != nullptr) {
+        *error = "failed to read active profile state: " + path_string(state_file);
+      }
+      return false;
+    }
+
+    const auto state = nlohmann::json::parse(input);
+    const auto profile_id = state.value("profile_id", std::string());
+    if (profile_id.empty()) {
+      if (error != nullptr) {
+        *error = "active profile state is missing profile_id: " + path_string(state_file);
+      }
+      return false;
+    }
+
+    std::string select_error;
+    if (!profiles_.select_profile(profile_id, &select_error)) {
+      if (error != nullptr) {
+        *error = "failed to restore active profile: " + select_error;
+      }
+      return false;
+    }
+
+    const auto* profile = profiles_.active_profile();
+    if (profile == nullptr) {
+      if (error != nullptr) {
+        *error = "active profile missing after restore: " + profile_id;
+      }
+      return false;
+    }
+
+    discover_active_processes(*profile);
+    if (profile->auto_start && !adapter_loader_.is_loaded()) {
+      std::string load_error;
+      if (!adapter_loader_.load(*profile, &load_error)) {
+        if (error != nullptr) {
+          *error = "failed to restore active adapter: " + load_error;
+        }
+        return false;
+      }
+    }
+    return true;
+  } catch (const std::exception& ex) {
+    if (error != nullptr) {
+      *error = std::string("failed to restore active profile: ") + ex.what();
+    }
+    return false;
+  }
+}
+
+bool AgentService::persist_active_profile(const RobotProfile& profile, std::string* error) const {
+  const auto state_file = active_profile_state_file();
+  try {
+    std::filesystem::create_directories(state_file.parent_path());
+    std::ofstream output(state_file);
+    if (!output) {
+      if (error != nullptr) {
+        *error = "failed to write active profile state: " + path_string(state_file);
+      }
+      return false;
+    }
+
+    const nlohmann::json state = {
+      {"profile_id", profile.profile_id},
+      {"adapter_id", profile.adapter_id},
+      {"robot_model", profile.robot_model},
+      {"profile_root", path_string(profile.root_dir)},
+      {"selected_at", now_iso8601()},
+    };
+    output << state.dump(2) << '\n';
+    return true;
+  } catch (const std::exception& ex) {
+    if (error != nullptr) {
+      *error = std::string("failed to persist active profile: ") + ex.what();
+    }
+    return false;
+  }
+}
+
+std::filesystem::path AgentService::active_profile_state_file() const {
+  return state_dir_ / "active_profile.json";
 }
 
 std::string AgentService::require_string(const nlohmann::json& params, const std::string& key) {
