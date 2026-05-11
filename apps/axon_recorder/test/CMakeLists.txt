@@ -156,6 +156,14 @@ add_axon_test(test_task_config
 )
 target_link_libraries(test_task_config yaml-cpp)
 
+# test_config_parser.cpp
+add_axon_test(test_config_parser
+    SOURCES unit/test_config_parser.cpp
+            ../src/config/config_parser.cpp
+)
+target_link_libraries(test_config_parser yaml-cpp)
+set_tests_properties(test_config_parser PROPERTIES LABELS "unit;recorder;config")
+
 # test_config_injector.cpp
 add_axon_test(test_config_injector
     SOURCES unit/test_config_injector.cpp
@@ -280,22 +288,6 @@ if(AXON_BUILD_INTEGRATION_TESTS)
         axon_logging
         yaml-cpp
         OpenSSL::Crypto
-        pthread
-        ${CMAKE_DL_LIBS}
-    )
-
-    # test_config_parser_integration.cpp
-    add_axon_test(test_config_parser_integration
-        SOURCES unit/test_config_parser.cpp
-                ../src/config/config_parser.cpp
-                ../src/state/state_machine.cpp
-                ../src/plugin/plugin_loader.cpp
-    )
-    target_link_libraries(
-        test_config_parser_integration
-        axon_mcap
-        axon_logging
-        yaml-cpp
         pthread
         ${CMAKE_DL_LIBS}
     )

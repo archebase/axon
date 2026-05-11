@@ -213,6 +213,7 @@ install(TARGETS axon_recorder RUNTIME DESTINATION bin)
 # Tests
 # =============================================================================
 if(AXON_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(
         ${CMAKE_CURRENT_SOURCE_DIR}/test
         ${CMAKE_CURRENT_BINARY_DIR}/test
