@@ -62,6 +62,26 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
+# Pre-download MCAP library for FetchContent
+# This avoids network access during package builds.
+ARG MCAP_COMMIT=a7eeff1383cc95a29dd9c5cac94104d277b5414e
+RUN cd /tmp && \
+    curl -fsSL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz" -o mcap.tar.gz && \
+    tar xzf mcap.tar.gz && \
+    mkdir -p /opt/mcap && \
+    mv "mcap-${MCAP_COMMIT}"/* /opt/mcap/ && \
+    rm -rf "mcap-${MCAP_COMMIT}" mcap.tar.gz && \
+    echo "MCAP pre-downloaded to /opt/mcap from commit ${MCAP_COMMIT}"
+
+# Pre-download cpp-httplib for axon-panel FetchContent
+RUN cd /tmp && \
+    curl -fsSL "https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.15.3.tar.gz" -o httplib.tar.gz && \
+    tar xzf httplib.tar.gz && \
+    mkdir -p /opt/cpp-httplib && \
+    mv cpp-httplib-0.15.3/* /opt/cpp-httplib/ && \
+    rm -rf cpp-httplib-0.15.3 httplib.tar.gz && \
+    echo "cpp-httplib pre-downloaded to /opt/cpp-httplib v0.15.3"
+
 # Install AWS SDK for C++ (required for axon-transfer for S3 uploads)
 # Build from source with minimal components to reduce build time
 # Build statically to create portable packages (no runtime dependency on AWS SDK)
