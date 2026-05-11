@@ -134,7 +134,9 @@ bool ProcessManager::start(const ManagedProcessConfig& config, std::string* erro
     redirect_to_file(runtime_config.stdout_log, STDOUT_FILENO);
     redirect_to_file(runtime_config.stderr_log, STDERR_FILENO);
     if (!runtime_config.working_directory.empty()) {
-      (void)chdir(runtime_config.working_directory.c_str());
+      if (chdir(runtime_config.working_directory.c_str()) != 0) {
+        _exit(126);
+      }
     }
 
     if (envp.empty()) {
