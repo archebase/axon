@@ -4,15 +4,20 @@
 
 #include "commands.hpp"
 
+#include <curl/curl.h>
 #include <mcap/mcap.hpp>
 #include <mcap/reader.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 namespace axon {
 namespace config {
@@ -24,6 +29,132 @@ static const std::vector<std::string> DEFAULT_SUBDIRS = {
   "robot",
   "sensors",
 };
+
+namespace {
+
+constexpr const char* kRegisterPath = "/api/v1/devices/register";
+
+struct HttpResponse {
+  long status_code = 0;
+  std::string body;
+  std::string error;
+};
+
+bool is_blank(const std::string& value) {
+  return std::all_of(value.begin(), value.end(), [](unsigned char c) {
+    return std::isspace(c) != 0;
+  });
+}
+
+std::string trim_trailing_slashes(std::string value) {
+  while (!value.empty() && value.back() == '/') {
+    value.pop_back();
+  }
+  return value;
+}
+
+std::string json_escape(const std::string& value) {
+  std::ostringstream oss;
+  for (unsigned char c : value) {
+    switch (c) {
+      case '"':
+        oss << "\\\"";
+        break;
+      case '\\':
+        oss << "\\\\";
+        break;
+      case '\b':
+        oss << "\\b";
+        break;
+      case '\f':
+        oss << "\\f";
+        break;
+      case '\n':
+        oss << "\\n";
+        break;
+      case '\r':
+        oss << "\\r";
+        break;
+      case '\t':
+        oss << "\\t";
+        break;
+      default:
+        if (c < 0x20) {
+          oss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(c)
+              << std::dec << std::setfill(' ');
+        } else {
+          oss << static_cast<char>(c);
+        }
+        break;
+    }
+  }
+  return oss.str();
+}
+
+std::string build_register_payload(const std::string& factory, const std::string& robot_type) {
+  std::ostringstream oss;
+  oss << "{\"factory\":\"" << json_escape(factory) << "\",\"robot_type\":\""
+      << json_escape(robot_type) << "\"}";
+  return oss.str();
+}
+
+std::string build_register_url(const std::string& keystone_url) {
+  return trim_trailing_slashes(keystone_url) + kRegisterPath;
+}
+
+size_t write_curl_response(char* ptr, size_t size, size_t nmemb, void* userdata) {
+  auto* body = static_cast<std::string*>(userdata);
+  const size_t bytes = size * nmemb;
+  body->append(ptr, bytes);
+  return bytes;
+}
+
+HttpResponse post_json(const std::string& url, const std::string& body, long timeout_seconds) {
+  HttpResponse response;
+
+  CURLcode global_code = curl_global_init(CURL_GLOBAL_DEFAULT);
+  if (global_code != CURLE_OK) {
+    response.error = curl_easy_strerror(global_code);
+    return response;
+  }
+
+  CURL* curl = curl_easy_init();
+  if (curl == nullptr) {
+    response.error = "failed to initialize curl";
+    curl_global_cleanup();
+    return response;
+  }
+
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+  headers = curl_slist_append(headers, "Accept: application/json");
+
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_POST, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_curl_response);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response.body);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "axon-config/1.0");
+
+  CURLcode code = curl_easy_perform(curl);
+  if (code != CURLE_OK) {
+    response.error = curl_easy_strerror(code);
+  } else {
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
+  }
+
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+  curl_global_cleanup();
+
+  return response;
+}
+
+}  // namespace
 
 Commands::Commands()
     : verbose_(false) {
@@ -165,6 +296,62 @@ int Commands::status() {
   return 0;
 }
 
+int Commands::register_device(const RegisterOptions& options) {
+  if (options.factory.empty() || is_blank(options.factory)) {
+    std::cerr << "Error: factory is required" << std::endl;
+    return 1;
+  }
+  if (options.robot_type.empty() || is_blank(options.robot_type)) {
+    std::cerr << "Error: robot_type is required" << std::endl;
+    return 1;
+  }
+
+  std::string keystone_url = options.keystone_url;
+  if (keystone_url.empty()) {
+    const char* env_url = std::getenv("AXON_KEYSTONE_URL");
+    if (env_url != nullptr) {
+      keystone_url = env_url;
+    }
+  }
+  if (keystone_url.empty() || is_blank(keystone_url)) {
+    std::cerr << "Error: keystone URL is required. Use --keystone-url or AXON_KEYSTONE_URL."
+              << std::endl;
+    return 1;
+  }
+
+  const std::string url = build_register_url(keystone_url);
+  const std::string payload = build_register_payload(options.factory, options.robot_type);
+
+  if (verbose_) {
+    std::cout << "POST " << url << std::endl;
+  }
+
+  HttpResponse response = post_json(url, payload, options.timeout_seconds);
+  if (!response.error.empty()) {
+    std::cerr << "Error: failed to register device: " << response.error << std::endl;
+    return 1;
+  }
+
+  if (response.status_code == 201) {
+    if (!response.body.empty()) {
+      std::cout << response.body << std::endl;
+    } else {
+      std::cout << "Device registered." << std::endl;
+    }
+    return 0;
+  }
+
+  std::cerr << "Error: Keystone register failed";
+  if (response.status_code != 0) {
+    std::cerr << " (HTTP " << response.status_code << ")";
+  }
+  if (!response.body.empty()) {
+    std::cerr << ": " << response.body;
+  }
+  std::cerr << std::endl;
+  return 1;
+}
+
 int Commands::execute(int argc, char* argv[]) {
   std::string command;
 
@@ -180,6 +367,7 @@ int Commands::execute(int argc, char* argv[]) {
   // Parse flags
   bool incremental = false;
   bool force = false;
+  RegisterOptions register_options;
 
   for (int i = 2; i < argc; ++i) {
     std::string arg = argv[i];
@@ -205,6 +393,21 @@ int Commands::execute(int argc, char* argv[]) {
     return clear(force);
   } else if (command == "status") {
     return status();
+  } else if (command == "register") {
+    if (argc > 2) {
+      std::string first_arg = argv[2];
+      if (first_arg == "help" || first_arg == "-h" || first_arg == "--help") {
+        print_register_usage();
+        return 0;
+      }
+    }
+    std::string error;
+    if (!parse_register_args(argc, argv, register_options, error)) {
+      std::cerr << "Error: " << error << std::endl;
+      print_register_usage();
+      return 1;
+    }
+    return register_device(register_options);
   } else {
     std::cerr << "Error: Unknown command '" << command << "'" << std::endl;
     print_usage();
@@ -313,6 +516,56 @@ std::string Commands::format_time(uint64_t timestamp) {
   return buffer;
 }
 
+bool Commands::parse_register_args(
+  int argc, char* argv[], RegisterOptions& options, std::string& error
+) {
+  for (int i = 2; i < argc; ++i) {
+    std::string arg = argv[i];
+
+    auto require_value = [&](const std::string& name) -> const char* {
+      if (i + 1 >= argc) {
+        error = name + " requires a value";
+        return nullptr;
+      }
+      return argv[++i];
+    };
+
+    if (arg == "--factory") {
+      const char* value = require_value(arg);
+      if (value == nullptr) return false;
+      options.factory = value;
+    } else if (arg == "--robot-type" || arg == "--robot_type") {
+      const char* value = require_value(arg);
+      if (value == nullptr) return false;
+      options.robot_type = value;
+    } else if (arg == "--keystone-url" || arg == "--url") {
+      const char* value = require_value(arg);
+      if (value == nullptr) return false;
+      options.keystone_url = value;
+    } else if (arg == "--timeout") {
+      const char* value = require_value(arg);
+      if (value == nullptr) return false;
+      try {
+        options.timeout_seconds = std::stol(value);
+      } catch (const std::exception&) {
+        error = "--timeout must be an integer number of seconds";
+        return false;
+      }
+      if (options.timeout_seconds <= 0) {
+        error = "--timeout must be greater than 0";
+        return false;
+      }
+    } else if (arg == "--verbose" || arg == "-v") {
+      verbose_ = true;
+    } else {
+      error = "unknown register option '" + arg + "'";
+      return false;
+    }
+  }
+
+  return true;
+}
+
 void Commands::print_usage() {
   std::cout << "Usage: axon_config <command> [options]" << std::endl;
   std::cout << std::endl;
@@ -323,13 +576,58 @@ void Commands::print_usage() {
   std::cout << "  disable   Disable config injection" << std::endl;
   std::cout << "  clear     Remove config directory and cache" << std::endl;
   std::cout << "  status    Show current configuration status" << std::endl;
+  std::cout << "  register  Register device with Keystone" << std::endl;
   std::cout << "  help      Show this help message" << std::endl;
   std::cout << std::endl;
   std::cout << "Options:" << std::endl;
   std::cout << "  --incremental, -i    Incremental scan (only changed files)" << std::endl;
   std::cout << "  --force, -f         Skip confirmation prompt (for scripts)" << std::endl;
   std::cout << "  --verbose, -v       Verbose output" << std::endl;
+  std::cout << std::endl;
+  std::cout << "Register example:" << std::endl;
+  std::cout << "  axon_config register --factory \"Factory Shanghai\" --robot-type SynGloves "
+               "--keystone-url http://keystone:8080"
+            << std::endl;
 }
+
+void Commands::print_register_usage() {
+  std::cout << "Usage: axon_config register --factory <name> --robot-type <model> [options]"
+            << std::endl;
+  std::cout << std::endl;
+  std::cout << "Registers this device with Keystone:" << std::endl;
+  std::cout << "  POST /api/v1/devices/register" << std::endl;
+  std::cout << std::endl;
+  std::cout << "Required:" << std::endl;
+  std::cout << "  --factory NAME        Factory name matching Keystone factories.name" << std::endl;
+  std::cout << "  --robot-type MODEL    Robot model matching Keystone robot_types.model"
+            << std::endl;
+  std::cout << std::endl;
+  std::cout << "Options:" << std::endl;
+  std::cout << "  --keystone-url URL    Keystone base URL; can also use AXON_KEYSTONE_URL"
+            << std::endl;
+  std::cout << "  --timeout SECONDS     HTTP timeout in seconds (default: 10)" << std::endl;
+  std::cout << "  --verbose, -v         Verbose output" << std::endl;
+  std::cout << std::endl;
+  std::cout << "Examples:" << std::endl;
+  std::cout << "  axon_config register --factory \"Factory Shanghai\" --robot-type SynGloves "
+               "--keystone-url http://keystone:8080"
+            << std::endl;
+  std::cout << "  AXON_KEYSTONE_URL=http://keystone:8080 axon register --factory "
+               "\"Factory Shanghai\" --robot-type SynGloves"
+            << std::endl;
+}
+
+#ifdef AXON_CONFIG_TESTING
+std::string Commands::build_register_payload_for_test(
+  const std::string& factory, const std::string& robot_type
+) {
+  return build_register_payload(factory, robot_type);
+}
+
+std::string Commands::build_register_url_for_test(const std::string& keystone_url) {
+  return build_register_url(keystone_url);
+}
+#endif
 
 }  // namespace config
 }  // namespace axon

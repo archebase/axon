@@ -32,6 +32,8 @@ endif()
 include(AxonStdLib REQUIRED)
 include(AxonCoverage OPTIONAL)
 
+find_package(CURL REQUIRED)
+
 # =============================================================================
 # Use axon_mcap for mcap_headers interface
 # =============================================================================
@@ -83,7 +85,7 @@ add_executable(axon_config ${SOURCES})
 axon_set_position_independent_code(axon_config)
 
 # Link against axon_mcap which includes MCAP implementation
-target_link_libraries(axon_config PRIVATE axon_mcap)
+target_link_libraries(axon_config PRIVATE axon_mcap CURL::libcurl)
 
 # Apply coverage flags if enabled
 if(COMMAND axon_add_coverage)
@@ -139,7 +141,7 @@ if(AXON_CONFIG_BUILD_TESTS OR AXON_BUILD_TESTS)
     # Link against axon_mcap and Google Test
     target_link_libraries(
         test_axon_config
-        PRIVATE axon_mcap GTest::gtest GTest::gtest_main
+        PRIVATE axon_mcap CURL::libcurl GTest::gtest GTest::gtest_main
     )
 
     target_include_directories(

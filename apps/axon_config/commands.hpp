@@ -14,6 +14,16 @@ namespace axon {
 namespace config {
 
 /**
+ * Options for registering this device with Keystone.
+ */
+struct RegisterOptions {
+  std::string factory;
+  std::string robot_type;
+  std::string keystone_url;
+  long timeout_seconds = 10;
+};
+
+/**
  * Command handler for axon_config CLI
  */
 class Commands {
@@ -63,6 +73,11 @@ public:
   int status();
 
   /**
+   * Execute register command
+   */
+  int register_device(const RegisterOptions& options);
+
+  /**
    * Parse and execute command line
    */
   int execute(int argc, char* argv[]);
@@ -74,6 +89,12 @@ public:
   ConfigCache& cache() {
     return cache_;
   }
+
+  static std::string build_register_payload_for_test(
+    const std::string& factory, const std::string& robot_type
+  );
+
+  static std::string build_register_url_for_test(const std::string& keystone_url);
 #endif
 
 private:
@@ -84,6 +105,16 @@ private:
    * Print usage message
    */
   void print_usage();
+
+  /**
+   * Print register command usage message
+   */
+  void print_register_usage();
+
+  /**
+   * Parse register command options.
+   */
+  bool parse_register_args(int argc, char* argv[], RegisterOptions& options, std::string& error);
 
   /**
    * Print tree structure of directory

@@ -1,17 +1,48 @@
 # Axon Config Application
 
-**Status:** Placeholder - Design pending
+Robot initialization, configuration collection, and device registration tool.
 
-## Purpose
+## Commands
 
-Robot initialization and configuration collection tool.
+```bash
+axon-config init
+axon-config scan
+axon-config enable
+axon-config disable
+axon-config status
+axon-config register --factory "Factory Shanghai" --robot-type SynGloves --keystone-url http://keystone:8080
+```
 
-## Design Notes
+The dispatcher also exposes the registration shortcut:
 
-TODO: Define CLI interface for:
-- Robot type discovery
-- Serial number collection
-- Sensor configuration
-- URDF file collection
+```bash
+axon register --factory "Factory Shanghai" --robot-type SynGloves --keystone-url http://keystone:8080
+```
 
-This tool will implement configuration management functionality directly (no separate library).
+## Keystone Device Registration
+
+`register` sends a JSON request to Keystone:
+
+```http
+POST /api/v1/devices/register
+Content-Type: application/json
+```
+
+```json
+{
+  "factory": "Factory Shanghai",
+  "robot_type": "SynGloves"
+}
+```
+
+On success, Keystone returns `201 Created` and `axon-config` prints the JSON response to stdout.
+On failure, `axon-config` prints the HTTP status and response body to stderr and exits non-zero.
+
+The Keystone base URL can be passed with `--keystone-url` or the `AXON_KEYSTONE_URL` environment
+variable:
+
+```bash
+AXON_KEYSTONE_URL=http://keystone:8080 axon register \
+  --factory "Factory Shanghai" \
+  --robot-type SynGloves
+```
