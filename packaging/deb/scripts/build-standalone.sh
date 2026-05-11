@@ -42,7 +42,7 @@ fi
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
 DISTRO="${DISTRO:-jammy}"
 OUTPUT_DIR="${PACKAGE_DIR}/output/${DISTRO}"
-BUILD_DIR="${PACKAGE_DIR}/build"
+BUILD_DIR="${PACKAGE_DIR}/build/${DISTRO}"
 SCRIPT_DIR="${PACKAGE_DIR}/scripts"
 
 # Map distro names to display names
@@ -69,6 +69,34 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+dump_cmake_logs_on_failure() {
+    local pkg_name="$1"
+    local build_area="$2"
+    local cmake_base="${build_area}/obj-x86_64-linux-gnu/CMakeFiles"
+
+    log_warn "CMake configure/build failed for ${pkg_name}, dumping diagnostics if available"
+
+    if [ -f "${cmake_base}/CMakeError.log" ]; then
+        echo ""
+        echo "========== ${pkg_name}: CMakeError.log =========="
+        cat "${cmake_base}/CMakeError.log" || true
+        echo "========== end CMakeError.log =========="
+        echo ""
+    else
+        log_warn "CMakeError.log not found: ${cmake_base}/CMakeError.log"
+    fi
+
+    if [ -f "${cmake_base}/CMakeOutput.log" ]; then
+        echo ""
+        echo "========== ${pkg_name}: CMakeOutput.log =========="
+        cat "${cmake_base}/CMakeOutput.log" || true
+        echo "========== end CMakeOutput.log =========="
+        echo ""
+    else
+        log_warn "CMakeOutput.log not found: ${cmake_base}/CMakeOutput.log"
+    fi
 }
 
 # Create output and build directories
@@ -183,6 +211,7 @@ build_app_package() {
         log_info "Successfully built ${suffixed_pkg_name}"
         build_success=1
     else
+        dump_cmake_logs_on_failure "${suffixed_pkg_name}" "${build_area}"
         # Check if package was created despite the error
         if find .. -maxdepth 1 -name "${suffixed_pkg_name}_*.deb" -type f -exec test -f {} \; -print | head -1 | grep -q .; then
             log_info "Package ${suffixed_pkg_name} was created (ignoring post-package error)"

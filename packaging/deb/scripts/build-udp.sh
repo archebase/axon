@@ -23,7 +23,7 @@ fi
 PACKAGE_DIR="${PROJECT_ROOT}/packaging/deb"
 DISTRO="${DISTRO:-jammy}"
 OUTPUT_DIR="${PACKAGE_DIR}/output/${DISTRO}"
-BUILD_DIR="${PACKAGE_DIR}/build"
+BUILD_DIR="${PACKAGE_DIR}/build/${DISTRO}"
 
 # Colors for output
 RED='\033[0;31m'
