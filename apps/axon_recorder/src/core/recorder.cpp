@@ -12,6 +12,8 @@
 #include <functional>
 #include <iostream>
 #include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 #include <thread>
 
 #include "../http/rpc_handlers.hpp"
@@ -30,6 +32,10 @@ namespace axon {
 namespace recorder {
 
 namespace {
+
+/// Middleware name advertised by the UDP JSON plugin shared library.
+constexpr const char* kUdpMiddlewareName = "UDP";
+
 // Serialize a BufferPool stats snapshot into the same JSON shape used by
 // /rpc/status. Centralizing this keeps the two get_stats callbacks below in
 // sync and gives dashboards a stable schema to monitor pool health
@@ -141,52 +147,83 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
   // Middleware plugins own process-lifetime state such as ROS1 roscpp/xmlrpcpp
   // singletons. Load and initialize them once instead of rebuilding that state
   // for every recording session.
-  if (!config_.plugin_path.empty() && !ensure_plugin_loaded()) {
+  if (!config_.ordered_plugin_paths().empty() && !ensure_plugin_loaded()) {
     return false;
   }
 
   return true;
 }
 
-bool AxonRecorder::ensure_plugin_loaded() {
-  if (plugin_initialized_) {
-    return true;
+const AxonPluginDescriptor* AxonRecorder::get_ros_plugin_descriptor(std::string* out_name) const {
+  for (const auto& name : plugin_startup_order_) {
+    if (name != kUdpMiddlewareName) {
+      if (out_name != nullptr) {
+        *out_name = name;
+      }
+      return plugin_loader_.get_descriptor(name);
+    }
   }
+  return nullptr;
+}
 
-  if (config_.plugin_path.empty()) {
+const AxonPluginDescriptor* AxonRecorder::get_udp_plugin_descriptor() const {
+  return plugin_loader_.get_descriptor(kUdpMiddlewareName);
+}
+
+bool AxonRecorder::ensure_plugin_loaded() {
+  const auto paths = config_.ordered_plugin_paths();
+  if (paths.empty()) {
     set_error_helper("Plugin path is empty");
     return false;
   }
 
-  if (active_plugin_name_.empty() || !plugin_loader_.is_loaded(active_plugin_name_)) {
-    auto plugin_name = plugin_loader_.load(config_.plugin_path);
-    if (!plugin_name.has_value()) {
-      set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+  auto unload_all_loaded = [this]() {
+    const auto names = plugin_loader_.loaded_plugins();
+    for (const auto& name : names) {
+      plugin_loader_.unload(name);
+    }
+    plugin_startup_order_.clear();
+    plugin_init_ok_.clear();
+  };
+
+  if (plugin_startup_order_.empty()) {
+    for (const auto& path : paths) {
+      auto plugin_name = plugin_loader_.load(path);
+      if (!plugin_name.has_value()) {
+        set_error_helper("Failed to load plugin: " + plugin_loader_.get_last_error());
+        unload_all_loaded();
+        return false;
+      }
+      plugin_startup_order_.push_back(plugin_name.value());
+    }
+  }
+
+  const char* cfg = config_.plugin_config.c_str();
+  for (const auto& name : plugin_startup_order_) {
+    auto init_it = plugin_init_ok_.find(name);
+    if (init_it != plugin_init_ok_.end() && init_it->second) {
+      continue;
+    }
+
+    const auto* descriptor = plugin_loader_.get_descriptor(name);
+    if (!descriptor || !descriptor->vtable || !descriptor->vtable->init) {
+      set_error_helper("Invalid plugin descriptor: " + name);
+      unload_all_loaded();
       return false;
     }
 
-    active_plugin_name_ = plugin_name.value();
+    AxonStatus status = descriptor->vtable->init(cfg);
+    if (status != AXON_SUCCESS) {
+      set_error_helper(
+        std::string("Plugin init failed (") + name + "): " + status_to_string(status)
+      );
+      unload_all_loaded();
+      return false;
+    }
+    plugin_init_ok_[name] = true;
   }
 
-  const auto* descriptor = plugin_loader_.get_descriptor(active_plugin_name_);
-  if (!descriptor || !descriptor->vtable || !descriptor->vtable->init) {
-    set_error_helper("Invalid plugin descriptor");
-    plugin_loader_.unload(active_plugin_name_);
-    active_plugin_name_.clear();
-    return false;
-  }
-
-  AxonStatus status = descriptor->vtable->init(config_.plugin_config.c_str());
-  if (status != AXON_SUCCESS) {
-    set_error_helper(std::string("Plugin init failed: ") + status_to_string(status));
-    plugin_loader_.unload(active_plugin_name_);
-    active_plugin_name_.clear();
-    return false;
-  }
-
-  plugin_initialized_ = true;
   plugins_shutting_down_ = false;
-
   return true;
 }
 
@@ -216,18 +253,19 @@ bool AxonRecorder::start() {
     return false;
   }
 
-  // Get plugin descriptor
-  const auto* descriptor = plugin_loader_.get_descriptor(active_plugin_name_);
-  if (!descriptor || !descriptor->vtable) {
-    set_error_helper("Invalid plugin descriptor");
-    state_manager_.transition_to(RecorderState::IDLE, error_msg);
-    return false;
-  }
+  reset_pause_tracking();
+  reset_topic_monotonic_timestamps();
+  last_session_active_duration_sec_ = 0.0;
+  last_session_final_file_size_ = 0;
+  last_session_close_time_ = std::chrono::system_clock::time_point{};
 
-  if (!descriptor->vtable->start) {
-    set_error_helper("Plugin missing start function");
-    state_manager_.transition_to(RecorderState::IDLE, error_msg);
-    return false;
+  for (const auto& name : plugin_startup_order_) {
+    const auto* pd = plugin_loader_.get_descriptor(name);
+    if (!pd || !pd->vtable || !pd->vtable->start) {
+      set_error_helper("Plugin missing start function: " + name);
+      state_manager_.transition_to(RecorderState::IDLE, error_msg);
+      return false;
+    }
   }
 
   // Create recording session
@@ -346,13 +384,18 @@ bool AxonRecorder::start() {
     http_callback_client_->post_start_callback_async(*task_config_, payload);
   }
 
-  // Start plugin
-  AxonStatus status = descriptor->vtable->start();
-  if (status != AXON_SUCCESS) {
-    set_error_helper(std::string("Plugin start failed: ") + status_to_string(status));
-    state_manager_.transition_to(RecorderState::IDLE, error_msg);
-    recording_session_.reset();
-    return false;
+  // Start all middleware plugins (ROS + UDP, etc.) in config load order
+  for (const auto& name : plugin_startup_order_) {
+    const auto* pd = plugin_loader_.get_descriptor(name);
+    AxonStatus st = pd->vtable->start();
+    if (st != AXON_SUCCESS) {
+      set_error_helper(
+        std::string("Plugin start failed (") + name + "): " + status_to_string(st)
+      );
+      state_manager_.transition_to(RecorderState::IDLE, error_msg);
+      recording_session_.reset();
+      return false;
+    }
   }
 
   // Start worker thread pool
@@ -400,8 +443,10 @@ void AxonRecorder::stop() {
   //      state (notably ROS1 roscpp/xmlrpcpp) across sessions.
 
   // 1. Stop per-session plugin producers so no more messages can be enqueued.
-  auto plugins = plugin_loader_.loaded_plugins();
-  for (const auto& plugin_name : plugins) {
+  const std::vector<std::string> stop_order =
+    !plugin_startup_order_.empty() ? plugin_startup_order_
+                                   : plugin_loader_.loaded_plugins();
+  for (const auto& plugin_name : stop_order) {
     const auto* descriptor = plugin_loader_.get_descriptor(plugin_name);
     if (!descriptor || !descriptor->vtable) {
       continue;
@@ -420,8 +465,8 @@ void AxonRecorder::stop() {
       // session-stop slot. ROS1 should use session_stop so its process-wide
       // roscpp/xmlrpcpp state survives between sessions.
       status = descriptor->vtable->stop();
-      if (status == AXON_SUCCESS && plugin_name == active_plugin_name_) {
-        plugin_initialized_ = false;
+      if (status == AXON_SUCCESS) {
+        plugin_init_ok_[plugin_name] = false;
       }
     }
 
@@ -456,6 +501,11 @@ void AxonRecorder::stop() {
   // 4. Close recording session (injects metadata, generates sidecar).
   if (recording_session_) {
     AXON_LOG_INFO("Closing recording session");
+    const double wall_duration_sec = recording_session_->get_duration_sec();
+    const double paused_duration_sec = static_cast<double>(current_pause_offset_ns()) / 1e9;
+    last_session_active_duration_sec_ =
+      wall_duration_sec > paused_duration_sec ? wall_duration_sec - paused_duration_sec : 0.0;
+
     recording_session_->close();
     AXON_LOG_INFO("Recording session closed");
 
@@ -478,6 +528,8 @@ void AxonRecorder::stop() {
 
   // Transition back to IDLE
   state_manager_.transition_to(RecorderState::IDLE, error_msg);
+
+  reset_pause_tracking();
 
   running_.store(false);
   AXON_LOG_INFO("Recorder stop completed");
@@ -508,12 +560,12 @@ void AxonRecorder::shutdown_plugins() {
     }
   }
 
-  auto loaded_plugins = plugin_loader_.loaded_plugins();
-  for (const auto& plugin_name : loaded_plugins) {
+  auto loaded = plugin_loader_.loaded_plugins();
+  for (const auto& plugin_name : loaded) {
     plugin_loader_.unload(plugin_name);
   }
-  active_plugin_name_.clear();
-  plugin_initialized_ = false;
+  plugin_startup_order_.clear();
+  plugin_init_ok_.clear();
 }
 
 bool AxonRecorder::is_running() const {
@@ -764,7 +816,9 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       double duration_sec = 0.0;
       if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
         finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
-        if (start_time != std::chrono::system_clock::time_point{}) {
+        if (last_session_active_duration_sec_ > 0.0) {
+          duration_sec = last_session_active_duration_sec_;
+        } else if (start_time != std::chrono::system_clock::time_point{}) {
           duration_sec =
             std::chrono::duration<double>(last_session_close_time_ - start_time).count();
         }
@@ -817,23 +871,11 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
   };
 
   callbacks.pause_recording = [this]() -> bool {
-    // Check if we're in RECORDING state
-    if (this->get_state() != RecorderState::RECORDING) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::PAUSED, error_msg);
+    return this->pause_recording();
   };
 
   callbacks.resume_recording = [this]() -> bool {
-    // Check if we're in PAUSED state
-    if (this->get_state() != RecorderState::PAUSED) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::RECORDING, error_msg);
+    return this->resume_recording();
   };
 
   callbacks.clear_config = [this]() -> bool {
@@ -879,6 +921,112 @@ bool AxonRecorder::is_http_server_running() const {
 
 bool AxonRecorder::transition_to(RecorderState to, std::string& error_msg) {
   return state_manager_.transition_to(to, error_msg);
+}
+
+bool AxonRecorder::pause_recording() {
+  if (get_state() != RecorderState::RECORDING) {
+    return false;
+  }
+
+  std::string error_msg;
+  const bool success =
+    state_manager_.transition(RecorderState::RECORDING, RecorderState::PAUSED, error_msg);
+  if (success) {
+    mark_pause_started();
+  }
+  return success;
+}
+
+bool AxonRecorder::resume_recording() {
+  if (get_state() != RecorderState::PAUSED) {
+    return false;
+  }
+
+  mark_pause_finished();
+
+  std::string error_msg;
+  const bool success =
+    state_manager_.transition(RecorderState::PAUSED, RecorderState::RECORDING, error_msg);
+  if (!success && get_state() == RecorderState::PAUSED) {
+    mark_pause_started();
+  }
+  return success;
+}
+
+void AxonRecorder::reset_pause_tracking() {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  pause_started_at_.reset();
+  total_pause_offset_ns_.store(0, std::memory_order_release);
+}
+
+void AxonRecorder::mark_pause_started() {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  if (!pause_started_at_.has_value()) {
+    pause_started_at_ = std::chrono::steady_clock::now();
+  }
+}
+
+void AxonRecorder::mark_pause_finished() {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  if (!pause_started_at_.has_value()) {
+    return;
+  }
+
+  const auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - pause_started_at_.value()
+  )
+                            .count();
+  if (elapsed_ns > 0) {
+    total_pause_offset_ns_.fetch_add(
+      static_cast<uint64_t>(elapsed_ns), std::memory_order_acq_rel
+    );
+  }
+  pause_started_at_.reset();
+}
+
+uint64_t AxonRecorder::current_pause_offset_ns() const {
+  std::lock_guard<std::mutex> lock(pause_time_mutex_);
+  uint64_t offset_ns = total_pause_offset_ns_.load(std::memory_order_acquire);
+  if (pause_started_at_.has_value()) {
+    const auto active_pause_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                   std::chrono::steady_clock::now() - pause_started_at_.value()
+    )
+                                   .count();
+    if (active_pause_ns > 0) {
+      offset_ns += static_cast<uint64_t>(active_pause_ns);
+    }
+  }
+
+  return offset_ns;
+}
+
+uint64_t AxonRecorder::adjust_message_timestamp(uint64_t timestamp_ns) const {
+  const uint64_t offset_ns = total_pause_offset_ns_.load(std::memory_order_acquire);
+  return timestamp_ns > offset_ns ? timestamp_ns - offset_ns : 0;
+}
+
+void AxonRecorder::reset_topic_monotonic_timestamps() {
+  std::lock_guard<std::mutex> lock(topic_monotonic_mutex_);
+  last_written_log_time_ns_by_topic_.clear();
+}
+
+uint64_t AxonRecorder::apply_monotonic_timestamp_for_topic(
+  const std::string& topic, uint64_t stamp_ns
+) {
+  if (!config_.recording.enforce_monotonic_timestamps_per_topic) {
+    return stamp_ns;
+  }
+
+  std::lock_guard<std::mutex> lock(topic_monotonic_mutex_);
+  uint64_t& last = last_written_log_time_ns_by_topic_[topic];
+  if (stamp_ns <= last) {
+    if (last == UINT64_MAX) {
+      return UINT64_MAX;
+    }
+    stamp_ns = last + 1;
+  }
+  last = stamp_ns;
+  return stamp_ns;
 }
 
 void AxonRecorder::set_task_config(const TaskConfig& config) {
@@ -942,8 +1090,11 @@ AxonRecorder::Statistics AxonRecorder::get_statistics() const {
     stats.messages_written = session_stats.messages_written;
     stats.bytes_written = session_stats.bytes_written;
     // Expose running session duration so /rpc/stats and /rpc/state can
-    // report elapsed time alongside the message/byte counters.
-    stats.duration_sec = recording_session_->get_duration_sec();
+    // report active recording time alongside the message/byte counters.
+    const double wall_duration_sec = recording_session_->get_duration_sec();
+    const double paused_duration_sec = static_cast<double>(current_pause_offset_ns()) / 1e9;
+    stats.duration_sec =
+      wall_duration_sec > paused_duration_sec ? wall_duration_sec - paused_duration_sec : 0.0;
   }
 
   return stats;
@@ -973,8 +1124,12 @@ void AxonRecorder::on_message(
   // Acquire a pool-backed buffer sized for this payload. On the steady-state
   // hot path this avoids `operator new` per message (bucket reuse).
   MessageItem item;
-  item.timestamp_ns = static_cast<int64_t>(timestamp);
-  item.publish_time_ns = timestamp;
+  const uint64_t adjusted_timestamp =
+    config_.recording.subtract_pause_duration_from_timestamps
+      ? adjust_message_timestamp(timestamp)
+      : timestamp;
+  item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
+  item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
   item.message_type = message_type;
   item.raw_data =
@@ -1004,8 +1159,12 @@ void AxonRecorder::on_message_v2(
   uint64_t receive_time_ns = get_steady_clock_ns();
 
   MessageItem item;
-  item.timestamp_ns = static_cast<int64_t>(timestamp);
-  item.publish_time_ns = timestamp;
+  const uint64_t adjusted_timestamp =
+    config_.recording.subtract_pause_duration_from_timestamps
+      ? adjust_message_timestamp(timestamp)
+      : timestamp;
+  item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
+  item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
   item.message_type = message_type;
 
@@ -1039,7 +1198,8 @@ bool AxonRecorder::message_handler(
     return false;  // No active recording session
   }
 
-  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t msg_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t mcap_time_ns = apply_monotonic_timestamp_for_topic(topic, msg_time_ns);
   uint64_t write_time_ns = get_steady_clock_ns();
 
   uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
@@ -1047,8 +1207,9 @@ bool AxonRecorder::message_handler(
     return false;
   }
 
-  bool success =
-    recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
+  bool success = recording_session_->write(
+    channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size
+  );
 
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
@@ -1059,7 +1220,7 @@ bool AxonRecorder::message_handler(
     if (latency_monitor_) {
       LatencyRecord record;
       record.topic = topic;
-      record.publish_time_ns = log_time_ns;
+      record.publish_time_ns = msg_time_ns;
       record.receive_time_ns = 0;
       record.enqueue_time_ns = 0;
       record.dequeue_time_ns = 0;
@@ -1081,7 +1242,8 @@ bool AxonRecorder::latency_message_handler(
     return false;
   }
 
-  uint64_t log_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t msg_time_ns = static_cast<uint64_t>(timestamp_ns);
+  const uint64_t mcap_time_ns = apply_monotonic_timestamp_for_topic(topic, msg_time_ns);
   uint64_t write_time_ns = get_steady_clock_ns();
 
   uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
@@ -1089,8 +1251,9 @@ bool AxonRecorder::latency_message_handler(
     return false;
   }
 
-  bool success =
-    recording_session_->write(channel_id, sequence, log_time_ns, timestamp_ns, data, data_size);
+  bool success = recording_session_->write(
+    channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size
+  );
 
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
@@ -1101,7 +1264,7 @@ bool AxonRecorder::latency_message_handler(
     if (latency_monitor_) {
       LatencyRecord record;
       record.topic = topic;
-      record.publish_time_ns = (publish_time_ns > 0) ? publish_time_ns : log_time_ns;
+      record.publish_time_ns = (publish_time_ns > 0) ? publish_time_ns : msg_time_ns;
       record.receive_time_ns = receive_time_ns;
       record.enqueue_time_ns = enqueue_time_ns;
       record.dequeue_time_ns = dequeue_time_ns;
@@ -1120,8 +1283,25 @@ bool AxonRecorder::register_topics() {
     return false;
   }
 
+  std::string ros_mw_name;
+  get_ros_plugin_descriptor(&ros_mw_name);
+
+  std::unordered_set<std::string> seen_subscription_keys;
+
   // Register schemas and channels for all subscriptions
   for (const auto& sub : config_.subscriptions) {
+    std::string sub_key = sub.topic_name;
+    sub_key.push_back('\0');
+    sub_key += sub.message_type;
+    if (seen_subscription_keys.count(sub_key)) {
+      AXON_LOG_WARN(
+        "Duplicate subscription entry"
+        << axon::logging::kv("topic", sub.topic_name)
+        << axon::logging::kv("message_type", sub.message_type)
+      );
+    }
+    seen_subscription_keys.insert(sub_key);
+
     // Determine schema encoding based on message type
     bool is_json_type = (sub.message_type == "axon_udp/json");
     std::string schema_encoding =
@@ -1155,10 +1335,19 @@ bool AxonRecorder::register_topics() {
       return false;
     }
 
+    std::unordered_map<std::string, std::string> ch_meta;
+    if (is_json_type) {
+      ch_meta["axon.source"] = "udp";
+      ch_meta["axon.plugin"] = "UDP";
+    } else {
+      ch_meta["axon.source"] = config_.recording.profile;
+      ch_meta["axon.plugin"] = ros_mw_name.empty() ? "ros" : ros_mw_name;
+    }
+
     // Register channel using composite key (topic + message_type)
     // This allows the same topic to have different message types (e.g., Image and CompressedImage)
     uint16_t channel_id = recording_session_->register_channel(
-      sub.topic_name, sub.message_type, channel_encoding, schema_id
+      sub.topic_name, sub.message_type, channel_encoding, schema_id, ch_meta
     );
 
     if (channel_id == 0) {
@@ -1212,67 +1401,115 @@ bool AxonRecorder::register_topics() {
 }
 
 bool AxonRecorder::setup_subscriptions() {
-  auto plugins = plugin_loader_.loaded_plugins();
-  if (plugins.empty()) {
+  if (plugin_startup_order_.empty()) {
     set_error_helper("No plugins loaded");
     return false;
   }
 
-  const auto* descriptor = plugin_loader_.get_descriptor(plugins[0]);
-  if (!descriptor || !descriptor->vtable) {
-    set_error_helper("Invalid plugin descriptor or vtable");
-    return false;
-  }
+  std::string ros_plugin_name;
+  const AxonPluginDescriptor* ros_descriptor = get_ros_plugin_descriptor(&ros_plugin_name);
+  const AxonPluginDescriptor* udp_descriptor = get_udp_plugin_descriptor();
 
-  if (!descriptor->vtable->subscribe) {
-    set_error_helper("Plugin does not support subscribe (null function pointer)");
-    return false;
-  }
-
-  // Prefer the ABI v1.2 zero-copy subscribe path when the plugin advertises
-  // it; fall back to v1.x copy-out subscribe otherwise. The detection is
-  // fully optional — any v1.0/v1.1 plugin keeps working unchanged.
-  AxonSubscribeV2Fn subscribe_v2 = plugin_subscribe_v2(descriptor);
-  if (subscribe_v2 != nullptr) {
-    AXON_LOG_INFO(
-      "Plugin '" << plugins[0] << "' supports ABI v1.2 zero-copy callback; using subscribe_v2"
-    );
-  }
-
-  // Setup subscriptions via plugin
+  bool need_ros = false;
+  bool need_udp = false;
   for (const auto& sub : config_.subscriptions) {
-    // Build options JSON for depth compression (if enabled)
-    std::string options_json;
-    if (sub.depth_compression.enabled) {
-      nlohmann::json opts;
-      opts["depth_compression"]["enabled"] = sub.depth_compression.enabled;
-      opts["depth_compression"]["level"] = sub.depth_compression.level;
-      options_json = opts.dump();
-    }
-
-    AxonStatus status = AXON_ERROR_INTERNAL;
-    if (subscribe_v2 != nullptr) {
-      status = subscribe_v2(
-        sub.topic_name.c_str(),
-        sub.message_type.c_str(),
-        options_json.empty() ? nullptr : options_json.c_str(),
-        message_callback_v2,
-        this
-      );
+    if (sub.message_type == "axon_udp/json") {
+      need_udp = true;
     } else {
-      status = descriptor->vtable->subscribe(
-        sub.topic_name.c_str(),
-        sub.message_type.c_str(),
-        options_json.empty() ? nullptr : options_json.c_str(),
-        message_callback,
-        this
+      need_ros = true;
+    }
+  }
+
+  if (need_ros) {
+    if (!ros_descriptor || !ros_descriptor->vtable || !ros_descriptor->vtable->subscribe) {
+      set_error_helper(
+        "ROS middleware plugin required for subscriptions with non-UDP message types "
+        "(load a ROS1/ROS2 plugin before UDP in `plugins` / plugin.path)"
+      );
+      return false;
+    }
+
+    AxonSubscribeV2Fn ros_subscribe_v2 = plugin_subscribe_v2(ros_descriptor);
+    if (ros_subscribe_v2 != nullptr) {
+      AXON_LOG_INFO(
+        "Plugin '" << ros_plugin_name
+                   << "' supports ABI v1.2 zero-copy callback; using subscribe_v2"
       );
     }
 
-    if (status != AXON_SUCCESS) {
+    for (const auto& sub : config_.subscriptions) {
+      if (sub.message_type == "axon_udp/json") {
+        continue;
+      }
+
+      std::string options_json;
+      if (sub.depth_compression.enabled) {
+        nlohmann::json opts;
+        opts["depth_compression"]["enabled"] = sub.depth_compression.enabled;
+        opts["depth_compression"]["level"] = sub.depth_compression.level;
+        options_json = opts.dump();
+      }
+
+      AxonStatus status = AXON_ERROR_INTERNAL;
+      if (ros_subscribe_v2 != nullptr) {
+        status = ros_subscribe_v2(
+          sub.topic_name.c_str(),
+          sub.message_type.c_str(),
+          options_json.empty() ? nullptr : options_json.c_str(),
+          message_callback_v2,
+          this
+        );
+      } else {
+        status = ros_descriptor->vtable->subscribe(
+          sub.topic_name.c_str(),
+          sub.message_type.c_str(),
+          options_json.empty() ? nullptr : options_json.c_str(),
+          message_callback,
+          this
+        );
+      }
+
+      if (status != AXON_SUCCESS) {
+        set_error_helper(
+          "Failed to subscribe to " + sub.topic_name + " (" + sub.message_type +
+          "): " + status_to_string(status)
+        );
+        return false;
+      }
+    }
+  }
+
+  if (need_udp) {
+    if (!udp_descriptor || !udp_descriptor->vtable || !udp_descriptor->vtable->subscribe) {
       set_error_helper(
-        "Failed to subscribe to " + sub.topic_name + " (" + sub.message_type +
-        "): " + status_to_string(status)
+        "axon_udp/json subscriptions require the UDP plugin .so "
+        "(add `libaxon_udp` to `plugins` / plugin.auxiliary_paths)"
+      );
+      return false;
+    }
+
+    const SubscriptionConfig* first_udp = nullptr;
+    for (const auto& sub : config_.subscriptions) {
+      if (sub.message_type == "axon_udp/json") {
+        first_udp = &sub;
+        break;
+      }
+    }
+    if (first_udp == nullptr) {
+      set_error_helper("Internal error: UDP subscription flag without axon_udp/json entry");
+      return false;
+    }
+
+    AxonStatus ustatus = udp_descriptor->vtable->subscribe(
+      first_udp->topic_name.c_str(),
+      first_udp->message_type.c_str(),
+      nullptr,
+      message_callback,
+      this
+    );
+    if (ustatus != AXON_SUCCESS) {
+      set_error_helper(
+        std::string("UDP plugin subscribe failed: ") + status_to_string(ustatus)
       );
       return false;
     }
@@ -1654,7 +1891,9 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
       double duration_sec = 0.0;
       if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
         finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
-        if (start_time != std::chrono::system_clock::time_point{}) {
+        if (last_session_active_duration_sec_ > 0.0) {
+          duration_sec = last_session_active_duration_sec_;
+        } else if (start_time != std::chrono::system_clock::time_point{}) {
           duration_sec =
             std::chrono::duration<double>(last_session_close_time_ - start_time).count();
         }
@@ -1707,23 +1946,11 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
   };
 
   callbacks.pause_recording = [this]() -> bool {
-    // Check if we're in RECORDING state
-    if (this->get_state() != RecorderState::RECORDING) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::PAUSED, error_msg);
+    return this->pause_recording();
   };
 
   callbacks.resume_recording = [this]() -> bool {
-    // Check if we're in PAUSED state
-    if (this->get_state() != RecorderState::PAUSED) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::RECORDING, error_msg);
+    return this->resume_recording();
   };
 
   callbacks.clear_config = [this]() -> bool {

@@ -303,7 +303,11 @@ int main(int argc, char* argv[]) {
 
   // Step 3: Apply CLI argument overrides (CLI takes precedence over config file)
   if (!cli_plugin_path.empty()) {
-    config.plugin_path = cli_plugin_path;
+    if (!config.plugin_paths_ordered.empty()) {
+      config.plugin_paths_ordered[0] = cli_plugin_path;
+    } else {
+      config.plugin_path = cli_plugin_path;
+    }
   }
   if (!cli_dataset_path.empty()) {
     config.dataset.path = cli_dataset_path;
@@ -349,8 +353,8 @@ int main(int argc, char* argv[]) {
   }
 
   // Validate required arguments
-  if (config.plugin_path.empty()) {
-    std::cerr << "Error: --plugin (or plugin.path in config file) is required" << std::endl;
+  if (config.ordered_plugin_paths().empty()) {
+    std::cerr << "Error: --plugin (or plugin.path / plugins in config file) is required" << std::endl;
     print_usage(argv[0]);
     return 1;
   }
@@ -372,10 +376,21 @@ int main(int argc, char* argv[]) {
     mode_str = "HTTP RPC Server";
   }
 
+  std::string plugins_line;
+  {
+    const auto paths = config.ordered_plugin_paths();
+    for (size_t i = 0; i < paths.size(); ++i) {
+      if (i > 0) {
+        plugins_line += ", ";
+      }
+      plugins_line += paths[i];
+    }
+  }
+
   // Print configuration
   std::cout << "Axon Recorder Configuration:\n"
             << "  Mode:        " << mode_str << "\n"
-            << "  Plugin:      " << config.plugin_path << "\n"
+            << "  Plugin(s):   " << plugins_line << "\n"
             << "  Output:      " << config.output_file << "\n"
             << "  Dataset:     " << config.dataset.path << "\n"
             << "  Profile:     " << config.recording.profile << "\n"

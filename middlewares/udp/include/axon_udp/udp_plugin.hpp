@@ -69,9 +69,13 @@ public:
   /// @return true if started successfully
   bool start();
 
-  /// Stop the UDP server and cleanup resources
+  /// Stop current UDP receivers without clearing parsed configuration
   /// @return true if stopped successfully
   bool stop();
+
+  /// Stop per-recording UDP receivers while preserving initialized plugin state
+  /// @return true if stopped successfully
+  bool stop_session();
 
   /// Set callback for received messages
   /// @param callback Function to call when a message is received

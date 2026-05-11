@@ -103,6 +103,16 @@ struct RecordingConfig {
   // Each path should be a share directory (e.g., /opt/ros/humble/share)
   // Supports both ROS1 and ROS2 package layouts
   std::vector<std::string> schema_search_paths;
+
+  /// Subtract cumulative recorder pause duration (steady_clock) from each
+  /// message timestamp used for MCAP log/publish. Disable when ROS stamps do
+  /// not track wall pause (e.g. sim), or to keep raw receive-time stamps.
+  bool subtract_pause_duration_from_timestamps = true;
+
+  /// If true, bump each topic's MCAP log/publish time forward so they never
+  /// decrease within a topic (reduces playback backward skips after pause
+  /// compensation).
+  bool enforce_monotonic_timestamps_per_topic = false;
 };
 
 /**
@@ -205,8 +215,31 @@ struct RecorderConfig {
   std::string output_file = "output.mcap";
   bool output_file_is_explicit = false;  // True if set via CLI or config file
   std::string plugin_path;
+  /// When non-empty (from `plugins:` YAML), this is the exclusive ordered plugin list.
+  std::vector<std::string> plugin_paths_ordered;
+  /// Secondary .so paths used when `plugins:` is not set: load after `plugin_path`.
+  std::vector<std::string> auxiliary_plugin_paths;
   std::string plugin_config;  // JSON config string passed to plugin init()
   std::vector<SubscriptionConfig> subscriptions;
+
+  /**
+   * Resolved load order: explicit `plugins` list, else [plugin_path] + auxiliary_plugin_paths.
+   */
+  std::vector<std::string> ordered_plugin_paths() const {
+    if (!plugin_paths_ordered.empty()) {
+      return plugin_paths_ordered;
+    }
+    std::vector<std::string> out;
+    if (!plugin_path.empty()) {
+      out.push_back(plugin_path);
+    }
+    for (const auto& p : auxiliary_plugin_paths) {
+      if (!p.empty()) {
+        out.push_back(p);
+      }
+    }
+    return out;
+  }
 
   // Queue configuration
   size_t queue_capacity = 1024;
@@ -456,6 +489,16 @@ private:
   bool ensure_plugin_loaded();
 
   /**
+   * First loaded plugin whose middleware is not UDP (ROS1/ROS2 recorder).
+   */
+  const AxonPluginDescriptor* get_ros_plugin_descriptor(std::string* out_name = nullptr) const;
+
+  /**
+   * UDP plugin descriptor when the UDP middleware library is loaded.
+   */
+  const AxonPluginDescriptor* get_udp_plugin_descriptor() const;
+
+  /**
    * Final middleware shutdown for recorder destruction.
    */
   void shutdown_plugins();
@@ -464,6 +507,19 @@ private:
    * Get subscription configuration for a topic
    */
   const SubscriptionConfig* get_subscription_config(const std::string& topic_name) const;
+
+  /**
+   * Pause/resume helpers that keep the recorded timeline contiguous.
+   */
+  bool pause_recording();
+  bool resume_recording();
+  void reset_pause_tracking();
+  void mark_pause_started();
+  void mark_pause_finished();
+  uint64_t current_pause_offset_ns() const;
+  uint64_t adjust_message_timestamp(uint64_t timestamp_ns) const;
+  void reset_topic_monotonic_timestamps();
+  uint64_t apply_monotonic_timestamp_for_topic(const std::string& topic, uint64_t stamp_ns);
 
   /**
    * Convert ABI status to string
@@ -491,8 +547,10 @@ private:
 
   RecorderConfig config_;
   PluginLoader plugin_loader_;
-  std::string active_plugin_name_;
-  bool plugin_initialized_ = false;
+  /// Config file / CLI plugin path order → middleware names (e.g. ROS2, UDP).
+  std::vector<std::string> plugin_startup_order_;
+  /// Per-plugin init succeeded; cleared when a legacy full `stop()` runs in-session.
+  std::unordered_map<std::string, bool> plugin_init_ok_;
   bool plugins_shutting_down_ = false;
 
   // Schema resolver for populating MCAP schema definitions from .msg files
@@ -538,7 +596,16 @@ private:
   mutable std::mutex recorder_mutex_;
 
   uint64_t last_session_final_file_size_ = 0;
+  double last_session_active_duration_sec_ = 0.0;
   std::chrono::system_clock::time_point last_session_close_time_;
+
+  mutable std::mutex pause_time_mutex_;
+  std::optional<std::chrono::steady_clock::time_point> pause_started_at_;
+  std::atomic<uint64_t> total_pause_offset_ns_{0};
+
+  /// Last MCAP log time written per topic (session-local) for optional monotonic fix.
+  mutable std::mutex topic_monotonic_mutex_;
+  std::unordered_map<std::string, uint64_t> last_written_log_time_ns_by_topic_;
 
   // Per-topic rate limiting state for drop reporting
   struct DropReportState {

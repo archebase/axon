@@ -134,6 +134,22 @@ int32_t axon_stop(void) {
   return static_cast<int32_t>(AXON_SUCCESS);
 }
 
+// ABI v1.3: stop per-recording receivers without destroying initialized plugin state.
+int32_t axon_session_stop(void) {
+  std::lock_guard<std::mutex> lock(g_plugin_mutex);
+
+  if (!g_plugin) {
+    return static_cast<int32_t>(AXON_SUCCESS);
+  }
+
+  if (!g_plugin->stop_session()) {
+    return static_cast<int32_t>(AXON_ERROR_INTERNAL);
+  }
+
+  AXON_LOG_INFO("UDP plugin session stopped via C API");
+  return static_cast<int32_t>(AXON_SUCCESS);
+}
+
 int32_t axon_subscribe(
   const char* topic_name, const char* message_type, const char* options_json,
   AxonMessageCallback callback, void* user_data
@@ -174,9 +190,10 @@ int32_t axon_publish(
 
 extern "C" {
 
-// Version information
+// Version information.
+// v1.3: AxonSessionStopFn exposed via vtable.reserved[1].
 #define AXON_ABI_VERSION_MAJOR 1
-#define AXON_ABI_VERSION_MINOR 0
+#define AXON_ABI_VERSION_MINOR 3
 
 // Plugin vtable structure (matching loader's expectation)
 struct AxonPluginVtable {
@@ -206,7 +223,15 @@ static AxonPluginVtable udp_vtable = {
   axon_stop,
   axon_subscribe,
   axon_publish,
-  {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}
+  {nullptr,
+   reinterpret_cast<void*>(&axon_session_stop),
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr,
+   nullptr}
 };
 
 // Exported plugin descriptor

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(axon_recorder VERSION 0.3.4)
+project(axon_recorder VERSION 0.3.5)
 
 # =============================================================================
 # Installation Configuration
@@ -213,6 +213,7 @@ install(TARGETS axon_recorder RUNTIME DESTINATION bin)
 # Tests
 # =============================================================================
 if(AXON_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(
         ${CMAKE_CURRENT_SOURCE_DIR}/test
         ${CMAKE_CURRENT_BINARY_DIR}/test
