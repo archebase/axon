@@ -15,6 +15,7 @@ packaging/deb/
 ├── recorder/         # axon-recorder package
 ├── config/           # axon-config package
 ├── dispatcher/       # axon-dispatcher package
+├── agent/            # axon-agent package
 ├── meta-all/         # axon-all meta-package
 ├── plugin-ros1/      # axon-plugin-ros1 package
 ├── plugin-ros2/      # axon-plugin-ros2 package
@@ -31,6 +32,7 @@ packaging/deb/
 | `axon-panel` | Web control panel (embedded assets) |
 | `axon-transfer` | S3 transfer daemon |
 | `axon-dispatcher` | Unified CLI dispatcher (`axon` command) |
+| `axon-agent` | Orchestration and process management agent |
 | `axon-all` | Meta-package installing all core tools |
 | `axon-plugin-ros2` | ROS2 (Humble/Jazzy/Rolling) plugin |
 | `axon-plugin-ros1` | ROS1 (Noetic) plugin |

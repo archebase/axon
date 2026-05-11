@@ -1,0 +1,6 @@
+axon-agent (0.1.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Add systemd service, default environment file, and runtime directory setup.
+
+ -- ArcheBase <noreply@archebase.com>  Thu, 20 Mar 2026 00:00:00 +0800

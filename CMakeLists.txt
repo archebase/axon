@@ -14,7 +14,7 @@
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.14)
-project(Axon VERSION 0.3.4 LANGUAGES CXX)
+project(Axon VERSION 0.3.5 LANGUAGES CXX)
 
 # =============================================================================
 # Centralized Path Definitions
@@ -177,6 +177,13 @@ if(EXISTS "${AXON_APPS_DIR}/axon_transfer/CMakeLists.txt")
     add_subdirectory(
         ${AXON_APPS_DIR}/axon_transfer
         ${CMAKE_CURRENT_BINARY_DIR}/axon_transfer
+    )
+endif()
+
+if(EXISTS "${AXON_APPS_DIR}/axon_agent/CMakeLists.txt")
+    add_subdirectory(
+        ${AXON_APPS_DIR}/axon_agent
+        ${CMAKE_CURRENT_BINARY_DIR}/axon_agent
     )
 endif()
 

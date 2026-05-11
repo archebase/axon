@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+adapter_id: demo_robot
+robot_model: demo
+library: libaxon_demo_robot.so
+abi_version: 1
+entry_symbol: axon_agent_create_adapter
+auto_start: false
+capabilities:
+  - startup_program
+  - health_report
+  - recorder_profile
+
+managed_processes:
+  robot_startup:
+    executable: /bin/sleep
+    args:
+      - "3600"
+    working_directory: .
+    env:
+      AXON_PROFILE: demo_robot

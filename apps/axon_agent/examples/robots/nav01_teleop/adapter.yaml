@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+adapter_id: nav01_teleop
+robot_model: nav01
+library: libaxon_nav01_teleop.so
+abi_version: 1
+entry_symbol: axon_agent_create_adapter
+auto_start: false
+capabilities:
+  - startup_program
+  - health_report
+
+managed_processes:
+  robot_startup:
+    executable: /home/nav01/start_teleop.sh
+    working_directory: /home/nav01
+    env:
+      HOME: /home/nav01
+      AXON_PROFILE: nav01_teleop

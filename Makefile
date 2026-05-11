@@ -1069,7 +1069,7 @@ ci-local-reuse-sbom:
 
 PACKAGE_DIR := packaging/deb
 
-# package-core: Build core packages in Docker (recorder, config, panel, transfer, dispatcher)
+# package-core: Build core packages in Docker (recorder, config, panel, transfer, dispatcher, agent)
 .PHONY: package-core
 package-core:
 	@printf "%s\n" "$(YELLOW)Building core packages in Docker (parallel)...$(NC)"

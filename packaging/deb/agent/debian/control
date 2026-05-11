@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-agent
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libboost-dev,
+               libboost-system-dev,
+               libyaml-cpp-dev,
+               nlohmann-json3-dev
+
+Package: axon-agent
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         adduser,
+         axon-recorder,
+         axon-config,
+         axon-transfer
+Description: Axon orchestration and process management agent
+ Agent service that orchestrates Axon components and profiles.
+ .
+ Features:
+  - Profile-based process orchestration
+  - HTTP API for local control and status
+  - Adapter loading and process lifecycle management
+  - Example robot profile configuration assets

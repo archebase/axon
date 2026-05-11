@@ -1,0 +1,32 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+set -e
+
+if ! getent passwd axon >/dev/null 2>&1; then
+    adduser --system --no-create-home --quiet --group axon || true
+fi
+
+mkdir -p /opt/axon/robots
+chmod 755 /opt/axon/robots
+
+mkdir -p /var/lib/axon /var/lib/axon/agent /var/lib/axon/agent/logs
+chown -R axon:axon /var/lib/axon/agent
+chmod 755 /var/lib/axon /var/lib/axon/agent /var/lib/axon/agent/logs
+
+mkdir -p /var/log/axon
+chown axon:axon /var/log/axon
+chmod 755 /var/log/axon
+
+mkdir -p /etc/axon
+chmod 755 /etc/axon
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl enable axon-agent.service >/dev/null 2>&1 || true
+    if systemctl is-active --quiet axon-agent.service 2>/dev/null; then
+        systemctl restart axon-agent.service || true
+    fi
+fi
+
+exit 0

@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+set -e
+
+case "$1" in
+    remove|deconfigure)
+        if [ -d /run/systemd/system ]; then
+            if systemctl is-active --quiet axon-agent.service 2>/dev/null; then
+                systemctl stop axon-agent.service || true
+            fi
+            if systemctl is-enabled --quiet axon-agent.service 2>/dev/null; then
+                systemctl disable axon-agent.service >/dev/null 2>&1 || true
+            fi
+        fi
+        ;;
+esac
+
+exit 0
