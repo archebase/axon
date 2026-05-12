@@ -41,6 +41,7 @@ namespace {
 constexpr const char* kRegisterPath = "/api/v1/devices/register";
 constexpr const char* kConfigPathPrefix = "/configs";
 constexpr const char* kDeviceStateFilename = "device.json";
+constexpr const char* kRegistrationStatusFilename = "registration_status.json";
 
 struct RegistrationContext {
   nlohmann::json device_state;
@@ -144,12 +145,45 @@ std::string build_register_url(const std::string& keystone_url) {
   return trim_trailing_slashes(keystone_url) + kRegisterPath;
 }
 
+std::string context_value_or_empty(const RegistrationContext& context, const std::string& key) {
+  auto it = context.values.find(key);
+  return it == context.values.end() ? "" : it->second;
+}
+
+void append_query_param(
+  std::ostringstream& oss, bool& first, const std::string& key, const std::string& value
+) {
+  if (value.empty()) {
+    return;
+  }
+  oss << (first ? "?" : "&") << url_encode(key) << "=" << url_encode(value);
+  first = false;
+}
+
 std::string build_config_url(
   const std::string& keystone_url, const std::string& factory, const std::string& robot_type,
-  const std::string& filename
+  const std::string& filename, const RegistrationContext* context = nullptr
 ) {
-  return trim_trailing_slashes(keystone_url) + kConfigPathPrefix + "/" + url_encode(factory) + "/" +
-         url_encode(robot_type) + "/" + url_encode(filename);
+  std::ostringstream url;
+  url << trim_trailing_slashes(keystone_url) << kConfigPathPrefix << "/" << url_encode(factory)
+      << "/" << url_encode(robot_type) << "/" << url_encode(filename);
+
+  if (context == nullptr) {
+    return url.str();
+  }
+
+  const std::string robot_id = context_value_or_empty(*context, "robot_id");
+  if (robot_id.empty()) {
+    return url.str();
+  }
+
+  // Keystone config lookup uses site/model/serial as wire-level aliases for
+  // Axon's factory/robot_type/robot_id identity.
+  bool first = true;
+  append_query_param(url, first, "site", context_value_or_empty(*context, "factory"));
+  append_query_param(url, first, "model", context_value_or_empty(*context, "robot_type"));
+  append_query_param(url, first, "serial", robot_id);
+  return url.str();
 }
 
 std::string json_scalar_to_string(const nlohmann::json& value) {
@@ -198,6 +232,22 @@ std::string websocket_url_from_http_base(const std::string& base_url) {
 
 std::string append_url_path(const std::string& base_url, const std::string& path) {
   return trim_trailing_slashes(base_url) + path;
+}
+
+std::string redact_url_userinfo(const std::string& url) {
+  const size_t scheme = url.find("://");
+  if (scheme == std::string::npos) {
+    return url;
+  }
+
+  const size_t authority_begin = scheme + 3;
+  const size_t authority_end = url.find_first_of("/?#", authority_begin);
+  const size_t at = url.find('@', authority_begin);
+  if (at == std::string::npos || (authority_end != std::string::npos && at > authority_end)) {
+    return url;
+  }
+
+  return url.substr(0, authority_begin) + "***@" + url.substr(at + 1);
 }
 
 std::string utc_now_iso8601() {
@@ -427,10 +477,266 @@ bool read_text_file(const fs::path& path, std::string& content, std::string& err
   return true;
 }
 
+fs::path device_state_path(const std::string& config_dir) {
+  return fs::path(config_dir) / kDeviceStateFilename;
+}
+
+fs::path registration_status_path(const std::string& config_dir) {
+  return fs::path(config_dir) / kRegistrationStatusFilename;
+}
+
+bool read_json_file_if_exists(
+  const fs::path& path, nlohmann::json& value, bool& exists, std::string& error
+) {
+  exists = false;
+  if (!fs::exists(path)) {
+    return true;
+  }
+
+  std::string body;
+  if (!read_text_file(path, body, error)) {
+    return false;
+  }
+
+  try {
+    value = nlohmann::json::parse(body);
+  } catch (const nlohmann::json::exception& e) {
+    error = "failed to parse " + path.string() + ": " + std::string(e.what());
+    return false;
+  }
+
+  if (!value.is_object()) {
+    error = path.string() + " must contain a JSON object";
+    return false;
+  }
+
+  exists = true;
+  return true;
+}
+
+nlohmann::json build_registration_status(
+  const RegisterOptions& options, const std::string& keystone_url, const std::string& status,
+  const std::string& error_category = "", const std::string& error_message = "",
+  const nlohmann::json* device_state = nullptr
+) {
+  const std::string now = utc_now_iso8601();
+  nlohmann::json state = {
+    {"status", status},
+    {"last_attempt_at", now},
+    {"factory", options.factory},
+    {"robot_type", options.robot_type},
+  };
+
+  const std::string normalized_keystone_url = trim_trailing_slashes(keystone_url);
+  if (!normalized_keystone_url.empty()) {
+    state["keystone_url"] = redact_url_userinfo(normalized_keystone_url);
+  }
+
+  if (status == "registered") {
+    state["last_success_at"] = now;
+  } else if (status == "failed") {
+    state["last_error_at"] = now;
+    if (!error_category.empty()) {
+      state["error_category"] = error_category;
+    }
+    if (!error_message.empty()) {
+      state["error_message"] = error_message;
+    }
+  }
+
+  if (device_state != nullptr && device_state->is_object()) {
+    const std::vector<std::string> identity_keys = {
+      "device_id", "factory_id", "robot_type_id", "robot_id", "registered_at"
+    };
+    for (const std::string& key : identity_keys) {
+      const std::string value = json_string_or_empty(*device_state, key);
+      if (!value.empty()) {
+        state[key] = value;
+      }
+    }
+  }
+
+  return state;
+}
+
+nlohmann::json build_registered_status_from_device_state(
+  const nlohmann::json& device_state, const RegisterOptions* options = nullptr,
+  const std::string& keystone_url = ""
+) {
+  nlohmann::json state = {{"status", "registered"}};
+
+  const std::string factory = json_string_or_empty(device_state, "factory");
+  const std::string robot_type = json_string_or_empty(device_state, "robot_type");
+  if (!factory.empty()) {
+    state["factory"] = factory;
+  } else if (options != nullptr && !options->factory.empty()) {
+    state["factory"] = options->factory;
+  }
+  if (!robot_type.empty()) {
+    state["robot_type"] = robot_type;
+  } else if (options != nullptr && !options->robot_type.empty()) {
+    state["robot_type"] = options->robot_type;
+  }
+
+  const std::string normalized_keystone_url = trim_trailing_slashes(keystone_url);
+  if (!normalized_keystone_url.empty()) {
+    state["keystone_url"] = redact_url_userinfo(normalized_keystone_url);
+  }
+
+  const std::vector<std::string> identity_keys = {
+    "device_id", "factory_id", "robot_type_id", "robot_id", "registered_at"
+  };
+  for (const std::string& key : identity_keys) {
+    const std::string value = json_string_or_empty(device_state, key);
+    if (!value.empty()) {
+      state[key] = value;
+    }
+  }
+
+  const std::string registered_at = json_string_or_empty(device_state, "registered_at");
+  if (!registered_at.empty()) {
+    state["last_success_at"] = registered_at;
+  }
+
+  return state;
+}
+
+bool write_registration_status(
+  const std::string& config_dir, const nlohmann::json& status, std::string& error
+) {
+  const fs::path output_path = registration_status_path(config_dir);
+  if (!write_text_file_atomic(output_path, status.dump(2) + "\n", error)) {
+    return false;
+  }
+  std::cerr << "Wrote " << output_path.string() << std::endl;
+  return true;
+}
+
+void warn_if_status_write_fails(
+  const std::string& config_dir, const nlohmann::json& status, const std::string& context
+) {
+  std::string status_error;
+  if (!write_registration_status(config_dir, status, status_error)) {
+    std::cerr << "Warning: failed to write registration status after " << context << ": "
+              << status_error << std::endl;
+  }
+}
+
+std::string register_http_error_category(long status_code) {
+  if (status_code == 401 || status_code == 403) {
+    return "authentication_failed";
+  }
+  if (status_code == 404) {
+    return "not_found";
+  }
+  if (status_code == 429) {
+    return "rate_limited";
+  }
+  if (status_code >= 400 && status_code < 500) {
+    return "client_error";
+  }
+  if (status_code >= 500) {
+    return "server_error";
+  }
+  return "http_error";
+}
+
+std::string format_register_http_error(const HttpResponse& response) {
+  std::ostringstream oss;
+  oss << "Keystone register failed";
+  if (response.status_code != 0) {
+    oss << " (HTTP " << response.status_code << ")";
+  }
+  if (!response.body.empty()) {
+    oss << ": " << response.body;
+  }
+  return oss.str();
+}
+
+bool identity_matches_options(
+  const nlohmann::json& state, const RegisterOptions& options, std::string& error
+) {
+  const std::string factory = json_string_or_empty(state, "factory");
+  const std::string robot_type = json_string_or_empty(state, "robot_type");
+
+  if (!factory.empty() && factory != options.factory) {
+    error = "device is already registered for factory '" + factory + "'";
+    return false;
+  }
+  if (!robot_type.empty() && robot_type != options.robot_type) {
+    error = "device is already registered as robot_type '" + robot_type + "'";
+    return false;
+  }
+  return true;
+}
+
+bool has_registered_identity(const nlohmann::json& state) {
+  return !json_string_or_empty(state, "device_id").empty() ||
+         !json_string_or_empty(state, "robot_id").empty();
+}
+
+bool maybe_report_existing_registration(
+  const RegisterOptions& options, const std::string& keystone_url, bool& handled, std::string& error
+) {
+  handled = false;
+
+  nlohmann::json device_state;
+  bool device_exists = false;
+  if (!read_json_file_if_exists(
+        device_state_path(options.config_dir), device_state, device_exists, error
+      )) {
+    return false;
+  }
+
+  if (device_exists && has_registered_identity(device_state)) {
+    if (!identity_matches_options(device_state, options, error)) {
+      return false;
+    }
+
+    std::cout << "Device already registered." << std::endl;
+    const std::string device_id = json_string_or_empty(device_state, "device_id");
+    if (!device_id.empty()) {
+      std::cout << "device_id: " << device_id << std::endl;
+    }
+    const std::string robot_id = json_string_or_empty(device_state, "robot_id");
+    if (!robot_id.empty()) {
+      std::cout << "robot_id: " << robot_id << std::endl;
+    }
+    std::cout << "Use 'axon_config refresh --config-dir " << options.config_dir
+              << "' to refresh configs." << std::endl;
+
+    const nlohmann::json status =
+      build_registered_status_from_device_state(device_state, &options, keystone_url);
+    warn_if_status_write_fails(options.config_dir, status, "already-registered check");
+    handled = true;
+    return true;
+  }
+
+  nlohmann::json registration_status;
+  bool status_exists = false;
+  if (!read_json_file_if_exists(
+        registration_status_path(options.config_dir), registration_status, status_exists, error
+      )) {
+    return false;
+  }
+
+  if (status_exists && json_string_or_empty(registration_status, "status") == "registered") {
+    if (!identity_matches_options(registration_status, options, error)) {
+      return false;
+    }
+    error = registration_status_path(options.config_dir).string() +
+            " says this device is already registered, but " +
+            device_state_path(options.config_dir).string() + " is missing or incomplete";
+    return false;
+  }
+
+  return true;
+}
+
 bool write_device_state(
   const RegisterOptions& options, const RegistrationContext& context, std::string& error
 ) {
-  const fs::path output_path = fs::path(options.config_dir) / kDeviceStateFilename;
+  const fs::path output_path = device_state_path(options.config_dir);
   if (!write_text_file_atomic(output_path, context.device_state.dump(2) + "\n", error)) {
     return false;
   }
@@ -465,7 +771,7 @@ bool download_keystone_configs(
 
   for (auto& file : files) {
     const std::string url =
-      build_config_url(keystone_url, options.factory, options.robot_type, file.name);
+      build_config_url(keystone_url, options.factory, options.robot_type, file.name, &context);
     std::cerr << "Downloading template " << url << std::endl;
 
     HttpResponse response = http_client.get_text(url);
@@ -714,6 +1020,10 @@ int Commands::clear(bool force) {
 }
 
 int Commands::status() {
+  return status(RegisterOptions{}.config_dir);
+}
+
+int Commands::status(const std::string& registration_config_dir) {
   auto info = cache_.get_status();
 
   std::cout << "Config Status: " << (info.enabled ? "ENABLED" : "DISABLED") << std::endl;
@@ -728,6 +1038,69 @@ int Commands::status() {
     std::cout << "Files Cached: 0" << std::endl;
     std::cout << "Total Size: 0 B" << std::endl;
     std::cout << "Last Scanned: Never" << std::endl;
+  }
+
+  std::cout << "Registration Directory: " << registration_config_dir << std::endl;
+
+  nlohmann::json registration_status;
+  bool status_exists = false;
+  std::string status_error;
+  if (!read_json_file_if_exists(
+        registration_status_path(registration_config_dir),
+        registration_status,
+        status_exists,
+        status_error
+      )) {
+    std::cout << "Registration Status: UNKNOWN" << std::endl;
+    std::cout << "Registration Error: " << status_error << std::endl;
+    return 0;
+  }
+
+  if (!status_exists) {
+    nlohmann::json device_state;
+    bool device_exists = false;
+    if (!read_json_file_if_exists(
+          device_state_path(registration_config_dir), device_state, device_exists, status_error
+        )) {
+      std::cout << "Registration Status: UNKNOWN" << std::endl;
+      std::cout << "Registration Error: " << status_error << std::endl;
+      return 0;
+    }
+
+    if (!device_exists || !has_registered_identity(device_state)) {
+      std::cout << "Registration Status: NOT REGISTERED" << std::endl;
+      return 0;
+    }
+
+    registration_status = build_registered_status_from_device_state(device_state);
+  }
+
+  const std::string status = json_string_or_empty(registration_status, "status");
+  std::cout << "Registration Status: " << (status.empty() ? "UNKNOWN" : [&status]() {
+    std::string upper = status;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
+      return static_cast<char>(std::toupper(c));
+    });
+    return upper;
+  }()) << std::endl;
+
+  const std::vector<std::string> status_keys = {
+    "factory", "robot_type", "device_id", "robot_id", "last_attempt_at", "last_success_at"
+  };
+  for (const std::string& key : status_keys) {
+    const std::string value = json_string_or_empty(registration_status, key);
+    if (!value.empty()) {
+      std::cout << key << ": " << value << std::endl;
+    }
+  }
+
+  const std::string error_category = json_string_or_empty(registration_status, "error_category");
+  const std::string error_message = json_string_or_empty(registration_status, "error_message");
+  if (!error_category.empty()) {
+    std::cout << "error_category: " << error_category << std::endl;
+  }
+  if (!error_message.empty()) {
+    std::cout << "error_message: " << error_message << std::endl;
   }
 
   return 0;
@@ -760,6 +1133,16 @@ int Commands::register_device(const RegisterOptions& options) {
     return 1;
   }
 
+  bool already_handled = false;
+  std::string existing_error;
+  if (!maybe_report_existing_registration(options, keystone_url, already_handled, existing_error)) {
+    std::cerr << "Error: " << existing_error << std::endl;
+    return 1;
+  }
+  if (already_handled) {
+    return 0;
+  }
+
   const std::string url = build_register_url(keystone_url);
   const std::string payload = build_register_payload(options.factory, options.robot_type);
 
@@ -772,6 +1155,14 @@ int Commands::register_device(const RegisterOptions& options) {
   HttpClient http_client(http_options);
   HttpResponse response = http_client.post_json(url, payload);
   if (!response.error.empty()) {
+    const nlohmann::json status = build_registration_status(
+      options,
+      keystone_url,
+      "failed",
+      "network_error",
+      "failed to register device: " + response.error
+    );
+    warn_if_status_write_fails(options.config_dir, status, "network failure");
     std::cerr << "Error: failed to register device: " << response.error << std::endl;
     return 1;
   }
@@ -780,13 +1171,29 @@ int Commands::register_device(const RegisterOptions& options) {
     RegistrationContext context;
     std::string context_error;
     if (!build_registration_context(options, keystone_url, response.body, context, context_error)) {
+      const nlohmann::json status = build_registration_status(
+        options, keystone_url, "failed", "invalid_response", context_error
+      );
+      warn_if_status_write_fails(options.config_dir, status, "invalid response");
       std::cerr << "Error: " << context_error << std::endl;
       return 1;
     }
 
     std::string state_error;
     if (!write_device_state(options, context, state_error)) {
+      const nlohmann::json status = build_registration_status(
+        options, keystone_url, "failed", "state_write_error", state_error
+      );
+      warn_if_status_write_fails(options.config_dir, status, "device state write failure");
       std::cerr << "Error: " << state_error << std::endl;
+      return 1;
+    }
+
+    std::string status_error;
+    const nlohmann::json status =
+      build_registration_status(options, keystone_url, "registered", "", "", &context.device_state);
+    if (!write_registration_status(options.config_dir, status, status_error)) {
+      std::cerr << "Error: " << status_error << std::endl;
       return 1;
     }
 
@@ -809,14 +1216,16 @@ int Commands::register_device(const RegisterOptions& options) {
     return 0;
   }
 
-  std::cerr << "Error: Keystone register failed";
-  if (response.status_code != 0) {
-    std::cerr << " (HTTP " << response.status_code << ")";
-  }
-  if (!response.body.empty()) {
-    std::cerr << ": " << response.body;
-  }
-  std::cerr << std::endl;
+  const std::string error_message = format_register_http_error(response);
+  const nlohmann::json status = build_registration_status(
+    options,
+    keystone_url,
+    "failed",
+    register_http_error_category(response.status_code),
+    error_message
+  );
+  warn_if_status_write_fails(options.config_dir, status, "HTTP failure");
+  std::cerr << "Error: " << error_message << std::endl;
   return 1;
 }
 
@@ -873,6 +1282,7 @@ int Commands::execute(int argc, char* argv[]) {
   bool force = false;
   RegisterOptions register_options;
   RefreshOptions refresh_options;
+  std::string status_config_dir = RegisterOptions{}.config_dir;
 
   for (int i = 2; i < argc; ++i) {
     std::string arg = argv[i];
@@ -897,7 +1307,20 @@ int Commands::execute(int argc, char* argv[]) {
   } else if (command == "clear") {
     return clear(force);
   } else if (command == "status") {
-    return status();
+    if (argc > 2) {
+      std::string first_arg = argv[2];
+      if (first_arg == "help" || first_arg == "-h" || first_arg == "--help") {
+        std::cout << "Usage: axon_config status [--config-dir DIR]" << std::endl;
+        return 0;
+      }
+    }
+    std::string error;
+    if (!parse_status_args(argc, argv, status_config_dir, error)) {
+      std::cerr << "Error: " << error << std::endl;
+      std::cout << "Usage: axon_config status [--config-dir DIR]" << std::endl;
+      return 1;
+    }
+    return status(status_config_dir);
   } else if (command == "register") {
     if (argc > 2) {
       std::string first_arg = argv[2];
@@ -1139,6 +1562,39 @@ bool Commands::parse_refresh_args(
   return true;
 }
 
+bool Commands::parse_status_args(
+  int argc, char* argv[], std::string& config_dir, std::string& error
+) {
+  for (int i = 2; i < argc; ++i) {
+    std::string arg = argv[i];
+
+    auto require_value = [&](const std::string& name) -> const char* {
+      if (i + 1 >= argc) {
+        error = name + " requires a value";
+        return nullptr;
+      }
+      return argv[++i];
+    };
+
+    if (arg == "--config-dir") {
+      const char* value = require_value(arg);
+      if (value == nullptr) return false;
+      config_dir = value;
+    } else if (arg == "--verbose" || arg == "-v") {
+      verbose_ = true;
+    } else {
+      error = "unknown status option '" + arg + "'";
+      return false;
+    }
+  }
+
+  if (config_dir.empty() || is_blank(config_dir)) {
+    error = "--config-dir must not be empty";
+    return false;
+  }
+  return true;
+}
+
 void Commands::print_usage() {
   std::cout << "Usage: axon_config <command> [options]" << std::endl;
   std::cout << std::endl;
@@ -1203,6 +1659,7 @@ void Commands::print_register_usage() {
   std::cout << "  AXON_KEYSTONE_URL=http://keystone:8080 axon register --factory "
                "\"Factory Shanghai\" --robot-type SynGloves"
             << std::endl;
+  std::cout << "  axon_config status --config-dir /etc/axon" << std::endl;
 }
 
 void Commands::print_refresh_usage() {
