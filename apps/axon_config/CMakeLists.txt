@@ -87,6 +87,15 @@ axon_set_position_independent_code(axon_config)
 # Link against axon_mcap which includes MCAP implementation
 target_link_libraries(axon_config PRIVATE axon_mcap CURL::libcurl)
 
+if(TARGET nlohmann_json::nlohmann_json)
+    target_link_libraries(axon_config PRIVATE nlohmann_json::nlohmann_json)
+elseif(DEFINED nlohmann_json_SOURCE_DIR)
+    target_include_directories(
+        axon_config
+        PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include
+    )
+endif()
+
 # Apply coverage flags if enabled
 if(COMMAND axon_add_coverage)
     axon_add_coverage(axon_config)
@@ -143,6 +152,18 @@ if(AXON_CONFIG_BUILD_TESTS OR AXON_BUILD_TESTS)
         test_axon_config
         PRIVATE axon_mcap CURL::libcurl GTest::gtest GTest::gtest_main
     )
+
+    if(TARGET nlohmann_json::nlohmann_json)
+        target_link_libraries(
+            test_axon_config
+            PRIVATE nlohmann_json::nlohmann_json
+        )
+    elseif(DEFINED nlohmann_json_SOURCE_DIR)
+        target_include_directories(
+            test_axon_config
+            PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include
+        )
+    endif()
 
     target_include_directories(
         test_axon_config

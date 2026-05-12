@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
+#include <nlohmann/json.hpp>
 #include <sys/socket.h>
 
 #include <cstdlib>
@@ -229,6 +230,22 @@ private:
   std::vector<std::string> bodies_;
 };
 
+std::string read_text_file(const fs::path& path) {
+  std::ifstream file(path);
+  std::stringstream body;
+  body << file.rdbuf();
+  return body.str();
+}
+
+fs::path make_register_temp_dir(const std::string& prefix) {
+  fs::path config_dir =
+    fs::temp_directory_path() /
+    (prefix + "_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid()));
+  fs::remove_all(config_dir);
+  fs::create_directories(config_dir);
+  return config_dir;
+}
+
 class CommandsTest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -374,6 +391,8 @@ TEST(CommandsRegisterTest, PostsRegistrationRequestToKeystone) {
     "\"factory_id\":\"1\",\"robot_type\":\"SynGloves\",\"robot_type_id\":\"3\","
     "\"robot_id\":\"9\"}"
   );
+  fs::path config_dir = make_register_temp_dir("axon_register_skip_config");
+
   Commands commands;
   std::vector<std::string> args = {
     "axon_config",
@@ -384,6 +403,8 @@ TEST(CommandsRegisterTest, PostsRegistrationRequestToKeystone) {
     "SynGloves",
     "--keystone-url",
     server.url(),
+    "--config-dir",
+    config_dir.string(),
     "--skip-config-download",
   };
   std::vector<char*> argv;
@@ -397,6 +418,15 @@ TEST(CommandsRegisterTest, PostsRegistrationRequestToKeystone) {
   EXPECT_NE(server.last_request().find("POST /api/v1/devices/register "), std::string::npos);
   EXPECT_NE(server.last_request().find("Content-Type: application/json"), std::string::npos);
   EXPECT_EQ(server.last_body(), "{\"factory\":\"Factory Shanghai\",\"robot_type\":\"SynGloves\"}");
+
+  const auto device = nlohmann::json::parse(read_text_file(config_dir / "device.json"));
+  EXPECT_EQ(device.at("device_id"), "AB-F0001-T0003-000001");
+  EXPECT_EQ(device.at("factory"), "Factory Shanghai");
+  EXPECT_EQ(device.at("robot_type"), "SynGloves");
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "recorder.yaml.tpl"));
+  EXPECT_FALSE(fs::exists(config_dir / "recorder.yaml"));
+
+  fs::remove_all(config_dir);
 }
 
 TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
@@ -426,15 +456,23 @@ TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
 TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration) {
   unsetenv("AXON_KEYSTONE_URL");
   MockKeystoneServer server(std::vector<MockHttpResponse>{
-    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
-    {200, "recorder_config: true\n"},
-    {200, "transfer_config: true\n"},
+    {201,
+     "{\"device_id\":\"AB-F0001-T0003-000001\",\"factory\":\"Factory Shanghai\","
+     "\"factory_id\":\"1\",\"robot_type\":\"SynGloves\",\"robot_type_id\":\"3\","
+     "\"robot_id\":\"9\"}"},
+    {200,
+     "device_id: \"{{ device_id }}\"\n"
+     "robot_model: \"{{ robot_model }}\"\n"
+     "robot_id: \"{{ robot_id }}\"\n"
+     "rpc_url: \"{{ recorder_rpc_url }}\"\n"
+     "nested_rpc_url: \"{{ endpoints.recorder_rpc_url }}\"\n"},
+    {200,
+     "factory_id: \"{{ factory_id }}\"\n"
+     "robot_type_id: \"{{ robot_type_id }}\"\n"
+     "ws_url: \"{{ transfer_ws_url }}\"\n"
+     "keystone_url: \"{{ keystone_url }}\"\n"},
   });
-  fs::path config_dir =
-    fs::temp_directory_path() /
-    ("axon_register_config_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid()));
-  fs::remove_all(config_dir);
-  fs::create_directories(config_dir);
+  fs::path config_dir = make_register_temp_dir("axon_register_config");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
 
@@ -470,15 +508,52 @@ TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration)
     std::string::npos
   );
 
-  std::ifstream recorder(config_dir / "recorder.yaml");
-  std::ifstream transfer(config_dir / "transfer.yaml");
-  std::stringstream recorder_body;
-  std::stringstream transfer_body;
-  recorder_body << recorder.rdbuf();
-  transfer_body << transfer.rdbuf();
+  const std::string ws_base = "ws://" + server.url().substr(std::string("http://").size());
 
-  EXPECT_EQ(recorder_body.str(), "recorder_config: true\n");
-  EXPECT_EQ(transfer_body.str(), "transfer_config: true\n");
+  EXPECT_EQ(
+    read_text_file(config_dir / "templates" / "recorder.yaml.tpl"),
+    "device_id: \"{{ device_id }}\"\n"
+    "robot_model: \"{{ robot_model }}\"\n"
+    "robot_id: \"{{ robot_id }}\"\n"
+    "rpc_url: \"{{ recorder_rpc_url }}\"\n"
+    "nested_rpc_url: \"{{ endpoints.recorder_rpc_url }}\"\n"
+  );
+  EXPECT_EQ(
+    read_text_file(config_dir / "templates" / "transfer.yaml.tpl"),
+    "factory_id: \"{{ factory_id }}\"\n"
+    "robot_type_id: \"{{ robot_type_id }}\"\n"
+    "ws_url: \"{{ transfer_ws_url }}\"\n"
+    "keystone_url: \"{{ keystone_url }}\"\n"
+  );
+  EXPECT_EQ(
+    read_text_file(config_dir / "recorder.yaml"),
+    "device_id: \"AB-F0001-T0003-000001\"\n"
+    "robot_model: \"SynGloves\"\n"
+    "robot_id: \"9\"\n"
+    "rpc_url: \"" +
+      ws_base +
+      "/rpc\"\n"
+      "nested_rpc_url: \"" +
+      ws_base + "/rpc\"\n"
+  );
+  EXPECT_EQ(
+    read_text_file(config_dir / "transfer.yaml"),
+    "factory_id: \"1\"\n"
+    "robot_type_id: \"3\"\n"
+    "ws_url: \"" +
+      ws_base +
+      "/transfer\"\n"
+      "keystone_url: \"" +
+      server.url() + "\"\n"
+  );
+
+  const auto device = nlohmann::json::parse(read_text_file(config_dir / "device.json"));
+  EXPECT_EQ(device.at("device_id"), "AB-F0001-T0003-000001");
+  EXPECT_EQ(device.at("factory_id"), "1");
+  EXPECT_EQ(device.at("robot_id"), "9");
+  EXPECT_EQ(device.at("keystone_url"), server.url());
+  EXPECT_EQ(device.at("endpoints").at("recorder_rpc_url"), ws_base + "/rpc");
+  EXPECT_EQ(device.at("endpoints").at("transfer_ws_url"), ws_base + "/transfer");
 
   fs::remove_all(config_dir);
 }
@@ -489,10 +564,7 @@ TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
     {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
     {404, "{\"error\":\"config not found\"}"},
   });
-  fs::path config_dir =
-    fs::temp_directory_path() / ("axon_register_config_404_" + std::to_string(std::time(nullptr)) +
-                                 "_" + std::to_string(getpid()));
-  fs::remove_all(config_dir);
+  fs::path config_dir = make_register_temp_dir("axon_register_config_404");
 
   Commands commands;
   std::vector<std::string> args = {
@@ -516,6 +588,9 @@ TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
   server.wait();
 
   EXPECT_EQ(server.request_count(), 2);
+  EXPECT_TRUE(fs::exists(config_dir / "device.json"));
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "recorder.yaml.tpl"));
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "transfer.yaml.tpl"));
   EXPECT_FALSE(fs::exists(config_dir / "recorder.yaml"));
   EXPECT_FALSE(fs::exists(config_dir / "transfer.yaml"));
 
@@ -529,11 +604,7 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigRetur
     {200, "new_recorder: true\n"},
     {404, "{\"error\":\"transfer config not found\"}"},
   });
-  fs::path config_dir = fs::temp_directory_path() /
-                        ("axon_register_config_transfer_404_" + std::to_string(std::time(nullptr)) +
-                         "_" + std::to_string(getpid()));
-  fs::remove_all(config_dir);
-  fs::create_directories(config_dir);
+  fs::path config_dir = make_register_temp_dir("axon_register_config_transfer_404");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
 
@@ -558,16 +629,190 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigRetur
   EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
   server.wait();
 
-  std::ifstream recorder(config_dir / "recorder.yaml");
-  std::ifstream transfer(config_dir / "transfer.yaml");
-  std::stringstream recorder_body;
-  std::stringstream transfer_body;
-  recorder_body << recorder.rdbuf();
-  transfer_body << transfer.rdbuf();
+  EXPECT_EQ(server.request_count(), 3);
+  EXPECT_TRUE(fs::exists(config_dir / "device.json"));
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "recorder.yaml.tpl"));
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "transfer.yaml.tpl"));
+  EXPECT_EQ(read_text_file(config_dir / "recorder.yaml"), "old_recorder: true\n");
+  EXPECT_EQ(read_text_file(config_dir / "transfer.yaml"), "old_transfer: true\n");
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTemplateRenderingFails) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
+    {200, "device_id: \"{{ device_id }}\"\nmissing: \"{{ missing_value }}\"\n"},
+    {200, "robot_id: \"{{ robot_id }}\"\n"},
+  });
+  fs::path config_dir = make_register_temp_dir("axon_register_config_render_error");
+  std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
+  std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    server.url(),
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 1);
+  server.wait();
 
   EXPECT_EQ(server.request_count(), 3);
-  EXPECT_EQ(recorder_body.str(), "old_recorder: true\n");
-  EXPECT_EQ(transfer_body.str(), "old_transfer: true\n");
+  EXPECT_TRUE(fs::exists(config_dir / "device.json"));
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "recorder.yaml.tpl"));
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "transfer.yaml.tpl"));
+  EXPECT_EQ(read_text_file(config_dir / "recorder.yaml"), "old_recorder: true\n");
+  EXPECT_EQ(read_text_file(config_dir / "transfer.yaml"), "old_transfer: true\n");
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRefreshTest, RefreshesConfigsFromSavedDeviceState) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {200,
+     "device_id: \"{{ device_id }}\"\n"
+     "robot_id: \"{{ robot_id }}\"\n"
+     "rpc_url: \"{{ recorder_rpc_url }}\"\n"},
+    {200,
+     "factory: \"{{ factory }}\"\n"
+     "robot_type: \"{{ robot_type }}\"\n"
+     "ws_url: \"{{ transfer_ws_url }}\"\n"},
+  });
+  fs::path config_dir = make_register_temp_dir("axon_refresh_config");
+  const std::string device_body =
+    "{\n"
+    "  \"device_id\": \"AB-F0001-T0003-000001\",\n"
+    "  \"factory\": \"Factory Shanghai\",\n"
+    "  \"factory_id\": \"1\",\n"
+    "  \"robot_type\": \"SynGloves\",\n"
+    "  \"robot_type_id\": \"3\",\n"
+    "  \"robot_id\": \"9\",\n"
+    "  \"keystone_url\": \"" +
+    server.url() +
+    "\",\n"
+    "  \"registered_at\": \"2026-05-12T00:00:00Z\"\n"
+    "}\n";
+  std::ofstream(config_dir / "device.json") << device_body;
+  std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
+  std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "refresh",
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  server.wait();
+
+  const std::string ws_base = "ws://" + server.url().substr(std::string("http://").size());
+
+  EXPECT_EQ(server.request_count(), 2);
+  EXPECT_NE(
+    server.request(0).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    std::string::npos
+  );
+  EXPECT_NE(
+    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml "),
+    std::string::npos
+  );
+  EXPECT_EQ(read_text_file(config_dir / "device.json"), device_body);
+  EXPECT_EQ(
+    read_text_file(config_dir / "recorder.yaml"),
+    "device_id: \"AB-F0001-T0003-000001\"\n"
+    "robot_id: \"9\"\n"
+    "rpc_url: \"" +
+      ws_base + "/rpc\"\n"
+  );
+  EXPECT_EQ(
+    read_text_file(config_dir / "transfer.yaml"),
+    "factory: \"Factory Shanghai\"\n"
+    "robot_type: \"SynGloves\"\n"
+    "ws_url: \"" +
+      ws_base + "/transfer\"\n"
+  );
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRefreshTest, FailsWhenDeviceStateIsMissing) {
+  unsetenv("AXON_KEYSTONE_URL");
+  fs::path config_dir = make_register_temp_dir("axon_refresh_missing_device");
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "refresh",
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 1);
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRefreshTest, LeavesExistingConfigsUnchangedWhenTemplateReturns404) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {404, "{\"error\":\"config not found\"}"},
+  });
+  fs::path config_dir = make_register_temp_dir("axon_refresh_config_404");
+  std::ofstream(config_dir / "device.json") << "{\n"
+                                            << "  \"device_id\": \"AB-F0001-T0003-000001\",\n"
+                                            << "  \"factory\": \"Factory Shanghai\",\n"
+                                            << "  \"robot_type\": \"SynGloves\",\n"
+                                            << "  \"robot_id\": \"9\",\n"
+                                            << "  \"keystone_url\": \"" << server.url() << "\"\n"
+                                            << "}\n";
+  std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
+  std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "refresh",
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  server.wait();
+
+  EXPECT_EQ(server.request_count(), 1);
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "recorder.yaml.tpl"));
+  EXPECT_FALSE(fs::exists(config_dir / "templates" / "transfer.yaml.tpl"));
+  EXPECT_EQ(read_text_file(config_dir / "recorder.yaml"), "old_recorder: true\n");
+  EXPECT_EQ(read_text_file(config_dir / "transfer.yaml"), "old_transfer: true\n");
 
   fs::remove_all(config_dir);
 }

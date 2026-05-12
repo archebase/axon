@@ -8,6 +8,7 @@
  *   axon recorder [args] -> axon-recorder
  *   axon config [args]   -> axon-config
  *   axon register [args] -> axon-config register
+ *   axon refresh [args]  -> axon-config refresh
  *   axon transfer [args] -> axon-transfer
  *   axon panel [args]    -> axon-panel
  */
@@ -36,6 +37,7 @@ const Command COMMANDS[] = {
   {"recorder", "/opt/axon/bin/axon-recorder", nullptr, "Record ROS messages to MCAP"},
   {"config", "/opt/axon/bin/axon-config", nullptr, "Manage robot configuration"},
   {"register", "/opt/axon/bin/axon-config", "register", "Register device with Keystone"},
+  {"refresh", "/opt/axon/bin/axon-config", "refresh", "Refresh configs from device state"},
   {"transfer", "/opt/axon/bin/axon-transfer", nullptr, "S3 upload daemon"},
   {"panel", "/opt/axon/bin/axon-panel", nullptr, "Web control panel"},
   {"version", nullptr, nullptr, nullptr},    // Special: handled internally
@@ -54,6 +56,7 @@ void show_help(const char* program_name) {
   std::cout << "  recorder    Record ROS messages to MCAP\n";
   std::cout << "  config      Manage robot configuration\n";
   std::cout << "  register    Register device with Keystone\n";
+  std::cout << "  refresh     Refresh configs from device state\n";
   std::cout << "  transfer    S3 upload daemon\n";
   std::cout << "  panel       Web control panel\n";
   std::cout << "  version     Show version information\n";

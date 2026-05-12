@@ -13,7 +13,7 @@ _axon_completion() {
     words=("${COMP_WORDS[@]}")
     cword=$COMP_CWORD
 
-    local commands="recorder config register transfer panel version help"
+    local commands="recorder config register refresh transfer panel version help"
 
     # Complete top-level commands only
     if [[ ${cword} -eq 1 ]]; then
