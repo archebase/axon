@@ -82,6 +82,7 @@ public:
    * Execute status command
    */
   int status();
+  int status(const std::string& registration_config_dir);
 
   /**
    * Execute register command
@@ -136,6 +137,11 @@ private:
    * Print refresh command usage message
    */
   void print_refresh_usage();
+
+  /**
+   * Parse status command options.
+   */
+  bool parse_status_args(int argc, char* argv[], std::string& config_dir, std::string& error);
 
   /**
    * Parse register command options.

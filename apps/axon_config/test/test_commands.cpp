@@ -240,6 +240,10 @@ std::string read_text_file(const fs::path& path) {
   return body.str();
 }
 
+nlohmann::json read_json_file(const fs::path& path) {
+  return nlohmann::json::parse(read_text_file(path));
+}
+
 fs::path make_register_temp_dir(const std::string& prefix) {
   fs::path config_dir =
     fs::temp_directory_path() /
@@ -426,6 +430,15 @@ TEST(CommandsRegisterTest, PostsRegistrationRequestToKeystone) {
   EXPECT_EQ(device.at("device_id"), "AB-F0001-T0003-000001");
   EXPECT_EQ(device.at("factory"), "Factory Shanghai");
   EXPECT_EQ(device.at("robot_type"), "SynGloves");
+  const auto status = read_json_file(config_dir / "registration_status.json");
+  EXPECT_EQ(status.at("status"), "registered");
+  EXPECT_EQ(status.at("factory"), "Factory Shanghai");
+  EXPECT_EQ(status.at("robot_type"), "SynGloves");
+  EXPECT_EQ(status.at("device_id"), "AB-F0001-T0003-000001");
+  EXPECT_EQ(status.at("robot_id"), "9");
+  EXPECT_TRUE(status.contains("last_attempt_at"));
+  EXPECT_TRUE(status.contains("last_success_at"));
+  EXPECT_FALSE(status.contains("error_message"));
   EXPECT_FALSE(fs::exists(config_dir / "templates" / "recorder.yaml.tpl"));
   EXPECT_FALSE(fs::exists(config_dir / "recorder.yaml"));
 
@@ -435,6 +448,7 @@ TEST(CommandsRegisterTest, PostsRegistrationRequestToKeystone) {
 TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
   unsetenv("AXON_KEYSTONE_URL");
   MockKeystoneServer server(404, "{\"error\":\"factory not found\"}");
+  fs::path config_dir = make_register_temp_dir("axon_register_rejected");
   Commands commands;
   std::vector<std::string> args = {
     "axon_config",
@@ -445,6 +459,8 @@ TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
     "SynGloves",
     "--keystone-url",
     server.url(),
+    "--config-dir",
+    config_dir.string(),
   };
   std::vector<char*> argv;
   for (auto& arg : args) {
@@ -454,16 +470,64 @@ TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
   EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 1);
   server.wait();
   EXPECT_EQ(server.last_body(), "{\"factory\":\"Missing Factory\",\"robot_type\":\"SynGloves\"}");
+
+  const auto status = read_json_file(config_dir / "registration_status.json");
+  EXPECT_EQ(status.at("status"), "failed");
+  EXPECT_EQ(status.at("factory"), "Missing Factory");
+  EXPECT_EQ(status.at("robot_type"), "SynGloves");
+  EXPECT_EQ(status.at("error_category"), "not_found");
+  EXPECT_NE(status.at("error_message").get<std::string>().find("HTTP 404"), std::string::npos);
+  EXPECT_TRUE(status.contains("last_attempt_at"));
+  EXPECT_TRUE(status.contains("last_error_at"));
+  EXPECT_FALSE(fs::exists(config_dir / "device.json"));
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRegisterTest, PersistsAuthenticationFailureWithoutUrlCredentials) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(401, "{\"error\":\"unauthorized\"}");
+  fs::path config_dir = make_register_temp_dir("axon_register_auth_failed");
+  std::string keystone_url = server.url();
+  keystone_url.insert(std::string("http://").size(), "robot:secret@");
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    keystone_url,
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 1);
+  server.wait();
+
+  const auto status = read_json_file(config_dir / "registration_status.json");
+  EXPECT_EQ(status.at("status"), "failed");
+  EXPECT_EQ(status.at("error_category"), "authentication_failed");
+  const std::string status_body = status.dump();
+  EXPECT_EQ(status_body.find("secret"), std::string::npos);
+  EXPECT_NE(status.at("keystone_url").get<std::string>().find("***@"), std::string::npos);
+
+  fs::remove_all(config_dir);
 }
 
 TEST(CommandsRegisterTest, RetriesRegistrationOnTransientServerError) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {500, "{\"error\":\"temporary failure\"}"},
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {500, "{\"error\":\"temporary failure\"}"},
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_register_retry");
 
   Commands commands;
@@ -500,27 +564,139 @@ TEST(CommandsRegisterTest, RetriesRegistrationOnTransientServerError) {
   fs::remove_all(config_dir);
 }
 
+TEST(CommandsRegisterTest, RetriesAfterPersistedFailedRegistrationStatus) {
+  unsetenv("AXON_KEYSTONE_URL");
+  fs::path config_dir = make_register_temp_dir("axon_register_retry_after_failure");
+
+  {
+    MockKeystoneServer server(404, "{\"error\":\"factory not found\"}");
+    Commands commands;
+    std::vector<std::string> args = {
+      "axon_config",
+      "register",
+      "--factory",
+      "Factory Shanghai",
+      "--robot-type",
+      "SynGloves",
+      "--keystone-url",
+      server.url(),
+      "--config-dir",
+      config_dir.string(),
+      "--skip-config-download",
+    };
+    std::vector<char*> argv;
+    for (auto& arg : args) {
+      argv.push_back(arg.data());
+    }
+
+    EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 1);
+    server.wait();
+  }
+
+  EXPECT_EQ(read_json_file(config_dir / "registration_status.json").at("status"), "failed");
+
+  {
+    MockKeystoneServer server(
+      201,
+      "{\"device_id\":\"AB-F0001-T0003-000001\",\"factory\":\"Factory Shanghai\","
+      "\"factory_id\":\"1\",\"robot_type\":\"SynGloves\",\"robot_type_id\":\"3\","
+      "\"robot_id\":\"9\"}"
+    );
+    Commands commands;
+    std::vector<std::string> args = {
+      "axon_config",
+      "register",
+      "--factory",
+      "Factory Shanghai",
+      "--robot-type",
+      "SynGloves",
+      "--keystone-url",
+      server.url(),
+      "--config-dir",
+      config_dir.string(),
+      "--skip-config-download",
+    };
+    std::vector<char*> argv;
+    for (auto& arg : args) {
+      argv.push_back(arg.data());
+    }
+
+    EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+    server.wait();
+    EXPECT_EQ(server.request_count(), 1);
+  }
+
+  const auto status = read_json_file(config_dir / "registration_status.json");
+  EXPECT_EQ(status.at("status"), "registered");
+  EXPECT_EQ(status.at("robot_id"), "9");
+  EXPECT_FALSE(status.contains("error_category"));
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRegisterTest, ReportsAlreadyRegisteredWithoutNetworkCall) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(201, "{\"device_id\":\"SHOULD-NOT-BE-USED\",\"robot_id\":\"999\"}");
+  fs::path config_dir = make_register_temp_dir("axon_register_already_registered");
+  std::ofstream(config_dir / "device.json") << "{\n"
+                                            << "  \"device_id\": \"AB-F0001-T0003-000001\",\n"
+                                            << "  \"factory\": \"Factory Shanghai\",\n"
+                                            << "  \"robot_type\": \"SynGloves\",\n"
+                                            << "  \"robot_id\": \"9\",\n"
+                                            << "  \"registered_at\": \"2026-05-12T00:00:00Z\"\n"
+                                            << "}\n";
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    server.url(),
+    "--config-dir",
+    config_dir.string(),
+    "--skip-config-download",
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  testing::internal::CaptureStdout();
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  const std::string output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(output.find("Device already registered."), std::string::npos);
+  EXPECT_EQ(server.request_count(), 0);
+  const auto status = read_json_file(config_dir / "registration_status.json");
+  EXPECT_EQ(status.at("status"), "registered");
+  EXPECT_EQ(status.at("robot_id"), "9");
+
+  fs::remove_all(config_dir);
+}
+
 TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {201,
-       "{\"device_id\":\"AB-F0001-T0003-000001\",\"factory\":\"Factory Shanghai\","
-       "\"factory_id\":\"1\",\"robot_type\":\"SynGloves\",\"robot_type_id\":\"3\","
-       "\"robot_id\":\"9\"}"},
-      {200,
-       "device_id: \"{{ device_id }}\"\n"
-       "robot_model: \"{{ robot_model }}\"\n"
-       "robot_id: \"{{ robot_id }}\"\n"
-       "rpc_url: \"{{ recorder_rpc_url }}\"\n"
-       "nested_rpc_url: \"{{ endpoints.recorder_rpc_url }}\"\n"},
-      {200,
-       "factory_id: \"{{ factory_id }}\"\n"
-       "robot_type_id: \"{{ robot_type_id }}\"\n"
-       "ws_url: \"{{ transfer_ws_url }}\"\n"
-       "keystone_url: \"{{ keystone_url }}\"\n"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201,
+     "{\"device_id\":\"AB-F0001-T0003-000001\",\"factory\":\"Factory Shanghai\","
+     "\"factory_id\":\"1\",\"robot_type\":\"SynGloves\",\"robot_type_id\":\"3\","
+     "\"robot_id\":\"9\"}"},
+    {200,
+     "device_id: \"{{ device_id }}\"\n"
+     "robot_model: \"{{ robot_model }}\"\n"
+     "robot_id: \"{{ robot_id }}\"\n"
+     "rpc_url: \"{{ recorder_rpc_url }}\"\n"
+     "nested_rpc_url: \"{{ endpoints.recorder_rpc_url }}\"\n"},
+    {200,
+     "factory_id: \"{{ factory_id }}\"\n"
+     "robot_type_id: \"{{ robot_type_id }}\"\n"
+     "ws_url: \"{{ transfer_ws_url }}\"\n"
+     "keystone_url: \"{{ keystone_url }}\"\n"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_register_config");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
@@ -549,11 +725,13 @@ TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration)
   EXPECT_EQ(server.request_count(), 3);
   EXPECT_NE(server.request(0).find("POST /api/v1/devices/register "), std::string::npos);
   EXPECT_NE(
-    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
+                           "site=Factory%20Shanghai&model=SynGloves&serial=9 "),
     std::string::npos
   );
   EXPECT_NE(
-    server.request(2).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml "),
+    server.request(2).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml?"
+                           "site=Factory%20Shanghai&model=SynGloves&serial=9 "),
     std::string::npos
   );
 
@@ -609,14 +787,12 @@ TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration)
 
 TEST(CommandsRegisterTest, RetriesConfigDownloadOnRateLimit) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
-      {429, "{\"error\":\"rate limited\"}"},
-      {200, "device_id: \"{{ device_id }}\"\nrobot_id: \"{{ robot_id }}\"\n"},
-      {200, "transfer_device: \"{{ device_id }}\"\n"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
+    {429, "{\"error\":\"rate limited\"}"},
+    {200, "device_id: \"{{ device_id }}\"\nrobot_id: \"{{ robot_id }}\"\n"},
+    {200, "transfer_device: \"{{ device_id }}\"\n"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_register_config_retry");
 
   Commands commands;
@@ -642,15 +818,18 @@ TEST(CommandsRegisterTest, RetriesConfigDownloadOnRateLimit) {
 
   EXPECT_EQ(server.request_count(), 4);
   EXPECT_NE(
-    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
+                           "site=Factory%20Shanghai&model=SynGloves&serial=9 "),
     std::string::npos
   );
   EXPECT_NE(
-    server.request(2).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    server.request(2).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
+                           "site=Factory%20Shanghai&model=SynGloves&serial=9 "),
     std::string::npos
   );
   EXPECT_NE(
-    server.request(3).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml "),
+    server.request(3).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml?"
+                           "site=Factory%20Shanghai&model=SynGloves&serial=9 "),
     std::string::npos
   );
   EXPECT_EQ(
@@ -666,12 +845,10 @@ TEST(CommandsRegisterTest, RetriesConfigDownloadOnRateLimit) {
 
 TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
-      {404, "{\"error\":\"config not found\"}"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+    {404, "{\"error\":\"config not found\"}"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_register_config_404");
 
   Commands commands;
@@ -707,13 +884,11 @@ TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
 
 TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigReturns404) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
-      {200, "new_recorder: true\n"},
-      {404, "{\"error\":\"transfer config not found\"}"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+    {200, "new_recorder: true\n"},
+    {404, "{\"error\":\"transfer config not found\"}"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_register_config_transfer_404");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
@@ -751,13 +926,11 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigRetur
 
 TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTemplateRenderingFails) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
-      {200, "device_id: \"{{ device_id }}\"\nmissing: \"{{ missing_value }}\"\n"},
-      {200, "robot_id: \"{{ robot_id }}\"\n"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
+    {200, "device_id: \"{{ device_id }}\"\nmissing: \"{{ missing_value }}\"\n"},
+    {200, "robot_id: \"{{ robot_id }}\"\n"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_register_config_render_error");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
@@ -795,18 +968,16 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTemplateRenderingFa
 
 TEST(CommandsRefreshTest, RefreshesConfigsFromSavedDeviceState) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {200,
-       "device_id: \"{{ device_id }}\"\n"
-       "robot_id: \"{{ robot_id }}\"\n"
-       "rpc_url: \"{{ recorder_rpc_url }}\"\n"},
-      {200,
-       "factory: \"{{ factory }}\"\n"
-       "robot_type: \"{{ robot_type }}\"\n"
-       "ws_url: \"{{ transfer_ws_url }}\"\n"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {200,
+     "device_id: \"{{ device_id }}\"\n"
+     "robot_id: \"{{ robot_id }}\"\n"
+     "rpc_url: \"{{ recorder_rpc_url }}\"\n"},
+    {200,
+     "factory: \"{{ factory }}\"\n"
+     "robot_type: \"{{ robot_type }}\"\n"
+     "ws_url: \"{{ transfer_ws_url }}\"\n"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_refresh_config");
   const std::string device_body =
     "{\n"
@@ -844,11 +1015,13 @@ TEST(CommandsRefreshTest, RefreshesConfigsFromSavedDeviceState) {
 
   EXPECT_EQ(server.request_count(), 2);
   EXPECT_NE(
-    server.request(0).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    server.request(0).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
+                           "site=Factory%20Shanghai&model=SynGloves&serial=9 "),
     std::string::npos
   );
   EXPECT_NE(
-    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml "),
+    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml?"
+                           "site=Factory%20Shanghai&model=SynGloves&serial=9 "),
     std::string::npos
   );
   EXPECT_EQ(read_text_file(config_dir / "device.json"), device_body);
@@ -893,11 +1066,9 @@ TEST(CommandsRefreshTest, FailsWhenDeviceStateIsMissing) {
 
 TEST(CommandsRefreshTest, LeavesExistingConfigsUnchangedWhenTemplateReturns404) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(
-    std::vector<MockHttpResponse>{
-      {404, "{\"error\":\"config not found\"}"},
-    }
-  );
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {404, "{\"error\":\"config not found\"}"},
+  });
   fs::path config_dir = make_register_temp_dir("axon_refresh_config_404");
   std::ofstream(config_dir / "device.json") << "{\n"
                                             << "  \"device_id\": \"AB-F0001-T0003-000001\",\n"
@@ -929,6 +1100,43 @@ TEST(CommandsRefreshTest, LeavesExistingConfigsUnchangedWhenTemplateReturns404) 
   EXPECT_FALSE(fs::exists(config_dir / "templates" / "transfer.yaml.tpl"));
   EXPECT_EQ(read_text_file(config_dir / "recorder.yaml"), "old_recorder: true\n");
   EXPECT_EQ(read_text_file(config_dir / "transfer.yaml"), "old_transfer: true\n");
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsStatusTest, ShowsRegistrationStateFromStatusFile) {
+  fs::path config_dir = make_register_temp_dir("axon_status_registration");
+  std::ofstream(config_dir / "registration_status.json")
+    << "{\n"
+    << "  \"status\": \"registered\",\n"
+    << "  \"factory\": \"Factory Shanghai\",\n"
+    << "  \"robot_type\": \"SynGloves\",\n"
+    << "  \"device_id\": \"AB-F0001-T0003-000001\",\n"
+    << "  \"robot_id\": \"9\",\n"
+    << "  \"last_attempt_at\": \"2026-05-12T00:00:00Z\",\n"
+    << "  \"last_success_at\": \"2026-05-12T00:00:00Z\"\n"
+    << "}\n";
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "status",
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  testing::internal::CaptureStdout();
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  const std::string output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(output.find("Registration Directory: " + config_dir.string()), std::string::npos);
+  EXPECT_NE(output.find("Registration Status: REGISTERED"), std::string::npos);
+  EXPECT_NE(output.find("device_id: AB-F0001-T0003-000001"), std::string::npos);
+  EXPECT_NE(output.find("robot_id: 9"), std::string::npos);
 
   fs::remove_all(config_dir);
 }
