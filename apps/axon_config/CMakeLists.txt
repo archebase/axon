@@ -75,7 +75,7 @@ endif()
 # Source files
 # =============================================================================
 
-set(SOURCES axon_config.cpp commands.cpp config_cache.cpp)
+set(SOURCES axon_config.cpp commands.cpp config_cache.cpp http_client.cpp)
 
 # =============================================================================
 # Create executable
@@ -134,9 +134,11 @@ if(AXON_CONFIG_BUILD_TESTS OR AXON_BUILD_TESTS)
     set(TEST_SOURCES
         test/test_config_cache.cpp
         test/test_commands.cpp
+        test/test_http_client.cpp
         test/test_main.cpp
         commands.cpp
         config_cache.cpp
+        http_client.cpp
     )
 
     # Create test executable

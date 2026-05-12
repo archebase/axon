@@ -4,7 +4,6 @@
 
 #include "commands.hpp"
 
-#include <curl/curl.h>
 #include <mcap/mcap.hpp>
 #include <mcap/reader.hpp>
 #include <nlohmann/json.hpp>
@@ -18,13 +17,13 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <random>
 #include <sstream>
 #include <system_error>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "http_client.hpp"
 
 namespace axon {
 namespace config {
@@ -42,17 +41,6 @@ namespace {
 constexpr const char* kRegisterPath = "/api/v1/devices/register";
 constexpr const char* kConfigPathPrefix = "/configs";
 constexpr const char* kDeviceStateFilename = "device.json";
-constexpr int kHttpMaxAttempts = 3;
-constexpr auto kHttpInitialRetryDelay = std::chrono::milliseconds(200);
-constexpr auto kHttpMaxRetryDelay = std::chrono::seconds(2);
-constexpr int kHttpRetryJitterPercent = 25;
-
-struct HttpResponse {
-  long status_code = 0;
-  CURLcode curl_code = CURLE_OK;
-  std::string body;
-  std::string error;
-};
 
 struct RegistrationContext {
   nlohmann::json device_state;
@@ -387,207 +375,6 @@ bool render_template(
   return true;
 }
 
-size_t write_curl_response(char* ptr, size_t size, size_t nmemb, void* userdata) {
-  auto* body = static_cast<std::string*>(userdata);
-  const size_t bytes = size * nmemb;
-  body->append(ptr, bytes);
-  return bytes;
-}
-
-class CurlGlobalState {
-public:
-  CurlGlobalState()
-      : code_(curl_global_init(CURL_GLOBAL_DEFAULT)) {}
-
-  ~CurlGlobalState() {
-    if (code_ == CURLE_OK) {
-      curl_global_cleanup();
-    }
-  }
-
-  CURLcode code() const {
-    return code_;
-  }
-
-private:
-  CURLcode code_;
-};
-
-CURLcode ensure_curl_global_initialized() {
-  // Function-local static initialization is thread-safe in C++11 and later.
-  static const CurlGlobalState state;
-  return state.code();
-}
-
-bool is_retryable_curl_error(CURLcode code) {
-  switch (code) {
-    case CURLE_COULDNT_RESOLVE_PROXY:
-    case CURLE_COULDNT_RESOLVE_HOST:
-    case CURLE_COULDNT_CONNECT:
-    case CURLE_OPERATION_TIMEDOUT:
-    case CURLE_SEND_ERROR:
-    case CURLE_RECV_ERROR:
-    case CURLE_GOT_NOTHING:
-    case CURLE_PARTIAL_FILE:
-    case CURLE_SSL_CONNECT_ERROR:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool is_retryable_http_status(long status_code) {
-  return status_code == 429 || (status_code >= 500 && status_code <= 599);
-}
-
-bool is_retryable_response(const HttpResponse& response) {
-  if (response.curl_code != CURLE_OK) {
-    return is_retryable_curl_error(response.curl_code);
-  }
-  return is_retryable_http_status(response.status_code);
-}
-
-std::chrono::milliseconds retry_delay_for_attempt(int retry_index) {
-  auto delay = kHttpInitialRetryDelay;
-  for (int i = 0; i < retry_index && delay < kHttpMaxRetryDelay; ++i) {
-    delay *= 2;
-  }
-  if (delay > kHttpMaxRetryDelay) {
-    delay = kHttpMaxRetryDelay;
-  }
-
-  const auto jitter_range = delay.count() * kHttpRetryJitterPercent / 100;
-  if (jitter_range <= 0) {
-    return delay;
-  }
-
-  static thread_local std::mt19937 generator(std::random_device{}());
-  std::uniform_int_distribution<long long> distribution(-jitter_range, jitter_range);
-  return delay + std::chrono::milliseconds(distribution(generator));
-}
-
-std::string retry_reason(const HttpResponse& response) {
-  if (response.curl_code != CURLE_OK) {
-    return response.error;
-  }
-  return "HTTP " + std::to_string(response.status_code);
-}
-
-template<typename RequestFn>
-HttpResponse request_with_retries(
-  const std::string& method, const std::string& url, RequestFn request
-) {
-  HttpResponse response;
-  for (int attempt = 1; attempt <= kHttpMaxAttempts; ++attempt) {
-    response = request();
-    if (!is_retryable_response(response) || attempt == kHttpMaxAttempts) {
-      return response;
-    }
-
-    const auto delay = retry_delay_for_attempt(attempt - 1);
-    std::cerr << "Warning: " << method << " " << url << " failed with " << retry_reason(response)
-              << "; retrying in " << delay.count() << " ms (attempt " << (attempt + 1) << "/"
-              << kHttpMaxAttempts << ")" << std::endl;
-    std::this_thread::sleep_for(delay);
-  }
-  return response;
-}
-
-HttpResponse get_text(const std::string& url, long timeout_seconds) {
-  HttpResponse response;
-
-  CURLcode global_code = ensure_curl_global_initialized();
-  if (global_code != CURLE_OK) {
-    response.curl_code = global_code;
-    response.error = curl_easy_strerror(global_code);
-    return response;
-  }
-
-  CURL* curl = curl_easy_init();
-  if (curl == nullptr) {
-    response.error = "failed to initialize curl";
-    return response;
-  }
-
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_curl_response);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response.body);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "axon-config/1.0");
-
-  CURLcode code = curl_easy_perform(curl);
-  response.curl_code = code;
-  if (code != CURLE_OK) {
-    response.error = curl_easy_strerror(code);
-  } else {
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
-  }
-
-  curl_easy_cleanup(curl);
-
-  return response;
-}
-
-HttpResponse post_json(const std::string& url, const std::string& body, long timeout_seconds) {
-  HttpResponse response;
-
-  CURLcode global_code = ensure_curl_global_initialized();
-  if (global_code != CURLE_OK) {
-    response.curl_code = global_code;
-    response.error = curl_easy_strerror(global_code);
-    return response;
-  }
-
-  CURL* curl = curl_easy_init();
-  if (curl == nullptr) {
-    response.error = "failed to initialize curl";
-    return response;
-  }
-
-  struct curl_slist* headers = nullptr;
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(headers, "Accept: application/json");
-
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_POST, 1L);
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_curl_response);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response.body);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "axon-config/1.0");
-
-  CURLcode code = curl_easy_perform(curl);
-  response.curl_code = code;
-  if (code != CURLE_OK) {
-    response.error = curl_easy_strerror(code);
-  } else {
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
-  }
-
-  curl_slist_free_all(headers);
-  curl_easy_cleanup(curl);
-
-  return response;
-}
-
-HttpResponse get_text_with_retries(const std::string& url, long timeout_seconds) {
-  return request_with_retries("GET", url, [&]() {
-    return get_text(url, timeout_seconds);
-  });
-}
-
-HttpResponse post_json_with_retries(
-  const std::string& url, const std::string& body, long timeout_seconds
-) {
-  return request_with_retries("POST", url, [&]() {
-    return post_json(url, body, timeout_seconds);
-  });
-}
-
 bool write_text_file_atomic(const fs::path& path, const std::string& content, std::string& error) {
   std::error_code ec;
   fs::create_directories(path.parent_path(), ec);
@@ -672,13 +459,16 @@ bool download_keystone_configs(
   };
 
   std::vector<ConfigFile> files = {{"recorder.yaml", "", ""}, {"transfer.yaml", "", ""}};
+  HttpClientOptions http_options;
+  http_options.timeout_seconds = options.timeout_seconds;
+  HttpClient http_client(http_options);
 
   for (auto& file : files) {
     const std::string url =
       build_config_url(keystone_url, options.factory, options.robot_type, file.name);
     std::cerr << "Downloading template " << url << std::endl;
 
-    HttpResponse response = get_text_with_retries(url, options.timeout_seconds);
+    HttpResponse response = http_client.get_text(url);
     if (!response.error.empty()) {
       error = "failed to download " + file.name + " template: " + response.error;
       return false;
@@ -977,7 +767,10 @@ int Commands::register_device(const RegisterOptions& options) {
     std::cout << "POST " << url << std::endl;
   }
 
-  HttpResponse response = post_json_with_retries(url, payload, options.timeout_seconds);
+  HttpClientOptions http_options;
+  http_options.timeout_seconds = options.timeout_seconds;
+  HttpClient http_client(http_options);
+  HttpResponse response = http_client.post_json(url, payload);
   if (!response.error.empty()) {
     std::cerr << "Error: failed to register device: " << response.error << std::endl;
     return 1;
