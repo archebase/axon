@@ -14,9 +14,12 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 namespace axon {
@@ -33,6 +36,7 @@ static const std::vector<std::string> DEFAULT_SUBDIRS = {
 namespace {
 
 constexpr const char* kRegisterPath = "/api/v1/devices/register";
+constexpr const char* kConfigPathPrefix = "/configs";
 
 struct HttpResponse {
   long status_code = 0;
@@ -51,6 +55,24 @@ std::string trim_trailing_slashes(std::string value) {
     value.pop_back();
   }
   return value;
+}
+
+bool is_unreserved_url_char(unsigned char c) {
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+         c == '_' || c == '.' || c == '~';
+}
+
+std::string url_encode(const std::string& value) {
+  std::ostringstream oss;
+  oss << std::uppercase << std::hex;
+  for (unsigned char c : value) {
+    if (is_unreserved_url_char(c)) {
+      oss << static_cast<char>(c);
+    } else {
+      oss << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(c) << std::setfill(' ');
+    }
+  }
+  return oss.str();
 }
 
 std::string json_escape(const std::string& value) {
@@ -102,11 +124,55 @@ std::string build_register_url(const std::string& keystone_url) {
   return trim_trailing_slashes(keystone_url) + kRegisterPath;
 }
 
+std::string build_config_url(
+  const std::string& keystone_url, const std::string& factory, const std::string& robot_type,
+  const std::string& filename
+) {
+  return trim_trailing_slashes(keystone_url) + kConfigPathPrefix + "/" + url_encode(factory) + "/" +
+         url_encode(robot_type) + "/" + url_encode(filename);
+}
+
 size_t write_curl_response(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* body = static_cast<std::string*>(userdata);
   const size_t bytes = size * nmemb;
   body->append(ptr, bytes);
   return bytes;
+}
+
+HttpResponse get_text(const std::string& url, long timeout_seconds) {
+  HttpResponse response;
+
+  CURLcode global_code = curl_global_init(CURL_GLOBAL_DEFAULT);
+  if (global_code != CURLE_OK) {
+    response.error = curl_easy_strerror(global_code);
+    return response;
+  }
+
+  CURL* curl = curl_easy_init();
+  if (curl == nullptr) {
+    response.error = "failed to initialize curl";
+    curl_global_cleanup();
+    return response;
+  }
+
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_curl_response);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response.body);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "axon-config/1.0");
+
+  CURLcode code = curl_easy_perform(curl);
+  if (code != CURLE_OK) {
+    response.error = curl_easy_strerror(code);
+  } else {
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
+  }
+
+  curl_easy_cleanup(curl);
+  curl_global_cleanup();
+
+  return response;
 }
 
 HttpResponse post_json(const std::string& url, const std::string& body, long timeout_seconds) {
@@ -152,6 +218,91 @@ HttpResponse post_json(const std::string& url, const std::string& body, long tim
   curl_global_cleanup();
 
   return response;
+}
+
+bool write_text_file_atomic(const fs::path& path, const std::string& content, std::string& error) {
+  std::error_code ec;
+  fs::create_directories(path.parent_path(), ec);
+  if (ec) {
+    error = "failed to create directory " + path.parent_path().string() + ": " + ec.message();
+    return false;
+  }
+
+  fs::path tmp_path = path;
+  tmp_path += ".tmp";
+
+  {
+    std::ofstream file(tmp_path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+      error = "failed to open " + tmp_path.string() + " for writing";
+      return false;
+    }
+    file << content;
+    if (!file) {
+      error = "failed to write " + tmp_path.string();
+      return false;
+    }
+  }
+
+  fs::rename(tmp_path, path, ec);
+  if (ec) {
+    fs::remove(tmp_path);
+    error = "failed to replace " + path.string() + ": " + ec.message();
+    return false;
+  }
+
+  return true;
+}
+
+bool download_keystone_configs(
+  const RegisterOptions& options, const std::string& keystone_url, std::string& error
+) {
+  struct ConfigFile {
+    std::string name;
+    std::string body;
+  };
+
+  std::vector<ConfigFile> files = {{"recorder.yaml", ""}, {"transfer.yaml", ""}};
+
+  for (auto& file : files) {
+    const std::string url =
+      build_config_url(keystone_url, options.factory, options.robot_type, file.name);
+    std::cerr << "Downloading " << url << std::endl;
+
+    HttpResponse response = get_text(url, options.timeout_seconds);
+    if (!response.error.empty()) {
+      error = "failed to download " + file.name + ": " + response.error;
+      return false;
+    }
+
+    if (response.status_code == 404) {
+      std::cerr << "Warning: Keystone config not found (HTTP 404): " << url << std::endl;
+      std::cerr << "Warning: skipped downloading recorder.yaml and transfer.yaml" << std::endl;
+      return true;
+    }
+
+    if (response.status_code < 200 || response.status_code >= 300) {
+      std::ostringstream oss;
+      oss << "failed to download " << file.name << " (HTTP " << response.status_code << ")";
+      if (!response.body.empty()) {
+        oss << ": " << response.body;
+      }
+      error = oss.str();
+      return false;
+    }
+
+    file.body = std::move(response.body);
+  }
+
+  for (const auto& file : files) {
+    const fs::path output_path = fs::path(options.config_dir) / file.name;
+    if (!write_text_file_atomic(output_path, file.body, error)) {
+      return false;
+    }
+    std::cerr << "Wrote " << output_path.string() << std::endl;
+  }
+
+  return true;
 }
 
 }  // namespace
@@ -318,6 +469,11 @@ int Commands::register_device(const RegisterOptions& options) {
               << std::endl;
     return 1;
   }
+  if (options.fetch_configs && (options.config_dir.empty() || is_blank(options.config_dir))) {
+    std::cerr << "Error: config directory is required unless --skip-config-download is used."
+              << std::endl;
+    return 1;
+  }
 
   const std::string url = build_register_url(keystone_url);
   const std::string payload = build_register_payload(options.factory, options.robot_type);
@@ -333,6 +489,14 @@ int Commands::register_device(const RegisterOptions& options) {
   }
 
   if (response.status_code == 201) {
+    if (options.fetch_configs) {
+      std::string config_error;
+      if (!download_keystone_configs(options, keystone_url, config_error)) {
+        std::cerr << "Error: " << config_error << std::endl;
+        return 1;
+      }
+    }
+
     if (!response.body.empty()) {
       std::cout << response.body << std::endl;
     } else {
@@ -534,7 +698,8 @@ bool Commands::parse_register_args(
       const char* value = require_value(arg);
       if (value == nullptr) return false;
       options.factory = value;
-    } else if (arg == "--robot-type" || arg == "--robot_type") {
+    } else if (arg == "--robot-type" || arg == "--robot_type" || arg == "--robot-model" ||
+               arg == "--robot_model") {
       const char* value = require_value(arg);
       if (value == nullptr) return false;
       options.robot_type = value;
@@ -542,6 +707,12 @@ bool Commands::parse_register_args(
       const char* value = require_value(arg);
       if (value == nullptr) return false;
       options.keystone_url = value;
+    } else if (arg == "--config-dir") {
+      const char* value = require_value(arg);
+      if (value == nullptr) return false;
+      options.config_dir = value;
+    } else if (arg == "--skip-config-download") {
+      options.fetch_configs = false;
     } else if (arg == "--timeout") {
       const char* value = require_value(arg);
       if (value == nullptr) return false;
@@ -605,8 +776,21 @@ void Commands::print_register_usage() {
   std::cout << "Options:" << std::endl;
   std::cout << "  --keystone-url URL    Keystone base URL; can also use AXON_KEYSTONE_URL"
             << std::endl;
+  std::cout << "  --config-dir DIR      Directory for recorder.yaml and transfer.yaml "
+               "(default: /etc/axon)"
+            << std::endl;
+  std::cout << "  --skip-config-download"
+               "  Register only; do not fetch recorder/transfer configs"
+            << std::endl;
   std::cout << "  --timeout SECONDS     HTTP timeout in seconds (default: 10)" << std::endl;
   std::cout << "  --verbose, -v         Verbose output" << std::endl;
+  std::cout << std::endl;
+  std::cout << "After registration, recorder.yaml and transfer.yaml are downloaded from:"
+            << std::endl;
+  std::cout << "  <keystone>/configs/<factory>/<robot-type>/" << std::endl;
+  std::cout << "HTTP 404 from that config path is treated as a warning and leaves existing "
+               "configs unchanged."
+            << std::endl;
   std::cout << std::endl;
   std::cout << "Examples:" << std::endl;
   std::cout << "  axon_config register --factory \"Factory Shanghai\" --robot-type SynGloves "
@@ -626,6 +810,13 @@ std::string Commands::build_register_payload_for_test(
 
 std::string Commands::build_register_url_for_test(const std::string& keystone_url) {
   return build_register_url(keystone_url);
+}
+
+std::string Commands::build_config_url_for_test(
+  const std::string& keystone_url, const std::string& factory, const std::string& robot_type,
+  const std::string& filename
+) {
+  return build_config_url(keystone_url, factory, robot_type, filename);
 }
 #endif
 

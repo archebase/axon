@@ -20,7 +20,9 @@ struct RegisterOptions {
   std::string factory;
   std::string robot_type;
   std::string keystone_url;
+  std::string config_dir = "/etc/axon";
   long timeout_seconds = 10;
+  bool fetch_configs = true;
 };
 
 /**
@@ -95,6 +97,11 @@ public:
   );
 
   static std::string build_register_url_for_test(const std::string& keystone_url);
+
+  static std::string build_config_url_for_test(
+    const std::string& keystone_url, const std::string& factory, const std::string& robot_type,
+    const std::string& filename
+  );
 #endif
 
 private:

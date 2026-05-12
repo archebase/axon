@@ -17,6 +17,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "commands.hpp"
@@ -27,11 +28,19 @@ namespace axon {
 namespace config {
 namespace test {
 
+struct MockHttpResponse {
+  int status_code;
+  std::string body;
+};
+
 class MockKeystoneServer {
 public:
   MockKeystoneServer(int status_code, std::string response_body)
-      : status_code_(status_code)
-      , response_body_(std::move(response_body))
+      : MockKeystoneServer(std::vector<MockHttpResponse>{{status_code, std::move(response_body)}}) {
+  }
+
+  explicit MockKeystoneServer(std::vector<MockHttpResponse> responses)
+      : responses_(std::move(responses))
       , listen_fd_(::socket(AF_INET, SOCK_STREAM, 0)) {
     if (listen_fd_ < 0) {
       throw std::runtime_error("failed to create test socket");
@@ -63,7 +72,7 @@ public:
     port_ = ntohs(address.sin_port);
 
     thread_ = std::thread([this]() {
-      serve_once();
+      serve();
     });
   }
 
@@ -88,11 +97,25 @@ public:
   }
 
   const std::string& last_request() const {
-    return last_request_;
+    static const std::string empty;
+    return requests_.empty() ? empty : requests_.back();
   }
 
   const std::string& last_body() const {
-    return last_body_;
+    static const std::string empty;
+    return bodies_.empty() ? empty : bodies_.back();
+  }
+
+  const std::string& request(size_t index) const {
+    return requests_.at(index);
+  }
+
+  const std::string& body(size_t index) const {
+    return bodies_.at(index);
+  }
+
+  size_t request_count() const {
+    return requests_.size();
   }
 
 private:
@@ -110,10 +133,19 @@ private:
     ::close(fd);
   }
 
-  void serve_once() {
+  void serve() {
+    while (next_response_ < responses_.size()) {
+      if (!serve_one(responses_[next_response_])) {
+        break;
+      }
+      ++next_response_;
+    }
+  }
+
+  bool serve_one(const MockHttpResponse& mock_response) {
     int client_fd = ::accept(listen_fd_, nullptr, nullptr);
     if (client_fd < 0) {
-      return;
+      return false;
     }
 
     std::string request;
@@ -138,25 +170,29 @@ private:
     }
 
     if (!request.empty()) {
-      last_request_ = request;
+      requests_.push_back(request);
       size_t header_end = request.find("\r\n\r\n");
       if (header_end != std::string::npos) {
         size_t body_start = header_end + 4;
         size_t content_length = parse_content_length(request.substr(0, header_end));
-        last_body_ = request.substr(body_start, content_length);
+        bodies_.push_back(request.substr(body_start, content_length));
+      } else {
+        bodies_.emplace_back();
       }
 
       std::ostringstream response;
-      response << "HTTP/1.1 " << status_code_ << " " << reason_phrase() << "\r\n";
+      response << "HTTP/1.1 " << mock_response.status_code << " "
+               << reason_phrase(mock_response.status_code) << "\r\n";
       response << "Content-Type: application/json\r\n";
-      response << "Content-Length: " << response_body_.size() << "\r\n";
+      response << "Content-Length: " << mock_response.body.size() << "\r\n";
       response << "Connection: close\r\n\r\n";
-      response << response_body_;
+      response << mock_response.body;
       std::string response_text = response.str();
       ::send(client_fd, response_text.data(), response_text.size(), 0);
     }
 
     ::close(client_fd);
+    return !request.empty();
   }
 
   size_t parse_content_length(const std::string& headers) const {
@@ -171,23 +207,26 @@ private:
     return static_cast<size_t>(std::stoul(value));
   }
 
-  const char* reason_phrase() const {
-    if (status_code_ == 201) {
+  const char* reason_phrase(int status_code) const {
+    if (status_code == 200) {
+      return "OK";
+    }
+    if (status_code == 201) {
       return "Created";
     }
-    if (status_code_ == 404) {
+    if (status_code == 404) {
       return "Not Found";
     }
     return "Error";
   }
 
-  int status_code_;
-  std::string response_body_;
+  std::vector<MockHttpResponse> responses_;
+  size_t next_response_ = 0;
   int listen_fd_;
   uint16_t port_ = 0;
   std::thread thread_;
-  std::string last_request_;
-  std::string last_body_;
+  std::vector<std::string> requests_;
+  std::vector<std::string> bodies_;
 };
 
 class CommandsTest : public ::testing::Test {
@@ -276,6 +315,15 @@ TEST(CommandsRegisterTest, BuildsRegisterUrlWithoutDuplicateSlash) {
   );
 }
 
+TEST(CommandsRegisterTest, BuildsConfigUrlWithEncodedPathParts) {
+  EXPECT_EQ(
+    Commands::build_config_url_for_test(
+      "http://keystone:8080/", "Factory Shanghai", "Syn/Gloves", "recorder.yaml"
+    ),
+    "http://keystone:8080/configs/Factory%20Shanghai/Syn%2FGloves/recorder.yaml"
+  );
+}
+
 TEST(CommandsRegisterTest, RejectsMissingFactoryBeforeNetworkCall) {
   unsetenv("AXON_KEYSTONE_URL");
   Commands commands;
@@ -336,6 +384,7 @@ TEST(CommandsRegisterTest, PostsRegistrationRequestToKeystone) {
     "SynGloves",
     "--keystone-url",
     server.url(),
+    "--skip-config-download",
   };
   std::vector<char*> argv;
   for (auto& arg : args) {
@@ -344,6 +393,7 @@ TEST(CommandsRegisterTest, PostsRegistrationRequestToKeystone) {
 
   EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
   server.wait();
+  EXPECT_EQ(server.request_count(), 1);
   EXPECT_NE(server.last_request().find("POST /api/v1/devices/register "), std::string::npos);
   EXPECT_NE(server.last_request().find("Content-Type: application/json"), std::string::npos);
   EXPECT_EQ(server.last_body(), "{\"factory\":\"Factory Shanghai\",\"robot_type\":\"SynGloves\"}");
@@ -371,6 +421,155 @@ TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
   EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 1);
   server.wait();
   EXPECT_EQ(server.last_body(), "{\"factory\":\"Missing Factory\",\"robot_type\":\"SynGloves\"}");
+}
+
+TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+    {200, "recorder_config: true\n"},
+    {200, "transfer_config: true\n"},
+  });
+  fs::path config_dir =
+    fs::temp_directory_path() /
+    ("axon_register_config_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid()));
+  fs::remove_all(config_dir);
+  fs::create_directories(config_dir);
+  std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
+  std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    server.url(),
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  server.wait();
+
+  EXPECT_EQ(server.request_count(), 3);
+  EXPECT_NE(server.request(0).find("POST /api/v1/devices/register "), std::string::npos);
+  EXPECT_NE(
+    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    std::string::npos
+  );
+  EXPECT_NE(
+    server.request(2).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml "),
+    std::string::npos
+  );
+
+  std::ifstream recorder(config_dir / "recorder.yaml");
+  std::ifstream transfer(config_dir / "transfer.yaml");
+  std::stringstream recorder_body;
+  std::stringstream transfer_body;
+  recorder_body << recorder.rdbuf();
+  transfer_body << transfer.rdbuf();
+
+  EXPECT_EQ(recorder_body.str(), "recorder_config: true\n");
+  EXPECT_EQ(transfer_body.str(), "transfer_config: true\n");
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+    {404, "{\"error\":\"config not found\"}"},
+  });
+  fs::path config_dir =
+    fs::temp_directory_path() / ("axon_register_config_404_" + std::to_string(std::time(nullptr)) +
+                                 "_" + std::to_string(getpid()));
+  fs::remove_all(config_dir);
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    server.url(),
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  server.wait();
+
+  EXPECT_EQ(server.request_count(), 2);
+  EXPECT_FALSE(fs::exists(config_dir / "recorder.yaml"));
+  EXPECT_FALSE(fs::exists(config_dir / "transfer.yaml"));
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigReturns404) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(std::vector<MockHttpResponse>{
+    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+    {200, "new_recorder: true\n"},
+    {404, "{\"error\":\"transfer config not found\"}"},
+  });
+  fs::path config_dir = fs::temp_directory_path() /
+                        ("axon_register_config_transfer_404_" + std::to_string(std::time(nullptr)) +
+                         "_" + std::to_string(getpid()));
+  fs::remove_all(config_dir);
+  fs::create_directories(config_dir);
+  std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
+  std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    server.url(),
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  server.wait();
+
+  std::ifstream recorder(config_dir / "recorder.yaml");
+  std::ifstream transfer(config_dir / "transfer.yaml");
+  std::stringstream recorder_body;
+  std::stringstream transfer_body;
+  recorder_body << recorder.rdbuf();
+  transfer_body << transfer.rdbuf();
+
+  EXPECT_EQ(server.request_count(), 3);
+  EXPECT_EQ(recorder_body.str(), "old_recorder: true\n");
+  EXPECT_EQ(transfer_body.str(), "old_transfer: true\n");
+
+  fs::remove_all(config_dir);
 }
 
 }  // namespace test

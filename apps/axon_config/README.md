@@ -38,6 +38,19 @@ Content-Type: application/json
 On success, Keystone returns `201 Created` and `axon-config` prints the JSON response to stdout.
 On failure, `axon-config` prints the HTTP status and response body to stderr and exits non-zero.
 
+After a successful registration, `register` downloads runtime configs from Keystone:
+
+```text
+GET <keystone>/configs/<factory>/<robot_type>/recorder.yaml
+GET <keystone>/configs/<factory>/<robot_type>/transfer.yaml
+```
+
+Both files are written to `/etc/axon/` by default, replacing the package-installed
+defaults. Use `--config-dir <dir>` to write elsewhere, or `--skip-config-download`
+to register only. If Keystone returns `404` for the config path, the command prints
+a warning, leaves existing local configs unchanged, and keeps the registration
+successful. Writing to `/etc/axon` requires sufficient permissions.
+
 The Keystone base URL can be passed with `--keystone-url` or the `AXON_KEYSTONE_URL` environment
 variable:
 
