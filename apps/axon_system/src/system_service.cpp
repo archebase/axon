@@ -5,6 +5,7 @@
 #include "system_service.hpp"
 
 #include <ctime>
+#include <system_error>
 #include <unistd.h>
 #include <utility>
 
@@ -15,8 +16,23 @@
 namespace axon {
 namespace system {
 
+namespace {
+
+ResourceCollectorOptions default_resource_options(const std::filesystem::path& state_dir) {
+  ResourceCollectorOptions options;
+  options.disk_paths = {
+    {"state_dir", state_dir},
+    {"recording_data", "/tmp/axon/recording"},
+    {"transfer_state", "/tmp/axon/transfer"},
+  };
+  return options;
+}
+
+}  // namespace
+
 SystemService::SystemService(std::filesystem::path state_dir)
     : state_dir_(std::move(state_dir))
+    , resource_collector_(default_resource_options(state_dir_))
     , started_at_(std::chrono::steady_clock::now())
     , started_at_iso_(now_iso8601()) {}
 
@@ -24,6 +40,17 @@ bool SystemService::initialize(std::string* error) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (state_dir_.empty()) {
     last_error_ = "state_dir is empty";
+    state_ = "degraded";
+    if (error != nullptr) {
+      *error = last_error_;
+    }
+    return false;
+  }
+
+  std::error_code ec;
+  std::filesystem::create_directories(state_dir_, ec);
+  if (ec) {
+    last_error_ = "failed to create state_dir: " + ec.message();
     state_ = "degraded";
     if (error != nullptr) {
       *error = last_error_;
@@ -53,11 +80,11 @@ RpcResponse SystemService::get_health() const {
   return {healthy, healthy ? "ok" : "not running", data};
 }
 
-RpcResponse SystemService::get_state() const {
+RpcResponse SystemService::get_state() {
   std::lock_guard<std::mutex> lock(mutex_);
   nlohmann::json data = {
     {"service", service_state_json()},
-    {"resources", {{"available", false}, {"message", "resource metrics not enabled in phase 1"}}},
+    {"resources", resource_collector_.collect()},
     {"processes", nlohmann::json::object()},
     {"alerts", {{"firing_count", 0}, {"last_delivery_error", ""}}},
   };
@@ -65,6 +92,11 @@ RpcResponse SystemService::get_state() const {
     data["last_error"] = last_error_;
   }
   return {true, "ok", data};
+}
+
+RpcResponse SystemService::get_metrics() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return {true, "ok", resource_collector_.collect()};
 }
 
 RpcResponse SystemService::request_shutdown() {
@@ -98,6 +130,7 @@ nlohmann::json SystemService::service_state_json() const {
     {"started_at", started_at_iso_},
     {"uptime_sec", uptime.count()},
     {"state_dir", state_dir_.lexically_normal().string()},
+    {"sample_cadence_ms", resource_collector_.cadence_json()},
     {"shutdown_requested", shutdown_requested_},
   };
 }

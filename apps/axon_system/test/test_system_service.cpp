@@ -50,9 +50,21 @@ int main() {
       state.data["service"]["shutdown_requested"].get<bool>() == false,
       "shutdown flag should start false"
     );
-    require(state.data.contains("resources"), "resources placeholder missing");
+    require(state.data["service"].contains("sample_cadence_ms"), "sample cadence missing");
+    require(state.data.contains("resources"), "resources missing");
+    require(state.data["resources"].contains("cpu"), "cpu metrics missing");
+    require(state.data["resources"].contains("memory"), "memory metrics missing");
+    require(state.data["resources"].contains("disk"), "disk metrics missing");
+    require(state.data["resources"].contains("network"), "network metrics missing");
     require(state.data.contains("processes"), "processes placeholder missing");
     require(state.data.contains("alerts"), "alerts placeholder missing");
+
+    auto metrics = service.get_metrics();
+    require(metrics.success, "metrics response failed");
+    require(metrics.data.contains("sample_cadence_ms"), "metrics cadence missing");
+    require(
+      metrics.data["sample_cadence_ms"]["unit"].get<std::string>() == "milliseconds", "cadence unit"
+    );
 
     auto health = service.get_health();
     require(health.success, "health response should be successful");

@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 
+#include "resource_collector.hpp"
 #include "rpc_response.hpp"
 
 namespace axon {
@@ -21,7 +22,8 @@ public:
 
   bool initialize(std::string* error);
   RpcResponse get_health() const;
-  RpcResponse get_state() const;
+  RpcResponse get_state();
+  RpcResponse get_metrics();
   RpcResponse request_shutdown();
   bool shutdown_requested() const;
   void mark_stopped();
@@ -32,6 +34,7 @@ private:
 
   mutable std::mutex mutex_;
   std::filesystem::path state_dir_;
+  ResourceCollector resource_collector_;
   std::chrono::steady_clock::time_point started_at_;
   std::string started_at_iso_;
   std::string state_ = "starting";

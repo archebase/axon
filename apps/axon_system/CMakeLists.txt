@@ -34,6 +34,8 @@ find_package(nlohmann_json QUIET)
 add_library(
     axon_system_core
     src/http_server.cpp
+    src/procfs_reader.cpp
+    src/resource_collector.cpp
     src/system_service.cpp
 )
 
