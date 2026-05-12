@@ -218,6 +218,9 @@ private:
     if (status_code == 404) {
       return "Not Found";
     }
+    if (status_code == 429) {
+      return "Too Many Requests";
+    }
     return "Error";
   }
 
@@ -453,6 +456,50 @@ TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
   EXPECT_EQ(server.last_body(), "{\"factory\":\"Missing Factory\",\"robot_type\":\"SynGloves\"}");
 }
 
+TEST(CommandsRegisterTest, RetriesRegistrationOnTransientServerError) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {500, "{\"error\":\"temporary failure\"}"},
+      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+    }
+  );
+  fs::path config_dir = make_register_temp_dir("axon_register_retry");
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    server.url(),
+    "--config-dir",
+    config_dir.string(),
+    "--skip-config-download",
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  server.wait();
+
+  EXPECT_EQ(server.request_count(), 2);
+  EXPECT_NE(server.request(0).find("POST /api/v1/devices/register "), std::string::npos);
+  EXPECT_NE(server.request(1).find("POST /api/v1/devices/register "), std::string::npos);
+  EXPECT_EQ(server.body(0), "{\"factory\":\"Factory Shanghai\",\"robot_type\":\"SynGloves\"}");
+  EXPECT_EQ(server.body(1), "{\"factory\":\"Factory Shanghai\",\"robot_type\":\"SynGloves\"}");
+
+  const auto device = nlohmann::json::parse(read_text_file(config_dir / "device.json"));
+  EXPECT_EQ(device.at("device_id"), "AB-F0001-T0003-000001");
+
+  fs::remove_all(config_dir);
+}
+
 TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration) {
   unsetenv("AXON_KEYSTONE_URL");
   MockKeystoneServer server(
@@ -556,6 +603,63 @@ TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration)
   EXPECT_EQ(device.at("keystone_url"), server.url());
   EXPECT_EQ(device.at("endpoints").at("recorder_rpc_url"), ws_base + "/rpc");
   EXPECT_EQ(device.at("endpoints").at("transfer_ws_url"), ws_base + "/transfer");
+
+  fs::remove_all(config_dir);
+}
+
+TEST(CommandsRegisterTest, RetriesConfigDownloadOnRateLimit) {
+  unsetenv("AXON_KEYSTONE_URL");
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
+      {429, "{\"error\":\"rate limited\"}"},
+      {200, "device_id: \"{{ device_id }}\"\nrobot_id: \"{{ robot_id }}\"\n"},
+      {200, "transfer_device: \"{{ device_id }}\"\n"},
+    }
+  );
+  fs::path config_dir = make_register_temp_dir("axon_register_config_retry");
+
+  Commands commands;
+  std::vector<std::string> args = {
+    "axon_config",
+    "register",
+    "--factory",
+    "Factory Shanghai",
+    "--robot-type",
+    "SynGloves",
+    "--keystone-url",
+    server.url(),
+    "--config-dir",
+    config_dir.string(),
+  };
+  std::vector<char*> argv;
+  for (auto& arg : args) {
+    argv.push_back(arg.data());
+  }
+
+  EXPECT_EQ(commands.execute(static_cast<int>(argv.size()), argv.data()), 0);
+  server.wait();
+
+  EXPECT_EQ(server.request_count(), 4);
+  EXPECT_NE(
+    server.request(1).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    std::string::npos
+  );
+  EXPECT_NE(
+    server.request(2).find("GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml "),
+    std::string::npos
+  );
+  EXPECT_NE(
+    server.request(3).find("GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml "),
+    std::string::npos
+  );
+  EXPECT_EQ(
+    read_text_file(config_dir / "recorder.yaml"),
+    "device_id: \"AB-F0001-T0003-000001\"\nrobot_id: \"9\"\n"
+  );
+  EXPECT_EQ(
+    read_text_file(config_dir / "transfer.yaml"), "transfer_device: \"AB-F0001-T0003-000001\"\n"
+  );
 
   fs::remove_all(config_dir);
 }
