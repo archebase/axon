@@ -5,8 +5,6 @@
 #ifndef AXON_AGENT_HTTP_SERVER_HPP
 #define AXON_AGENT_HTTP_SERVER_HPP
 
-#include "agent_service.hpp"
-
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 
@@ -15,6 +13,8 @@
 #include <memory>
 #include <string>
 #include <thread>
+
+#include "agent_service.hpp"
 
 namespace axon {
 namespace agent {
@@ -38,7 +38,9 @@ private:
   void run();
   void handle_session(boost::asio::ip::tcp::socket socket);
   Response route_request(const Request& request);
-  RpcResponse route_rpc(const std::string& path, const std::string& method, const nlohmann::json& params);
+  RpcResponse route_rpc(
+    const std::string& path, const std::string& method, const nlohmann::json& params
+  );
   static Response make_response(
     boost::beast::http::status status, const std::string& content_type, const std::string& body,
     unsigned int version, bool keep_alive

@@ -21,7 +21,9 @@ namespace http = boost::beast::http;
 using tcp = boost::asio::ip::tcp;
 
 HttpServer::HttpServer(std::string host, std::uint16_t port, AgentService& service)
-  : host_(std::move(host)), port_(port), service_(service) {}
+    : host_(std::move(host))
+    , port_(port)
+    , service_(service) {}
 
 HttpServer::~HttpServer() {
   stop();
@@ -108,19 +110,30 @@ HttpServer::Response HttpServer::route_request(const Request& request) {
   const std::string method(request.method_string());
 
   if (target == "/" || target == "/index.html") {
-    return make_response(http::status::ok, "text/html; charset=utf-8", index_html(), request.version(), request.keep_alive());
+    return make_response(
+      http::status::ok,
+      "text/html; charset=utf-8",
+      index_html(),
+      request.version(),
+      request.keep_alive()
+    );
   }
 
   if (target == "/health") {
     const nlohmann::json body = {{"success", true}, {"message", "ok"}};
-    return make_response(http::status::ok, "application/json", body.dump(2), request.version(), request.keep_alive());
+    return make_response(
+      http::status::ok, "application/json", body.dump(2), request.version(), request.keep_alive()
+    );
   }
 
   if (target == "/rpc/state" && method == "GET") {
     const auto rpc_response = service_.get_state();
     return make_response(
-      rpc_response.success ? http::status::ok : http::status::bad_request, "application/json",
-      rpc_response.to_json().dump(2), request.version(), request.keep_alive()
+      rpc_response.success ? http::status::ok : http::status::bad_request,
+      "application/json",
+      rpc_response.to_json().dump(2),
+      request.version(),
+      request.keep_alive()
     );
   }
 
@@ -132,7 +145,10 @@ HttpServer::Response HttpServer::route_request(const Request& request) {
       } catch (const std::exception& ex) {
         RpcResponse response{false, std::string("invalid json: ") + ex.what(), nullptr};
         return make_response(
-          http::status::bad_request, "application/json", response.to_json().dump(2), request.version(),
+          http::status::bad_request,
+          "application/json",
+          response.to_json().dump(2),
+          request.version(),
           request.keep_alive()
         );
       }
@@ -140,18 +156,26 @@ HttpServer::Response HttpServer::route_request(const Request& request) {
 
     auto rpc_response = route_rpc(target.substr(std::string("/agent/rpc/").size()), method, params);
     return make_response(
-      rpc_response.success ? http::status::ok : http::status::bad_request, "application/json",
-      rpc_response.to_json().dump(2), request.version(), request.keep_alive()
+      rpc_response.success ? http::status::ok : http::status::bad_request,
+      "application/json",
+      rpc_response.to_json().dump(2),
+      request.version(),
+      request.keep_alive()
     );
   }
 
   return make_response(
-    http::status::not_found, "application/json",
-    nlohmann::json({{"success", false}, {"message", "not found"}}).dump(2), request.version(), request.keep_alive()
+    http::status::not_found,
+    "application/json",
+    nlohmann::json({{"success", false}, {"message", "not found"}}).dump(2),
+    request.version(),
+    request.keep_alive()
   );
 }
 
-RpcResponse HttpServer::route_rpc(const std::string& path, const std::string& method, const nlohmann::json& params) {
+RpcResponse HttpServer::route_rpc(
+  const std::string& path, const std::string& method, const nlohmann::json& params
+) {
   if (path == "state" && method == "GET") {
     return service_.get_state();
   }
@@ -180,7 +204,8 @@ RpcResponse HttpServer::route_rpc(const std::string& path, const std::string& me
 }
 
 HttpServer::Response HttpServer::make_response(
-  http::status status, const std::string& content_type, const std::string& body, unsigned int version, bool keep_alive
+  http::status status, const std::string& content_type, const std::string& body,
+  unsigned int version, bool keep_alive
 ) {
   Response response{status, version};
   response.set(http::field::server, "axon-agent");

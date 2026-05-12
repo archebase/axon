@@ -455,23 +455,25 @@ TEST(CommandsRegisterTest, FailsWhenKeystoneRejectsRegistration) {
 
 TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(std::vector<MockHttpResponse>{
-    {201,
-     "{\"device_id\":\"AB-F0001-T0003-000001\",\"factory\":\"Factory Shanghai\","
-     "\"factory_id\":\"1\",\"robot_type\":\"SynGloves\",\"robot_type_id\":\"3\","
-     "\"robot_id\":\"9\"}"},
-    {200,
-     "device_id: \"{{ device_id }}\"\n"
-     "robot_model: \"{{ robot_model }}\"\n"
-     "robot_id: \"{{ robot_id }}\"\n"
-     "rpc_url: \"{{ recorder_rpc_url }}\"\n"
-     "nested_rpc_url: \"{{ endpoints.recorder_rpc_url }}\"\n"},
-    {200,
-     "factory_id: \"{{ factory_id }}\"\n"
-     "robot_type_id: \"{{ robot_type_id }}\"\n"
-     "ws_url: \"{{ transfer_ws_url }}\"\n"
-     "keystone_url: \"{{ keystone_url }}\"\n"},
-  });
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {201,
+       "{\"device_id\":\"AB-F0001-T0003-000001\",\"factory\":\"Factory Shanghai\","
+       "\"factory_id\":\"1\",\"robot_type\":\"SynGloves\",\"robot_type_id\":\"3\","
+       "\"robot_id\":\"9\"}"},
+      {200,
+       "device_id: \"{{ device_id }}\"\n"
+       "robot_model: \"{{ robot_model }}\"\n"
+       "robot_id: \"{{ robot_id }}\"\n"
+       "rpc_url: \"{{ recorder_rpc_url }}\"\n"
+       "nested_rpc_url: \"{{ endpoints.recorder_rpc_url }}\"\n"},
+      {200,
+       "factory_id: \"{{ factory_id }}\"\n"
+       "robot_type_id: \"{{ robot_type_id }}\"\n"
+       "ws_url: \"{{ transfer_ws_url }}\"\n"
+       "keystone_url: \"{{ keystone_url }}\"\n"},
+    }
+  );
   fs::path config_dir = make_register_temp_dir("axon_register_config");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
@@ -560,10 +562,12 @@ TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration)
 
 TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(std::vector<MockHttpResponse>{
-    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
-    {404, "{\"error\":\"config not found\"}"},
-  });
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+      {404, "{\"error\":\"config not found\"}"},
+    }
+  );
   fs::path config_dir = make_register_temp_dir("axon_register_config_404");
 
   Commands commands;
@@ -599,11 +603,13 @@ TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
 
 TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigReturns404) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(std::vector<MockHttpResponse>{
-    {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
-    {200, "new_recorder: true\n"},
-    {404, "{\"error\":\"transfer config not found\"}"},
-  });
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+      {200, "new_recorder: true\n"},
+      {404, "{\"error\":\"transfer config not found\"}"},
+    }
+  );
   fs::path config_dir = make_register_temp_dir("axon_register_config_transfer_404");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
@@ -641,11 +647,13 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigRetur
 
 TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTemplateRenderingFails) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(std::vector<MockHttpResponse>{
-    {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
-    {200, "device_id: \"{{ device_id }}\"\nmissing: \"{{ missing_value }}\"\n"},
-    {200, "robot_id: \"{{ robot_id }}\"\n"},
-  });
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
+      {200, "device_id: \"{{ device_id }}\"\nmissing: \"{{ missing_value }}\"\n"},
+      {200, "robot_id: \"{{ robot_id }}\"\n"},
+    }
+  );
   fs::path config_dir = make_register_temp_dir("axon_register_config_render_error");
   std::ofstream(config_dir / "recorder.yaml") << "old_recorder: true\n";
   std::ofstream(config_dir / "transfer.yaml") << "old_transfer: true\n";
@@ -683,16 +691,18 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTemplateRenderingFa
 
 TEST(CommandsRefreshTest, RefreshesConfigsFromSavedDeviceState) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(std::vector<MockHttpResponse>{
-    {200,
-     "device_id: \"{{ device_id }}\"\n"
-     "robot_id: \"{{ robot_id }}\"\n"
-     "rpc_url: \"{{ recorder_rpc_url }}\"\n"},
-    {200,
-     "factory: \"{{ factory }}\"\n"
-     "robot_type: \"{{ robot_type }}\"\n"
-     "ws_url: \"{{ transfer_ws_url }}\"\n"},
-  });
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {200,
+       "device_id: \"{{ device_id }}\"\n"
+       "robot_id: \"{{ robot_id }}\"\n"
+       "rpc_url: \"{{ recorder_rpc_url }}\"\n"},
+      {200,
+       "factory: \"{{ factory }}\"\n"
+       "robot_type: \"{{ robot_type }}\"\n"
+       "ws_url: \"{{ transfer_ws_url }}\"\n"},
+    }
+  );
   fs::path config_dir = make_register_temp_dir("axon_refresh_config");
   const std::string device_body =
     "{\n"
@@ -779,9 +789,11 @@ TEST(CommandsRefreshTest, FailsWhenDeviceStateIsMissing) {
 
 TEST(CommandsRefreshTest, LeavesExistingConfigsUnchangedWhenTemplateReturns404) {
   unsetenv("AXON_KEYSTONE_URL");
-  MockKeystoneServer server(std::vector<MockHttpResponse>{
-    {404, "{\"error\":\"config not found\"}"},
-  });
+  MockKeystoneServer server(
+    std::vector<MockHttpResponse>{
+      {404, "{\"error\":\"config not found\"}"},
+    }
+  );
   fs::path config_dir = make_register_temp_dir("axon_refresh_config_404");
   std::ofstream(config_dir / "device.json") << "{\n"
                                             << "  \"device_id\": \"AB-F0001-T0003-000001\",\n"

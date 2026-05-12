@@ -13,7 +13,7 @@ namespace axon {
 namespace agent {
 
 ProfileManager::ProfileManager(std::filesystem::path profile_root)
-  : profile_root_(std::move(profile_root)) {}
+    : profile_root_(std::move(profile_root)) {}
 
 bool ProfileManager::scan(std::string* error) {
   profiles_.clear();
@@ -47,9 +47,11 @@ bool ProfileManager::scan(std::string* error) {
       profiles_.push_back(std::move(profile));
     }
 
-    std::sort(profiles_.begin(), profiles_.end(), [](const RobotProfile& lhs, const RobotProfile& rhs) {
-      return lhs.profile_id < rhs.profile_id;
-    });
+    std::sort(
+      profiles_.begin(), profiles_.end(), [](const RobotProfile& lhs, const RobotProfile& rhs) {
+        return lhs.profile_id < rhs.profile_id;
+      }
+    );
     return true;
   } catch (const std::exception& ex) {
     if (error != nullptr) {
@@ -65,7 +67,8 @@ const std::vector<RobotProfile>& ProfileManager::profiles() const {
 
 const RobotProfile* ProfileManager::find_profile(const std::string& profile_id) const {
   for (const auto& profile : profiles_) {
-    if (profile.profile_id == profile_id || profile.adapter_id == profile_id || profile.robot_model == profile_id) {
+    if (profile.profile_id == profile_id || profile.adapter_id == profile_id ||
+        profile.robot_model == profile_id) {
       return &profile;
     }
   }
@@ -142,8 +145,10 @@ bool ProfileManager::parse_profile(
     profile->recorder_yaml = profile_dir / "recorder.yaml";
     profile->transfer_yaml = profile_dir / "transfer.yaml";
     profile->profile_id = profile_dir.filename().string();
-    profile->adapter_id = node["adapter_id"] ? node["adapter_id"].as<std::string>() : profile->profile_id;
-    profile->robot_model = node["robot_model"] ? node["robot_model"].as<std::string>() : profile->adapter_id;
+    profile->adapter_id =
+      node["adapter_id"] ? node["adapter_id"].as<std::string>() : profile->profile_id;
+    profile->robot_model =
+      node["robot_model"] ? node["robot_model"].as<std::string>() : profile->adapter_id;
     profile->abi_version = node["abi_version"] ? node["abi_version"].as<int>() : 1;
     profile->entry_symbol =
       node["entry_symbol"] ? node["entry_symbol"].as<std::string>() : "axon_agent_create_adapter";

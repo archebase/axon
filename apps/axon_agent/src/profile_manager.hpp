@@ -42,7 +42,9 @@ public:
   nlohmann::json active_profile_to_json() const;
 
 private:
-  static bool parse_profile(const std::filesystem::path& profile_dir, RobotProfile* profile, std::string* error);
+  static bool parse_profile(
+    const std::filesystem::path& profile_dir, RobotProfile* profile, std::string* error
+  );
   static std::string path_string(const std::filesystem::path& path);
 
   std::filesystem::path profile_root_;

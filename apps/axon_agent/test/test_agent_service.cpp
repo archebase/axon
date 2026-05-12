@@ -2,22 +2,22 @@
 //
 // SPDX-License-Identifier: MulanPSL-2.0
 
-#include "agent_service.hpp"
-
-#include <unistd.h>
-
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
+
+#include "agent_service.hpp"
 
 namespace {
 
 std::filesystem::path make_temp_dir(const std::string& name) {
-  const auto base = std::filesystem::temp_directory_path()
-    / (name + "_" + std::to_string(getpid()) + "_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+  const auto base = std::filesystem::temp_directory_path() /
+                    (name + "_" + std::to_string(getpid()) + "_" +
+                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
   std::filesystem::create_directories(base);
   return base;
 }
@@ -108,26 +108,48 @@ managed_processes:
 
     const auto& processes = response.data["processes"];
     const auto& recorder = processes["recorder"];
-    require(recorder["pid_file"].get<std::string>() == (state_dir / "custom/recorder.pid").string(), "recorder pid_file mismatch");
+    require(
+      recorder["pid_file"].get<std::string>() == (state_dir / "custom/recorder.pid").string(),
+      "recorder pid_file mismatch"
+    );
     require(
       recorder["metadata_file"].get<std::string>() == (state_dir / "custom/recorder.json").string(),
       "recorder metadata_file mismatch"
     );
     require(
-      recorder["stdout_log"].get<std::string>() == (state_dir / "custom/recorder.stdout.log").string(),
+      recorder["stdout_log"].get<std::string>() ==
+        (state_dir / "custom/recorder.stdout.log").string(),
       "recorder stdout_log mismatch"
     );
     require(recorder["stop_timeout_sec"].get<int>() == 11, "recorder stop_timeout_sec mismatch");
-    require(recorder["fingerprint"].get<std::string>() == "recorder-fingerprint", "recorder fingerprint mismatch");
-    require(recorder["health_check"]["type"].get<std::string>() == "process", "recorder health type mismatch");
-    require(recorder["health_check"]["timeout_ms"].get<int>() == 250, "recorder health timeout mismatch");
+    require(
+      recorder["fingerprint"].get<std::string>() == "recorder-fingerprint",
+      "recorder fingerprint mismatch"
+    );
+    require(
+      recorder["health_check"]["type"].get<std::string>() == "process",
+      "recorder health type mismatch"
+    );
+    require(
+      recorder["health_check"]["timeout_ms"].get<int>() == 250, "recorder health timeout mismatch"
+    );
 
     const auto& robot = processes["robot_startup"];
-    require(robot["working_directory"].get<std::string>() == (profile_dir / "runtime").string(), "robot cwd mismatch");
-    require(robot["pid_file"].get<std::string>() == (state_dir / "custom/robot.pid").string(), "robot pid_file mismatch");
+    require(
+      robot["working_directory"].get<std::string>() == (profile_dir / "runtime").string(),
+      "robot cwd mismatch"
+    );
+    require(
+      robot["pid_file"].get<std::string>() == (state_dir / "custom/robot.pid").string(),
+      "robot pid_file mismatch"
+    );
     require(robot["stop_timeout_sec"].get<int>() == 7, "robot stop_timeout_sec mismatch");
-    require(robot["health_check"]["enabled"].get<bool>() == false, "robot health should be disabled");
-    require(robot["health"]["status"].get<std::string>() == "disabled", "robot health status mismatch");
+    require(
+      robot["health_check"]["enabled"].get<bool>() == false, "robot health should be disabled"
+    );
+    require(
+      robot["health"]["status"].get<std::string>() == "disabled", "robot health status mismatch"
+    );
 
     std::filesystem::remove_all(root);
     return 0;

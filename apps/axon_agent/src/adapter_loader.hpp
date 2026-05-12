@@ -5,13 +5,14 @@
 #ifndef AXON_AGENT_ADAPTER_LOADER_HPP
 #define AXON_AGENT_ADAPTER_LOADER_HPP
 
-#include "profile_manager.hpp"
-
 #include <axon/agent/robot_adapter.hpp>
+
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
 #include <string>
+
+#include "profile_manager.hpp"
 
 namespace axon {
 namespace agent {
@@ -36,7 +37,9 @@ public:
   bool force_stop(const RobotAdapterContext& context, std::string* error);
 
 private:
-  bool validate_descriptor(const RobotProfile& profile, const RobotAdapterDescriptor* descriptor, std::string* error);
+  bool validate_descriptor(
+    const RobotProfile& profile, const RobotAdapterDescriptor* descriptor, std::string* error
+  );
   static nlohmann::json descriptor_to_json(const RobotAdapterDescriptor& descriptor);
   static nlohmann::json status_to_json(const RobotAdapterStatus& status);
 

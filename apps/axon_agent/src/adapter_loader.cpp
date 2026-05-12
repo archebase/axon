@@ -5,7 +5,6 @@
 #include "adapter_loader.hpp"
 
 #include <dlfcn.h>
-
 #include <exception>
 #include <sstream>
 
@@ -39,7 +38,8 @@ bool AdapterLoader::load(const RobotProfile& profile, std::string* error) {
   }
 
   dlerror();
-  get_descriptor_fn_ = reinterpret_cast<GetRobotAdapterDescriptorFn>(dlsym(handle_, kRobotAdapterDescriptorSymbol));
+  get_descriptor_fn_ =
+    reinterpret_cast<GetRobotAdapterDescriptorFn>(dlsym(handle_, kRobotAdapterDescriptorSymbol));
   const char* descriptor_error = dlerror();
   if (descriptor_error != nullptr) {
     unload();
@@ -158,7 +158,11 @@ nlohmann::json AdapterLoader::runtime_status_to_json(const RobotAdapterContext& 
   } catch (const std::exception& ex) {
     return {{"reachable", false}, {"state", "error"}, {"message", ex.what()}};
   } catch (...) {
-    return {{"reachable", false}, {"state", "error"}, {"message", "adapter status threw unknown exception"}};
+    return {
+      {"reachable", false},
+      {"state", "error"},
+      {"message", "adapter status threw unknown exception"}
+    };
   }
 }
 
@@ -252,8 +256,8 @@ bool AdapterLoader::validate_descriptor(
   if (descriptor->abi_version != profile.abi_version) {
     if (error != nullptr) {
       std::ostringstream stream;
-      stream << "adapter ABI mismatch: profile expects " << profile.abi_version << ", plugin exports "
-             << descriptor->abi_version;
+      stream << "adapter ABI mismatch: profile expects " << profile.abi_version
+             << ", plugin exports " << descriptor->abi_version;
       *error = stream.str();
     }
     return false;
@@ -274,8 +278,8 @@ bool AdapterLoader::validate_descriptor(
   }
   if (profile.adapter_id != descriptor->adapter_id) {
     if (error != nullptr) {
-      *error = "adapter id mismatch: profile expects " + profile.adapter_id + ", plugin exports "
-        + std::string(descriptor->adapter_id);
+      *error = "adapter id mismatch: profile expects " + profile.adapter_id + ", plugin exports " +
+               std::string(descriptor->adapter_id);
     }
     return false;
   }
