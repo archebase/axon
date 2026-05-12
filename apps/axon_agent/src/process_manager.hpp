@@ -6,7 +6,6 @@
 #define AXON_AGENT_PROCESS_MANAGER_HPP
 
 #include <nlohmann/json.hpp>
-
 #include <sys/types.h>
 
 #include <filesystem>
@@ -77,8 +76,8 @@ public:
   std::vector<std::string> running_processes() const;
   nlohmann::json state_to_json() const;
   bool read_log(
-    const std::string& process_id, const std::string& stream, std::size_t tail_bytes, nlohmann::json* output,
-    std::string* error
+    const std::string& process_id, const std::string& stream, std::size_t tail_bytes,
+    nlohmann::json* output, std::string* error
   ) const;
 
 private:
@@ -98,10 +97,13 @@ private:
   static nlohmann::json evaluate_http_health(const ManagedProcessState& state);
   static std::vector<std::string> expected_argv(const ManagedProcessConfig& config);
   static bool read_proc_cmdline(pid_t pid, std::vector<std::string>* argv);
-  static bool proc_cmdline_matches(const ManagedProcessConfig& config, const std::vector<std::string>& argv);
+  static bool proc_cmdline_matches(
+    const ManagedProcessConfig& config, const std::vector<std::string>& argv
+  );
   static void redirect_to_file(const std::filesystem::path& path, int fd);
   static std::vector<char*> build_exec_array(
-    const std::string& executable, const std::vector<std::string>& args, std::vector<std::string>* storage
+    const std::string& executable, const std::vector<std::string>& args,
+    std::vector<std::string>* storage
   );
   static std::vector<char*> build_env_array(
     const std::map<std::string, std::string>& env, std::vector<std::string>* storage
@@ -109,7 +111,9 @@ private:
 
   std::filesystem::path default_pid_file(const std::string& process_id) const;
   std::filesystem::path default_metadata_file(const std::string& process_id) const;
-  std::filesystem::path default_log_file(const ManagedProcessConfig& config, const std::string& stream) const;
+  std::filesystem::path default_log_file(
+    const ManagedProcessConfig& config, const std::string& stream
+  ) const;
 
   std::filesystem::path state_dir_;
   std::map<std::string, ManagedProcessState> states_;

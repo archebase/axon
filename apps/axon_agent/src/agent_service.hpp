@@ -5,17 +5,17 @@
 #ifndef AXON_AGENT_AGENT_SERVICE_HPP
 #define AXON_AGENT_AGENT_SERVICE_HPP
 
-#include "adapter_loader.hpp"
-#include "process_manager.hpp"
-#include "profile_manager.hpp"
-#include "rpc_response.hpp"
-
 #include <yaml-cpp/yaml.h>
 
 #include <chrono>
 #include <filesystem>
 #include <mutex>
 #include <string>
+
+#include "adapter_loader.hpp"
+#include "process_manager.hpp"
+#include "profile_manager.hpp"
+#include "rpc_response.hpp"
 
 namespace axon {
 namespace agent {
@@ -37,14 +37,19 @@ private:
   RpcResponse auto_start_robot_process(const RobotProfile& profile, const std::string& trigger);
   RpcResponse start_robot_process(const RobotProfile& profile);
   RpcResponse stop_robot_process(const RobotProfile& profile, bool force);
-  ManagedProcessConfig build_process_config(const RobotProfile& profile, const std::string& process_id);
-  ManagedProcessConfig load_yaml_process_config(
-    const RobotProfile& profile, const std::string& process_id, const std::filesystem::path& yaml_path
+  ManagedProcessConfig build_process_config(
+    const RobotProfile& profile, const std::string& process_id
   );
-  ManagedProcessConfig load_adapter_process_config(const RobotProfile& profile, const std::string& process_id);
+  ManagedProcessConfig load_yaml_process_config(
+    const RobotProfile& profile, const std::string& process_id,
+    const std::filesystem::path& yaml_path
+  );
+  ManagedProcessConfig load_adapter_process_config(
+    const RobotProfile& profile, const std::string& process_id
+  );
   void apply_process_yaml(
-    const RobotProfile& profile, const YAML::Node& process, const std::filesystem::path& config_path,
-    ManagedProcessConfig* config
+    const RobotProfile& profile, const YAML::Node& process,
+    const std::filesystem::path& config_path, ManagedProcessConfig* config
   );
   RobotAdapterContext build_adapter_context(const RobotProfile& profile) const;
   void discover_active_processes(const RobotProfile& profile);

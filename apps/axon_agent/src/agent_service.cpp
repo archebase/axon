@@ -11,8 +11,6 @@
 #include <boost/beast/version.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -22,6 +20,7 @@
 #include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -114,7 +113,9 @@ std::filesystem::path resolve_profile_path(const RobotProfile& profile, const st
   return path.is_absolute() ? path : profile.root_dir / path;
 }
 
-std::filesystem::path resolve_state_path(const std::filesystem::path& state_dir, const std::string& value) {
+std::filesystem::path resolve_state_path(
+  const std::filesystem::path& state_dir, const std::string& value
+) {
   const std::filesystem::path path(value);
   return path.is_absolute() ? path : state_dir / path;
 }
@@ -282,11 +283,11 @@ nlohmann::json build_components_state(const std::optional<RobotProfile>& active_
 }  // namespace
 
 AgentService::AgentService(std::filesystem::path profile_root, std::filesystem::path state_dir)
-  : profile_root_(profile_root)
-  , profiles_(std::move(profile_root))
-  , processes_(state_dir)
-  , state_dir_(std::move(state_dir))
-  , started_at_iso_(now_iso8601()) {}
+    : profile_root_(profile_root)
+    , profiles_(std::move(profile_root))
+    , processes_(state_dir)
+    , state_dir_(std::move(state_dir))
+    , started_at_iso_(now_iso8601()) {}
 
 bool AgentService::initialize(std::string* error) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -323,7 +324,8 @@ RpcResponse AgentService::get_state() {
     if (profile != nullptr) {
       active_profile = *profile;
       if (adapter_loader_.is_loaded()) {
-        adapter_state["runtime"] = adapter_loader_.runtime_status_to_json(build_adapter_context(*profile));
+        adapter_state["runtime"] =
+          adapter_loader_.runtime_status_to_json(build_adapter_context(*profile));
       }
     }
     processes_state = processes_.state_to_json();
@@ -363,7 +365,8 @@ RpcResponse AgentService::get_report() {
   const auto* profile = profiles_.active_profile();
   auto adapter_state = adapter_loader_.status_to_json();
   if (profile != nullptr && adapter_loader_.is_loaded()) {
-    adapter_state["runtime"] = adapter_loader_.runtime_status_to_json(build_adapter_context(*profile));
+    adapter_state["runtime"] =
+      adapter_loader_.runtime_status_to_json(build_adapter_context(*profile));
   }
   response.message = "ok";
   response.data = {
@@ -379,7 +382,10 @@ RpcResponse AgentService::list_profiles() {
   std::lock_guard<std::mutex> lock(mutex_);
   RpcResponse response;
   response.message = "ok";
-  response.data = {{"profiles", profiles_.profiles_to_json()}, {"active_profile", profiles_.active_profile_to_json()}};
+  response.data = {
+    {"profiles", profiles_.profiles_to_json()},
+    {"active_profile", profiles_.active_profile_to_json()}
+  };
   return response;
 }
 
@@ -401,8 +407,8 @@ RpcResponse AgentService::select_profile(const nlohmann::json& params) {
     if (switching_profile) {
       const auto running_processes = processes_.running_processes();
       if (!running_processes.empty()) {
-        const auto error =
-          "cannot switch active profile while processes are running: " + join_strings(running_processes, ", ");
+        const auto error = "cannot switch active profile while processes are running: " +
+                           join_strings(running_processes, ", ");
         last_error_ = error;
         return {
           false,
@@ -487,7 +493,8 @@ RpcResponse AgentService::start_process(const nlohmann::json& params) {
     }
 
     std::string error;
-    if (process_id == "robot_startup" && !adapter_loader_.is_loaded_for_profile(profile->profile_id)) {
+    if (process_id == "robot_startup" &&
+        !adapter_loader_.is_loaded_for_profile(profile->profile_id)) {
       if (!adapter_loader_.load(*profile, &error)) {
         last_error_ = error;
         return {false, error, nullptr};
@@ -504,7 +511,11 @@ RpcResponse AgentService::start_process(const nlohmann::json& params) {
       return {false, error, nullptr};
     }
 
-    return {true, "process started", {{"process_id", process_id}, {"processes", processes_.state_to_json()}}};
+    return {
+      true,
+      "process started",
+      {{"process_id", process_id}, {"processes", processes_.state_to_json()}}
+    };
   } catch (const std::exception& ex) {
     last_error_ = ex.what();
     return {false, ex.what(), nullptr};
@@ -551,7 +562,9 @@ RpcResponse AgentService::read_process_log(const nlohmann::json& params) {
     std::string error;
     if (!processes_.read_log(process_id, stream, tail_bytes, &output, &error)) {
       last_error_ = error;
-      return {false, error, {{"process_id", process_id}, {"stream", stream}, {"tail_bytes", tail_bytes}}};
+      return {
+        false, error, {{"process_id", process_id}, {"stream", stream}, {"tail_bytes", tail_bytes}}
+      };
     }
 
     return {true, "process log read", output};
@@ -561,7 +574,9 @@ RpcResponse AgentService::read_process_log(const nlohmann::json& params) {
   }
 }
 
-RpcResponse AgentService::auto_start_robot_process(const RobotProfile& profile, const std::string& trigger) {
+RpcResponse AgentService::auto_start_robot_process(
+  const RobotProfile& profile, const std::string& trigger
+) {
   nlohmann::json auto_start = {
     {"enabled", profile.auto_start},
     {"trigger", trigger},
@@ -575,7 +590,8 @@ RpcResponse AgentService::auto_start_robot_process(const RobotProfile& profile, 
   }
 
   std::string error;
-  if (!adapter_loader_.is_loaded_for_profile(profile.profile_id) && !adapter_loader_.load(profile, &error)) {
+  if (!adapter_loader_.is_loaded_for_profile(profile.profile_id) &&
+      !adapter_loader_.load(profile, &error)) {
     last_error_ = error;
     auto_start["error"] = error;
     auto_start["adapter"] = adapter_loader_.status_to_json();
@@ -632,7 +648,8 @@ RpcResponse AgentService::start_robot_process(const RobotProfile& profile) {
 
 RpcResponse AgentService::stop_robot_process(const RobotProfile& profile, bool force) {
   std::string error;
-  if (!adapter_loader_.is_loaded_for_profile(profile.profile_id) && !adapter_loader_.load(profile, &error)) {
+  if (!adapter_loader_.is_loaded_for_profile(profile.profile_id) &&
+      !adapter_loader_.load(profile, &error)) {
     last_error_ = error;
     return {false, error, nullptr};
   }
@@ -664,7 +681,9 @@ RpcResponse AgentService::stop_robot_process(const RobotProfile& profile, bool f
   };
 }
 
-ManagedProcessConfig AgentService::build_process_config(const RobotProfile& profile, const std::string& process_id) {
+ManagedProcessConfig AgentService::build_process_config(
+  const RobotProfile& profile, const std::string& process_id
+) {
   if (process_id == "recorder") {
     return load_yaml_process_config(profile, process_id, profile.recorder_yaml);
   }
@@ -709,15 +728,17 @@ ManagedProcessConfig AgentService::load_adapter_process_config(
 
   const auto yaml = YAML::LoadFile(profile.adapter_yaml.string());
   const auto process = yaml["managed_processes"] && yaml["managed_processes"][process_id]
-    ? yaml["managed_processes"][process_id]
-    : YAML::Node();
+                         ? yaml["managed_processes"][process_id]
+                         : YAML::Node();
   if (!process) {
     throw std::runtime_error("adapter.yaml does not declare managed_processes." + process_id);
   }
 
   apply_process_yaml(profile, process, profile.adapter_yaml, &config);
   if (config.executable.empty()) {
-    throw std::runtime_error("adapter.yaml managed_processes." + process_id + " is missing executable");
+    throw std::runtime_error(
+      "adapter.yaml managed_processes." + process_id + " is missing executable"
+    );
   }
   return config;
 }
@@ -741,7 +762,9 @@ void AgentService::apply_process_yaml(
   }
   if (process["args"]) {
     if (!process["args"].IsSequence()) {
-      throw std::runtime_error("managed process args must be a sequence: " + path_string(config_path));
+      throw std::runtime_error(
+        "managed process args must be a sequence: " + path_string(config_path)
+      );
     }
     config->args.clear();
     for (const auto& arg : process["args"]) {
@@ -749,13 +772,15 @@ void AgentService::apply_process_yaml(
     }
   }
   if (process["working_directory"]) {
-    config->working_directory = resolve_profile_path(profile, process["working_directory"].as<std::string>());
+    config->working_directory =
+      resolve_profile_path(profile, process["working_directory"].as<std::string>());
   }
   if (process["pid_file"]) {
     config->pid_file = resolve_state_path(state_dir_, process["pid_file"].as<std::string>());
   }
   if (process["metadata_file"]) {
-    config->metadata_file = resolve_state_path(state_dir_, process["metadata_file"].as<std::string>());
+    config->metadata_file =
+      resolve_state_path(state_dir_, process["metadata_file"].as<std::string>());
   }
   if (process["stdout_log"]) {
     config->stdout_log = resolve_state_path(state_dir_, process["stdout_log"].as<std::string>());
@@ -775,7 +800,9 @@ void AgentService::apply_process_yaml(
   if (process["stop_timeout_sec"]) {
     const auto timeout_sec = process["stop_timeout_sec"].as<int>();
     if (timeout_sec <= 0) {
-      throw std::runtime_error("managed process stop_timeout_sec must be positive: " + path_string(config_path));
+      throw std::runtime_error(
+        "managed process stop_timeout_sec must be positive: " + path_string(config_path)
+      );
     }
     config->stop_timeout_sec = timeout_sec;
   }
@@ -785,7 +812,9 @@ void AgentService::apply_process_yaml(
   if (process["health_check"]) {
     const auto health_check = process["health_check"];
     if (!health_check.IsMap()) {
-      throw std::runtime_error("managed process health_check must be a map: " + path_string(config_path));
+      throw std::runtime_error(
+        "managed process health_check must be a map: " + path_string(config_path)
+      );
     }
     if (health_check["enabled"]) {
       config->health_check.enabled = health_check["enabled"].as<bool>();
@@ -801,19 +830,24 @@ void AgentService::apply_process_yaml(
     if (health_check["timeout_ms"]) {
       config->health_check.timeout_ms = health_check["timeout_ms"].as<int>();
       if (config->health_check.timeout_ms <= 0) {
-        throw std::runtime_error("managed process health_check.timeout_ms must be positive: " + path_string(config_path));
+        throw std::runtime_error(
+          "managed process health_check.timeout_ms must be positive: " + path_string(config_path)
+        );
       }
     }
     if (health_check["expected_status"]) {
       config->health_check.expected_status = health_check["expected_status"].as<int>();
       if (config->health_check.expected_status <= 0) {
         throw std::runtime_error(
-          "managed process health_check.expected_status must be positive: " + path_string(config_path)
+          "managed process health_check.expected_status must be positive: " +
+          path_string(config_path)
         );
       }
     }
     if (config->health_check.type == "http" && config->health_check.url.empty()) {
-      throw std::runtime_error("managed process health_check.url is required for http: " + path_string(config_path));
+      throw std::runtime_error(
+        "managed process health_check.url is required for http: " + path_string(config_path)
+      );
     }
   }
 }

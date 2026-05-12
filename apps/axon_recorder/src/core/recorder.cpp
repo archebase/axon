@@ -12,9 +12,9 @@
 #include <functional>
 #include <iostream>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include <thread>
 
 #include "../http/rpc_handlers.hpp"
 #include "../http/ws_rpc_client.hpp"
@@ -389,9 +389,7 @@ bool AxonRecorder::start() {
     const auto* pd = plugin_loader_.get_descriptor(name);
     AxonStatus st = pd->vtable->start();
     if (st != AXON_SUCCESS) {
-      set_error_helper(
-        std::string("Plugin start failed (") + name + "): " + status_to_string(st)
-      );
+      set_error_helper(std::string("Plugin start failed (") + name + "): " + status_to_string(st));
       state_manager_.transition_to(RecorderState::IDLE, error_msg);
       recording_session_.reset();
       return false;
@@ -444,8 +442,7 @@ void AxonRecorder::stop() {
 
   // 1. Stop per-session plugin producers so no more messages can be enqueued.
   const std::vector<std::string> stop_order =
-    !plugin_startup_order_.empty() ? plugin_startup_order_
-                                   : plugin_loader_.loaded_plugins();
+    !plugin_startup_order_.empty() ? plugin_startup_order_ : plugin_loader_.loaded_plugins();
   for (const auto& plugin_name : stop_order) {
     const auto* descriptor = plugin_loader_.get_descriptor(plugin_name);
     if (!descriptor || !descriptor->vtable) {
@@ -977,9 +974,7 @@ void AxonRecorder::mark_pause_finished() {
   )
                             .count();
   if (elapsed_ns > 0) {
-    total_pause_offset_ns_.fetch_add(
-      static_cast<uint64_t>(elapsed_ns), std::memory_order_acq_rel
-    );
+    total_pause_offset_ns_.fetch_add(static_cast<uint64_t>(elapsed_ns), std::memory_order_acq_rel);
   }
   pause_started_at_.reset();
 }
@@ -1124,10 +1119,9 @@ void AxonRecorder::on_message(
   // Acquire a pool-backed buffer sized for this payload. On the steady-state
   // hot path this avoids `operator new` per message (bucket reuse).
   MessageItem item;
-  const uint64_t adjusted_timestamp =
-    config_.recording.subtract_pause_duration_from_timestamps
-      ? adjust_message_timestamp(timestamp)
-      : timestamp;
+  const uint64_t adjusted_timestamp = config_.recording.subtract_pause_duration_from_timestamps
+                                        ? adjust_message_timestamp(timestamp)
+                                        : timestamp;
   item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
   item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
@@ -1159,10 +1153,9 @@ void AxonRecorder::on_message_v2(
   uint64_t receive_time_ns = get_steady_clock_ns();
 
   MessageItem item;
-  const uint64_t adjusted_timestamp =
-    config_.recording.subtract_pause_duration_from_timestamps
-      ? adjust_message_timestamp(timestamp)
-      : timestamp;
+  const uint64_t adjusted_timestamp = config_.recording.subtract_pause_duration_from_timestamps
+                                        ? adjust_message_timestamp(timestamp)
+                                        : timestamp;
   item.timestamp_ns = static_cast<int64_t>(adjusted_timestamp);
   item.publish_time_ns = adjusted_timestamp;
   item.receive_time_ns = receive_time_ns;
@@ -1207,9 +1200,8 @@ bool AxonRecorder::message_handler(
     return false;
   }
 
-  bool success = recording_session_->write(
-    channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size
-  );
+  bool success =
+    recording_session_->write(channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size);
 
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
@@ -1251,9 +1243,8 @@ bool AxonRecorder::latency_message_handler(
     return false;
   }
 
-  bool success = recording_session_->write(
-    channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size
-  );
+  bool success =
+    recording_session_->write(channel_id, sequence, mcap_time_ns, mcap_time_ns, data, data_size);
 
   if (success) {
     const SubscriptionConfig* sub_config = get_subscription_config(topic);
@@ -1295,9 +1286,8 @@ bool AxonRecorder::register_topics() {
     sub_key += sub.message_type;
     if (seen_subscription_keys.count(sub_key)) {
       AXON_LOG_WARN(
-        "Duplicate subscription entry"
-        << axon::logging::kv("topic", sub.topic_name)
-        << axon::logging::kv("message_type", sub.message_type)
+        "Duplicate subscription entry" << axon::logging::kv("topic", sub.topic_name)
+                                       << axon::logging::kv("message_type", sub.message_type)
       );
     }
     seen_subscription_keys.insert(sub_key);
@@ -1508,9 +1498,7 @@ bool AxonRecorder::setup_subscriptions() {
       this
     );
     if (ustatus != AXON_SUCCESS) {
-      set_error_helper(
-        std::string("UDP plugin subscribe failed: ") + status_to_string(ustatus)
-      );
+      set_error_helper(std::string("UDP plugin subscribe failed: ") + status_to_string(ustatus));
       return false;
     }
   }

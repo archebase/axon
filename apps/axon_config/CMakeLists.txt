@@ -32,6 +32,8 @@ endif()
 include(AxonStdLib REQUIRED)
 include(AxonCoverage OPTIONAL)
 
+find_package(CURL REQUIRED)
+
 # =============================================================================
 # Use axon_mcap for mcap_headers interface
 # =============================================================================
@@ -73,7 +75,7 @@ endif()
 # Source files
 # =============================================================================
 
-set(SOURCES axon_config.cpp commands.cpp config_cache.cpp)
+set(SOURCES axon_config.cpp commands.cpp config_cache.cpp http_client.cpp)
 
 # =============================================================================
 # Create executable
@@ -83,7 +85,16 @@ add_executable(axon_config ${SOURCES})
 axon_set_position_independent_code(axon_config)
 
 # Link against axon_mcap which includes MCAP implementation
-target_link_libraries(axon_config PRIVATE axon_mcap)
+target_link_libraries(axon_config PRIVATE axon_mcap CURL::libcurl)
+
+if(TARGET nlohmann_json::nlohmann_json)
+    target_link_libraries(axon_config PRIVATE nlohmann_json::nlohmann_json)
+elseif(DEFINED nlohmann_json_SOURCE_DIR)
+    target_include_directories(
+        axon_config
+        PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include
+    )
+endif()
 
 # Apply coverage flags if enabled
 if(COMMAND axon_add_coverage)
@@ -123,9 +134,11 @@ if(AXON_CONFIG_BUILD_TESTS OR AXON_BUILD_TESTS)
     set(TEST_SOURCES
         test/test_config_cache.cpp
         test/test_commands.cpp
+        test/test_http_client.cpp
         test/test_main.cpp
         commands.cpp
         config_cache.cpp
+        http_client.cpp
     )
 
     # Create test executable
@@ -139,8 +152,20 @@ if(AXON_CONFIG_BUILD_TESTS OR AXON_BUILD_TESTS)
     # Link against axon_mcap and Google Test
     target_link_libraries(
         test_axon_config
-        PRIVATE axon_mcap GTest::gtest GTest::gtest_main
+        PRIVATE axon_mcap CURL::libcurl GTest::gtest GTest::gtest_main
     )
+
+    if(TARGET nlohmann_json::nlohmann_json)
+        target_link_libraries(
+            test_axon_config
+            PRIVATE nlohmann_json::nlohmann_json
+        )
+    elseif(DEFINED nlohmann_json_SOURCE_DIR)
+        target_include_directories(
+            test_axon_config
+            PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include
+        )
+    endif()
 
     target_include_directories(
         test_axon_config

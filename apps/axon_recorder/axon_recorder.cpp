@@ -354,7 +354,8 @@ int main(int argc, char* argv[]) {
 
   // Validate required arguments
   if (config.ordered_plugin_paths().empty()) {
-    std::cerr << "Error: --plugin (or plugin.path / plugins in config file) is required" << std::endl;
+    std::cerr << "Error: --plugin (or plugin.path / plugins in config file) is required"
+              << std::endl;
     print_usage(argv[0]);
     return 1;
   }

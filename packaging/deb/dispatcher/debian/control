@@ -18,7 +18,7 @@ Depends: ${shlibs:Depends},
          axon-transfer
 Description: Axon Unified CLI Dispatcher
  Provides the 'axon' command that dispatches to subcommands
- like 'axon recorder', 'axon config', etc. (similar to git).
+ like 'axon recorder', 'axon config', 'axon register', etc. (similar to git).
  .
  This creates a unified entry point for all Axon tools.
  .

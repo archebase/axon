@@ -12,22 +12,21 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <csignal>
-#include <ctime>
 #include <cstring>
+#include <ctime>
+#include <fcntl.h>
 #include <fstream>
 #include <sstream>
 #include <thread>
+#include <unistd.h>
 
 extern char** environ;
 
@@ -62,7 +61,8 @@ bool parse_http_url(const std::string& url, HttpUrl* output, std::string* error)
   const auto authority_start = std::string(kScheme).size();
   const auto path_start = url.find('/', authority_start);
   const auto authority = url.substr(
-    authority_start, path_start == std::string::npos ? std::string::npos : path_start - authority_start
+    authority_start,
+    path_start == std::string::npos ? std::string::npos : path_start - authority_start
   );
   if (authority.empty()) {
     if (error != nullptr) {
@@ -90,7 +90,8 @@ bool parse_http_url(const std::string& url, HttpUrl* output, std::string* error)
 
 }  // namespace
 
-ProcessManager::ProcessManager(std::filesystem::path state_dir) : state_dir_(std::move(state_dir)) {
+ProcessManager::ProcessManager(std::filesystem::path state_dir)
+    : state_dir_(std::move(state_dir)) {
   std::filesystem::create_directories(state_dir_);
 }
 
@@ -177,7 +178,8 @@ bool ProcessManager::stop(const std::string& process_id, bool force, std::string
     return false;
   }
 
-  const pid_t process_group = it->second.process_group > 0 ? it->second.process_group : it->second.pid;
+  const pid_t process_group =
+    it->second.process_group > 0 ? it->second.process_group : it->second.pid;
   if (kill(-process_group, force ? SIGKILL : SIGTERM) != 0 && errno != ESRCH) {
     if (error != nullptr) {
       *error = std::strerror(errno);
@@ -320,8 +322,8 @@ nlohmann::json ProcessManager::state_to_json() const {
 }
 
 bool ProcessManager::read_log(
-  const std::string& process_id, const std::string& stream, std::size_t tail_bytes, nlohmann::json* output,
-  std::string* error
+  const std::string& process_id, const std::string& stream, std::size_t tail_bytes,
+  nlohmann::json* output, std::string* error
 ) const {
   const auto it = states_.find(process_id);
   if (it == states_.end()) {
@@ -489,7 +491,9 @@ void ProcessManager::update_exit_state(ManagedProcessState* state, int wait_stat
   }
 }
 
-bool ProcessManager::write_metadata_file(const ManagedProcessState& state, std::string* error) const {
+bool ProcessManager::write_metadata_file(
+  const ManagedProcessState& state, std::string* error
+) const {
   if (state.metadata_file.empty()) {
     return true;
   }
@@ -712,7 +716,9 @@ bool ProcessManager::read_proc_cmdline(pid_t pid, std::vector<std::string>* argv
   return !argv->empty();
 }
 
-bool ProcessManager::proc_cmdline_matches(const ManagedProcessConfig& config, const std::vector<std::string>& argv) {
+bool ProcessManager::proc_cmdline_matches(
+  const ManagedProcessConfig& config, const std::vector<std::string>& argv
+) {
   const auto expected = expected_argv(config);
   if (argv == expected) {
     return true;
@@ -742,7 +748,8 @@ void ProcessManager::redirect_to_file(const std::filesystem::path& path, int fd)
 }
 
 std::vector<char*> ProcessManager::build_exec_array(
-  const std::string& executable, const std::vector<std::string>& args, std::vector<std::string>* storage
+  const std::string& executable, const std::vector<std::string>& args,
+  std::vector<std::string>* storage
 ) {
   storage->clear();
   storage->push_back(executable);
@@ -785,7 +792,8 @@ std::filesystem::path ProcessManager::default_metadata_file(const std::string& p
 std::filesystem::path ProcessManager::default_log_file(
   const ManagedProcessConfig& config, const std::string& stream
 ) const {
-  const auto pid_file = config.pid_file.empty() ? default_pid_file(config.process_id) : config.pid_file;
+  const auto pid_file =
+    config.pid_file.empty() ? default_pid_file(config.process_id) : config.pid_file;
   return state_dir_ / "logs" / (pid_file.stem().string() + "." + stream + ".log");
 }
 

@@ -7,6 +7,8 @@ Priority: optional
 Maintainer: ArcheBase <noreply@archebase.com>
 Build-Depends: debhelper-compat (=13),
                cmake,
+               libcurl4-openssl-dev,
+               nlohmann-json3-dev,
                libzstd-dev,
                liblz4-dev
 
@@ -21,4 +23,5 @@ Description: Axon Robot Configuration Tool
   - Initialize config directory structure
   - Scan and cache config files
   - Enable/disable config injection for recordings
+  - Register devices with Keystone
   - Show configuration status

@@ -7,6 +7,8 @@
  * Git-style command dispatcher that forwards commands to subcommands:
  *   axon recorder [args] -> axon-recorder
  *   axon config [args]   -> axon-config
+ *   axon register [args] -> axon-config register
+ *   axon refresh [args]  -> axon-config refresh
  *   axon transfer [args] -> axon-transfer
  *   axon panel [args]    -> axon-panel
  */
@@ -27,21 +29,24 @@
 struct Command {
   const char* name;
   const char* binary;
+  const char* injected_arg;
   const char* description;
 };
 
 const Command COMMANDS[] = {
-  {"recorder", "/opt/axon/bin/axon-recorder", "Record ROS messages to MCAP"},
-  {"config", "/opt/axon/bin/axon-config", "Manage robot configuration"},
-  {"transfer", "/opt/axon/bin/axon-transfer", "S3 upload daemon"},
-  {"panel", "/opt/axon/bin/axon-panel", "Web control panel"},
-  {"version", nullptr, nullptr},    // Special: handled internally
-  {"--version", nullptr, nullptr},  // Special: handled internally
-  {"-v", nullptr, nullptr},         // Special: handled internally
-  {"help", nullptr, nullptr},       // Special: handled internally
-  {"--help", nullptr, nullptr},     // Special: handled internally
-  {"-h", nullptr, nullptr},         // Special: handled internally
-  {nullptr, nullptr, nullptr}
+  {"recorder", "/opt/axon/bin/axon-recorder", nullptr, "Record ROS messages to MCAP"},
+  {"config", "/opt/axon/bin/axon-config", nullptr, "Manage robot configuration"},
+  {"register", "/opt/axon/bin/axon-config", "register", "Register device with Keystone"},
+  {"refresh", "/opt/axon/bin/axon-config", "refresh", "Refresh configs from device state"},
+  {"transfer", "/opt/axon/bin/axon-transfer", nullptr, "S3 upload daemon"},
+  {"panel", "/opt/axon/bin/axon-panel", nullptr, "Web control panel"},
+  {"version", nullptr, nullptr, nullptr},    // Special: handled internally
+  {"--version", nullptr, nullptr, nullptr},  // Special: handled internally
+  {"-v", nullptr, nullptr, nullptr},         // Special: handled internally
+  {"help", nullptr, nullptr, nullptr},       // Special: handled internally
+  {"--help", nullptr, nullptr, nullptr},     // Special: handled internally
+  {"-h", nullptr, nullptr, nullptr},         // Special: handled internally
+  {nullptr, nullptr, nullptr, nullptr}
 };
 
 void show_help(const char* program_name) {
@@ -50,6 +55,8 @@ void show_help(const char* program_name) {
   std::cout << "Available commands:\n";
   std::cout << "  recorder    Record ROS messages to MCAP\n";
   std::cout << "  config      Manage robot configuration\n";
+  std::cout << "  register    Register device with Keystone\n";
+  std::cout << "  refresh     Refresh configs from device state\n";
   std::cout << "  transfer    S3 upload daemon\n";
   std::cout << "  panel       Web control panel\n";
   std::cout << "  version     Show version information\n";
@@ -109,6 +116,9 @@ int main(int argc, char* argv[]) {
         // Rebuild argv array for execvp
         std::vector<char*> exec_argv;
         exec_argv.push_back(const_cast<char*>(COMMANDS[i].binary));
+        if (COMMANDS[i].injected_arg) {
+          exec_argv.push_back(const_cast<char*>(COMMANDS[i].injected_arg));
+        }
 
         // Pass through remaining arguments
         for (int j = 2; j < argc; ++j) {

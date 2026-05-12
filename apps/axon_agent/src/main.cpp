@@ -2,16 +2,16 @@
 //
 // SPDX-License-Identifier: MulanPSL-2.0
 
-#include "agent_service.hpp"
-#include "http_server.hpp"
-
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
-#include <chrono>
 #include <iostream>
 #include <string>
 #include <thread>
+
+#include "agent_service.hpp"
+#include "http_server.hpp"
 
 namespace {
 
@@ -21,7 +21,9 @@ void handle_signal(int) {
   g_should_exit = 1;
 }
 
-std::string get_arg(int argc, char** argv, const std::string& name, const std::string& default_value) {
+std::string get_arg(
+  int argc, char** argv, const std::string& name, const std::string& default_value
+) {
   for (int i = 1; i + 1 < argc; ++i) {
     if (argv[i] == name) {
       return argv[i + 1];
