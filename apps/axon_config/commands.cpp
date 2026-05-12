@@ -387,10 +387,35 @@ size_t write_curl_response(char* ptr, size_t size, size_t nmemb, void* userdata)
   return bytes;
 }
 
+class CurlGlobalState {
+public:
+  CurlGlobalState()
+      : code_(curl_global_init(CURL_GLOBAL_DEFAULT)) {}
+
+  ~CurlGlobalState() {
+    if (code_ == CURLE_OK) {
+      curl_global_cleanup();
+    }
+  }
+
+  CURLcode code() const {
+    return code_;
+  }
+
+private:
+  CURLcode code_;
+};
+
+CURLcode ensure_curl_global_initialized() {
+  // Function-local static initialization is thread-safe in C++11 and later.
+  static const CurlGlobalState state;
+  return state.code();
+}
+
 HttpResponse get_text(const std::string& url, long timeout_seconds) {
   HttpResponse response;
 
-  CURLcode global_code = curl_global_init(CURL_GLOBAL_DEFAULT);
+  CURLcode global_code = ensure_curl_global_initialized();
   if (global_code != CURLE_OK) {
     response.error = curl_easy_strerror(global_code);
     return response;
@@ -399,7 +424,6 @@ HttpResponse get_text(const std::string& url, long timeout_seconds) {
   CURL* curl = curl_easy_init();
   if (curl == nullptr) {
     response.error = "failed to initialize curl";
-    curl_global_cleanup();
     return response;
   }
 
@@ -418,7 +442,6 @@ HttpResponse get_text(const std::string& url, long timeout_seconds) {
   }
 
   curl_easy_cleanup(curl);
-  curl_global_cleanup();
 
   return response;
 }
@@ -426,7 +449,7 @@ HttpResponse get_text(const std::string& url, long timeout_seconds) {
 HttpResponse post_json(const std::string& url, const std::string& body, long timeout_seconds) {
   HttpResponse response;
 
-  CURLcode global_code = curl_global_init(CURL_GLOBAL_DEFAULT);
+  CURLcode global_code = ensure_curl_global_initialized();
   if (global_code != CURLE_OK) {
     response.error = curl_easy_strerror(global_code);
     return response;
@@ -435,7 +458,6 @@ HttpResponse post_json(const std::string& url, const std::string& body, long tim
   CURL* curl = curl_easy_init();
   if (curl == nullptr) {
     response.error = "failed to initialize curl";
-    curl_global_cleanup();
     return response;
   }
 
@@ -463,7 +485,6 @@ HttpResponse post_json(const std::string& url, const std::string& body, long tim
 
   curl_slist_free_all(headers);
   curl_easy_cleanup(curl);
-  curl_global_cleanup();
 
   return response;
 }
