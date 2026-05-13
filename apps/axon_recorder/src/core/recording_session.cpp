@@ -109,9 +109,14 @@ void RecordingSession::close() {
       final_file_size_ = actual_size;
     }
 
-    // 4. Generate sidecar JSON (always enabled, reuses the actual_size already obtained)
+    // 4. Patch final size into MCAP metadata, then generate sidecar JSON.
     if (has_task_config_ && !output_path_.empty() && !ec) {
       // LCOV_EXCL_BR_START - logging macro branch coverage
+      if (!metadata_injector_.update_mcap_file_size_metadata(output_path_, actual_size)) {
+        AXON_LOG_WARN(
+          "Failed to update MCAP file size metadata" << axon::logging::kv("path", output_path_)
+        );
+      }
       if (!metadata_injector_.generate_sidecar_json(output_path_, actual_size)) {
         AXON_LOG_WARN("Failed to generate sidecar JSON" << axon::logging::kv("path", output_path_));
       }

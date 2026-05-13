@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -22,6 +23,139 @@
 
 namespace axon {
 namespace recorder {
+
+namespace {
+
+constexpr const char* kSidecarVersion = "1.0";
+constexpr const char* kSidecarMetadataRecord = "axon.sidecar";
+constexpr const char* kTaskMetadataRecord = "axon.task";
+constexpr const char* kDeviceMetadataRecord = "axon.device";
+constexpr const char* kRecordingMetadataRecord = "axon.recording";
+constexpr const char* kTopicsMetadataRecord = "axon.topics";
+constexpr const char* kFileSizeMetadataKey = "file_size_bytes";
+constexpr size_t kFileSizeMetadataWidth = 20;
+constexpr size_t kPatchBufferSize = 64 * 1024;
+
+std::string to_json_array_string(const std::vector<std::string>& values) {
+  nlohmann::json array = nlohmann::json::array();
+  for (const auto& value : values) {
+    array.push_back(value);
+  }
+  return array.dump();
+}
+
+void append_uint32_le(std::string& output, uint32_t value) {
+  for (int i = 0; i < 4; ++i) {
+    output.push_back(static_cast<char>((value >> (i * 8)) & 0xFF));
+  }
+}
+
+std::string build_file_size_patch_pattern(const std::string& value) {
+  std::string pattern;
+  append_uint32_le(pattern, static_cast<uint32_t>(std::strlen(kFileSizeMetadataKey)));
+  pattern += kFileSizeMetadataKey;
+  append_uint32_le(pattern, static_cast<uint32_t>(value.size()));
+  pattern += value;
+  return pattern;
+}
+
+bool has_key(const std::unordered_map<std::string, std::string>& metadata, const char* key) {
+  return metadata.find(key) != metadata.end();
+}
+
+const std::string& get_value(
+  const std::unordered_map<std::string, std::string>& metadata, const char* key
+) {
+  static const std::string empty;
+  auto it = metadata.find(key);
+  return it == metadata.end() ? empty : it->second;
+}
+
+void copy_string_if_present(
+  nlohmann::json& object, const std::unordered_map<std::string, std::string>& metadata,
+  const char* key
+) {
+  if (has_key(metadata, key)) {
+    object[key] = get_value(metadata, key);
+  }
+}
+
+uint64_t parse_uint64_or_zero(const std::string& value) {
+  try {
+    size_t parsed = 0;
+    uint64_t result = std::stoull(value, &parsed);
+    return parsed == value.size() ? result : 0;
+  } catch (const std::exception&) {
+    return 0;
+  }
+}
+
+double parse_double_or_zero(const std::string& value) {
+  try {
+    size_t parsed = 0;
+    double result = std::stod(value, &parsed);
+    return parsed == value.size() ? result : 0.0;
+  } catch (const std::exception&) {
+    return 0.0;
+  }
+}
+
+nlohmann::json parse_json_or(const std::string& value, const nlohmann::json& fallback) {
+  try {
+    return nlohmann::json::parse(value);
+  } catch (const nlohmann::json::exception&) {
+    return fallback;
+  }
+}
+
+nlohmann::json build_sidecar_from_metadata(
+  const std::unordered_map<std::string, std::string>& sidecar_meta,
+  const std::unordered_map<std::string, std::string>& task_meta,
+  const std::unordered_map<std::string, std::string>& device_meta,
+  const std::unordered_map<std::string, std::string>& recording_meta,
+  const std::unordered_map<std::string, std::string>& topics_meta
+) {
+  nlohmann::json sidecar;
+  sidecar["version"] = get_value(sidecar_meta, "version");
+  sidecar["mcap_file"] = get_value(sidecar_meta, "mcap_file");
+
+  auto& task = sidecar["task"] = nlohmann::json::object();
+  copy_string_if_present(task, task_meta, "task_id");
+  copy_string_if_present(task, task_meta, "order_id");
+  copy_string_if_present(task, task_meta, "scene");
+  copy_string_if_present(task, task_meta, "subscene");
+  if (has_key(task_meta, "skills")) {
+    task["skills"] = parse_json_or(get_value(task_meta, "skills"), nlohmann::json::array());
+  }
+  copy_string_if_present(task, task_meta, "factory");
+  copy_string_if_present(task, task_meta, "data_collector_id");
+  copy_string_if_present(task, task_meta, "operator_name");
+
+  auto& device = sidecar["device"] = nlohmann::json::object();
+  copy_string_if_present(device, device_meta, "device_id");
+  copy_string_if_present(device, device_meta, "device_model");
+  copy_string_if_present(device, device_meta, "device_serial");
+  copy_string_if_present(device, device_meta, "hostname");
+  copy_string_if_present(device, device_meta, "ros_distro");
+
+  auto& recording = sidecar["recording"] = nlohmann::json::object();
+  copy_string_if_present(recording, recording_meta, "recorder_version");
+  copy_string_if_present(recording, recording_meta, "recording_started_at");
+  copy_string_if_present(recording, recording_meta, "recording_finished_at");
+  recording["duration_sec"] = parse_double_or_zero(get_value(recording_meta, "duration_sec"));
+  recording["message_count"] = parse_uint64_or_zero(get_value(recording_meta, "message_count"));
+  recording["file_size_bytes"] =
+    parse_uint64_or_zero(get_value(recording_meta, kFileSizeMetadataKey));
+  recording["topics_recorded"] =
+    parse_json_or(get_value(recording_meta, "topics_recorded"), nlohmann::json::array());
+
+  sidecar["topics_summary"] =
+    parse_json_or(get_value(topics_meta, "topics_summary"), nlohmann::json::array());
+
+  return sidecar;
+}
+
+}  // namespace
 
 // ============================================================================
 // TopicStats implementation
@@ -94,32 +228,98 @@ void MetadataInjector::update_topic_stats(
 bool MetadataInjector::inject_metadata(
   mcap_wrapper::McapWriterWrapper& writer, uint64_t message_count, uint64_t file_size
 ) {
+  (void)file_size;
+
   if (!has_task_config_) {
     return false;
   }
 
   // Record finish time
   finish_time_ = std::chrono::system_clock::now();
+  injected_message_count_ = message_count;
+  has_injected_message_count_ = true;
 
-  // 1. Write task context metadata (axon.task)
+  // 1. Write sidecar envelope metadata (axon.sidecar)
+  auto sidecar_meta = build_sidecar_metadata(writer.get_path());
+  if (!writer.write_metadata(kSidecarMetadataRecord, sidecar_meta)) {
+    return false;
+  }
+
+  // 2. Write task context metadata (axon.task)
   auto task_meta = build_task_metadata();
-  if (!writer.write_metadata("axon.task", task_meta)) {
+  if (!writer.write_metadata(kTaskMetadataRecord, task_meta)) {
     return false;
   }
 
-  // 2. Write device metadata (axon.device)
+  // 3. Write device metadata (axon.device)
   auto device_meta = build_device_metadata();
-  if (!writer.write_metadata("axon.device", device_meta)) {
+  if (!writer.write_metadata(kDeviceMetadataRecord, device_meta)) {
     return false;
   }
 
-  // 3. Write recording metadata (axon.recording)
-  auto recording_meta = build_recording_metadata(message_count, file_size);
-  if (!writer.write_metadata("axon.recording", recording_meta)) {
+  // 4. Write recording metadata (axon.recording)
+  auto recording_meta =
+    build_recording_metadata(message_count, std::string(kFileSizeMetadataWidth, '0'));
+  if (!writer.write_metadata(kRecordingMetadataRecord, recording_meta)) {
+    return false;
+  }
+
+  // 5. Write deterministic topic summary metadata (axon.topics)
+  auto topics_meta = build_topics_metadata();
+  if (!writer.write_metadata(kTopicsMetadataRecord, topics_meta)) {
     return false;
   }
 
   return true;
+}
+
+bool MetadataInjector::update_mcap_file_size_metadata(
+  const std::string& mcap_path, uint64_t actual_file_size
+) const {
+  const std::string replacement = format_file_size_metadata_value(actual_file_size);
+  if (replacement.size() != kFileSizeMetadataWidth) {
+    return false;
+  }
+
+  const std::string placeholder(kFileSizeMetadataWidth, '0');
+  const std::string pattern = build_file_size_patch_pattern(placeholder);
+  const size_t value_offset_in_pattern = pattern.size() - placeholder.size();
+
+  std::fstream file(mcap_path, std::ios::in | std::ios::out | std::ios::binary);
+  if (!file) {
+    return false;
+  }
+
+  std::string carry;
+  std::vector<char> buffer(kPatchBufferSize);
+  uint64_t stream_offset = 0;
+
+  while (file.read(buffer.data(), static_cast<std::streamsize>(buffer.size())) || file.gcount() > 0
+  ) {
+    const std::streamsize bytes_read = file.gcount();
+    std::string window = carry;
+    window.append(buffer.data(), static_cast<size_t>(bytes_read));
+
+    const size_t found = window.find(pattern);
+    if (found != std::string::npos) {
+      const uint64_t window_start_offset = stream_offset - carry.size();
+      const uint64_t patch_offset = window_start_offset + found + value_offset_in_pattern;
+      file.clear();
+      file.seekp(static_cast<std::streamoff>(patch_offset), std::ios::beg);
+      file.write(replacement.data(), static_cast<std::streamsize>(replacement.size()));
+      file.flush();
+      return static_cast<bool>(file);
+    }
+
+    if (window.size() >= pattern.size() - 1) {
+      carry = window.substr(window.size() - (pattern.size() - 1));
+    } else {
+      carry = window;
+    }
+    stream_offset += static_cast<uint64_t>(bytes_read);
+  }
+
+  return false;
 }
 
 bool MetadataInjector::generate_sidecar_json(
@@ -129,94 +329,29 @@ bool MetadataInjector::generate_sidecar_json(
     return false;
   }
 
+  if (finish_time_ == std::chrono::system_clock::time_point{}) {
+    finish_time_ = std::chrono::system_clock::now();
+  }
+
   // Compute SHA-256 checksum (always enabled)
   checksum_ = compute_sha256(mcap_path);
-
-  // Build JSON sidecar
-  nlohmann::json sidecar;
-  sidecar["version"] = "1.0";
-  sidecar["mcap_file"] = std::filesystem::path(mcap_path).filename().string();
-
-  // Task metadata
-  sidecar["task"] = nlohmann::json::object();
-  sidecar["task"]["task_id"] = task_config_.task_id;
-  if (!task_config_.order_id.empty()) {
-    sidecar["task"]["order_id"] = task_config_.order_id;
-  }
-  sidecar["task"]["scene"] = task_config_.scene;
-  if (!task_config_.subscene.empty()) {
-    sidecar["task"]["subscene"] = task_config_.subscene;
-  }
-  if (!task_config_.skills.empty()) {
-    sidecar["task"]["skills"] = task_config_.skills;
-  }
-  sidecar["task"]["factory"] = task_config_.factory;
-  if (!task_config_.data_collector_id.empty()) {
-    sidecar["task"]["data_collector_id"] = task_config_.data_collector_id;
-  }
-  if (!task_config_.operator_name.empty()) {
-    sidecar["task"]["operator_name"] = task_config_.operator_name;
+  if (checksum_.empty()) {
+    return false;
   }
 
-  // Device metadata
-  sidecar["device"] = nlohmann::json::object();
-  sidecar["device"]["device_id"] = task_config_.device_id;
-  std::string device_model = get_device_model();
-  if (!device_model.empty()) {
-    sidecar["device"]["device_model"] = device_model;
-  }
-  std::string device_serial = get_device_serial();
-  if (!device_serial.empty()) {
-    sidecar["device"]["device_serial"] = device_serial;
-  }
-  sidecar["device"]["hostname"] = get_hostname();
-  sidecar["device"]["ros_distro"] = get_ros_distro();
+  const uint64_t total_messages =
+    has_injected_message_count_ ? injected_message_count_ : sum_topic_message_count();
 
-  // Recording metadata
-  auto duration_sec = std::chrono::duration<double>(finish_time_ - start_time_).count();
+  auto sidecar_meta = build_sidecar_metadata(mcap_path);
+  auto task_meta = build_task_metadata();
+  auto device_meta = build_device_metadata();
+  auto recording_meta =
+    build_recording_metadata(total_messages, format_file_size_metadata_value(actual_file_size));
+  auto topics_meta = build_topics_metadata();
 
-  // Count total messages from topic stats
-  uint64_t total_messages = 0;
-  for (const auto& [topic, stats] : topic_stats_) {
-    total_messages += stats.message_count;
-  }
-
-  sidecar["recording"] = nlohmann::json::object();
-  sidecar["recording"]["recorder_version"] = AXON_RECORDER_VERSION;
-  sidecar["recording"]["recording_started_at"] = format_iso8601(start_time_);
-  sidecar["recording"]["recording_finished_at"] = format_iso8601(finish_time_);
-  sidecar["recording"]["duration_sec"] = duration_sec;
-  sidecar["recording"]["message_count"] = total_messages;
-  sidecar["recording"]["file_size_bytes"] = actual_file_size;
+  nlohmann::json sidecar =
+    build_sidecar_from_metadata(sidecar_meta, task_meta, device_meta, recording_meta, topics_meta);
   sidecar["recording"]["checksum_sha256"] = checksum_;
-
-  // Build topics list
-  std::vector<std::string> topics_recorded;
-  for (const auto& [topic, stats] : topic_stats_) {
-    topics_recorded.push_back(topic);
-  }
-  std::sort(topics_recorded.begin(), topics_recorded.end());
-  sidecar["recording"]["topics_recorded"] = topics_recorded;
-
-  // Topics summary
-  sidecar["topics_summary"] = nlohmann::json::array();
-  for (const auto& [topic, stats] : topic_stats_) {
-    nlohmann::json topic_info;
-    topic_info["topic"] = stats.topic;
-    topic_info["message_type"] = stats.message_type;
-    topic_info["message_count"] = stats.message_count;
-    topic_info["frequency_hz"] = stats.compute_frequency_hz();
-    sidecar["topics_summary"].push_back(topic_info);
-  }
-
-  // Sort topics_summary by topic name
-  std::sort(
-    sidecar["topics_summary"].begin(),
-    sidecar["topics_summary"].end(),
-    [](const nlohmann::json& a, const nlohmann::json& b) {
-      return a["topic"].get<std::string>() < b["topic"].get<std::string>();
-    }
-  );
 
   // Atomic write: write to temp file, then rename
   std::filesystem::path mcap_fs_path(mcap_path);
@@ -259,6 +394,17 @@ std::string MetadataInjector::get_checksum() const {
 // Private methods
 // ============================================================================
 
+std::unordered_map<std::string, std::string> MetadataInjector::build_sidecar_metadata(
+  const std::string& mcap_path
+) const {
+  std::unordered_map<std::string, std::string> meta;
+
+  meta["version"] = kSidecarVersion;
+  meta["mcap_file"] = std::filesystem::path(mcap_path).filename().string();
+
+  return meta;
+}
+
 std::unordered_map<std::string, std::string> MetadataInjector::build_task_metadata() const {
   std::unordered_map<std::string, std::string> meta;
 
@@ -278,7 +424,7 @@ std::unordered_map<std::string, std::string> MetadataInjector::build_task_metada
     for (const auto& skill : task_config_.skills) {
       sanitized_skills.push_back(sanitize_field(skill, kMaxSkillLength));
     }
-    meta["skills"] = join(sanitized_skills, ",");
+    meta["skills"] = to_json_array_string(sanitized_skills);
   }
   if (!task_config_.data_collector_id.empty()) {
     meta["data_collector_id"] = sanitize_field(task_config_.data_collector_id, kMaxIdLength);
@@ -311,7 +457,7 @@ std::unordered_map<std::string, std::string> MetadataInjector::build_device_meta
 }
 
 std::unordered_map<std::string, std::string> MetadataInjector::build_recording_metadata(
-  uint64_t message_count, uint64_t file_size
+  uint64_t message_count, const std::string& file_size_bytes
 ) const {
   std::unordered_map<std::string, std::string> meta;
 
@@ -325,17 +471,66 @@ std::unordered_map<std::string, std::string> MetadataInjector::build_recording_m
   meta["duration_sec"] = duration_ss.str();
 
   meta["message_count"] = std::to_string(message_count);
-  meta["file_size_bytes"] = std::to_string(file_size);
+  meta[kFileSizeMetadataKey] = file_size_bytes;
 
-  // Build topics list
   std::vector<std::string> topics;
-  for (const auto& [topic, stats] : topic_stats_) {
-    topics.push_back(topic);
+  for (const auto& stats : sorted_topic_stats()) {
+    topics.push_back(stats.topic);
   }
-  std::sort(topics.begin(), topics.end());
-  meta["topics_recorded"] = join(topics, ",");
+  meta["topics_recorded"] = to_json_array_string(topics);
 
   return meta;
+}
+
+std::unordered_map<std::string, std::string> MetadataInjector::build_topics_metadata() const {
+  std::unordered_map<std::string, std::string> meta;
+  nlohmann::json topics_summary = nlohmann::json::array();
+
+  for (const auto& stats : sorted_topic_stats()) {
+    nlohmann::json topic_info;
+    topic_info["topic"] = stats.topic;
+    topic_info["message_type"] = stats.message_type;
+    topic_info["message_count"] = stats.message_count;
+    topic_info["frequency_hz"] = stats.compute_frequency_hz();
+    topics_summary.push_back(topic_info);
+  }
+
+  meta["topics_summary"] = topics_summary.dump();
+  return meta;
+}
+
+std::vector<TopicStats> MetadataInjector::sorted_topic_stats() const {
+  std::vector<TopicStats> stats;
+  stats.reserve(topic_stats_.size());
+  for (const auto& [topic, topic_stats] : topic_stats_) {
+    (void)topic;
+    stats.push_back(topic_stats);
+  }
+
+  std::sort(stats.begin(), stats.end(), [](const TopicStats& a, const TopicStats& b) {
+    return a.topic < b.topic;
+  });
+
+  return stats;
+}
+
+uint64_t MetadataInjector::sum_topic_message_count() const {
+  uint64_t total = 0;
+  for (const auto& [topic, stats] : topic_stats_) {
+    (void)topic;
+    total += stats.message_count;
+  }
+  return total;
+}
+
+std::string MetadataInjector::format_file_size_metadata_value(uint64_t file_size) const {
+  std::ostringstream ss;
+  ss << std::setw(static_cast<int>(kFileSizeMetadataWidth)) << std::setfill('0') << file_size;
+  std::string value = ss.str();
+  if (value.size() > kFileSizeMetadataWidth) {
+    return "";
+  }
+  return value;
 }
 
 std::string MetadataInjector::get_hostname() const {

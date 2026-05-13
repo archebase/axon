@@ -11,14 +11,19 @@
  */
 
 #include <gtest/gtest.h>
+#include <mcap/reader.hpp>
+#include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 #include "../src/metadata/metadata_injector.hpp"
+#include "mcap_writer_wrapper.hpp"
 
 namespace fs = std::filesystem;
 using namespace axon::recorder;
@@ -57,6 +62,136 @@ protected:
 
   fs::path test_dir_;
 };
+
+namespace {
+
+using MetadataRecords = std::map<std::string, std::unordered_map<std::string, std::string>>;
+
+nlohmann::json read_json_file(const std::string& path) {
+  std::ifstream input(path);
+  nlohmann::json json;
+  input >> json;
+  return json;
+}
+
+MetadataRecords read_mcap_metadata(const std::string& path) {
+  MetadataRecords records;
+
+  mcap::McapReader reader;
+  auto status = reader.open(path);
+  if (!status.ok()) {
+    ADD_FAILURE() << "Failed to open MCAP: " << status.message;
+    return records;
+  }
+
+  status = reader.readSummary(mcap::ReadSummaryMethod::NoFallbackScan);
+  if (!status.ok()) {
+    ADD_FAILURE() << "Failed to read MCAP summary: " << status.message;
+    return records;
+  }
+
+  auto* data_source = reader.dataSource();
+  if (data_source == nullptr) {
+    ADD_FAILURE() << "MCAP reader has no data source";
+    return records;
+  }
+
+  for (const auto& [name, index] : reader.metadataIndexes()) {
+    (void)name;
+    mcap::Record record;
+    status = mcap::McapReader::ReadRecord(*data_source, index.offset, &record);
+    if (!status.ok()) {
+      ADD_FAILURE() << "Failed to read metadata record: " << status.message;
+      continue;
+    }
+
+    mcap::Metadata metadata;
+    status = mcap::McapReader::ParseMetadata(record, &metadata);
+    if (!status.ok()) {
+      ADD_FAILURE() << "Failed to parse metadata record: " << status.message;
+      continue;
+    }
+
+    records[metadata.name] = metadata.metadata;
+  }
+
+  return records;
+}
+
+const std::string& metadata_value(
+  const MetadataRecords& records, const std::string& record_name, const std::string& key
+) {
+  static const std::string empty;
+  auto record_it = records.find(record_name);
+  if (record_it == records.end()) {
+    return empty;
+  }
+  auto value_it = record_it->second.find(key);
+  return value_it == record_it->second.end() ? empty : value_it->second;
+}
+
+bool metadata_has_key(
+  const MetadataRecords& records, const std::string& record_name, const std::string& key
+) {
+  auto record_it = records.find(record_name);
+  if (record_it == records.end()) {
+    return false;
+  }
+  return record_it->second.find(key) != record_it->second.end();
+}
+
+void copy_if_present(
+  nlohmann::json& object, const MetadataRecords& records, const std::string& record_name,
+  const std::string& key
+) {
+  if (metadata_has_key(records, record_name, key)) {
+    object[key] = metadata_value(records, record_name, key);
+  }
+}
+
+nlohmann::json reconstruct_sidecar_without_checksum(const MetadataRecords& records) {
+  nlohmann::json sidecar;
+  sidecar["version"] = metadata_value(records, "axon.sidecar", "version");
+  sidecar["mcap_file"] = metadata_value(records, "axon.sidecar", "mcap_file");
+
+  auto& task = sidecar["task"] = nlohmann::json::object();
+  copy_if_present(task, records, "axon.task", "task_id");
+  copy_if_present(task, records, "axon.task", "order_id");
+  copy_if_present(task, records, "axon.task", "scene");
+  copy_if_present(task, records, "axon.task", "subscene");
+  if (metadata_has_key(records, "axon.task", "skills")) {
+    task["skills"] = nlohmann::json::parse(metadata_value(records, "axon.task", "skills"));
+  }
+  copy_if_present(task, records, "axon.task", "factory");
+  copy_if_present(task, records, "axon.task", "data_collector_id");
+  copy_if_present(task, records, "axon.task", "operator_name");
+
+  auto& device = sidecar["device"] = nlohmann::json::object();
+  copy_if_present(device, records, "axon.device", "device_id");
+  copy_if_present(device, records, "axon.device", "device_model");
+  copy_if_present(device, records, "axon.device", "device_serial");
+  copy_if_present(device, records, "axon.device", "hostname");
+  copy_if_present(device, records, "axon.device", "ros_distro");
+
+  auto& recording = sidecar["recording"] = nlohmann::json::object();
+  copy_if_present(recording, records, "axon.recording", "recorder_version");
+  copy_if_present(recording, records, "axon.recording", "recording_started_at");
+  copy_if_present(recording, records, "axon.recording", "recording_finished_at");
+  recording["duration_sec"] = std::stod(metadata_value(records, "axon.recording", "duration_sec"));
+  recording["message_count"] =
+    std::stoull(metadata_value(records, "axon.recording", "message_count"));
+  recording["file_size_bytes"] =
+    std::stoull(metadata_value(records, "axon.recording", "file_size_bytes"));
+  recording["topics_recorded"] =
+    nlohmann::json::parse(metadata_value(records, "axon.recording", "topics_recorded"));
+
+  sidecar["topics_summary"] =
+    nlohmann::json::parse(metadata_value(records, "axon.topics", "topics_summary"));
+
+  return sidecar;
+}
+
+}  // namespace
 
 // ============================================================================
 // TopicStats Tests
@@ -722,6 +857,73 @@ TEST_F(MetadataInjectorTest, SidecarCompleteStructureValidation) {
   EXPECT_NE(content.find("\"topic\": \"/lidar/points\""), std::string::npos);
   EXPECT_NE(content.find("\"message_type\": \"sensor_msgs/PointCloud2\""), std::string::npos);
   EXPECT_NE(content.find("\"message_count\": 100"), std::string::npos);
+}
+
+TEST_F(MetadataInjectorTest, McapMetadataMatchesSidecarExceptChecksum) {
+  setenv("AXON_DEVICE_MODEL", "model_mcap", 1);
+  setenv("AXON_DEVICE_SERIAL", "serial_mcap", 1);
+  setenv("ROS_DISTRO", "humble", 1);
+
+  MetadataInjector injector;
+  TaskConfig config;
+  config.task_id = "task_mcap_parity";
+  config.device_id = "robot_mcap_01";
+  config.data_collector_id = "collector_mcap";
+  config.order_id = "order_mcap";
+  config.operator_name = "operator_mcap";
+  config.scene = "scene_mcap";
+  config.subscene = "subscene_mcap";
+  config.factory = "factory_mcap";
+  config.skills = {"navigate", "inspect", "dock"};
+  injector.set_task_config(config);
+  injector.set_recording_start_time(std::chrono::system_clock::now());
+
+  injector.update_topic_stats("/zzz/last", "std_msgs/String", 10);
+  injector.update_topic_stats("/aaa/first", "sensor_msgs/Image", 30);
+  injector.update_topic_stats("/mmm/middle", "sensor_msgs/Imu", 20);
+
+  auto mcap_path = (test_dir_ / "task_mcap_parity.mcap").string();
+  axon::mcap_wrapper::McapWriterWrapper writer;
+  axon::mcap_wrapper::McapWriterOptions options;
+  options.compression = axon::mcap_wrapper::Compression::None;
+  ASSERT_TRUE(writer.open(mcap_path, options));
+  ASSERT_TRUE(injector.inject_metadata(writer, 60, 0));
+  writer.close();
+
+  const auto actual_size = fs::file_size(mcap_path);
+  ASSERT_TRUE(injector.update_mcap_file_size_metadata(mcap_path, actual_size));
+  ASSERT_TRUE(injector.generate_sidecar_json(mcap_path, actual_size));
+
+  auto sidecar = read_json_file(injector.get_sidecar_path());
+  sidecar["recording"].erase("checksum_sha256");
+
+  const auto metadata_records = read_mcap_metadata(mcap_path);
+  ASSERT_TRUE(metadata_records.find("axon.sidecar") != metadata_records.end());
+  ASSERT_TRUE(metadata_records.find("axon.task") != metadata_records.end());
+  ASSERT_TRUE(metadata_records.find("axon.device") != metadata_records.end());
+  ASSERT_TRUE(metadata_records.find("axon.recording") != metadata_records.end());
+  ASSERT_TRUE(metadata_records.find("axon.topics") != metadata_records.end());
+
+  EXPECT_EQ(metadata_records.at("axon.recording").count("checksum_sha256"), 0u);
+
+  auto reconstructed = reconstruct_sidecar_without_checksum(metadata_records);
+  EXPECT_EQ(reconstructed, sidecar);
+  EXPECT_EQ(
+    reconstructed["recording"]["file_size_bytes"].get<uint64_t>(),
+    static_cast<uint64_t>(actual_size)
+  );
+
+  const auto& topics_recorded = reconstructed["recording"]["topics_recorded"];
+  ASSERT_EQ(topics_recorded.size(), 3u);
+  EXPECT_EQ(topics_recorded[0], "/aaa/first");
+  EXPECT_EQ(topics_recorded[1], "/mmm/middle");
+  EXPECT_EQ(topics_recorded[2], "/zzz/last");
+
+  const auto& topics_summary = reconstructed["topics_summary"];
+  ASSERT_EQ(topics_summary.size(), 3u);
+  EXPECT_EQ(topics_summary[0]["topic"], "/aaa/first");
+  EXPECT_EQ(topics_summary[1]["topic"], "/mmm/middle");
+  EXPECT_EQ(topics_summary[2]["topic"], "/zzz/last");
 }
 
 TEST_F(MetadataInjectorTest, SidecarMessageCountAggregation) {

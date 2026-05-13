@@ -57,7 +57,8 @@ struct TopicStats {
  *   // At finalization - BEFORE writer.close()
  *   injector.inject_metadata(writer, total_messages, file_size);
  *
- *   // AFTER writer.close() - compute checksum and generate sidecar
+ *   // AFTER writer.close() - patch final size, compute checksum, and generate sidecar
+ *   injector.update_mcap_file_size_metadata(mcap_path, actual_file_size);
  *   injector.generate_sidecar_json(mcap_path, actual_file_size);
  */
 class MetadataInjector {
@@ -105,12 +106,27 @@ public:
    *
    * @param writer McapWriterWrapper to write metadata to
    * @param message_count Total messages recorded
-   * @param file_size Current file size (before close)
+   * @param file_size Deprecated pre-close size hint; final size is patched after close
    * @return true on success
    */
   bool inject_metadata(
     mcap_wrapper::McapWriterWrapper& writer, uint64_t message_count, uint64_t file_size
   );
+
+  /**
+   * Patch the final on-disk file size into the MCAP recording metadata.
+   *
+   * MCAP metadata must be written before writer.close(), but the final file
+   * size is only known after close writes the footer and summary. The injector
+   * reserves a fixed-width file_size_bytes value during inject_metadata(), then
+   * replaces it in place with the actual size.
+   *
+   * @param mcap_path Path to the finalized MCAP file
+   * @param actual_file_size Actual file size after close
+   * @return true when the reserved metadata value was updated
+   */
+  bool update_mcap_file_size_metadata(const std::string& mcap_path, uint64_t actual_file_size)
+    const;
 
   /**
    * Generate sidecar JSON file
@@ -137,6 +153,12 @@ public:
 
 private:
   /**
+   * Build sidecar metadata map (axon.sidecar)
+   */
+  std::unordered_map<std::string, std::string> build_sidecar_metadata(const std::string& mcap_path
+  ) const;
+
+  /**
    * Build task metadata map (axon.task)
    */
   std::unordered_map<std::string, std::string> build_task_metadata() const;
@@ -150,8 +172,28 @@ private:
    * Build recording metadata map (axon.recording)
    */
   std::unordered_map<std::string, std::string> build_recording_metadata(
-    uint64_t message_count, uint64_t file_size
+    uint64_t message_count, const std::string& file_size_bytes
   ) const;
+
+  /**
+   * Build deterministic topic summary metadata map (axon.topics)
+   */
+  std::unordered_map<std::string, std::string> build_topics_metadata() const;
+
+  /**
+   * Return topic stats sorted by topic name
+   */
+  std::vector<TopicStats> sorted_topic_stats() const;
+
+  /**
+   * Sum tracked per-topic message counts
+   */
+  uint64_t sum_topic_message_count() const;
+
+  /**
+   * Format file size for MCAP metadata's fixed-width patchable value
+   */
+  std::string format_file_size_metadata_value(uint64_t file_size) const;
 
   /**
    * Get hostname via gethostname()
@@ -220,6 +262,9 @@ private:
 
   std::string sidecar_path_;
   std::string checksum_;
+
+  uint64_t injected_message_count_ = 0;
+  bool has_injected_message_count_ = false;
 
   // Optional callback for ROS parameter loading
   ConfigLoaderCallback ros_param_loader_;
