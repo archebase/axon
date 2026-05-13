@@ -81,7 +81,8 @@ private:
     const ProcessTargetConfig& target, const std::filesystem::path& pid_file,
     const std::string& source
   ) const;
-  std::vector<std::filesystem::path> expand_candidate_paths(const std::filesystem::path& pattern
+  std::vector<std::filesystem::path> expand_candidate_paths(
+    const std::filesystem::path& pattern
   ) const;
   bool process_exists(int pid) const;
   bool command_matches_target(int pid, const ProcessTargetConfig& target) const;

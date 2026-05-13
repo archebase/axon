@@ -75,8 +75,9 @@ private:
   EvaluationResult evaluate_process_rule(
     const AlertRuleConfig& rule, const nlohmann::json& snapshot
   ) const;
-  EvaluationResult evaluate_metric_rule(const AlertRuleConfig& rule, const nlohmann::json& snapshot)
-    const;
+  EvaluationResult evaluate_metric_rule(
+    const AlertRuleConfig& rule, const nlohmann::json& snapshot
+  ) const;
   void update_rule_state(
     const AlertRuleConfig& rule, const EvaluationResult& result, const nlohmann::json& snapshot,
     std::chrono::steady_clock::time_point now

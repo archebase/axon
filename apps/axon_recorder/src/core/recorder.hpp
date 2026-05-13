@@ -551,8 +551,9 @@ private:
   nlohmann::json get_disk_usage_status_json() const;
   bool ensure_disk_capacity_before_start(const std::string& output_file);
   bool ensure_disk_capacity_before_write(size_t next_write_bytes);
-  bool maybe_cleanup_disk_usage(const std::string& active_output_path, DiskUsageSnapshot& snapshot)
-    const;
+  bool maybe_cleanup_disk_usage(
+    const std::string& active_output_path, DiskUsageSnapshot& snapshot
+  ) const;
   void log_disk_warning_once(const DiskUsageSnapshot& snapshot);
   void trip_disk_hard_limit(const DiskUsageSnapshot& snapshot);
 

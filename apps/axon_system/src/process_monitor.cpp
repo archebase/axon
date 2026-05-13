@@ -361,9 +361,7 @@ bool ProcessMonitor::command_matches_target(int pid, const ProcessTargetConfig& 
     return false;
   }
   return std::all_of(
-    target.cmdline_contains.begin(),
-    target.cmdline_contains.end(),
-    [&cmdline](const auto& needle) {
+    target.cmdline_contains.begin(), target.cmdline_contains.end(), [&cmdline](const auto& needle) {
       return cmdline.find(needle) != std::string::npos;
     }
   );
@@ -375,8 +373,9 @@ std::string ProcessMonitor::read_cmdline(int pid) const {
   return content;
 }
 
-std::optional<ProcessMonitor::ProcessStat> ProcessMonitor::read_stat(int pid, std::string* error)
-  const {
+std::optional<ProcessMonitor::ProcessStat> ProcessMonitor::read_stat(
+  int pid, std::string* error
+) const {
   std::string content;
   if (!read_file(options_.proc_root / std::to_string(pid) / "stat", &content)) {
     if (error != nullptr) {

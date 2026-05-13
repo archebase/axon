@@ -294,8 +294,8 @@ bool MetadataInjector::update_mcap_file_size_metadata(
   std::vector<char> buffer(kPatchBufferSize);
   uint64_t stream_offset = 0;
 
-  while (file.read(buffer.data(), static_cast<std::streamsize>(buffer.size())) || file.gcount() > 0
-  ) {
+  while (file.read(buffer.data(), static_cast<std::streamsize>(buffer.size())) ||
+         file.gcount() > 0) {
     const std::streamsize bytes_read = file.gcount();
     std::string window = carry;
     window.append(buffer.data(), static_cast<size_t>(bytes_read));

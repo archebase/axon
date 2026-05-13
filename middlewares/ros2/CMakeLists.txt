@@ -113,7 +113,9 @@ foreach(_axon_ros2_pkg ${_axon_ros2_rosidl_packages})
     find_package(${_axon_ros2_pkg} QUIET)
     if(NOT TARGET ${_axon_ros2_pkg}::${_axon_ros2_pkg})
         add_library(
-            ${_axon_ros2_pkg}::${_axon_ros2_pkg} INTERFACE IMPORTED GLOBAL
+            ${_axon_ros2_pkg}::${_axon_ros2_pkg}
+            INTERFACE
+            IMPORTED GLOBAL
         )
         # Mirror rosidl#947's aggregate target: bundle the per-language
         # generated targets so their INTERFACE_INCLUDE_DIRECTORIES /
