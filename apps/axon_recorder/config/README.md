@@ -70,6 +70,15 @@ List of topics to record with batching settings:
   Maps to MCAP's `CompressionLevel` enum: `0`=Default, `1`=Fastest, `2`=Fast, `3`=Default, `4`=Slow/Slowest.
   Values greater than 4 are silently clamped. This is *not* the native zstd (1-19) or lz4 (1-12)
   range — the underlying MCAP C++ library only exposes 5 presets.
+- `max_disk_usage_gb`: Backward-compatible alias for `disk_usage.hard_limit_gb`
+- `disk_usage`: Recorder-managed disk budget
+  - `enabled`: Enable warn/hard disk guard checks
+  - `warn_usage_gb`: Log warning and expose `disk_usage.state=warn`
+  - `hard_limit_gb`: Refuse new recordings and pause active writes at hard limit
+  - `max_task_size_gb`: Optional per-task MCAP size limit (`0` disables)
+  - `cleanup_enabled`: Delete oldest completed `.mcap`/`.json` files before refusing start
+  - `cleanup_target_gb`: Cleanup target when cleanup is enabled
+  - `cleanup_upload_backlog`: Also allow cleanup in failed upload backlog directory
 
 ### Logging
 - `console`: Console logging configuration

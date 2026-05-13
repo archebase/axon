@@ -18,6 +18,16 @@ recording:
   profile: ros2
   compression: zstd
   compression_level: 3
+  max_disk_usage_gb: 100
+  disk_usage:
+    enabled: true
+    warn_usage_gb: 80
+    hard_limit_gb: 100
+    max_task_size_gb: 0
+    cleanup_enabled: false
+    cleanup_target_gb: 80
+    cleanup_min_age_sec: 3600
+    cleanup_upload_backlog: false
 
 # Subscribe to ROS topics and UDP-backed JSON channels (per udp.streams below).
 subscriptions:

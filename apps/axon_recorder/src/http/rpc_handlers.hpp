@@ -161,6 +161,15 @@ RpcResponse handle_rpc_get_state(const RpcCallbacks& callbacks, const nlohmann::
 RpcResponse handle_rpc_get_stats(const RpcCallbacks& callbacks, const nlohmann::json& params);
 
 /**
+ * Handle RPC get_status command.
+ * Returns the same operational snapshot as get_stats, including disk usage.
+ * @param callbacks RPC callbacks to invoke
+ * @param params Request parameters
+ * @return RPC response
+ */
+RpcResponse handle_rpc_get_status(const RpcCallbacks& callbacks, const nlohmann::json& params);
+
+/**
  * Handle RPC get_drop_stats command
  * Returns per-topic drop statistics and current recording state.
  * @param callbacks RPC callbacks to invoke

@@ -596,7 +596,8 @@ TEST_F(RpcHandlersTest, GetStatsSuccess) {
     {"messages_received", 5000},
     {"messages_written", 4950},
     {"messages_dropped", 50},
-    {"bytes_written", 1024000}
+    {"bytes_written", 1024000},
+    {"disk_usage", {{"state", "normal"}, {"total_used_bytes", 1024}}}
   };
 
   RpcCallbacks callbacks = create_mock_callbacks();
@@ -611,6 +612,24 @@ TEST_F(RpcHandlersTest, GetStatsSuccess) {
   EXPECT_EQ(4950, response.data["messages_written"]);
   EXPECT_EQ(50, response.data["messages_dropped"]);
   EXPECT_EQ(1024000, response.data["bytes_written"]);
+}
+
+TEST_F(RpcHandlersTest, GetStatusReturnsStatsSnapshotWithDiskUsage) {
+  test_stats_ = {
+    {"state", "recording"},
+    {"messages_written", 99},
+    {"disk_usage", {{"state", "warn"}, {"total_used_bytes", 4096}}}
+  };
+
+  RpcCallbacks callbacks = create_mock_callbacks();
+
+  RpcResponse response = handle_rpc_get_status(callbacks, nlohmann::json::object());
+
+  EXPECT_TRUE(response.success);
+  EXPECT_EQ("Status retrieved successfully", response.message);
+  EXPECT_EQ("recording", response.data["state"]);
+  EXPECT_EQ("warn", response.data["disk_usage"]["state"]);
+  EXPECT_EQ(4096, response.data["disk_usage"]["total_used_bytes"]);
 }
 
 TEST_F(RpcHandlersTest, GetStatsCallbackNotRegistered) {

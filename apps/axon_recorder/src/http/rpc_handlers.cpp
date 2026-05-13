@@ -306,6 +306,14 @@ RpcResponse handle_rpc_get_stats(const RpcCallbacks& callbacks, const nlohmann::
   return response;
 }
 
+RpcResponse handle_rpc_get_status(const RpcCallbacks& callbacks, const nlohmann::json& params) {
+  RpcResponse response = handle_rpc_get_stats(callbacks, params);
+  if (response.success) {
+    response.message = "Status retrieved successfully";
+  }
+  return response;
+}
+
 RpcResponse handle_rpc_get_drop_stats(const RpcCallbacks& callbacks, const nlohmann::json& params) {
   (void)params;  // Unused
   RpcResponse response;

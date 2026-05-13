@@ -161,6 +161,7 @@ private:
   RpcResponse handle_rpc_cancel(const nlohmann::json& params);
   RpcResponse handle_rpc_clear(const nlohmann::json& params);
   RpcResponse handle_rpc_get_state(const nlohmann::json& params);
+  RpcResponse handle_rpc_get_status(const nlohmann::json& params);
   RpcResponse handle_rpc_get_stats(const nlohmann::json& params);
   RpcResponse handle_rpc_get_drop_stats(const nlohmann::json& params);
   RpcResponse handle_rpc_get_latency_stats(const nlohmann::json& params);

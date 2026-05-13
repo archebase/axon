@@ -214,6 +214,12 @@ topics:
 recording:
   auto_start: true
   max_disk_usage_gb: 100.0
+  disk_usage:
+    enabled: true
+    warn_usage_gb: 80.0
+    hard_limit_gb: 100.0
+    max_task_size_gb: 0.0
+    cleanup_enabled: false
 
 # HTTP RPC server configuration
 http_server:
@@ -278,6 +284,11 @@ curl http://localhost:8080/rpc/status
 # Get statistics
 curl http://localhost:8080/rpc/stats
 ```
+
+`/rpc/status` returns the same operational snapshot as `/rpc/stats` and includes
+`disk_usage.state` (`normal`, `warn`, or `hard_limit`), monitored recording and
+upload backlog paths, total used bytes, filesystem capacity, and configured
+warn/hard thresholds.
 
 **Complete API Documentation:**
 

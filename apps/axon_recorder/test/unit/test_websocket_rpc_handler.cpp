@@ -336,6 +336,26 @@ TEST_F(WebSocketRpcHandlerTest, HandleValidGetStatsMessage) {
   EXPECT_EQ(995, last_response_["data"]["messages_written"]);
 }
 
+TEST_F(WebSocketRpcHandlerTest, HandleValidGetStatusMessage) {
+  test_stats_ = {
+    {"state", "recording"},
+    {"messages_written", 995},
+    {"disk_usage", {{"state", "warn"}, {"total_used_bytes", 4096}}}
+  };
+
+  std::string message = R"({
+    "action": "get_status",
+    "request_id": "req_status"
+  })";
+
+  handler_->handle_message("client_status", message);
+
+  EXPECT_TRUE(wait_for_response());
+  EXPECT_TRUE(last_response_["success"]);
+  EXPECT_EQ("Status retrieved successfully", last_response_["message"]);
+  EXPECT_EQ("warn", last_response_["data"]["disk_usage"]["state"]);
+}
+
 // ============================================================================
 // Error Handling Tests
 // ============================================================================

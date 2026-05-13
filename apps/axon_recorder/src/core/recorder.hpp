@@ -21,6 +21,7 @@
 #include "../http/http_server.hpp"
 #include "../plugin/plugin_loader.hpp"
 #include "../state/state_machine.hpp"
+#include "disk_usage_monitor.hpp"
 #include "latency_monitor.hpp"
 #include "recording_session.hpp"
 #include "schema_resolver.hpp"
@@ -87,10 +88,30 @@ struct DatasetConfig {
 };
 
 /**
+ * Disk usage limits for recorder-managed local storage.
+ *
+ * The monitor sums files under the recording output path and upload backlog
+ * paths, then compares that usage against warn/hard thresholds. Per-task
+ * size uses the active MCAP writer's byte counter.
+ */
+struct DiskUsageConfig {
+  bool enabled = true;
+  double warn_usage_gb = 80.0;
+  double hard_limit_gb = 100.0;
+  double max_task_size_gb = 0.0;  // 0 disables per-task limit
+  bool cleanup_enabled = false;
+  double cleanup_target_gb = 80.0;
+  int cleanup_min_age_sec = 3600;
+  bool cleanup_upload_backlog = false;
+};
+
+/**
  * Recording configuration
  */
 struct RecordingConfig {
+  // Backward-compatible alias for disk_usage.hard_limit_gb.
   double max_disk_usage_gb = 100.0;
+  DiskUsageConfig disk_usage;
   std::string profile = "ros2";
   std::string compression = "zstd";
   // Compression preset, range 0-4 (applies to both zstd and lz4).
@@ -522,6 +543,20 @@ private:
   uint64_t apply_monotonic_timestamp_for_topic(const std::string& topic, uint64_t stamp_ns);
 
   /**
+   * Disk usage guard helpers.
+   */
+  DiskUsageLimitConfig make_disk_usage_limits() const;
+  std::vector<DiskUsagePathConfig> make_disk_usage_paths() const;
+  DiskUsageSnapshot collect_disk_usage_snapshot(uint64_t current_task_bytes = 0) const;
+  nlohmann::json get_disk_usage_status_json() const;
+  bool ensure_disk_capacity_before_start(const std::string& output_file);
+  bool ensure_disk_capacity_before_write(size_t next_write_bytes);
+  bool maybe_cleanup_disk_usage(const std::string& active_output_path, DiskUsageSnapshot& snapshot)
+    const;
+  void log_disk_warning_once(const DiskUsageSnapshot& snapshot);
+  void trip_disk_hard_limit(const DiskUsageSnapshot& snapshot);
+
+  /**
    * Convert ABI status to string
    */
   static const char* status_to_string(AxonStatus status);
@@ -606,6 +641,12 @@ private:
   /// Last MCAP log time written per topic (session-local) for optional monotonic fix.
   mutable std::mutex topic_monotonic_mutex_;
   std::unordered_map<std::string, uint64_t> last_written_log_time_ns_by_topic_;
+
+  mutable std::mutex disk_usage_mutex_;
+  std::chrono::steady_clock::time_point last_disk_check_time_{};
+  DiskUsageSnapshot last_disk_usage_snapshot_;
+  std::atomic<bool> disk_warn_logged_{false};
+  std::atomic<bool> disk_hard_limit_reached_{false};
 
   // Per-topic rate limiting state for drop reporting
   struct DropReportState {

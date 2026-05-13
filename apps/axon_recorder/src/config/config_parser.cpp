@@ -225,6 +225,19 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
 
     // Recording
     node["recording"]["max_disk_usage_gb"] = config.recording.max_disk_usage_gb;
+    node["recording"]["disk_usage"]["enabled"] = config.recording.disk_usage.enabled;
+    node["recording"]["disk_usage"]["warn_usage_gb"] = config.recording.disk_usage.warn_usage_gb;
+    node["recording"]["disk_usage"]["hard_limit_gb"] = config.recording.disk_usage.hard_limit_gb;
+    node["recording"]["disk_usage"]["max_task_size_gb"] =
+      config.recording.disk_usage.max_task_size_gb;
+    node["recording"]["disk_usage"]["cleanup_enabled"] =
+      config.recording.disk_usage.cleanup_enabled;
+    node["recording"]["disk_usage"]["cleanup_target_gb"] =
+      config.recording.disk_usage.cleanup_target_gb;
+    node["recording"]["disk_usage"]["cleanup_min_age_sec"] =
+      config.recording.disk_usage.cleanup_min_age_sec;
+    node["recording"]["disk_usage"]["cleanup_upload_backlog"] =
+      config.recording.disk_usage.cleanup_upload_backlog;
 
     std::ofstream file(path);
     file << node;
@@ -293,8 +306,79 @@ bool ConfigParser::parse_subscriptions(
 }
 
 bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& recording) {
+  bool hard_limit_set = false;
+  bool warn_limit_set = false;
+
   if (node["max_disk_usage_gb"]) {
     recording.max_disk_usage_gb = node["max_disk_usage_gb"].as<double>();
+    recording.disk_usage.hard_limit_gb = recording.max_disk_usage_gb;
+    hard_limit_set = true;
+  }
+  if (node["warn_disk_usage_gb"]) {
+    recording.disk_usage.warn_usage_gb = node["warn_disk_usage_gb"].as<double>();
+    warn_limit_set = true;
+  }
+  if (node["hard_disk_usage_gb"]) {
+    recording.disk_usage.hard_limit_gb = node["hard_disk_usage_gb"].as<double>();
+    recording.max_disk_usage_gb = recording.disk_usage.hard_limit_gb;
+    hard_limit_set = true;
+  }
+  if (node["max_task_size_gb"]) {
+    recording.disk_usage.max_task_size_gb = node["max_task_size_gb"].as<double>();
+  }
+
+  auto parse_disk_usage_node = [&](const YAML::Node& disk_node) {
+    if (!disk_node || !disk_node.IsMap()) {
+      return;
+    }
+    if (disk_node["enabled"]) {
+      recording.disk_usage.enabled = disk_node["enabled"].as<bool>();
+    }
+    if (disk_node["warn_usage_gb"]) {
+      recording.disk_usage.warn_usage_gb = disk_node["warn_usage_gb"].as<double>();
+      warn_limit_set = true;
+    }
+    if (disk_node["warn_gb"]) {
+      recording.disk_usage.warn_usage_gb = disk_node["warn_gb"].as<double>();
+      warn_limit_set = true;
+    }
+    if (disk_node["hard_limit_gb"]) {
+      recording.disk_usage.hard_limit_gb = disk_node["hard_limit_gb"].as<double>();
+      recording.max_disk_usage_gb = recording.disk_usage.hard_limit_gb;
+      hard_limit_set = true;
+    }
+    if (disk_node["hard_gb"]) {
+      recording.disk_usage.hard_limit_gb = disk_node["hard_gb"].as<double>();
+      recording.max_disk_usage_gb = recording.disk_usage.hard_limit_gb;
+      hard_limit_set = true;
+    }
+    if (disk_node["max_task_size_gb"]) {
+      recording.disk_usage.max_task_size_gb = disk_node["max_task_size_gb"].as<double>();
+    }
+    if (disk_node["cleanup_enabled"]) {
+      recording.disk_usage.cleanup_enabled = disk_node["cleanup_enabled"].as<bool>();
+    }
+    if (disk_node["cleanup_target_gb"]) {
+      recording.disk_usage.cleanup_target_gb = disk_node["cleanup_target_gb"].as<double>();
+    }
+    if (disk_node["cleanup_min_age_sec"]) {
+      recording.disk_usage.cleanup_min_age_sec = disk_node["cleanup_min_age_sec"].as<int>();
+    }
+    if (disk_node["cleanup_upload_backlog"]) {
+      recording.disk_usage.cleanup_upload_backlog = disk_node["cleanup_upload_backlog"].as<bool>();
+    }
+  };
+
+  if (node["disk_usage"]) {
+    parse_disk_usage_node(node["disk_usage"]);
+  }
+  if (node["disk_limits"]) {
+    parse_disk_usage_node(node["disk_limits"]);
+  }
+
+  if (hard_limit_set && !warn_limit_set && recording.disk_usage.hard_limit_gb > 0.0 &&
+      recording.disk_usage.warn_usage_gb > recording.disk_usage.hard_limit_gb) {
+    recording.disk_usage.warn_usage_gb = recording.disk_usage.hard_limit_gb * 0.8;
   }
   if (node["compression"]) {
     recording.compression = node["compression"].as<std::string>();
@@ -537,6 +621,31 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
   if (config.dataset.mode != "create" && config.dataset.mode != "append") {
     error_msg = "Dataset mode must be 'create' or 'append'";
     return false;
+  }
+
+  const auto& disk = config.recording.disk_usage;
+  if (disk.enabled) {
+    if (disk.warn_usage_gb < 0.0 || disk.hard_limit_gb < 0.0 || disk.max_task_size_gb < 0.0 ||
+        disk.cleanup_target_gb < 0.0) {
+      error_msg = "Disk usage thresholds must be >= 0";
+      return false;
+    }
+
+    if (disk.hard_limit_gb > 0.0 && disk.warn_usage_gb > disk.hard_limit_gb) {
+      error_msg = "Disk usage warn_usage_gb must be <= hard_limit_gb";
+      return false;
+    }
+
+    if (disk.cleanup_min_age_sec < 0) {
+      error_msg = "Disk cleanup_min_age_sec must be >= 0";
+      return false;
+    }
+
+    if (disk.cleanup_enabled && disk.hard_limit_gb > 0.0 &&
+        disk.cleanup_target_gb >= disk.hard_limit_gb) {
+      error_msg = "Disk cleanup_target_gb must be < hard_limit_gb when cleanup is enabled";
+      return false;
+    }
   }
 
   return true;
