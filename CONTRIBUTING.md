@@ -135,6 +135,31 @@ source ~/.zshrc
 clang-format-21 --version
 ```
 
+### Serena-Assisted Navigation
+
+The repository includes `.serena/project.yml` for contributors who use Serena-capable
+editors or agents. It is intended for code navigation and scoped edits across:
+
+- C++ backend libraries, applications, and middleware plugins
+- Vue control panel files under `apps/axon_panel/src/`
+- JavaScript frontend helpers, YAML configs and workflows, and Markdown docs
+
+Use Serena when symbol or reference context is useful before changing code, for example
+finding C++ call sites, following Vue component usage, or reviewing YAML configuration
+structure. Prefer normal shell, search, build, and test tools for broad text searches,
+generated files, package scripts, CMake troubleshooting, formatting, and verification.
+
+For best C++ references and diagnostics, generate a compilation database after installing
+dependencies:
+
+```bash
+cmake -B build -S . -DAXON_BUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+ln -sf build/compile_commands.json compile_commands.json
+```
+
+The symlink is optional, but helps tools that only look for `compile_commands.json` at the
+repository root. Regenerate it after changing build options or enabled ROS middleware.
+
 ---
 
 ## Contributing Guidelines

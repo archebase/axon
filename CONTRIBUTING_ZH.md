@@ -115,6 +115,29 @@ sudo apt-get install -y \
     cppcheck
 ```
 
+### Serena 辅助导航
+
+仓库包含 `.serena/project.yml`，供使用支持 Serena 的编辑器或 agent 的贡献者使用。
+该配置用于以下区域的代码导航和小范围编辑：
+
+- C++ 后端库、应用程序和中间件插件
+- `apps/axon_panel/src/` 下的 Vue 控制面板文件
+- JavaScript 前端辅助代码、YAML 配置和工作流、Markdown 文档
+
+在修改代码前需要符号或引用上下文时使用 Serena，例如查找 C++ 调用点、跟踪 Vue
+组件用法，或查看 YAML 配置结构。对于大范围文本搜索、生成文件、打包脚本、CMake
+问题排查、格式化和验证，优先使用普通 shell、搜索、构建和测试工具。
+
+为了获得更好的 C++ 引用和诊断质量，请在安装依赖后生成编译数据库：
+
+```bash
+cmake -B build -S . -DAXON_BUILD_TESTS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+ln -sf build/compile_commands.json compile_commands.json
+```
+
+根目录的软链接是可选的，但有助于只在仓库根目录查找 `compile_commands.json` 的工具。
+更改构建选项或启用的 ROS 中间件后，请重新生成该文件。
+
 ---
 
 ## 贡献指南
