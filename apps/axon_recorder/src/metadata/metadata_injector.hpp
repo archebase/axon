@@ -125,8 +125,9 @@ public:
    * @param actual_file_size Actual file size after close
    * @return true when the reserved metadata value was updated
    */
-  bool update_mcap_file_size_metadata(const std::string& mcap_path, uint64_t actual_file_size)
-    const;
+  bool update_mcap_file_size_metadata(
+    const std::string& mcap_path, uint64_t actual_file_size
+  ) const;
 
   /**
    * Generate sidecar JSON file
@@ -155,7 +156,8 @@ private:
   /**
    * Build sidecar metadata map (axon.sidecar)
    */
-  std::unordered_map<std::string, std::string> build_sidecar_metadata(const std::string& mcap_path
+  std::unordered_map<std::string, std::string> build_sidecar_metadata(
+    const std::string& mcap_path
   ) const;
 
   /**

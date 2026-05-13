@@ -41,8 +41,9 @@ nlohmann::json snapshot(
        {"memory", {{"available", true}, {"used_percent", memory_used_percent}}},
        {"disk",
         nlohmann::json::array({
-          {{"id", "recording_data"}, {"available", true}, {"available_bytes", disk_available_bytes}
-          },
+          {{"id", "recording_data"},
+           {"available", true},
+           {"available_bytes", disk_available_bytes}},
         })},
      }},
     {"processes",

@@ -96,10 +96,12 @@ jobs:
           sudo apt-get install -y clang-format-21
           clang-format-21 --version
 
-      - name: Install fsfe-reuse
+      - name: Install Python CI tools
         run: |
-          pip install reuse
+          python -m pip install --upgrade pip
+          python -m pip install reuse gersemi
           reuse --version
+          gersemi --version
 
       - name: Run clang-format check
         run: |

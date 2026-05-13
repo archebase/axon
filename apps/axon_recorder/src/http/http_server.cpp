@@ -128,8 +128,7 @@ bool HttpServer::start() {
     rpc_callbacks.quit = callbacks_.quit;
 
     ws_rpc_handler_ = std::make_unique<WebSocketRpcHandler>(
-      rpc_callbacks,
-      [this](const std::string& client_id, const nlohmann::json& response) {
+      rpc_callbacks, [this](const std::string& client_id, const nlohmann::json& response) {
         // Send RPC response to specific client via WebSocket
         if (ws_server_) {
           ws_server_->send_to_client(client_id, response.dump());
