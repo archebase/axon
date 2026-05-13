@@ -53,6 +53,8 @@ int main() {
         "\n"
         "sampling:\n"
         "  resources_ms: 1500\n"
+        "  processes_ms: 2500\n"
+        "  alerts_ms: 3500\n"
         "  disk_ms: 7000\n"
         "disk_paths:\n"
         "  - id: state_dir\n"
@@ -80,6 +82,19 @@ int main() {
         "      timeout_ms: 250\n"
         "  - id: transfer\n"
         "    executable: axon-transfer\n"
+        "alerts:\n"
+        "  evaluate_interval_ms: 4500\n"
+        "  sinks:\n"
+        "    - type: file\n"
+        "      path: " +
+        (root / "alerts.jsonl").string() +
+        "\n"
+        "  rules:\n"
+        "    - id: recorder_unavailable\n"
+        "      process_id: recorder\n"
+        "      status: unavailable\n"
+        "      for_sec: 10\n"
+        "      severity: critical\n"
     );
 
     auto config = axon::system::default_system_config();
@@ -94,11 +109,15 @@ int main() {
     require(config.resource_options.disk_paths.at(1).id == "data", "disk path id");
     require(config.resource_options.network_interfaces.size() == 2, "network interface count");
     require(config.resource_options.network_interfaces.at(1) == "wlan0", "network interface");
-    require(config.process_options.process_sample_cadence_ms == 2000, "process cadence default");
+    require(config.process_options.process_sample_cadence_ms == 2500, "process cadence");
     require(config.process_options.targets.size() == 2, "process target count");
     require(config.process_options.targets.at(0).id == "recorder", "process target id");
     require(config.process_options.targets.at(0).rpc.has_value(), "process target rpc");
     require(config.process_options.targets.at(0).rpc->timeout_ms == 250, "process rpc timeout");
+    require(config.alert_options.evaluate_interval_ms == 4500, "alert cadence");
+    require(config.alert_options.sinks.size() == 1, "alert sink count");
+    require(config.alert_options.rules.size() == 1, "alert rule count");
+    require(config.alert_options.rules.at(0).severity == "critical", "alert severity");
 
     write_file(config_path, "server:\n  port: 70000\n");
     config = axon::system::default_system_config();

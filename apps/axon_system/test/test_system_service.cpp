@@ -63,6 +63,8 @@ int main() {
     require(state.data["processes"].contains("recorder"), "recorder process missing");
     require(state.data["processes"].contains("transfer"), "transfer process missing");
     require(state.data.contains("alerts"), "alerts placeholder missing");
+    require(state.data["alerts"].contains("rules"), "alert rules missing");
+    require(state.data["service"]["sample_cadence_ms"].contains("alerts"), "alert cadence missing");
 
     auto metrics = service.get_metrics();
     require(metrics.success, "metrics response failed");
@@ -75,6 +77,10 @@ int main() {
     auto processes = service.get_processes();
     require(processes.success, "processes response failed");
     require(processes.data.contains("recorder"), "processes recorder missing");
+
+    auto alerts = service.get_alerts();
+    require(alerts.success, "alerts response failed");
+    require(alerts.data.contains("firing_count"), "alerts firing count missing");
 
     auto health = service.get_health();
     require(health.success, "health response should be successful");

@@ -5,6 +5,7 @@ standalone service skeleton, basic status reporting, and graceful shutdown.
 Phase 2 adds host CPU, memory, disk, and network metrics to `/rpc/state` and
 `/rpc/metrics`. Phase 3 adds read-only recorder and transfer process health
 monitoring through `/rpc/processes`.
+Phase 4 adds local alert evaluation and log/file delivery through `/rpc/alerts`.
 
 ## Build
 
@@ -21,6 +22,7 @@ curl http://127.0.0.1:8091/health
 curl http://127.0.0.1:8091/rpc/state
 curl http://127.0.0.1:8091/rpc/metrics
 curl http://127.0.0.1:8091/rpc/processes
+curl http://127.0.0.1:8091/rpc/alerts
 curl -X POST http://127.0.0.1:8091/rpc/quit
 ```
 

@@ -38,6 +38,8 @@ endif()
 
 add_library(
     axon_system_core
+    src/alert_evaluator.cpp
+    src/alert_sink.cpp
     src/http_server.cpp
     src/process_monitor.cpp
     src/procfs_reader.cpp

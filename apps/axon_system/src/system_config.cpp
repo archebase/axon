@@ -163,6 +163,109 @@ bool parse_monitored_processes(const YAML::Node& node, SystemConfig* config, std
   return true;
 }
 
+bool parse_alert_sinks(const YAML::Node& node, SystemConfig* config, std::string* error) {
+  if (!node.IsSequence()) {
+    if (error != nullptr) {
+      *error = "alerts.sinks must be a sequence";
+    }
+    return false;
+  }
+
+  std::vector<AlertSinkConfig> sinks;
+  for (const auto& item : node) {
+    AlertSinkConfig sink;
+    sink.type = item["type"] ? item["type"].as<std::string>() : "log";
+    if (item["path"]) {
+      sink.path = item["path"].as<std::string>();
+    }
+    sinks.push_back(std::move(sink));
+  }
+  config->alert_options.sinks = std::move(sinks);
+  return true;
+}
+
+bool parse_alert_labels(const YAML::Node& node, AlertRuleConfig* rule, std::string* error) {
+  if (!node.IsMap()) {
+    if (error != nullptr) {
+      *error = "alerts.rules.labels must be a map";
+    }
+    return false;
+  }
+
+  for (const auto& item : node) {
+    rule->labels[item.first.as<std::string>()] = item.second.as<std::string>();
+  }
+  return true;
+}
+
+bool parse_alert_rules(const YAML::Node& node, SystemConfig* config, std::string* error) {
+  if (!node.IsSequence()) {
+    if (error != nullptr) {
+      *error = "alerts.rules must be a sequence";
+    }
+    return false;
+  }
+
+  std::vector<AlertRuleConfig> rules;
+  for (const auto& item : node) {
+    if (!item["id"]) {
+      if (error != nullptr) {
+        *error = "each alerts.rules item must contain id";
+      }
+      return false;
+    }
+
+    AlertRuleConfig rule;
+    rule.id = item["id"].as<std::string>();
+    rule.severity = item["severity"] ? item["severity"].as<std::string>() : "warning";
+    if (item["metric"]) {
+      rule.metric = item["metric"].as<std::string>();
+    }
+    if (item["op"]) {
+      rule.op = item["op"].as<std::string>();
+    }
+    if (item["threshold"]) {
+      rule.threshold = item["threshold"].as<double>();
+    }
+    if (item["labels"] && !parse_alert_labels(item["labels"], &rule, error)) {
+      return false;
+    }
+    if (item["process_id"]) {
+      rule.process_id = item["process_id"].as<std::string>();
+    }
+    if (item["status"]) {
+      rule.status = item["status"].as<std::string>();
+    }
+    if (item["for_sec"]) {
+      rule.for_sec = item["for_sec"].as<int>();
+    }
+    rules.push_back(std::move(rule));
+  }
+
+  config->alert_options.rules = std::move(rules);
+  return true;
+}
+
+bool parse_alerts(const YAML::Node& node, SystemConfig* config, std::string* error) {
+  if (!node.IsMap()) {
+    if (error != nullptr) {
+      *error = "alerts must be a map";
+    }
+    return false;
+  }
+
+  if (node["evaluate_interval_ms"]) {
+    config->alert_options.evaluate_interval_ms = node["evaluate_interval_ms"].as<int>();
+  }
+  if (node["sinks"] && !parse_alert_sinks(node["sinks"], config, error)) {
+    return false;
+  }
+  if (node["rules"] && !parse_alert_rules(node["rules"], config, error)) {
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 SystemConfig default_system_config() {
@@ -173,6 +276,10 @@ SystemConfig default_system_config() {
   config.process_options.proc_root = "/proc";
   config.process_options.targets = default_process_targets();
   config.process_options.process_sample_cadence_ms = 2000;
+  config.alert_options.state_dir = config.state_dir;
+  config.alert_options.evaluate_interval_ms = 5000;
+  config.alert_options.sinks = default_alert_sinks();
+  config.alert_options.rules = default_alert_rules();
   return config;
 }
 
@@ -201,6 +308,7 @@ bool load_system_config(
 
     if (yaml["state_dir"]) {
       config->state_dir = yaml["state_dir"].as<std::string>();
+      config->alert_options.state_dir = config->state_dir;
     }
 
     if (yaml["sampling"]) {
@@ -213,6 +321,9 @@ bool load_system_config(
       }
       if (sampling["processes_ms"]) {
         config->process_options.process_sample_cadence_ms = sampling["processes_ms"].as<int>();
+      }
+      if (sampling["alerts_ms"]) {
+        config->alert_options.evaluate_interval_ms = sampling["alerts_ms"].as<int>();
       }
     }
 
@@ -227,6 +338,10 @@ bool load_system_config(
 
     if (yaml["monitored_processes"] &&
         !parse_monitored_processes(yaml["monitored_processes"], config, error)) {
+      return false;
+    }
+
+    if (yaml["alerts"] && !parse_alerts(yaml["alerts"], config, error)) {
       return false;
     }
 

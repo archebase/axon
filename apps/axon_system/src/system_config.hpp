@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <string>
 
+#include "alert_evaluator.hpp"
 #include "process_monitor.hpp"
 #include "resource_collector.hpp"
 
@@ -21,6 +22,7 @@ struct SystemConfig {
   std::filesystem::path state_dir = "/var/lib/axon/system";
   ResourceCollectorOptions resource_options;
   ProcessMonitorOptions process_options;
+  AlertEvaluatorOptions alert_options;
 };
 
 SystemConfig default_system_config();

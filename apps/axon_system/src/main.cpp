@@ -108,6 +108,7 @@ int main(int argc, char** argv) {
     }
     if (const auto state_dir = get_arg(argc, argv, "--state-dir")) {
       config.state_dir = state_dir.value();
+      config.alert_options.state_dir = config.state_dir;
       for (auto& disk_path : config.resource_options.disk_paths) {
         if (disk_path.id == "state_dir") {
           disk_path.path = config.state_dir;
@@ -122,6 +123,7 @@ int main(int argc, char** argv) {
     service_options.state_dir = config.state_dir;
     service_options.resource_options = config.resource_options;
     service_options.process_options = config.process_options;
+    service_options.alert_options = config.alert_options;
 
     axon::system::SystemService service(service_options);
     std::string error;

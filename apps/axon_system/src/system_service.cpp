@@ -36,6 +36,14 @@ ProcessMonitorOptions make_default_process_options() {
   return options;
 }
 
+AlertEvaluatorOptions make_default_alert_options(const std::filesystem::path& state_dir) {
+  AlertEvaluatorOptions options;
+  options.state_dir = state_dir;
+  options.rules = default_alert_rules();
+  options.sinks = default_alert_sinks();
+  return options;
+}
+
 SystemServiceOptions normalize_options(SystemServiceOptions options) {
   if (options.resource_options.resource_sample_cadence_ms <= 0) {
     options.resource_options.resource_sample_cadence_ms = 1000;
@@ -59,6 +67,18 @@ SystemServiceOptions normalize_options(SystemServiceOptions options) {
   if (options.process_options.targets.empty()) {
     options.process_options.targets = default_process_targets();
   }
+  if (options.alert_options.evaluate_interval_ms <= 0) {
+    options.alert_options.evaluate_interval_ms = 5000;
+  }
+  if (options.alert_options.state_dir.empty()) {
+    options.alert_options.state_dir = options.state_dir;
+  }
+  if (options.alert_options.rules.empty()) {
+    options.alert_options.rules = default_alert_rules();
+  }
+  if (options.alert_options.sinks.empty()) {
+    options.alert_options.sinks = default_alert_sinks();
+  }
   return options;
 }
 
@@ -67,6 +87,7 @@ SystemServiceOptions default_service_options(std::filesystem::path state_dir) {
   options.state_dir = std::move(state_dir);
   options.resource_options = make_default_resource_options(options.state_dir);
   options.process_options = make_default_process_options();
+  options.alert_options = make_default_alert_options(options.state_dir);
   return options;
 }
 
@@ -80,6 +101,7 @@ SystemService::SystemService(SystemServiceOptions options)
     , state_dir_(options_.state_dir)
     , resource_collector_(options_.resource_options)
     , process_monitor_(options_.process_options)
+    , alert_evaluator_(options_.alert_options)
     , started_at_(std::chrono::steady_clock::now())
     , started_at_iso_(now_iso8601()) {}
 
@@ -118,6 +140,7 @@ bool SystemService::initialize(std::string* error) {
 
   sample_resources(true);
   sample_processes();
+  sample_alerts();
   start_sampler();
 
   {
@@ -151,7 +174,7 @@ RpcResponse SystemService::get_state() {
     {"service", service_state_json()},
     {"resources", cached_resources_or_placeholder()},
     {"processes", cached_processes_or_placeholder()},
-    {"alerts", {{"firing_count", 0}, {"last_delivery_error", ""}}},
+    {"alerts", cached_alerts_or_placeholder()},
   };
   if (!last_error_.empty()) {
     data["last_error"] = last_error_;
@@ -170,6 +193,11 @@ RpcResponse SystemService::get_metrics() {
 RpcResponse SystemService::get_processes() {
   std::lock_guard<std::mutex> lock(mutex_);
   return {true, "ok", cached_processes_or_placeholder()};
+}
+
+RpcResponse SystemService::get_alerts() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return {true, "ok", cached_alerts_or_placeholder()};
 }
 
 RpcResponse SystemService::request_shutdown() {
@@ -237,13 +265,16 @@ void SystemService::sampler_loop() {
     std::chrono::milliseconds(options_.resource_options.disk_sample_cadence_ms);
   const auto process_cadence =
     std::chrono::milliseconds(options_.process_options.process_sample_cadence_ms);
+  const auto alert_cadence = std::chrono::milliseconds(options_.alert_options.evaluate_interval_ms);
 
   auto next_resource_sample = std::chrono::steady_clock::now() + resource_cadence;
   auto next_disk_sample = std::chrono::steady_clock::now() + disk_cadence;
   auto next_process_sample = std::chrono::steady_clock::now() + process_cadence;
+  auto next_alert_sample = std::chrono::steady_clock::now() + alert_cadence;
 
   while (true) {
-    const auto next_sample = std::min(next_resource_sample, next_process_sample);
+    const auto next_sample =
+      std::min({next_resource_sample, next_process_sample, next_alert_sample});
     {
       std::unique_lock<std::mutex> lock(mutex_);
       if (sampler_cv_.wait_until(lock, next_sample, [this]() {
@@ -275,6 +306,14 @@ void SystemService::sampler_loop() {
       do {
         next_process_sample += process_cadence;
       } while (next_process_sample <= now);
+    }
+
+    if (now >= next_alert_sample) {
+      sample_alerts();
+
+      do {
+        next_alert_sample += alert_cadence;
+      } while (next_alert_sample <= now);
     }
   }
 
@@ -318,6 +357,23 @@ void SystemService::sample_processes() {
   has_process_snapshot_ = true;
 }
 
+void SystemService::sample_alerts() {
+  nlohmann::json snapshot;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot = {
+      {"service", service_state_json()},
+      {"resources", cached_resources_or_placeholder()},
+      {"processes", cached_processes_or_placeholder()},
+    };
+  }
+
+  auto alerts = alert_evaluator_.evaluate(snapshot);
+  std::lock_guard<std::mutex> lock(mutex_);
+  cached_alerts_ = std::move(alerts);
+  has_alert_snapshot_ = true;
+}
+
 nlohmann::json SystemService::cached_resources_or_placeholder() const {
   if (has_resource_snapshot_) {
     return cached_resources_;
@@ -352,9 +408,17 @@ nlohmann::json SystemService::cached_processes_or_placeholder() const {
   return processes;
 }
 
+nlohmann::json SystemService::cached_alerts_or_placeholder() const {
+  if (has_alert_snapshot_) {
+    return cached_alerts_;
+  }
+  return alert_evaluator_.current_state();
+}
+
 nlohmann::json SystemService::service_cadence_json() const {
   auto cadence = resource_collector_.cadence_json();
   cadence["processes"] = options_.process_options.process_sample_cadence_ms;
+  cadence["alerts"] = options_.alert_options.evaluate_interval_ms;
   return cadence;
 }
 

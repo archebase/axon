@@ -220,6 +220,17 @@ HttpServer::Response HttpServer::route_request(const Request& request) {
     );
   }
 
+  if (target == "/rpc/alerts" && method == "GET") {
+    const auto rpc_response = service_.get_alerts();
+    return make_response(
+      http::status::ok,
+      "application/json",
+      rpc_response.to_json().dump(2),
+      request.version(),
+      request.keep_alive()
+    );
+  }
+
   if (target == "/rpc/quit" && method == "POST") {
     const auto rpc_response = service_.request_shutdown();
     return make_response(
