@@ -151,8 +151,12 @@ nlohmann::json ProcessMonitor::collect_target(const ProcessTargetConfig& target)
         {"pid", candidate.pid},
         {"source", candidate.source},
         {"start_time_ticks", candidate.start_time_ticks},
+        {"process_present", candidate.process_present},
         {"command_matches", candidate.command_matches},
       });
+      if (!candidate.message.empty()) {
+        candidate_json.back()["message"] = candidate.message;
+      }
     }
     result["candidates"] = std::move(candidate_json);
   }
@@ -166,19 +170,36 @@ nlohmann::json ProcessMonitor::collect_target(const ProcessTargetConfig& target)
   auto chosen = candidates.front();
   const auto pid_file_candidate =
     std::find_if(candidates.begin(), candidates.end(), [](const ProcessCandidate& candidate) {
-      return candidate.source == "pid_file" || candidate.source == "pid_file_candidate";
+      return (candidate.source == "pid_file" || candidate.source == "pid_file_candidate") &&
+             candidate.process_present;
     });
   if (pid_file_candidate != candidates.end()) {
     chosen = *pid_file_candidate;
   } else {
-    chosen =
-      *std::max_element(candidates.begin(), candidates.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.start_time_ticks < rhs.start_time_ticks;
-      });
+    auto best_process_match = candidates.end();
+    for (auto it = candidates.begin(); it != candidates.end(); ++it) {
+      if (!it->process_present || !it->command_matches) {
+        continue;
+      }
+      if (best_process_match == candidates.end() ||
+          best_process_match->start_time_ticks < it->start_time_ticks) {
+        best_process_match = it;
+      }
+    }
+    if (best_process_match != candidates.end()) {
+      chosen = *best_process_match;
+    }
+  }
+
+  result["source"] = chosen.source;
+  if (!chosen.process_present) {
+    result["status"] = "unavailable";
+    result["stale_pid"] = chosen.pid;
+    result["message"] = chosen.message.empty() ? "process not found" : chosen.message;
+    return result;
   }
 
   result["pid"] = chosen.pid;
-  result["source"] = chosen.source;
   if (!chosen.command_matches) {
     result["status"] = "unhealthy";
     result["message"] =
@@ -253,6 +274,7 @@ std::vector<ProcessMonitor::ProcessCandidate> ProcessMonitor::discover_candidate
         {},
         stat.has_value() ? stat->start_time_ticks : 0,
         true,
+        true,
         "",
       });
     }
@@ -276,14 +298,16 @@ std::optional<ProcessMonitor::ProcessCandidate> ProcessMonitor::candidate_from_p
   candidate.source = source;
   candidate.pid_file = pid_file;
 
-  std::string stat_error;
-  const auto stat = read_stat(pid, &stat_error);
-  candidate.start_time_ticks = stat.has_value() ? stat->start_time_ticks : 0;
   if (!process_exists(pid)) {
+    candidate.process_present = false;
     candidate.command_matches = false;
     candidate.message = "pid file points to a missing process";
     return candidate;
   }
+
+  std::string stat_error;
+  const auto stat = read_stat(pid, &stat_error);
+  candidate.start_time_ticks = stat.has_value() ? stat->start_time_ticks : 0;
   if (!command_matches_target(pid, target)) {
     candidate.command_matches = false;
     candidate.message = "pid file process command does not match target";
@@ -455,14 +479,17 @@ nlohmann::json ProcessMonitor::process_resources(int pid, const ProcessStat& sta
 
 nlohmann::json ProcessMonitor::probe_health(const ProcessTargetConfig& target) const {
   nlohmann::json health = {
-    {"type", target.rpc->type.empty() ? "http" : target.rpc->type},
+    {"type", "http"},
     {"reachable", false},
+    {"http_reachable", false},
   };
   if (!target.rpc.has_value() || target.rpc->url.empty()) {
     health["error"] = "health probe is not configured";
     return health;
   }
-  if (!target.rpc->type.empty() && target.rpc->type != "http") {
+  const auto probe_type = target.rpc->type.empty() ? "http" : target.rpc->type;
+  health["type"] = probe_type;
+  if (probe_type != "http") {
     health["error"] = "unsupported health probe type";
     return health;
   }
@@ -497,14 +524,26 @@ nlohmann::json ProcessMonitor::probe_health(const ProcessTargetConfig& target) c
 
     const auto status_code = static_cast<unsigned int>(response.result_int());
     health["status_code"] = status_code;
-    health["reachable"] = status_code >= 200 && status_code < 300;
-    if (!health["reachable"].get<bool>()) {
+    const bool http_reachable = status_code >= 200 && status_code < 300;
+    health["http_reachable"] = http_reachable;
+    health["reachable"] = http_reachable;
+    if (!http_reachable) {
       health["error"] = "health probe returned HTTP " + std::to_string(status_code);
     }
     try {
       const auto body = nlohmann::json::parse(response.body());
-      if (body.contains("data") && body["data"].is_object() && body["data"].contains("state")) {
-        health["state"] = body["data"]["state"];
+      if (body.is_object()) {
+        if (body.contains("success") && body["success"].is_boolean()) {
+          const bool rpc_success = body["success"].get<bool>();
+          health["rpc_success"] = rpc_success;
+          if (http_reachable && !rpc_success) {
+            health["reachable"] = false;
+            health["error"] = body.value("message", "health probe RPC success false");
+          }
+        }
+        if (body.contains("data") && body["data"].is_object() && body["data"].contains("state")) {
+          health["state"] = body["data"]["state"];
+        }
       }
     } catch (const nlohmann::json::exception&) {
       // The reachability check does not require a JSON body.

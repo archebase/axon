@@ -6,6 +6,8 @@
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
+#include <sys/socket.h>
+#include <sys/time.h>
 
 #include <chrono>
 #include <exception>
@@ -20,19 +22,35 @@ namespace beast = boost::beast;
 namespace http = boost::beast::http;
 using tcp = boost::asio::ip::tcp;
 
+namespace {
+
+void set_native_socket_timeout(tcp::socket& socket, int timeout_ms) {
+  const timeval timeout{
+    timeout_ms / 1000,
+    static_cast<suseconds_t>((timeout_ms % 1000) * 1000),
+  };
+  setsockopt(socket.native_handle(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  setsockopt(socket.native_handle(), SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+}
+
+}  // namespace
+
 struct HttpServer::Session {
   explicit Session(boost::asio::io_context& io_context)
-      : socket(io_context) {}
+      : stream(io_context) {}
 
-  tcp::socket socket;
+  beast::tcp_stream stream;
   std::thread thread;
   std::atomic<bool> finished{false};
 };
 
-HttpServer::HttpServer(std::string host, std::uint16_t port, SystemService& service)
+HttpServer::HttpServer(
+  std::string host, std::uint16_t port, SystemService& service, int session_timeout_ms
+)
     : host_(std::move(host))
     , port_(port)
-    , service_(service) {}
+    , service_(service)
+    , session_timeout_ms_(session_timeout_ms > 0 ? session_timeout_ms : 5000) {}
 
 HttpServer::~HttpServer() {
   stop();
@@ -51,6 +69,7 @@ bool HttpServer::start() {
     acceptor_->bind(endpoint);
     acceptor_->listen(boost::asio::socket_base::max_listen_connections);
     acceptor_->non_blocking(true);
+    port_ = acceptor_->local_endpoint().port();
     running_ = true;
     thread_ = std::make_unique<std::thread>(&HttpServer::run, this);
     return true;
@@ -76,10 +95,10 @@ void HttpServer::stop() {
   {
     std::lock_guard<std::mutex> lock(sessions_mutex_);
     for (const auto& session : sessions_) {
-      if (session && session->socket.is_open()) {
-        session->socket.shutdown(tcp::socket::shutdown_both, ec);
+      if (session && session->stream.socket().is_open()) {
+        session->stream.socket().shutdown(tcp::socket::shutdown_both, ec);
         ec.clear();
-        session->socket.close(ec);
+        session->stream.socket().close(ec);
         ec.clear();
       }
     }
@@ -96,11 +115,15 @@ bool HttpServer::is_running() const {
   return running_;
 }
 
+std::uint16_t HttpServer::port() const {
+  return port_;
+}
+
 void HttpServer::run() {
   while (running_) {
     boost::system::error_code ec;
     auto session = std::make_shared<Session>(io_context_);
-    acceptor_->accept(session->socket, ec);
+    acceptor_->accept(session->stream.socket(), ec);
     if (ec) {
       if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
         reap_sessions(false);
@@ -122,7 +145,7 @@ void HttpServer::run() {
       session->thread = std::thread(&HttpServer::handle_session, this, session);
     } catch (const std::exception& ex) {
       session->finished = true;
-      session->socket.close(ec);
+      session->stream.socket().close(ec);
       std::cerr << "axon-system session failed to start: " << ex.what() << std::endl;
     }
     reap_sessions(false);
@@ -133,16 +156,34 @@ void HttpServer::handle_session(std::shared_ptr<Session> session) {
   beast::flat_buffer buffer;
   boost::system::error_code ec;
   Request request;
-  http::read(session->socket, buffer, request, ec);
+  set_native_socket_timeout(session->stream.socket(), session_timeout_ms_);
+  std::weak_ptr<Session> weak_session = session;
+  std::thread([weak_session, timeout_ms = session_timeout_ms_]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+    const auto locked = weak_session.lock();
+    if (!locked || locked->finished.load()) {
+      return;
+    }
+    boost::system::error_code timeout_ec;
+    if (locked->stream.socket().is_open()) {
+      locked->stream.socket().shutdown(tcp::socket::shutdown_both, timeout_ec);
+      timeout_ec.clear();
+      locked->stream.socket().close(timeout_ec);
+    }
+  }).detach();
+  session->stream.expires_after(std::chrono::milliseconds(session_timeout_ms_));
+  http::read(session->stream, buffer, request, ec);
   if (ec) {
+    session->stream.socket().close(ec);
     session->finished = true;
     return;
   }
 
   auto response = route_request(request);
-  http::write(session->socket, response, ec);
-  session->socket.shutdown(tcp::socket::shutdown_send, ec);
-  session->socket.close(ec);
+  session->stream.expires_after(std::chrono::milliseconds(session_timeout_ms_));
+  http::write(session->stream, response, ec);
+  session->stream.socket().shutdown(tcp::socket::shutdown_send, ec);
+  session->stream.socket().close(ec);
   session->finished = true;
 }
 

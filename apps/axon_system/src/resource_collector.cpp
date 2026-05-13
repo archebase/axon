@@ -145,10 +145,9 @@ nlohmann::json ResourceCollector::collect_disk() const {
         disk["free_bytes"] = space.free;
         disk["available_bytes"] = space.available;
         disk["used_bytes"] = used_bytes;
-        disk["used_percent"] =
-          space.capacity > 0 ? (static_cast<double>(used_bytes) * 100.0) /
-                                 static_cast<double>(space.capacity)
-                             : 0.0;
+        disk["used_percent"] = space.capacity > 0 ? (static_cast<double>(used_bytes) * 100.0) /
+                                                      static_cast<double>(space.capacity)
+                                                  : 0.0;
       }
     }
     if (ec) {
@@ -168,7 +167,13 @@ nlohmann::json ResourceCollector::collect_network() {
   std::map<std::string, NetworkCounters> current;
   if (!procfs_.read_file("net/dev", &content, &error) ||
       !parse_net_dev(content, &current, &error)) {
-    return {{"available", false}, {"error", error}, {"unit", "bytes"}};
+    return {
+      {"available", false},
+      {"error", error},
+      {"interfaces", nlohmann::json::array()},
+      {"unit", "bytes"},
+      {"rate_unit", "bytes_per_second"},
+    };
   }
 
   const auto now = std::chrono::steady_clock::now();
@@ -211,7 +216,17 @@ nlohmann::json ResourceCollector::collect_network() {
   previous_network_ = current;
   previous_network_time_ = now;
 
-  return interfaces;
+  nlohmann::json network = {
+    {"available", true},
+    {"interfaces", interfaces},
+    {"unit", "bytes"},
+    {"rate_unit", "bytes_per_second"},
+  };
+  if (interfaces.empty() && !options_.network_interfaces.empty()) {
+    network["available"] = false;
+    network["error"] = "configured network interfaces not found";
+  }
+  return network;
 }
 
 bool ResourceCollector::parse_cpu_times(

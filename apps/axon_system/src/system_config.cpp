@@ -7,6 +7,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <limits>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -14,6 +15,13 @@ namespace axon {
 namespace system {
 
 namespace {
+
+bool fail_with(std::string* error, const std::string& message) {
+  if (error != nullptr) {
+    *error = message;
+  }
+  return false;
+}
 
 bool parse_port(const YAML::Node& node, std::uint16_t* port, std::string* error) {
   try {
@@ -163,6 +171,24 @@ bool parse_monitored_processes(const YAML::Node& node, SystemConfig* config, std
   return true;
 }
 
+bool is_supported_alert_sink_type(const std::string& type) {
+  return type == "log" || type == "file";
+}
+
+bool is_supported_alert_metric(const std::string& metric) {
+  return metric.rfind("memory.", 0) == 0 || metric.rfind("cpu.", 0) == 0 ||
+         metric.rfind("disk.", 0) == 0;
+}
+
+bool is_supported_alert_op(const std::string& op) {
+  return op == "lt" || op == "le" || op == "gt" || op == "ge" || op == "eq" || op == "ne";
+}
+
+bool is_supported_process_status(const std::string& status) {
+  return status == "healthy" || status == "unhealthy" || status == "unavailable" ||
+         status == "unknown";
+}
+
 bool parse_alert_sinks(const YAML::Node& node, SystemConfig* config, std::string* error) {
   if (!node.IsSequence()) {
     if (error != nullptr) {
@@ -173,8 +199,15 @@ bool parse_alert_sinks(const YAML::Node& node, SystemConfig* config, std::string
 
   std::vector<AlertSinkConfig> sinks;
   for (const auto& item : node) {
+    if (!item.IsMap()) {
+      return fail_with(error, "each alerts.sinks item must be a map");
+    }
+
     AlertSinkConfig sink;
     sink.type = item["type"] ? item["type"].as<std::string>() : "log";
+    if (!is_supported_alert_sink_type(sink.type)) {
+      return fail_with(error, "unsupported alerts.sinks type: " + sink.type);
+    }
     if (item["path"]) {
       sink.path = item["path"].as<std::string>();
     }
@@ -207,7 +240,11 @@ bool parse_alert_rules(const YAML::Node& node, SystemConfig* config, std::string
   }
 
   std::vector<AlertRuleConfig> rules;
+  std::set<std::string> rule_ids;
   for (const auto& item : node) {
+    if (!item.IsMap()) {
+      return fail_with(error, "each alerts.rules item must be a map");
+    }
     if (!item["id"]) {
       if (error != nullptr) {
         *error = "each alerts.rules item must contain id";
@@ -217,7 +254,17 @@ bool parse_alert_rules(const YAML::Node& node, SystemConfig* config, std::string
 
     AlertRuleConfig rule;
     rule.id = item["id"].as<std::string>();
+    if (rule.id.empty()) {
+      return fail_with(error, "alerts.rules id must not be empty");
+    }
+    if (!rule_ids.insert(rule.id).second) {
+      return fail_with(error, "duplicate alerts.rules id: " + rule.id);
+    }
+
     rule.severity = item["severity"] ? item["severity"].as<std::string>() : "warning";
+    if (rule.severity.empty()) {
+      return fail_with(error, "alerts.rules " + rule.id + " severity must not be empty");
+    }
     if (item["metric"]) {
       rule.metric = item["metric"].as<std::string>();
     }
@@ -239,6 +286,41 @@ bool parse_alert_rules(const YAML::Node& node, SystemConfig* config, std::string
     if (item["for_sec"]) {
       rule.for_sec = item["for_sec"].as<int>();
     }
+
+    if (rule.for_sec < 0) {
+      return fail_with(error, "alerts.rules " + rule.id + " for_sec must be non-negative");
+    }
+
+    const bool has_metric = !rule.metric.empty();
+    const bool has_process = !rule.process_id.empty();
+    if (has_metric == has_process) {
+      return fail_with(
+        error, "alerts.rules " + rule.id + " must configure exactly one of metric or process_id"
+      );
+    }
+
+    if (has_metric) {
+      if (!is_supported_alert_metric(rule.metric)) {
+        return fail_with(
+          error, "alerts.rules " + rule.id + " has unsupported metric: " + rule.metric
+        );
+      }
+      if (rule.op.empty() || !is_supported_alert_op(rule.op)) {
+        return fail_with(error, "alerts.rules " + rule.id + " has unsupported op: " + rule.op);
+      }
+      if (!item["threshold"]) {
+        return fail_with(error, "alerts.rules " + rule.id + " metric rule must contain threshold");
+      }
+    }
+
+    if (has_process) {
+      if (rule.status.empty() || !is_supported_process_status(rule.status)) {
+        return fail_with(
+          error, "alerts.rules " + rule.id + " has unsupported process status: " + rule.status
+        );
+      }
+    }
+
     rules.push_back(std::move(rule));
   }
 
@@ -256,6 +338,9 @@ bool parse_alerts(const YAML::Node& node, SystemConfig* config, std::string* err
 
   if (node["evaluate_interval_ms"]) {
     config->alert_options.evaluate_interval_ms = node["evaluate_interval_ms"].as<int>();
+    if (config->alert_options.evaluate_interval_ms <= 0) {
+      return fail_with(error, "alerts.evaluate_interval_ms must be positive");
+    }
   }
   if (node["sinks"] && !parse_alert_sinks(node["sinks"], config, error)) {
     return false;

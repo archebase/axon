@@ -96,9 +96,15 @@ int main() {
       first["disk"].at(1)["error"].get<std::string>() == "path does not exist",
       "missing disk error mismatch"
     );
-    require(first["network"].size() == 1, "network interface filter mismatch");
-    require(first["network"].at(0)["interface"].get<std::string>() == "eth0", "network name");
-    require(first["network"].at(0)["rx_bytes"].get<std::uint64_t>() == 1000, "rx bytes");
+    require(first["network"].is_object(), "network should use object schema");
+    require(first["network"]["available"].get<bool>(), "network should be available");
+    require(first["network"]["interfaces"].size() == 1, "network interface filter mismatch");
+    require(
+      first["network"]["interfaces"].at(0)["interface"].get<std::string>() == "eth0", "network name"
+    );
+    require(
+      first["network"]["interfaces"].at(0)["rx_bytes"].get<std::uint64_t>() == 1000, "rx bytes"
+    );
 
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     write_file(
@@ -117,14 +123,40 @@ int main() {
     auto second = collector.collect();
     const auto usage = second["cpu"]["usage_percent"].get<double>();
     require(usage > 69.0 && usage < 71.0, "cpu usage delta mismatch");
-    require(second["network"].at(0)["rx_bytes_per_sec"].get<double>() > 0.0, "rx rate missing");
-    require(second["network"].at(0)["tx_bytes_per_sec"].get<double>() > 0.0, "tx rate missing");
+    require(
+      second["network"]["interfaces"].at(0)["rx_bytes_per_sec"].get<double>() > 0.0,
+      "rx rate missing"
+    );
+    require(
+      second["network"]["interfaces"].at(0)["tx_bytes_per_sec"].get<double>() > 0.0,
+      "tx rate missing"
+    );
 
     std::filesystem::remove(proc / "meminfo");
     auto partial = collector.collect();
     require(!partial["memory"]["available"].get<bool>(), "memory failure should be explicit");
     require(partial["cpu"]["available"].get<bool>(), "cpu should survive memory failure");
-    require(partial["network"].is_array(), "network should survive memory failure");
+    require(partial["network"].is_object(), "network should survive memory failure");
+    require(partial["network"]["interfaces"].is_array(), "network interfaces should be stable");
+
+    axon::system::ResourceCollectorOptions missing_network_options = options;
+    missing_network_options.network_interfaces = {"missing0"};
+    axon::system::ResourceCollector missing_network_collector(missing_network_options);
+    auto missing_network = missing_network_collector.collect();
+    require(
+      missing_network["network"].is_object(), "missing filtered network should use object schema"
+    );
+    require(
+      !missing_network["network"]["available"].get<bool>(), "missing filtered network availability"
+    );
+    require(
+      missing_network["network"]["interfaces"].empty(), "missing filtered network interfaces"
+    );
+    require(
+      missing_network["network"]["error"].get<std::string>() ==
+        "configured network interfaces not found",
+      "missing filtered network error"
+    );
 
     std::filesystem::remove_all(root);
     return 0;

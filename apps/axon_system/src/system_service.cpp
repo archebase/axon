@@ -332,7 +332,14 @@ void SystemService::sample_resources(bool refresh_disk) {
       {"cpu", {{"available", false}, {"error", ex.what()}, {"usage_unit", "percent"}}},
       {"memory", {{"available", false}, {"error", ex.what()}, {"unit", "bytes"}}},
       {"disk", nlohmann::json::array()},
-      {"network", {{"available", false}, {"error", ex.what()}, {"unit", "bytes"}}},
+      {"network",
+       {
+         {"available", false},
+         {"error", ex.what()},
+         {"interfaces", nlohmann::json::array()},
+         {"unit", "bytes"},
+         {"rate_unit", "bytes_per_second"},
+       }},
     };
   }
 
@@ -368,7 +375,18 @@ void SystemService::sample_alerts() {
     };
   }
 
-  auto alerts = alert_evaluator_.evaluate(snapshot);
+  nlohmann::json alerts;
+  try {
+    alerts = alert_evaluator_.evaluate(snapshot);
+    alerts["evaluation_available"] = true;
+    alerts["last_evaluated_at"] = now_iso8601();
+  } catch (const std::exception& ex) {
+    alerts = alert_evaluator_.current_state();
+    alerts["evaluation_available"] = false;
+    alerts["evaluation_error"] = ex.what();
+    alerts["last_evaluated_at"] = now_iso8601();
+  }
+
   std::lock_guard<std::mutex> lock(mutex_);
   cached_alerts_ = std::move(alerts);
   has_alert_snapshot_ = true;
@@ -385,7 +403,14 @@ nlohmann::json SystemService::cached_resources_or_placeholder() const {
     {"cpu", {{"available", false}, {"error", "resource snapshot not collected"}}},
     {"memory", {{"available", false}, {"error", "resource snapshot not collected"}}},
     {"disk", nlohmann::json::array()},
-    {"network", {{"available", false}, {"error", "resource snapshot not collected"}}},
+    {"network",
+     {
+       {"available", false},
+       {"error", "resource snapshot not collected"},
+       {"interfaces", nlohmann::json::array()},
+       {"unit", "bytes"},
+       {"rate_unit", "bytes_per_second"},
+     }},
   };
 }
 

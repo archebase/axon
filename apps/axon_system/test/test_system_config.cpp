@@ -124,6 +124,50 @@ int main() {
     require(!axon::system::load_system_config(config_path, &config, &error), "bad port accepted");
     require(!error.empty(), "bad port error missing");
 
+    const auto expect_bad_config = [&](const std::string& content, const std::string& expected) {
+      write_file(config_path, content);
+      config = axon::system::default_system_config();
+      require(
+        !axon::system::load_system_config(config_path, &config, &error), expected + " accepted"
+      );
+      require(error.find(expected) != std::string::npos, expected + " error mismatch: " + error);
+    };
+
+    expect_bad_config(
+      "alerts:\n"
+      "  rules:\n"
+      "    - id: bad_rule\n",
+      "must configure exactly one of metric or process_id"
+    );
+    expect_bad_config(
+      "alerts:\n"
+      "  rules:\n"
+      "    - id: bad_metric\n"
+      "      metric: memory.used_percent\n"
+      "      op: around\n"
+      "      threshold: 90\n",
+      "unsupported op"
+    );
+    expect_bad_config(
+      "alerts:\n"
+      "  rules:\n"
+      "    - id: bad_process\n"
+      "      process_id: recorder\n"
+      "      status: missing\n",
+      "unsupported process status"
+    );
+    expect_bad_config(
+      "alerts:\n"
+      "  sinks:\n"
+      "    - type: ops_http\n",
+      "unsupported alerts.sinks type"
+    );
+    expect_bad_config(
+      "alerts:\n"
+      "  evaluate_interval_ms: 0\n",
+      "alerts.evaluate_interval_ms must be positive"
+    );
+
     std::filesystem::remove_all(root);
     return 0;
   } catch (const std::exception& ex) {

@@ -65,6 +65,7 @@ private:
     std::string source;
     std::filesystem::path pid_file;
     std::uint64_t start_time_ticks = 0;
+    bool process_present = true;
     bool command_matches = true;
     std::string message;
   };

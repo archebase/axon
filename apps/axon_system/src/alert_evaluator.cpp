@@ -221,6 +221,10 @@ void AlertEvaluator::process_delivery_queue(std::chrono::steady_clock::time_poin
     it->next_retry_at = now + std::chrono::seconds(retry_delay_sec);
     ++it;
   }
+
+  if (delivery_queue_.empty()) {
+    last_delivery_error_.clear();
+  }
 }
 
 nlohmann::json AlertEvaluator::build_summary() const {

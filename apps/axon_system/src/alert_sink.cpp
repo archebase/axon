@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <system_error>
 #include <utility>
 
@@ -60,7 +61,10 @@ std::unique_ptr<AlertSink> make_alert_sink(
     const auto path = config.path.empty() ? state_dir / "alerts.jsonl" : config.path;
     return std::make_unique<FileAlertSink>(path);
   }
-  return std::make_unique<LogAlertSink>();
+  if (config.type == "log") {
+    return std::make_unique<LogAlertSink>();
+  }
+  throw std::invalid_argument("unsupported alert sink type: " + config.type);
 }
 
 }  // namespace system

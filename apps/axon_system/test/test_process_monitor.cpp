@@ -2,19 +2,106 @@
 //
 // SPDX-License-Identifier: MulanPSL-2.0
 
+#include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 
 #include "process_monitor.hpp"
 
 namespace {
+
+namespace beast = boost::beast;
+namespace http = boost::beast::http;
+using tcp = boost::asio::ip::tcp;
+
+struct HttpFixtureServer {
+  HttpFixtureServer(std::uint16_t assigned_port, std::thread server_thread)
+      : port(assigned_port)
+      , thread(std::move(server_thread)) {}
+
+  HttpFixtureServer(const HttpFixtureServer&) = delete;
+  HttpFixtureServer& operator=(const HttpFixtureServer&) = delete;
+
+  HttpFixtureServer(HttpFixtureServer&& other) noexcept
+      : port(other.port)
+      , thread(std::move(other.thread)) {}
+
+  HttpFixtureServer& operator=(HttpFixtureServer&& other) noexcept {
+    if (this != &other) {
+      if (thread.joinable()) {
+        thread.join();
+      }
+      port = other.port;
+      thread = std::move(other.thread);
+    }
+    return *this;
+  }
+
+  ~HttpFixtureServer() {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  std::uint16_t port = 0;
+  std::thread thread;
+};
+
+HttpFixtureServer start_http_response_server(
+  const std::string& body, http::status status = http::status::ok
+) {
+  std::promise<std::uint16_t> port_promise;
+  auto port_future = port_promise.get_future();
+
+  std::thread server_thread([body, status, promise = std::move(port_promise)]() mutable {
+    bool promise_satisfied = false;
+    try {
+      boost::asio::io_context io_context;
+      tcp::acceptor acceptor(
+        io_context, {boost::asio::ip::make_address("127.0.0.1"), static_cast<unsigned short>(0)}
+      );
+      promise.set_value(acceptor.local_endpoint().port());
+      promise_satisfied = true;
+
+      tcp::socket socket(io_context);
+      acceptor.accept(socket);
+
+      beast::flat_buffer buffer;
+      http::request<http::string_body> request;
+      boost::system::error_code ec;
+      http::read(socket, buffer, request, ec);
+      if (ec) {
+        return;
+      }
+
+      http::response<http::string_body> response{status, request.version()};
+      response.set(http::field::server, "axon-system-test");
+      response.set(http::field::content_type, "application/json");
+      response.body() = body;
+      response.prepare_payload();
+      http::write(socket, response, ec);
+      socket.shutdown(tcp::socket::shutdown_both, ec);
+    } catch (...) {
+      if (!promise_satisfied) {
+        promise.set_exception(std::current_exception());
+      }
+    }
+  });
+
+  return HttpFixtureServer(port_future.get(), std::move(server_thread));
+}
 
 std::filesystem::path make_temp_dir(const std::string& name) {
   const auto base = std::filesystem::temp_directory_path() /
@@ -79,8 +166,15 @@ int main() {
     write_process(proc, 100, "axon-recorder", 10, 5, 1000, 25, 4096, 8192);
     write_process(proc, 200, "axon-transfer", 7, 3, 900, 30, 1024, 2048);
     write_process(proc, 300, "other-process", 1, 1, 1100, 5, 0, 0);
+    write_process(proc, 400, "axon-rpc-test", 3, 2, 1200, 15, 512, 1024);
     write_file(agent / "demo_transfer.pid", "200\n");
     write_file(agent / "wrong_recorder.pid", "300\n");
+    write_file(agent / "stale_transfer.pid", "999\n");
+    write_file(agent / "stale_missing.pid", "998\n");
+
+    auto rpc_failure_server = start_http_response_server(
+      R"({"success":false,"message":"recorder error","data":{"state":"ERROR"}})"
+    );
 
     axon::system::ProcessMonitorOptions options;
     options.proc_root = proc;
@@ -89,6 +183,16 @@ int main() {
       {"transfer", "axon-transfer", {}, {agent / "*_transfer.pid"}, {}, std::nullopt},
       {"missing", "axon-missing", {}, {}, {}, std::nullopt},
       {"wrong_pid", "axon-recorder", agent / "wrong_recorder.pid", {}, {}, std::nullopt},
+      {"stale_transfer", "axon-transfer", agent / "stale_transfer.pid", {}, {}, std::nullopt},
+      {"stale_missing", "axon-missing", agent / "stale_missing.pid", {}, {}, std::nullopt},
+      {"rpc_failed",
+       "axon-rpc-test",
+       {},
+       {},
+       {},
+       axon::system::ProcessHttpProbeConfig{
+         "http", "http://127.0.0.1:" + std::to_string(rpc_failure_server.port) + "/rpc/state", 350
+       }},
     };
 
     axon::system::ProcessMonitor monitor(options);
@@ -112,6 +216,39 @@ int main() {
     );
     require(first["missing"]["status"].get<std::string>() == "unavailable", "missing status");
     require(first["wrong_pid"]["status"].get<std::string>() == "unhealthy", "wrong pid status");
+    require(
+      first["stale_transfer"]["status"].get<std::string>() == "healthy",
+      "stale transfer should fall back to process match"
+    );
+    require(first["stale_transfer"]["pid"].get<int>() == 200, "stale transfer pid");
+    require(
+      first["stale_transfer"]["source"].get<std::string>() == "process_match",
+      "stale transfer source"
+    );
+    require(
+      first["stale_missing"]["status"].get<std::string>() == "unavailable", "stale missing status"
+    );
+    require(first["stale_missing"]["pid"].is_null(), "stale missing pid should be null");
+    require(first["stale_missing"]["stale_pid"].get<int>() == 998, "stale missing stale pid");
+    require(first["rpc_failed"]["status"].get<std::string>() == "unhealthy", "rpc failure status");
+    require(
+      first["rpc_failed"]["health"]["http_reachable"].get<bool>(),
+      "rpc failure should have reachable HTTP"
+    );
+    require(
+      first["rpc_failed"]["health"]["rpc_success"].get<bool>() == false,
+      "rpc failure should expose RPC success false"
+    );
+    require(
+      first["rpc_failed"]["health"]["reachable"].get<bool>() == false,
+      "rpc failure should fail overall health"
+    );
+    require(
+      first["rpc_failed"]["health"]["state"].get<std::string>() == "ERROR", "rpc failure state"
+    );
+    require(
+      first["rpc_failed"]["message"].get<std::string>() == "recorder error", "rpc failure message"
+    );
 
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     write_process(proc, 100, "axon-recorder", 20, 10, 1000, 25, 4096, 8192);

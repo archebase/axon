@@ -5,6 +5,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
@@ -96,6 +97,41 @@ int main() {
     service.mark_stopped();
     state = service.get_state();
     require(state.data["service"]["state"].get<std::string>() == "stopped", "stopped mismatch");
+
+    axon::system::SystemServiceOptions bad_alert_options;
+    bad_alert_options.state_dir = root / "bad_alert_state";
+    bad_alert_options.resource_options.proc_root = root / "missing_proc";
+    bad_alert_options.resource_options.disk_paths = {
+      {"state_dir", bad_alert_options.state_dir},
+    };
+    bad_alert_options.process_options.proc_root = bad_alert_options.resource_options.proc_root;
+    bad_alert_options.process_options.targets = {
+      {"recorder", "axon-recorder", {}, {}, {}, std::nullopt},
+    };
+    bad_alert_options.alert_options.state_dir = bad_alert_options.state_dir;
+    bad_alert_options.alert_options.sinks = {{"log", {}}};
+    bad_alert_options.alert_options.rules = {
+      {"bad_memory_available", "warning", "memory.available", "eq", 1.0, {}, "", "", 0},
+    };
+
+    axon::system::SystemService bad_alert_service(bad_alert_options);
+    error.clear();
+    require(
+      bad_alert_service.initialize(&error), "bad alert initialize failed unexpectedly: " + error
+    );
+    alerts = bad_alert_service.get_alerts();
+    require(alerts.success, "bad alert response failed");
+    require(
+      alerts.data["evaluation_available"].get<bool>() == false,
+      "alert evaluation failure should be isolated"
+    );
+    require(
+      !alerts.data["evaluation_error"].get<std::string>().empty(), "alert evaluation error missing"
+    );
+    health = bad_alert_service.get_health();
+    require(health.success, "health should survive alert evaluation failure");
+    bad_alert_service.request_shutdown();
+    bad_alert_service.mark_stopped();
 
     std::filesystem::remove_all(root);
     return 0;

@@ -9,6 +9,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unistd.h>
 
 #include "alert_evaluator.hpp"
@@ -124,6 +125,46 @@ int main() {
     alerts = failing.evaluate(snapshot("unavailable", 50.0));
     require(alerts["delivery"]["queued_count"].get<std::size_t>() == 1, "queued delivery");
     require(!alerts["last_delivery_error"].get<std::string>().empty(), "delivery error");
+
+    const auto recoverable_parent = root / "recoverable_parent";
+    {
+      std::ofstream blocker(recoverable_parent);
+      blocker << "not a directory";
+    }
+    axon::system::AlertEvaluatorOptions recoverable_options;
+    recoverable_options.state_dir = root;
+    recoverable_options.sinks = {{"file", recoverable_parent / "alerts.jsonl"}};
+    recoverable_options.rules = {
+      {"recorder_unavailable", "critical", "", "", 0.0, {}, "recorder", "unavailable", 0},
+    };
+    axon::system::AlertEvaluator recoverable(recoverable_options);
+    alerts = recoverable.evaluate(snapshot("unavailable", 50.0));
+    require(alerts["delivery"]["queued_count"].get<std::size_t>() == 1, "recoverable queued");
+    require(
+      !alerts["last_delivery_error"].get<std::string>().empty(), "recoverable delivery error"
+    );
+
+    std::filesystem::remove(recoverable_parent);
+    std::filesystem::create_directories(recoverable_parent);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2100));
+    alerts = recoverable.evaluate(snapshot("unavailable", 50.0));
+    require(alerts["delivery"]["queued_count"].get<std::size_t>() == 0, "recoverable drained");
+    require(alerts["last_delivery_error"].get<std::string>().empty(), "recoverable error cleared");
+
+    axon::system::AlertEvaluatorOptions unsupported_options;
+    unsupported_options.state_dir = root;
+    unsupported_options.sinks = {{"ops_http", {}}};
+    unsupported_options.rules = {
+      {"recorder_unavailable", "critical", "", "", 0.0, {}, "recorder", "unavailable", 0},
+    };
+    bool unsupported_sink_rejected = false;
+    try {
+      axon::system::AlertEvaluator unsupported(unsupported_options);
+    } catch (const std::invalid_argument& ex) {
+      unsupported_sink_rejected =
+        std::string(ex.what()).find("unsupported alert sink type: ops_http") != std::string::npos;
+    }
+    require(unsupported_sink_rejected, "unsupported ops_http sink should be rejected");
 
     std::filesystem::remove_all(root);
     return 0;
