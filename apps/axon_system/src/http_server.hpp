@@ -11,8 +11,10 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "system_service.hpp"
 
@@ -34,9 +36,11 @@ public:
 private:
   using Request = boost::beast::http::request<boost::beast::http::string_body>;
   using Response = boost::beast::http::response<boost::beast::http::string_body>;
+  struct Session;
 
   void run();
-  void handle_session(boost::asio::ip::tcp::socket socket);
+  void handle_session(std::shared_ptr<Session> session);
+  void reap_sessions(bool join_all);
   Response route_request(const Request& request);
   static Response make_response(
     boost::beast::http::status status, const std::string& content_type, const std::string& body,
@@ -49,6 +53,8 @@ private:
   boost::asio::io_context io_context_;
   std::unique_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
   std::unique_ptr<std::thread> thread_;
+  std::mutex sessions_mutex_;
+  std::vector<std::shared_ptr<Session>> sessions_;
   std::atomic<bool> running_{false};
 };
 

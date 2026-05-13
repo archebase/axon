@@ -72,7 +72,10 @@ int main() {
 
     axon::system::ResourceCollectorOptions options;
     options.proc_root = proc;
-    options.disk_paths = {{"fixture_disk", root / "missing" / "recording"}};
+    options.disk_paths = {
+      {"fixture_disk", root},
+      {"missing_disk", root / "missing" / "recording"},
+    };
     options.network_interfaces = {"eth0"};
 
     axon::system::ResourceCollector collector(options);
@@ -82,10 +85,16 @@ int main() {
     require(first["memory"]["available"].get<bool>(), "memory should be available");
     require(first["memory"]["unit"].get<std::string>() == "bytes", "memory unit mismatch");
     require(first["memory"]["total_bytes"].get<std::uint64_t>() == 102400000, "memory total");
+    require(first["disk"].size() == 2, "disk path count mismatch");
     require(first["disk"].at(0)["available"].get<bool>(), "disk should be available");
     require(
       first["disk"].at(0)["measured_path"].get<std::string>() == root.lexically_normal().string(),
-      "disk measured path should fall back to existing parent"
+      "disk measured path mismatch"
+    );
+    require(!first["disk"].at(1)["available"].get<bool>(), "missing disk should be unavailable");
+    require(
+      first["disk"].at(1)["error"].get<std::string>() == "path does not exist",
+      "missing disk error mismatch"
     );
     require(first["network"].size() == 1, "network interface filter mismatch");
     require(first["network"].at(0)["interface"].get<std::string>() == "eth0", "network name");

@@ -1,0 +1,26 @@
+#!/usr/bin/make -f
+
+# Skip tests
+export DEB_BUILD_OPTIONS = nocheck
+
+# Get the repo root
+ifeq ($(origin AXON_REPO_ROOT),environment)
+REPO_ROOT := $(AXON_REPO_ROOT)
+else
+REPO_ROOT := $(shell cd $(CURDIR)/../.. && pwd)
+endif
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_INSTALL_PREFIX=/opt/axon -DAXON_REPO_ROOT=$(REPO_ROOT)
+
+override_dh_install:
+	dh_install
+	install -D -m 644 $(REPO_ROOT)/packaging/deb/systemd/axon-system.service \
+		debian/$(shell dh_listpackages)/lib/systemd/system/axon-system.service
+
+override_dh_auto_clean:
+	dh_auto_clean || true
+	rm -rf obj-* debian/.debhelper debian/debhelper-build-stamp debian/files 2>/dev/null || true

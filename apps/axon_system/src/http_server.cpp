@@ -20,6 +20,15 @@ namespace beast = boost::beast;
 namespace http = boost::beast::http;
 using tcp = boost::asio::ip::tcp;
 
+struct HttpServer::Session {
+  explicit Session(boost::asio::io_context& io_context)
+      : socket(io_context) {}
+
+  tcp::socket socket;
+  std::thread thread;
+  std::atomic<bool> finished{false};
+};
+
 HttpServer::HttpServer(std::string host, std::uint16_t port, SystemService& service)
     : host_(std::move(host))
     , port_(port)
@@ -53,7 +62,8 @@ bool HttpServer::start() {
 }
 
 void HttpServer::stop() {
-  if (!running_) {
+  if (!running_ && (!thread_ || !thread_->joinable())) {
+    reap_sessions(true);
     return;
   }
 
@@ -62,10 +72,24 @@ void HttpServer::stop() {
   if (acceptor_) {
     acceptor_->close(ec);
   }
+
+  {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    for (const auto& session : sessions_) {
+      if (session && session->socket.is_open()) {
+        session->socket.shutdown(tcp::socket::shutdown_both, ec);
+        ec.clear();
+        session->socket.close(ec);
+        ec.clear();
+      }
+    }
+  }
+
   io_context_.stop();
   if (thread_ && thread_->joinable()) {
     thread_->join();
   }
+  reap_sessions(true);
 }
 
 bool HttpServer::is_running() const {
@@ -75,10 +99,11 @@ bool HttpServer::is_running() const {
 void HttpServer::run() {
   while (running_) {
     boost::system::error_code ec;
-    tcp::socket socket(io_context_);
-    acceptor_->accept(socket, ec);
+    auto session = std::make_shared<Session>(io_context_);
+    acceptor_->accept(session->socket, ec);
     if (ec) {
       if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
+        reap_sessions(false);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         continue;
       }
@@ -87,22 +112,64 @@ void HttpServer::run() {
       }
       continue;
     }
-    std::thread(&HttpServer::handle_session, this, std::move(socket)).detach();
+
+    {
+      std::lock_guard<std::mutex> lock(sessions_mutex_);
+      sessions_.push_back(session);
+    }
+
+    try {
+      session->thread = std::thread(&HttpServer::handle_session, this, session);
+    } catch (const std::exception& ex) {
+      session->finished = true;
+      session->socket.close(ec);
+      std::cerr << "axon-system session failed to start: " << ex.what() << std::endl;
+    }
+    reap_sessions(false);
   }
 }
 
-void HttpServer::handle_session(tcp::socket socket) {
+void HttpServer::handle_session(std::shared_ptr<Session> session) {
   beast::flat_buffer buffer;
   boost::system::error_code ec;
   Request request;
-  http::read(socket, buffer, request, ec);
+  http::read(session->socket, buffer, request, ec);
   if (ec) {
+    session->finished = true;
     return;
   }
 
   auto response = route_request(request);
-  http::write(socket, response, ec);
-  socket.shutdown(tcp::socket::shutdown_send, ec);
+  http::write(session->socket, response, ec);
+  session->socket.shutdown(tcp::socket::shutdown_send, ec);
+  session->socket.close(ec);
+  session->finished = true;
+}
+
+void HttpServer::reap_sessions(bool join_all) {
+  std::vector<std::shared_ptr<Session>> sessions_to_join;
+  {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    auto it = sessions_.begin();
+    while (it != sessions_.end()) {
+      const bool finished = (*it)->finished.load();
+      if (join_all || finished) {
+        sessions_to_join.push_back(*it);
+        it = sessions_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  const auto current_thread = std::this_thread::get_id();
+  for (const auto& session : sessions_to_join) {
+    if (session->thread.joinable() && session->thread.get_id() != current_thread) {
+      session->thread.join();
+    } else if (session->thread.joinable()) {
+      session->thread.detach();
+    }
+  }
 }
 
 HttpServer::Response HttpServer::route_request(const Request& request) {
@@ -133,6 +200,17 @@ HttpServer::Response HttpServer::route_request(const Request& request) {
 
   if (target == "/rpc/metrics" && method == "GET") {
     const auto rpc_response = service_.get_metrics();
+    return make_response(
+      http::status::ok,
+      "application/json",
+      rpc_response.to_json().dump(2),
+      request.version(),
+      request.keep_alive()
+    );
+  }
+
+  if (target == "/rpc/processes" && method == "GET") {
+    const auto rpc_response = service_.get_processes();
     return make_response(
       http::status::ok,
       "application/json",

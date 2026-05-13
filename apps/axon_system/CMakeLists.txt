@@ -29,13 +29,20 @@ include(AxonStdLib REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(Threads REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(nlohmann_json QUIET)
+
+if(NOT TARGET yaml-cpp AND TARGET yaml-cpp::yaml-cpp)
+    add_library(yaml-cpp ALIAS yaml-cpp::yaml-cpp)
+endif()
 
 add_library(
     axon_system_core
     src/http_server.cpp
+    src/process_monitor.cpp
     src/procfs_reader.cpp
     src/resource_collector.cpp
+    src/system_config.cpp
     src/system_service.cpp
 )
 
@@ -47,6 +54,7 @@ target_link_libraries(
     PUBLIC
         Boost::system
         Threads::Threads
+        yaml-cpp
 )
 
 if(TARGET nlohmann_json::nlohmann_json)
@@ -68,6 +76,7 @@ axon_enable_warnings(axon_system)
 set_target_properties(axon_system PROPERTIES OUTPUT_NAME "axon-system")
 
 install(TARGETS axon_system RUNTIME DESTINATION bin)
+install(FILES config/system.yaml DESTINATION share/config)
 
 option(AXON_SYSTEM_BUILD_TESTS "Build axon_system tests" OFF)
 if(AXON_SYSTEM_BUILD_TESTS OR AXON_BUILD_TESTS)

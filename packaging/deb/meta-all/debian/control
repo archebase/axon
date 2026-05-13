@@ -13,6 +13,7 @@ Depends: axon-recorder,
          axon-config,
          axon-panel,
          axon-transfer,
+         axon-system,
          axon-dispatcher,
          ${misc:Depends}
 Description: Axon - Complete installation (core tools only)
@@ -21,8 +22,8 @@ Description: Axon - Complete installation (core tools only)
   - axon-config: Robot configuration CLI tool
   - axon-panel: Web-based control interface
   - axon-transfer: S3 transfer daemon
+  - axon-system: Host and runtime monitor
   - axon-dispatcher: Unified CLI entry point
  .
  Plugin packages (axon-plugin-ros2, axon-plugin-ros1, axon-plugin-udp,
  axon-plugin-zenoh) must be installed separately based on your needs.
-

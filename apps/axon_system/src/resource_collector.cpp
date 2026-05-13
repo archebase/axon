@@ -30,15 +30,25 @@ ResourceCollector::ResourceCollector(ResourceCollectorOptions options)
     : options_(std::move(options))
     , procfs_(options_.proc_root) {}
 
-nlohmann::json ResourceCollector::collect() {
-  return {
+nlohmann::json ResourceCollector::collect(bool refresh_disk) {
+  if (refresh_disk || !has_cached_disk_) {
+    cached_disk_ = collect_disk();
+    disk_collected_at_ = now_iso8601();
+    has_cached_disk_ = true;
+  }
+
+  auto snapshot = nlohmann::json{
     {"collected_at", now_iso8601()},
     {"sample_cadence_ms", cadence_json()},
     {"cpu", collect_cpu()},
     {"memory", collect_memory()},
-    {"disk", collect_disk()},
+    {"disk", cached_disk_},
     {"network", collect_network()},
   };
+  if (!disk_collected_at_.empty()) {
+    snapshot["disk_collected_at"] = disk_collected_at_;
+  }
+  return snapshot;
 }
 
 nlohmann::json ResourceCollector::cadence_json() const {
@@ -113,29 +123,39 @@ nlohmann::json ResourceCollector::collect_memory() const {
 nlohmann::json ResourceCollector::collect_disk() const {
   nlohmann::json disks = nlohmann::json::array();
   for (const auto& config : options_.disk_paths) {
-    const auto measured_path = nearest_existing_path(config.path);
     std::error_code ec;
-    const auto space = fs::space(measured_path, ec);
     nlohmann::json disk = {
       {"id", config.id},
       {"path", config.path.lexically_normal().string()},
-      {"measured_path", measured_path.lexically_normal().string()},
       {"unit", "bytes"},
     };
 
-    if (ec) {
+    if (!fs::exists(config.path, ec)) {
       disk["available"] = false;
-      disk["error"] = ec.message();
+      disk["error"] = ec ? ec.message() : "path does not exist";
     } else {
-      const auto used_bytes = space.capacity >= space.free ? space.capacity - space.free : 0;
-      disk["available"] = true;
-      disk["capacity_bytes"] = space.capacity;
-      disk["free_bytes"] = space.free;
-      disk["available_bytes"] = space.available;
-      disk["used_bytes"] = used_bytes;
-      disk["used_percent"] = space.capacity > 0 ? (static_cast<double>(used_bytes) * 100.0) /
-                                                    static_cast<double>(space.capacity)
-                                                : 0.0;
+      const auto space = fs::space(config.path, ec);
+      if (ec) {
+        disk["available"] = false;
+        disk["error"] = ec.message();
+      } else {
+        const auto used_bytes = space.capacity >= space.free ? space.capacity - space.free : 0;
+        disk["available"] = true;
+        disk["capacity_bytes"] = space.capacity;
+        disk["free_bytes"] = space.free;
+        disk["available_bytes"] = space.available;
+        disk["used_bytes"] = used_bytes;
+        disk["used_percent"] =
+          space.capacity > 0 ? (static_cast<double>(used_bytes) * 100.0) /
+                                 static_cast<double>(space.capacity)
+                             : 0.0;
+      }
+    }
+    if (ec) {
+      ec.clear();
+    }
+    if (disk["available"].get<bool>()) {
+      disk["measured_path"] = config.path.lexically_normal().string();
     }
     disks.push_back(disk);
   }
@@ -372,19 +392,6 @@ std::string ResourceCollector::trim(const std::string& value) {
   }
   const auto end = value.find_last_not_of(" \t\n\r");
   return value.substr(begin, end - begin + 1);
-}
-
-std::filesystem::path ResourceCollector::nearest_existing_path(const std::filesystem::path& path) {
-  fs::path probe = path;
-  std::error_code ec;
-  while (!probe.empty() && !fs::exists(probe, ec)) {
-    const auto parent = probe.parent_path();
-    if (parent.empty() || parent == probe) {
-      break;
-    }
-    probe = parent;
-  }
-  return probe.empty() ? path : probe;
 }
 
 }  // namespace system

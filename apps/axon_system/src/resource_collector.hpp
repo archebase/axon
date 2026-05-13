@@ -37,7 +37,7 @@ class ResourceCollector {
 public:
   explicit ResourceCollector(ResourceCollectorOptions options = {});
 
-  nlohmann::json collect();
+  nlohmann::json collect(bool refresh_disk = true);
   nlohmann::json cadence_json() const;
 
 private:
@@ -74,13 +74,15 @@ private:
   static std::uint64_t cpu_idle(const CpuTimes& times);
   static std::string now_iso8601();
   static std::string trim(const std::string& value);
-  static std::filesystem::path nearest_existing_path(const std::filesystem::path& path);
 
   ResourceCollectorOptions options_;
   ProcfsReader procfs_;
   std::optional<CpuTimes> previous_cpu_;
   std::map<std::string, NetworkCounters> previous_network_;
   std::chrono::steady_clock::time_point previous_network_time_;
+  nlohmann::json cached_disk_ = nlohmann::json::array();
+  bool has_cached_disk_ = false;
+  std::string disk_collected_at_;
 };
 
 }  // namespace system
