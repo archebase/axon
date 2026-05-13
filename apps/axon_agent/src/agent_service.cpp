@@ -282,15 +282,28 @@ nlohmann::json build_components_state(const std::optional<RobotProfile>& active_
 
 }  // namespace
 
-AgentService::AgentService(std::filesystem::path profile_root, std::filesystem::path state_dir)
+AgentService::AgentService(
+  std::filesystem::path profile_root, std::filesystem::path state_dir,
+  std::filesystem::path action_manifest_dir, std::filesystem::path action_command_dir
+)
     : profile_root_(profile_root)
     , profiles_(std::move(profile_root))
+    , actions_(std::move(action_manifest_dir), std::move(action_command_dir))
     , processes_(state_dir)
     , state_dir_(std::move(state_dir))
     , started_at_iso_(now_iso8601()) {}
 
 bool AgentService::initialize(std::string* error) {
   std::lock_guard<std::mutex> lock(mutex_);
+
+  std::string action_error;
+  if (!actions_.load(&action_error)) {
+    last_error_ = action_error;
+    if (error != nullptr) {
+      *error = action_error;
+    }
+  }
+
   if (!profiles_.scan(error)) {
     if (error != nullptr) {
       last_error_ = *error;
@@ -374,7 +387,16 @@ RpcResponse AgentService::get_report() {
     {"active_profile", profiles_.active_profile_to_json()},
     {"adapter", adapter_state},
     {"processes", processes_.state_to_json()},
+    {"actions", actions_.to_json()},
   };
+  return response;
+}
+
+RpcResponse AgentService::list_actions() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  RpcResponse response;
+  response.message = "actions listed";
+  response.data = actions_.to_json();
   return response;
 }
 
