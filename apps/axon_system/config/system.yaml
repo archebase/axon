@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+server:
+  host: 127.0.0.1
+  port: 8091
+
+state_dir: /var/lib/axon/system
+
+sampling:
+  resources_ms: 1000
+  processes_ms: 2000
+  alerts_ms: 5000
+  disk_ms: 5000
+
+disk_paths:
+  - id: state_dir
+    path: /var/lib/axon/system
+  - id: recording_data
+    path: /axon
+  - id: config
+    path: /etc/axon
+
+network:
+  interfaces: []
+
+monitored_processes:
+  - id: recorder
+    executable: axon-recorder
+    pid_file_candidates:
+      - /var/lib/axon/agent/*_recorder.pid
+    rpc:
+      type: http
+      url: http://127.0.0.1:8080/rpc/state
+      timeout_ms: 350
+  - id: transfer
+    executable: axon-transfer
+    pid_file_candidates:
+      - /var/lib/axon/agent/*_transfer.pid
+
+alerts:
+  evaluate_interval_ms: 5000
+  sinks:
+    - type: file
+  rules:
+    - id: memory_high
+      metric: memory.used_percent
+      op: gt
+      threshold: 90
+      for_sec: 120
+      severity: warning
+    - id: recorder_unavailable
+      process_id: recorder
+      status: unavailable
+      for_sec: 10
+      severity: critical
+    - id: transfer_unavailable
+      process_id: transfer
+      status: unavailable
+      for_sec: 10
+      severity: warning

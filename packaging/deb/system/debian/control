@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 ArcheBase
+# SPDX-License-Identifier: MulanPSL-2.0
+
+Source: axon-system
+Section: utils
+Priority: optional
+Maintainer: ArcheBase <noreply@archebase.com>
+Build-Depends: debhelper-compat (=13),
+               cmake,
+               libboost-system-dev,
+               libyaml-cpp-dev,
+               nlohmann-json3-dev
+
+Package: axon-system
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends}
+Description: Axon host and runtime monitor
+ Local monitor service that exposes host CPU, memory, disk, and network
+ metrics over the Axon RPC envelope.

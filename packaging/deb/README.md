@@ -16,6 +16,7 @@ packaging/deb/
 ├── config/           # axon-config package
 ├── dispatcher/       # axon-dispatcher package
 ├── agent/            # axon-agent package
+├── system/           # axon-system package
 ├── meta-all/         # axon-all meta-package
 ├── plugin-ros1/      # axon-plugin-ros1 package
 ├── plugin-ros2/      # axon-plugin-ros2 package
@@ -31,6 +32,7 @@ packaging/deb/
 | `axon-config` | Robot configuration CLI tool |
 | `axon-panel` | Web control panel (embedded assets) |
 | `axon-transfer` | S3 transfer daemon |
+| `axon-system` | Host and runtime monitor |
 | `axon-dispatcher` | Unified CLI dispatcher (`axon` command) |
 | `axon-agent` | Orchestration and process management agent |
 | `axon-all` | Meta-package installing all core tools |

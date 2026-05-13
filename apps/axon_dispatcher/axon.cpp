@@ -10,6 +10,7 @@
  *   axon register [args] -> axon-config register
  *   axon refresh [args]  -> axon-config refresh
  *   axon transfer [args] -> axon-transfer
+ *   axon system [args]   -> axon-system
  *   axon panel [args]    -> axon-panel
  */
 
@@ -39,6 +40,7 @@ const Command COMMANDS[] = {
   {"register", "/opt/axon/bin/axon-config", "register", "Register device with Keystone"},
   {"refresh", "/opt/axon/bin/axon-config", "refresh", "Refresh configs from device state"},
   {"transfer", "/opt/axon/bin/axon-transfer", nullptr, "S3 upload daemon"},
+  {"system", "/opt/axon/bin/axon-system", nullptr, "Host and runtime monitor"},
   {"panel", "/opt/axon/bin/axon-panel", nullptr, "Web control panel"},
   {"version", nullptr, nullptr, nullptr},    // Special: handled internally
   {"--version", nullptr, nullptr, nullptr},  // Special: handled internally
@@ -58,6 +60,7 @@ void show_help(const char* program_name) {
   std::cout << "  register    Register device with Keystone\n";
   std::cout << "  refresh     Refresh configs from device state\n";
   std::cout << "  transfer    S3 upload daemon\n";
+  std::cout << "  system      Host and runtime monitor\n";
   std::cout << "  panel       Web control panel\n";
   std::cout << "  version     Show version information\n";
   std::cout << "  help        Show this help message\n\n";
@@ -68,7 +71,9 @@ void show_version() {
   std::cout << "Axon version " << AXON_VERSION << "\n\n";
 
   // Try to get versions from installed tools
-  const char* tools[] = {"axon-recorder", "axon-config", "axon-transfer", "axon-panel"};
+  const char* tools[] = {
+    "axon-recorder", "axon-config", "axon-transfer", "axon-system", "axon-panel"
+  };
 
   std::cout << "Tool versions:\n";
 

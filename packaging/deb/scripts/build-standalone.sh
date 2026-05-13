@@ -12,6 +12,7 @@ set -e
 # - axon-config
 # - axon-panel
 # - axon-transfer
+# - axon-system
 # - axon-dispatcher
 # - axon-agent
 # - axon-all (meta-package)
@@ -196,7 +197,7 @@ build_app_package() {
         sed -i "s/^Source: ${pkg_name}$/Source: ${suffixed_pkg_name}/" "${build_area}/debian/control"
         # Update dependencies that reference other axon packages (add distro suffix)
         # Use perl for better regex support (handles end-of-line and various delimiters)
-        perl -i -pe 's/\b(axon-recorder|axon-config|axon-panel|axon-transfer|axon-dispatcher|axon-agent)\b(?!-)/${1}-'"${DISTRO}"'/g unless /^\s*Provides:/' "${build_area}/debian/control"
+        perl -i -pe 's/\b(axon-recorder|axon-config|axon-panel|axon-transfer|axon-system|axon-dispatcher|axon-agent)\b(?!-)/${1}-'"${DISTRO}"'/g unless /^\s*Provides:/' "${build_area}/debian/control"
     fi
 
     # Modify changelog to add distro suffix and update version
@@ -247,16 +248,19 @@ build_app_package "axon-config" "${PROJECT_ROOT}/apps/axon_config" "config" || e
 # 3. axon-transfer (S3 transfer daemon)
 build_app_package "axon-transfer" "${PROJECT_ROOT}/apps/axon_transfer" "transfer" || exit 1
 
-# 4. axon-panel (web control panel - requires Node.js)
+# 4. axon-system (host and runtime monitor)
+build_app_package "axon-system" "${PROJECT_ROOT}/apps/axon_system" "system" || exit 1
+
+# 5. axon-panel (web control panel - requires Node.js)
 build_app_package "axon-panel" "${PROJECT_ROOT}/apps/axon_panel" "panel" || exit 1
 
-# 5. axon-dispatcher (unified CLI dispatcher)
+# 6. axon-dispatcher (unified CLI dispatcher)
 build_app_package "axon-dispatcher" "${PROJECT_ROOT}/apps/axon_dispatcher" "dispatcher" || exit 1
 
-# 6. axon-agent (orchestration and process management agent)
+# 7. axon-agent (orchestration and process management agent)
 build_app_package "axon-agent" "${PROJECT_ROOT}/apps/axon_agent" "agent" || exit 1
 
-# 7. axon-all (meta-package)
+# 8. axon-all (meta-package)
 log_info "Building axon-all-${DISTRO} (meta-package)..."
 meta_pkg_name="axon-all-${DISTRO}"
 temp_meta_dir="${BUILD_DIR}/${meta_pkg_name}"
@@ -274,7 +278,7 @@ Maintainer: ArcheBase <noreply@archebase.com>
 Package: ${meta_pkg_name}
 Architecture: any
 Depends: axon-recorder-${DISTRO}, axon-config-${DISTRO}, axon-panel-${DISTRO},
-         axon-transfer-${DISTRO}, axon-dispatcher-${DISTRO},
+         axon-transfer-${DISTRO}, axon-system-${DISTRO}, axon-dispatcher-${DISTRO},
          axon-agent-${DISTRO},
          \${misc:Depends}
 Description: Axon - Complete installation for Ubuntu ${DISTRO_DISPLAY}
@@ -283,6 +287,7 @@ Description: Axon - Complete installation for Ubuntu ${DISTRO_DISPLAY}
  - axon-config: Robot configuration tool
  - axon-panel: Web-based control interface
  - axon-transfer: S3 transfer daemon
+ - axon-system: Host and runtime monitor
  - axon-dispatcher: Unified CLI entry point
  - axon-agent: Orchestration and process management agent
  .
