@@ -118,9 +118,18 @@ Current file-based metadata approaches have limitations:
 
 ### MCAP Metadata Records
 
-MCAP supports multiple `Metadata` records, each with a `name` and key-value `metadata` map. We define three standard metadata records:
+MCAP supports multiple `Metadata` records, each with a `name` and key-value `metadata` map. We define five standard metadata records:
 
-#### 1. Task Context Metadata (`axon.task`)
+#### 1. Sidecar Envelope Metadata (`axon.sidecar`)
+
+Top-level fields needed to reconstruct the JSON sidecar envelope.
+
+| Key | Type | Required | Description | Example |
+|-----|------|----------|-------------|---------|
+| `version` | string | ✓ | Sidecar schema version | `"1.0"` |
+| `mcap_file` | string | ✓ | Associated MCAP basename | `"task_20251220_143052_abc123.mcap"` |
+
+#### 2. Task Context Metadata (`axon.task`)
 
 Primary task identification and context from the data collector.
 
@@ -130,12 +139,12 @@ Primary task identification and context from the data collector.
 | `order_id` | string | | Parent order/job identifier | `"order_batch_2025Q4_001"` |
 | `scene` | string | ✓ | Primary scene/context label | `"warehouse_picking"` |
 | `subscene` | string | | Sub-scene/sub-context label | `"shelf_approach"` |
-| `skills` | string | | Comma-separated skill identifiers | `"grasp,place,navigate"` |
+| `skills` | JSON string array | | Skill identifiers | `["grasp","place","navigate"]` |
 | `factory` | string | ✓ | Factory identifier (which factory produced this data) | `"factory_shanghai_01"` |
 | `data_collector_id` | string | | Data collector instance ID | `"collector_east_01"` |
 | `operator_name` | string | | Human operator identifier | `"john.doe"` |
 
-#### 2. Device Metadata (`axon.device`)
+#### 3. Device Metadata (`axon.device`)
 
 Robot and hardware identification.
 
@@ -172,7 +181,7 @@ For `device_model` and `device_serial`, the recorder resolves values in this ord
 - `hostname`: Obtained via `gethostname()` system call
 - `ros_distro`: Obtained from `$ROS_DISTRO` environment variable
 
-#### 3. Recording Metadata (`axon.recording`)
+#### 4. Recording Metadata (`axon.recording`)
 
 Recording session and software information.
 
@@ -183,9 +192,31 @@ Recording session and software information.
 | `recording_finished_at` | string | ✓ | ISO 8601 timestamp | `"2025-12-20T15:45:30.456Z"` |
 | `duration_sec` | string | ✓ | Recording duration in seconds | `"4478.333"` |
 | `message_count` | string | ✓ | Total messages recorded | `"1523456"` |
-| `file_size_bytes` | string | ✓ | Final file size | `"2147483648"` |
-| `checksum_sha256` | string | ✓ | SHA-256 hash of file content (always computed) | `"a1b2c3..."` |
-| `topics_recorded` | string | | Comma-separated topic list | `"/camera/image,/joint_states"` |
+| `file_size_bytes` | string | ✓ | Final file size, zero-padded to 20 digits in MCAP metadata | `"0000000002147483648"` |
+| `topics_recorded` | JSON string array | | Topic list sorted lexicographically by topic | `["/camera/image","/joint_states"]` |
+
+`checksum_sha256` is intentionally excluded from MCAP metadata because the SHA-256 digest is computed after the MCAP file is finalized. The checksum is written only to the JSON sidecar or upload/Keystone state.
+
+#### 5. Topic Summary Metadata (`axon.topics`)
+
+Per-topic statistics needed to reconstruct `topics_summary` in the sidecar JSON.
+
+| Key | Type | Required | Description | Example |
+|-----|------|----------|-------------|---------|
+| `topics_summary` | JSON string array | ✓ | Topic summary entries sorted lexicographically by `topic` | `[{"topic":"/camera/image","message_type":"sensor_msgs/Image","message_count":300,"frequency_hz":30.0}]` |
+
+Each `topics_summary` entry contains:
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `topic` | string | ✓ | Topic name |
+| `message_type` | string | ✓ | Middleware message type |
+| `message_count` | integer | ✓ | Messages recorded for the topic |
+| `frequency_hz` | number | ✓ | Average observed frequency |
+
+### Metadata Field Encoding Rules
+
+All MCAP metadata values are strings. Scalar string fields are stored directly after sanitization. Numeric fields are stored as decimal strings and parsed back to JSON numbers by downstream readers. Structured fields (`skills`, `topics_recorded`, and `topics_summary`) are compact JSON strings so the sidecar JSON can be reconstructed without delimiter ambiguity. The final `file_size_bytes` value is reserved as a fixed-width, zero-padded decimal string before close and patched in place after close writes the MCAP footer and summary.
 
 ### MCAP Header Fields
 
@@ -212,7 +243,7 @@ task_20251220_143052_abc123.mcap  →  task_20251220_143052_abc123.json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["version", "mcap_file", "task", "device", "recording"],
+  "required": ["version", "mcap_file", "task", "device", "recording", "topics_summary"],
   "properties": {
     "version": {
       "type": "string",
@@ -427,14 +458,23 @@ MCAP metadata records should be written at file finalization to include accurate
 ```cpp
 // Pseudo-code for metadata injection
 void McapWriter::finalize() {
-    // 1. Write task context metadata
+    // 1. Write sidecar envelope metadata
+    mcap::Metadata sidecar_meta;
+    sidecar_meta.name = "axon.sidecar";
+    sidecar_meta.metadata = {
+        {"version", "1.0"},
+        {"mcap_file", getBasename(output_path_)}
+    };
+    writer_.write(sidecar_meta);
+
+    // 2. Write task context metadata
     mcap::Metadata task_meta;
     task_meta.name = "axon.task";
     task_meta.metadata = {
         {"task_id", config_.task_id},
         {"scene", config_.scene},
         {"subscene", config_.subscene},
-        {"skills", join(config_.skills, ",")},
+        {"skills", jsonArray(config_.skills)},
         {"factory", config_.factory},
         {"operator_name", config_.operator_name},
         {"order_id", config_.order_id},
@@ -442,7 +482,7 @@ void McapWriter::finalize() {
     };
     writer_.write(task_meta);
 
-    // 2. Write device metadata
+    // 3. Write device metadata
     mcap::Metadata device_meta;
     device_meta.name = "axon.device";
     device_meta.metadata = {
@@ -454,7 +494,7 @@ void McapWriter::finalize() {
     };
     writer_.write(device_meta);
 
-    // 3. Write recording metadata (with final statistics)
+    // 4. Write recording metadata. file_size_bytes is patched after close.
     mcap::Metadata recording_meta;
     recording_meta.name = "axon.recording";
     recording_meta.metadata = {
@@ -463,18 +503,29 @@ void McapWriter::finalize() {
         {"recording_finished_at", formatISO8601(now())},
         {"duration_sec", std::to_string(getDurationSec())},
         {"message_count", std::to_string(total_message_count_)},
-        {"file_size_bytes", std::to_string(getFileSize())},
-        {"topics_recorded", join(recorded_topics_, ",")}
+        {"file_size_bytes", "00000000000000000000"},
+        {"topics_recorded", jsonArray(sorted(recorded_topics_))}
     };
     writer_.write(recording_meta);
 
-    // 4. Close MCAP file
+    // 5. Write deterministic topic summary metadata.
+    mcap::Metadata topics_meta;
+    topics_meta.name = "axon.topics";
+    topics_meta.metadata = {
+        {"topics_summary", jsonArray(sorted(topic_statistics_))}
+    };
+    writer_.write(topics_meta);
+
+    // 6. Close MCAP file
     writer_.close();
 
-    // 5. Compute checksum (always enabled)
+    // 7. Patch final file size into the fixed-width MCAP metadata value.
+    patchFileSizeMetadata(output_path_, getFileSize());
+
+    // 8. Compute checksum (always enabled). The checksum is not written into MCAP.
     std::string checksum = computeSHA256(output_path_);
 
-    // 6. Generate sidecar JSON (always enabled)
+    // 9. Generate sidecar JSON (always enabled)
     generateSidecarJson(checksum);
 }
 ```
@@ -509,7 +560,7 @@ void McapWriter::generateSidecarJson(const std::string& checksum) {
         {"ros_distro", getRosDistro()}
     };
 
-    // Recording metadata (checksum always included)
+    // Recording metadata. checksum_sha256 exists only in the sidecar.
     sidecar["recording"] = {
         {"recorder_version", AXON_RECORDER_VERSION},
         {"recording_started_at", formatISO8601(start_time_)},
@@ -518,12 +569,12 @@ void McapWriter::generateSidecarJson(const std::string& checksum) {
         {"message_count", total_message_count_},
         {"file_size_bytes", getFileSize()},
         {"checksum_sha256", checksum},
-        {"topics_recorded", recorded_topics_}
+        {"topics_recorded", sorted(recorded_topics_)}
     };
 
     // Topics summary
     sidecar["topics_summary"] = nlohmann::json::array();
-    for (const auto& [topic, stats] : topic_statistics_) {
+    for (const auto& [topic, stats] : sorted(topic_statistics_)) {
         sidecar["topics_summary"].push_back({
             {"topic", topic},
             {"message_type", stats.message_type},
@@ -565,16 +616,30 @@ def read_metadata_from_mcap(mcap_path: str) -> dict:
     with open(mcap_path, "rb") as f:
         reader = make_reader(f)
 
-        metadata = {}
-        for name, records in reader.iter_metadata():
-            if name == "axon.task":
-                metadata["task"] = dict(records)
-            elif name == "axon.device":
-                metadata["device"] = dict(records)
-            elif name == "axon.recording":
-                metadata["recording"] = dict(records)
+        metadata_records = {}
+        for name, metadata in reader.iter_metadata():
+            metadata_records[name] = dict(metadata)
 
-        return metadata
+        recording = metadata_records["axon.recording"]
+        return {
+            "version": metadata_records["axon.sidecar"]["version"],
+            "mcap_file": metadata_records["axon.sidecar"]["mcap_file"],
+            "task": {
+                **{k: v for k, v in metadata_records["axon.task"].items() if k != "skills"},
+                "skills": json.loads(metadata_records["axon.task"].get("skills", "[]")),
+            },
+            "device": metadata_records["axon.device"],
+            "recording": {
+                "recorder_version": recording["recorder_version"],
+                "recording_started_at": recording["recording_started_at"],
+                "recording_finished_at": recording["recording_finished_at"],
+                "duration_sec": float(recording["duration_sec"]),
+                "message_count": int(recording["message_count"]),
+                "file_size_bytes": int(recording["file_size_bytes"]),
+                "topics_recorded": json.loads(recording.get("topics_recorded", "[]")),
+            },
+            "topics_summary": json.loads(metadata_records["axon.topics"]["topics_summary"]),
+        }
 
 # Usage with Daft for batch processing
 import daft
