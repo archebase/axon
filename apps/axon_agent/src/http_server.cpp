@@ -182,6 +182,9 @@ RpcResponse HttpServer::route_rpc(
   if (path == "report" && method == "GET") {
     return service_.get_report();
   }
+  if (path == "actions" && method == "GET") {
+    return service_.list_actions();
+  }
   if (path == "profiles" && method == "GET") {
     return service_.list_profiles();
   }
@@ -235,6 +238,7 @@ std::string HttpServer::index_html() {
   <h1>Axon Agent</h1>
   <div class="card">
     <button onclick="refresh()">Refresh</button>
+    <button onclick="listActions()">Actions</button>
     <select id="profiles"></select>
     <button onclick="selectProfile()">Select Profile</button>
   </div>
@@ -286,6 +290,9 @@ std::string HttpServer::index_html() {
     }
     async function selectProfile() {
       await rpc('profile/select', 'POST', {profile_id: document.getElementById('profiles').value});
+    }
+    async function listActions() {
+      await rpc('actions');
     }
     async function startProcess(process_id) {
       await rpc('process/start', 'POST', {process_id});

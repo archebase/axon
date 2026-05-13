@@ -12,6 +12,7 @@
 #include <mutex>
 #include <string>
 
+#include "action_registry.hpp"
 #include "adapter_loader.hpp"
 #include "process_manager.hpp"
 #include "profile_manager.hpp"
@@ -22,11 +23,16 @@ namespace agent {
 
 class AgentService {
 public:
-  AgentService(std::filesystem::path profile_root, std::filesystem::path state_dir);
+  AgentService(
+    std::filesystem::path profile_root, std::filesystem::path state_dir,
+    std::filesystem::path action_manifest_dir = "/etc/axon/actions.d",
+    std::filesystem::path action_command_dir = "/opt/axon/actions"
+  );
 
   bool initialize(std::string* error);
   RpcResponse get_state();
   RpcResponse get_report();
+  RpcResponse list_actions();
   RpcResponse list_profiles();
   RpcResponse select_profile(const nlohmann::json& params);
   RpcResponse start_process(const nlohmann::json& params);
@@ -61,6 +67,7 @@ private:
   std::mutex mutex_;
   std::filesystem::path profile_root_;
   ProfileManager profiles_;
+  ActionRegistry actions_;
   AdapterLoader adapter_loader_;
   ProcessManager processes_;
   std::filesystem::path state_dir_;

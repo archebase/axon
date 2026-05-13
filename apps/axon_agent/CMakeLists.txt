@@ -19,7 +19,9 @@ if(DEFINED AXON_CMAKE_MODULES_DIR)
 elseif(DEFINED AXON_REPO_ROOT)
     list(APPEND CMAKE_MODULE_PATH "${AXON_REPO_ROOT}/cmake/Modules")
 else()
-    set(_AXON_CMAKE_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules")
+    set(_AXON_CMAKE_MODULES_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules"
+    )
     if(EXISTS "${_AXON_CMAKE_MODULES_DIR}/AxonStdLib.cmake")
         list(APPEND CMAKE_MODULE_PATH "${_AXON_CMAKE_MODULES_DIR}")
     endif()
@@ -32,13 +34,18 @@ find_package(yaml-cpp REQUIRED)
 find_package(Threads REQUIRED)
 
 if(DEFINED AXON_REPO_ROOT)
-    set(AXON_ROBOT_ADAPTER_INTERFACE_DIR "${AXON_REPO_ROOT}/plugin_interface/robot_adapter")
+    set(AXON_ROBOT_ADAPTER_INTERFACE_DIR
+        "${AXON_REPO_ROOT}/plugin_interface/robot_adapter"
+    )
 else()
-    set(AXON_ROBOT_ADAPTER_INTERFACE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../plugin_interface/robot_adapter")
+    set(AXON_ROBOT_ADAPTER_INTERFACE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../plugin_interface/robot_adapter"
+    )
 endif()
 
 add_library(
     axon_agent_core
+    src/action_registry.cpp
     src/adapter_loader.cpp
     src/agent_service.cpp
     src/http_server.cpp
@@ -54,15 +61,14 @@ target_include_directories(
 )
 target_compile_features(axon_agent_core PUBLIC cxx_std_17)
 target_compile_options(axon_agent_core PRIVATE -Wall -Wextra -Wpedantic)
-target_compile_definitions(axon_agent_core PUBLIC AXON_AGENT_VERSION="${AXON_AGENT_VERSION}")
+target_compile_definitions(
+    axon_agent_core
+    PUBLIC AXON_AGENT_VERSION="${AXON_AGENT_VERSION}"
+)
 
 target_link_libraries(
     axon_agent_core
-    PUBLIC
-        yaml-cpp
-        Boost::system
-        Threads::Threads
-        dl
+    PUBLIC yaml-cpp Boost::system Threads::Threads dl
 )
 
 if(TARGET nlohmann_json::nlohmann_json)
@@ -81,7 +87,10 @@ set_target_properties(axon_agent PROPERTIES OUTPUT_NAME "axon-agent")
 
 install(TARGETS axon_agent RUNTIME DESTINATION bin)
 install(DIRECTORY examples/robots DESTINATION share/axon_agent/examples)
-install(DIRECTORY ${AXON_ROBOT_ADAPTER_INTERFACE_DIR}/include DESTINATION share/axon_agent/plugin_interface/robot_adapter)
+install(
+    DIRECTORY ${AXON_ROBOT_ADAPTER_INTERFACE_DIR}/include
+    DESTINATION share/axon_agent/plugin_interface/robot_adapter
+)
 
 option(AXON_AGENT_BUILD_TESTS "Build axon_agent tests" OFF)
 if(AXON_AGENT_BUILD_TESTS OR AXON_BUILD_TESTS)

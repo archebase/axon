@@ -42,13 +42,16 @@ bool has_flag(int argc, char** argv, const std::string& name) {
 }
 
 void print_usage() {
-  std::cout << "Usage: axon-agent [options]\n"
-            << "\nOptions:\n"
-            << "  --host <host>                 HTTP bind host (default: 0.0.0.0)\n"
-            << "  --port <port>                 HTTP bind port (default: 8090)\n"
-            << "  --robot-profile-path <path>   Robot profile root (default: /opt/axon/robots)\n"
-            << "  --state-dir <path>            Runtime state dir (default: /var/lib/axon/agent)\n"
-            << "  --help                        Show this help\n";
+  std::cout
+    << "Usage: axon-agent [options]\n"
+    << "\nOptions:\n"
+    << "  --host <host>                 HTTP bind host (default: 0.0.0.0)\n"
+    << "  --port <port>                 HTTP bind port (default: 8090)\n"
+    << "  --robot-profile-path <path>   Robot profile root (default: /opt/axon/robots)\n"
+    << "  --state-dir <path>            Runtime state dir (default: /var/lib/axon/agent)\n"
+    << "  --action-manifest-dir <path>  Action manifest dir (default: /etc/axon/actions.d)\n"
+    << "  --action-command-dir <path>   Approved action command dir (default: /opt/axon/actions)\n"
+    << "  --help                        Show this help\n";
 }
 
 }  // namespace
@@ -63,11 +66,16 @@ int main(int argc, char** argv) {
   const auto port = static_cast<std::uint16_t>(std::stoi(get_arg(argc, argv, "--port", "8090")));
   const auto profile_path = get_arg(argc, argv, "--robot-profile-path", "/opt/axon/robots");
   const auto state_dir = get_arg(argc, argv, "--state-dir", "/var/lib/axon/agent");
+  const auto action_manifest_dir =
+    get_arg(argc, argv, "--action-manifest-dir", "/etc/axon/actions.d");
+  const auto action_command_dir = get_arg(argc, argv, "--action-command-dir", "/opt/axon/actions");
 
   std::signal(SIGINT, handle_signal);
   std::signal(SIGTERM, handle_signal);
 
-  axon::agent::AgentService service(profile_path, state_dir);
+  axon::agent::AgentService service(
+    profile_path, state_dir, action_manifest_dir, action_command_dir
+  );
   std::string error;
   if (!service.initialize(&error)) {
     std::cerr << "axon-agent initialization warning: " << error << std::endl;
