@@ -128,7 +128,8 @@ bool HttpServer::start() {
     rpc_callbacks.quit = callbacks_.quit;
 
     ws_rpc_handler_ = std::make_unique<WebSocketRpcHandler>(
-      rpc_callbacks, [this](const std::string& client_id, const nlohmann::json& response) {
+      rpc_callbacks,
+      [this](const std::string& client_id, const nlohmann::json& response) {
         // Send RPC response to specific client via WebSocket
         if (ws_server_) {
           ws_server_->send_to_client(client_id, response.dump());
@@ -405,6 +406,9 @@ void HttpServer::handle_request(
       } else if (rpc_method == "state" && method_str == "GET") {
         AXON_LOG_DEBUG("Routing to handle_rpc_get_state");
         rpc_response = handle_rpc_get_state(params);
+      } else if (rpc_method == "status" && method_str == "GET") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_get_status");
+        rpc_response = handle_rpc_get_status(params);
       } else if (rpc_method == "stats" && method_str == "GET") {
         AXON_LOG_DEBUG("Routing to handle_rpc_get_stats");
         rpc_response = handle_rpc_get_stats(params);
@@ -490,6 +494,10 @@ HttpServer::RpcResponse HttpServer::handle_rpc_clear(const nlohmann::json& param
 
 HttpServer::RpcResponse HttpServer::handle_rpc_get_state(const nlohmann::json& params) {
   return axon::recorder::handle_rpc_get_state(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_get_status(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_get_status(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_get_stats(const nlohmann::json& params) {

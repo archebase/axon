@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <mutex>
@@ -227,6 +228,243 @@ bool AxonRecorder::ensure_plugin_loaded() {
   return true;
 }
 
+DiskUsageLimitConfig AxonRecorder::make_disk_usage_limits() const {
+  DiskUsageLimitConfig limits;
+  limits.enabled = config_.recording.disk_usage.enabled;
+  limits.warn_usage_bytes = gb_to_bytes(config_.recording.disk_usage.warn_usage_gb);
+  limits.hard_limit_bytes = gb_to_bytes(config_.recording.disk_usage.hard_limit_gb);
+  limits.max_task_size_bytes = gb_to_bytes(config_.recording.disk_usage.max_task_size_gb);
+  return limits;
+}
+
+std::vector<DiskUsagePathConfig> AxonRecorder::make_disk_usage_paths() const {
+  std::vector<DiskUsagePathConfig> paths;
+
+  if (!config_.dataset.path.empty()) {
+    paths.push_back({"recording_output", config_.dataset.path});
+  }
+
+  std::filesystem::path configured_output(config_.output_file);
+  if (configured_output.is_absolute() && configured_output.has_parent_path()) {
+    paths.push_back({"recording_output", configured_output.parent_path()});
+  }
+
+  if (config_.upload.enabled) {
+    if (!config_.upload.state_db_path.empty()) {
+      std::filesystem::path state_db_path(config_.upload.state_db_path);
+      paths.push_back({"upload_state", state_db_path.parent_path()});
+    }
+    if (!config_.upload.failed_uploads_dir.empty()) {
+      paths.push_back({"upload_failed", config_.upload.failed_uploads_dir});
+    }
+  }
+
+  if (paths.empty()) {
+    paths.push_back({"working_directory", "."});
+  }
+
+  return paths;
+}
+
+DiskUsageSnapshot AxonRecorder::collect_disk_usage_snapshot(uint64_t current_task_bytes) const {
+  DiskUsageMonitor monitor(make_disk_usage_limits(), make_disk_usage_paths());
+  return monitor.snapshot(current_task_bytes);
+}
+
+nlohmann::json AxonRecorder::get_disk_usage_status_json() const {
+  uint64_t current_task_bytes = 0;
+  {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    if (recording_session_) {
+      current_task_bytes = recording_session_->get_stats().bytes_written;
+    }
+  }
+  return collect_disk_usage_snapshot(current_task_bytes).to_json();
+}
+
+bool AxonRecorder::maybe_cleanup_disk_usage(
+  const std::string& active_output_path, DiskUsageSnapshot& snapshot
+) const {
+  const auto& cleanup = config_.recording.disk_usage;
+  if (!cleanup.cleanup_enabled || !snapshot.hard_limit_reached() ||
+      snapshot.reason == "current task size reached hard limit") {
+    return false;
+  }
+
+  uint64_t target_bytes = gb_to_bytes(cleanup.cleanup_target_gb);
+  if (target_bytes == 0) {
+    target_bytes = snapshot.warn_usage_bytes;
+  }
+  if (target_bytes == 0 && snapshot.hard_limit_bytes > 0) {
+    target_bytes = snapshot.hard_limit_bytes * 8 / 10;
+  }
+
+  if (target_bytes == 0 || target_bytes >= snapshot.total_used_bytes) {
+    return false;
+  }
+
+  std::vector<std::filesystem::path> roots;
+  if (!config_.dataset.path.empty()) {
+    roots.push_back(config_.dataset.path);
+  }
+  if (cleanup.cleanup_upload_backlog && config_.upload.enabled &&
+      !config_.upload.failed_uploads_dir.empty()) {
+    roots.push_back(config_.upload.failed_uploads_dir);
+  }
+
+  if (roots.empty()) {
+    return false;
+  }
+
+  DiskUsageMonitor monitor(make_disk_usage_limits(), make_disk_usage_paths());
+  auto result = monitor.cleanup_recording_files(
+    roots, active_output_path, snapshot.total_used_bytes, target_bytes, cleanup.cleanup_min_age_sec
+  );
+
+  if (result.files_removed > 0) {
+    AXON_LOG_WARN(
+      "Disk cleanup removed completed recording files"
+      << axon::logging::kv("files_removed", result.files_removed)
+      << axon::logging::kv("bytes_removed", result.bytes_removed)
+      << axon::logging::kv("target_bytes", target_bytes)
+    );
+    snapshot = collect_disk_usage_snapshot(snapshot.current_task_bytes);
+    return true;
+  }
+
+  if (!result.errors.empty()) {
+    AXON_LOG_WARN(
+      "Disk cleanup could not remove files" << axon::logging::kv("errors", result.errors.size())
+    );
+  }
+  return false;
+}
+
+void AxonRecorder::log_disk_warning_once(const DiskUsageSnapshot& snapshot) {
+  bool expected = false;
+  if (!disk_warn_logged_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+
+  AXON_LOG_WARN(
+    "Disk usage warning threshold reached"
+    << axon::logging::kv("state", disk_usage_state_to_string(snapshot.state))
+    << axon::logging::kv("total_used_gb", bytes_to_gb(snapshot.total_used_bytes))
+    << axon::logging::kv("warn_usage_gb", bytes_to_gb(snapshot.warn_usage_bytes))
+    << axon::logging::kv("hard_limit_gb", bytes_to_gb(snapshot.hard_limit_bytes))
+  );
+}
+
+void AxonRecorder::trip_disk_hard_limit(const DiskUsageSnapshot& snapshot) {
+  const bool first_trip = !disk_hard_limit_reached_.exchange(true);
+  if (first_trip) {
+    set_error_helper("Disk hard limit reached: " + snapshot.reason);
+    AXON_LOG_ERROR(
+      "Disk hard limit reached"
+      << axon::logging::kv("reason", snapshot.reason)
+      << axon::logging::kv("total_used_gb", bytes_to_gb(snapshot.total_used_bytes))
+      << axon::logging::kv("hard_limit_gb", bytes_to_gb(snapshot.hard_limit_bytes))
+      << axon::logging::kv("current_task_gb", bytes_to_gb(snapshot.current_task_bytes))
+      << axon::logging::kv("max_task_size_gb", bytes_to_gb(snapshot.max_task_size_bytes))
+    );
+  }
+
+  if (get_state() == RecorderState::RECORDING) {
+    std::string error_msg;
+    if (state_manager_.transition(RecorderState::RECORDING, RecorderState::PAUSED, error_msg)) {
+      mark_pause_started();
+    } else if (first_trip) {
+      AXON_LOG_ERROR(
+        "Failed to pause recorder after disk hard limit" << axon::logging::kv("error", error_msg)
+      );
+    }
+  }
+}
+
+bool AxonRecorder::ensure_disk_capacity_before_start(const std::string& output_file) {
+  if (!config_.recording.disk_usage.enabled) {
+    return true;
+  }
+
+  auto snapshot = collect_disk_usage_snapshot();
+  if (snapshot.hard_limit_reached()) {
+    maybe_cleanup_disk_usage(output_file, snapshot);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(disk_usage_mutex_);
+    last_disk_check_time_ = std::chrono::steady_clock::now();
+    last_disk_usage_snapshot_ = snapshot;
+  }
+
+  if (snapshot.warn_reached()) {
+    log_disk_warning_once(snapshot);
+  }
+
+  if (snapshot.hard_limit_reached()) {
+    trip_disk_hard_limit(snapshot);
+    set_error_helper("Cannot start recording: " + get_last_error());
+    return false;
+  }
+
+  return true;
+}
+
+bool AxonRecorder::ensure_disk_capacity_before_write(size_t next_write_bytes) {
+  if (!config_.recording.disk_usage.enabled) {
+    return true;
+  }
+  if (disk_hard_limit_reached_.load(std::memory_order_acquire)) {
+    return false;
+  }
+
+  uint64_t current_task_bytes = next_write_bytes;
+  std::string active_output_path;
+  if (recording_session_) {
+    auto stats = recording_session_->get_stats();
+    current_task_bytes += stats.bytes_written;
+    active_output_path = recording_session_->get_path();
+  }
+
+  const auto limits = make_disk_usage_limits();
+  if (limits.max_task_size_bytes > 0 && current_task_bytes >= limits.max_task_size_bytes) {
+    auto snapshot = collect_disk_usage_snapshot(current_task_bytes);
+    trip_disk_hard_limit(snapshot);
+    return false;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  {
+    std::lock_guard<std::mutex> lock(disk_usage_mutex_);
+    if (last_disk_check_time_ != std::chrono::steady_clock::time_point{} &&
+        now - last_disk_check_time_ < std::chrono::seconds(1)) {
+      return true;
+    }
+    last_disk_check_time_ = now;
+  }
+
+  auto snapshot = collect_disk_usage_snapshot(current_task_bytes);
+  if (snapshot.hard_limit_reached()) {
+    maybe_cleanup_disk_usage(active_output_path, snapshot);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(disk_usage_mutex_);
+    last_disk_usage_snapshot_ = snapshot;
+  }
+
+  if (snapshot.warn_reached()) {
+    log_disk_warning_once(snapshot);
+  }
+
+  if (snapshot.hard_limit_reached()) {
+    trip_disk_hard_limit(snapshot);
+    return false;
+  }
+
+  return true;
+}
+
 bool AxonRecorder::start() {
   std::string error_msg;
 
@@ -251,6 +489,14 @@ bool AxonRecorder::start() {
   if (!ensure_plugin_loaded()) {
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
     return false;
+  }
+
+  disk_warn_logged_.store(false, std::memory_order_release);
+  disk_hard_limit_reached_.store(false, std::memory_order_release);
+  {
+    std::lock_guard<std::mutex> lock(disk_usage_mutex_);
+    last_disk_check_time_ = {};
+    last_disk_usage_snapshot_ = DiskUsageSnapshot{};
   }
 
   reset_pause_tracking();
@@ -325,6 +571,12 @@ bool AxonRecorder::start() {
   } else {
     // Final fallback
     output_file = config_.output_file;
+  }
+
+  if (!ensure_disk_capacity_before_start(output_file)) {
+    state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    recording_session_.reset();
+    return false;
   }
 
   // Open MCAP file via recording session
@@ -594,6 +846,7 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
   callbacks.get_stats = [this]() -> nlohmann::json {
     auto stats = this->get_statistics();
     nlohmann::json j;
+    j["state"] = this->get_state_string();
     j["messages_received"] = stats.messages_received;
     j["messages_written"] = stats.messages_written;
     j["messages_dropped"] = stats.messages_dropped;
@@ -636,6 +889,7 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     // Expose BufferPool counters so operators can track hit rate and
     // resident memory in real time via /rpc/status.
     j["buffer_pool"] = buffer_pool_stats_json();
+    j["disk_usage"] = this->get_disk_usage_status_json();
 
     return j;
   };
@@ -1110,7 +1364,8 @@ void AxonRecorder::on_message(
 ) {
   // Only enqueue messages when in RECORDING state
   // Messages received in IDLE, READY, or PAUSED states are discarded
-  if (!state_manager_.is_state(RecorderState::RECORDING)) {
+  if (!state_manager_.is_state(RecorderState::RECORDING) ||
+      disk_hard_limit_reached_.load(std::memory_order_acquire)) {
     return;
   }
 
@@ -1143,7 +1398,8 @@ void AxonRecorder::on_message_v2(
 ) {
   // Drop-and-release if we're not recording: the plugin gave us ownership,
   // so we must still call the release function even though we don't enqueue.
-  if (!state_manager_.is_state(RecorderState::RECORDING)) {
+  if (!state_manager_.is_state(RecorderState::RECORDING) ||
+      disk_hard_limit_reached_.load(std::memory_order_acquire)) {
     if (release_fn) {
       release_fn(release_opaque);
     }
@@ -1191,6 +1447,10 @@ bool AxonRecorder::message_handler(
     return false;  // No active recording session
   }
 
+  if (!ensure_disk_capacity_before_write(data_size)) {
+    return false;
+  }
+
   const uint64_t msg_time_ns = static_cast<uint64_t>(timestamp_ns);
   const uint64_t mcap_time_ns = apply_monotonic_timestamp_for_topic(topic, msg_time_ns);
   uint64_t write_time_ns = get_steady_clock_ns();
@@ -1231,6 +1491,10 @@ bool AxonRecorder::latency_message_handler(
   uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns
 ) {
   if (!recording_session_) {
+    return false;
+  }
+
+  if (!ensure_disk_capacity_before_write(data_size)) {
     return false;
   }
 
@@ -1506,8 +1770,7 @@ bool AxonRecorder::setup_subscriptions() {
   return true;
 }
 
-const SubscriptionConfig* AxonRecorder::get_subscription_config(
-  const std::string& topic_name
+const SubscriptionConfig* AxonRecorder::get_subscription_config(const std::string& topic_name
 ) const {
   for (const auto& sub : config_.subscriptions) {
     if (sub.topic_name == topic_name) {
@@ -1659,6 +1922,7 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
   callbacks.get_stats = [this]() -> nlohmann::json {
     auto stats = this->get_statistics();
     nlohmann::json j;
+    j["state"] = this->get_state_string();
     j["messages_received"] = stats.messages_received;
     j["messages_written"] = stats.messages_written;
     j["messages_dropped"] = stats.messages_dropped;
@@ -1701,6 +1965,7 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
     // Expose BufferPool counters so operators can track hit rate and
     // resident memory in real time via /rpc/status.
     j["buffer_pool"] = buffer_pool_stats_json();
+    j["disk_usage"] = this->get_disk_usage_status_json();
 
     return j;
   };

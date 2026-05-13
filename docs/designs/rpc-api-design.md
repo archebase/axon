@@ -558,13 +558,18 @@ GET /rpc/state HTTP/1.1
 
 ---
 
-### 10. GET /rpc/stats
+### 10. GET /rpc/stats and GET /rpc/status
 
-Query recording statistics
+Query recorder status and recording statistics. `/rpc/status` is an alias with a
+status-oriented message and the same `data` schema.
 
 **Request:**
 ```http
 GET /rpc/stats HTTP/1.1
+```
+
+```http
+GET /rpc/status HTTP/1.1
 ```
 
 **Response (200 OK):**
@@ -573,10 +578,28 @@ GET /rpc/stats HTTP/1.1
   "success": true,
   "message": "Statistics retrieved successfully",
   "data": {
+    "state": "recording",
     "messages_received": 1523456,
     "messages_written": 1523450,
     "messages_dropped": 6,
-    "bytes_written": 2147483648
+    "bytes_written": 2147483648,
+    "disk_usage": {
+      "enabled": true,
+      "state": "warn",
+      "reason": "monitored disk usage reached warning threshold",
+      "total_used_bytes": 91268055040,
+      "warn_usage_gb": 80.0,
+      "hard_limit_gb": 100.0,
+      "current_task_bytes": 2147483648,
+      "paths": [
+        {
+          "role": "recording_output",
+          "path": "/data/recordings",
+          "used_bytes": 91268055040,
+          "available_bytes": 53687091200
+        }
+      ]
+    }
   }
 }
 ```
@@ -588,6 +611,8 @@ GET /rpc/stats HTTP/1.1
 | `messages_written` | uint64 | Messages written to MCAP |
 | `messages_dropped` | uint64 | Messages dropped (queue full) |
 | `bytes_written` | uint64 | Bytes written |
+| `disk_usage.state` | string | Disk state: `normal`, `warn`, `hard_limit`, `disabled`, or `error` |
+| `disk_usage.paths` | array | Recording output and upload backlog paths included in disk checks |
 
 ---
 
@@ -927,6 +952,7 @@ Recommend adding rate limiting to prevent abuse:
 | POST | `/rpc/clear` | Clear configuration | READY |
 | GET | `/rpc/state` | Get current state | Any |
 | GET | `/rpc/stats` | Get statistics | Any |
+| GET | `/rpc/status` | Get status, statistics, and disk usage | Any |
 | GET | `/` or `/health` | Health check | Any |
 
 ### B. HTTP Status Codes

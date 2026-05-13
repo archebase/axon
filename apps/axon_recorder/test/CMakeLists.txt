@@ -225,6 +225,12 @@ add_axon_test(test_schema_resolver
             ../src/core/schema_resolver.cpp
 )
 
+# test_disk_usage_monitor.cpp - Disk usage thresholds and cleanup tests
+add_axon_test(test_disk_usage_monitor
+    SOURCES unit/test_disk_usage_monitor.cpp
+            ../src/core/disk_usage_monitor.cpp
+)
+
 # test_websocket_rpc_handler.cpp - WebSocket RPC handler tests
 add_axon_test(test_websocket_rpc_handler
     SOURCES unit/test_websocket_rpc_handler.cpp
@@ -315,6 +321,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
     add_axon_test(test_recorder_integration
         SOURCES integration/test_recorder_integration.cpp
                 ../src/core/recorder.cpp
+                ../src/core/disk_usage_monitor.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
                 ../src/core/schema_resolver.cpp
@@ -371,6 +378,7 @@ if(
     add_axon_test(test_e2e_full_workflow
         SOURCES e2e/test_e2e_full_workflow.cpp
                 ../src/core/recorder.cpp
+                ../src/core/disk_usage_monitor.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
                 ../src/core/schema_resolver.cpp

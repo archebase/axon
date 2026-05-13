@@ -132,8 +132,19 @@ recording:
   # 5 presets. See core/axon_mcap/mcap_writer_wrapper.hpp.
   compression_level: 3
 
-  # Maximum disk usage (ignored by axon_recorder, used by full service)
+  # Disk usage limits for recorder-managed local storage.
+  # The monitor sums files under dataset.path plus enabled upload backlog paths.
+  # max_disk_usage_gb remains as a backward-compatible hard limit alias.
   max_disk_usage_gb: 100
+  disk_usage:
+    enabled: true
+    warn_usage_gb: 80
+    hard_limit_gb: 100
+    max_task_size_gb: 0        # 0 disables per-task size limit
+    cleanup_enabled: false     # Delete oldest completed .mcap/.json files before refusing start
+    cleanup_target_gb: 80
+    cleanup_min_age_sec: 3600
+    cleanup_upload_backlog: false
 
 # ============================================================================
 # Logging Configuration
@@ -195,4 +206,3 @@ rpc:
 
     # Keepalive ping interval (0 to disable)
     ping_interval_ms: 30000
-

@@ -142,6 +142,7 @@ add_executable(
     axon_recorder
     axon_recorder.cpp
     src/core/recorder.cpp
+    src/core/disk_usage_monitor.cpp
     src/state/state_machine.cpp
     src/core/recording_session.cpp
     src/metadata/metadata_injector.cpp

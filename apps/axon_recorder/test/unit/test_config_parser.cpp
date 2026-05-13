@@ -101,6 +101,14 @@ subscriptions:
 
 recording:
   max_disk_usage_gb: 50.0
+  disk_usage:
+    warn_usage_gb: 40.0
+    hard_limit_gb: 50.0
+    max_task_size_gb: 5.0
+    cleanup_enabled: true
+    cleanup_target_gb: 35.0
+    cleanup_min_age_sec: 300
+    cleanup_upload_backlog: true
 
 logging:
   console:
@@ -157,6 +165,13 @@ upload:
   EXPECT_EQ(config.subscriptions[1].batch_size, 200);
 
   EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 50.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.warn_usage_gb, 40.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.hard_limit_gb, 50.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.max_task_size_gb, 5.0);
+  EXPECT_TRUE(config.recording.disk_usage.cleanup_enabled);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.cleanup_target_gb, 35.0);
+  EXPECT_EQ(config.recording.disk_usage.cleanup_min_age_sec, 300);
+  EXPECT_TRUE(config.recording.disk_usage.cleanup_upload_backlog);
 
   // Logging config
   EXPECT_TRUE(config.logging.console_enabled);
@@ -203,6 +218,11 @@ subscriptions:
 
   // Recording defaults
   EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 100.0);
+  EXPECT_TRUE(config.recording.disk_usage.enabled);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.warn_usage_gb, 80.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.hard_limit_gb, 100.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.max_task_size_gb, 0.0);
+  EXPECT_FALSE(config.recording.disk_usage.cleanup_enabled);
   EXPECT_TRUE(config.recording.subtract_pause_duration_from_timestamps);
   EXPECT_FALSE(config.recording.enforce_monotonic_timestamps_per_topic);
 
@@ -256,6 +276,38 @@ TEST_F(ConfigParserTest, ValidateFailsWithNoSubscriptions) {
   std::string error_msg;
   EXPECT_FALSE(ConfigParser::validate(config, error_msg));
   EXPECT_EQ(error_msg, "No subscriptions configured");
+}
+
+TEST_F(ConfigParserTest, ValidateFailsWhenDiskWarnExceedsHardLimit) {
+  RecorderConfig config;
+  config.dataset.path = "/data";
+  config.dataset.mode = "create";
+  config.subscriptions.push_back({"/test", "std_msgs/String", 100, 100});
+  config.recording.disk_usage.warn_usage_gb = 20.0;
+  config.recording.disk_usage.hard_limit_gb = 10.0;
+
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Disk usage warn_usage_gb must be <= hard_limit_gb");
+}
+
+TEST_F(ConfigParserTest, LegacyMaxDiskUsageMapsToHardLimitAndAdjustsDefaultWarnLimit) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+subscriptions:
+  - name: /test
+    message_type: std_msgs/String
+recording:
+  max_disk_usage_gb: 50.0
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  EXPECT_TRUE(parser.load_from_string(yaml, config));
+  EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 50.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.hard_limit_gb, 50.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.warn_usage_gb, 40.0);
 }
 
 TEST_F(ConfigParserTest, ValidateFailsWithEmptyTopicName) {
