@@ -165,6 +165,13 @@ private:
   RpcResponse handle_rpc_get_stats(const nlohmann::json& params);
   RpcResponse handle_rpc_get_drop_stats(const nlohmann::json& params);
   RpcResponse handle_rpc_get_latency_stats(const nlohmann::json& params);
+  RpcResponse handle_rpc_list_tasks(const nlohmann::json& params);
+  RpcResponse handle_rpc_get_task_status(const nlohmann::json& params);
+  RpcResponse handle_rpc_batch_begin(const nlohmann::json& params);
+  RpcResponse handle_rpc_batch_finish(const nlohmann::json& params);
+  RpcResponse handle_rpc_batch_cancel(const nlohmann::json& params);
+  RpcResponse handle_rpc_get_log_levels(const nlohmann::json& params);
+  RpcResponse handle_rpc_set_log_levels(const nlohmann::json& params);
   RpcResponse handle_rpc_set_config(const nlohmann::json& params);
 
   /**
