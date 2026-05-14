@@ -331,6 +331,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
                 ../src/core/latency_hotspot_analyzer.cpp
                 ../src/core/latency_monitor.cpp
                 ../src/metadata/metadata_injector.cpp
+                ../src/config/config_parser.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp
                 ../src/http/http_server.cpp
@@ -388,6 +389,7 @@ if(
                 ../src/core/latency_hotspot_analyzer.cpp
                 ../src/core/latency_monitor.cpp
                 ../src/metadata/metadata_injector.cpp
+                ../src/config/config_parser.cpp
                 ../src/config/config_injector.cpp
                 ../src/plugin/plugin_loader.cpp
     )
