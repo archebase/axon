@@ -43,8 +43,8 @@ struct TopicStats {
  * MetadataInjector handles:
  * - Building metadata maps for axon.task, axon.device, axon.recording
  * - Writing metadata records to MCAP via McapWriterWrapper
- * - Generating sidecar JSON files (always enabled)
- * - Computing SHA-256 checksum of MCAP files (always enabled)
+ * - Generating optional sidecar JSON files
+ * - Computing SHA-256 checksum of MCAP files for sidecar output
  *
  * Usage:
  *   MetadataInjector injector;
@@ -76,6 +76,12 @@ public:
    * Set the task configuration for this recording
    */
   void set_task_config(const TaskConfig& config);
+
+  /**
+   * Clear per-recording timestamps, topic stats, checksum, and sidecar output
+   * while keeping the configured task context.
+   */
+  void reset_recording_state();
 
   /**
    * Set the recording start time
@@ -133,7 +139,7 @@ public:
    * Generate sidecar JSON file
    *
    * Must be called AFTER writer.close() to get accurate final file size.
-   * Always computes SHA-256 checksum and generates sidecar.
+   * Computes SHA-256 checksum and writes it into the sidecar.
    *
    * @param mcap_path Path to the MCAP file
    * @param actual_file_size Actual file size after close

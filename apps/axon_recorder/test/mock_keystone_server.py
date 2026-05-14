@@ -29,6 +29,7 @@ import asyncio
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -54,6 +55,9 @@ class MockKeystoneServer:
 
     def get_timestamp(self) -> str:
         return datetime.utcnow().isoformat() + "Z"
+
+    def get_timestamp_ms(self) -> int:
+        return int(time.time() * 1000)
 
     async def handle_rpc_request(self, websocket, request: Dict) -> Dict:
         """Handle an RPC request from the recorder."""
@@ -291,7 +295,13 @@ class MockKeystoneServer:
         self.request_counter += 1
         request_id = f"req_{self.request_counter}"
         await websocket.send(
-            json.dumps({"action": "get_state", "request_id": request_id})
+            json.dumps(
+                {
+                    "action": "get_state",
+                    "request_id": request_id,
+                    "timestamp_ms": self.get_timestamp_ms(),
+                }
+            )
         )
 
         try:
@@ -317,6 +327,7 @@ class MockKeystoneServer:
         request = {
             "action": action,
             "request_id": f"req_{self.request_counter}",
+            "timestamp_ms": self.get_timestamp_ms(),
         }
         if params:
             request["params"] = params

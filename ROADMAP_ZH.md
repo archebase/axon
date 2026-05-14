@@ -166,6 +166,20 @@
   - ✅ 带宽利用率
   - ✅ 队列深度监控
 
+### 录制元数据与诊断
+- [✅] Sidecar JSON 可选生成
+  - [✅] 支持通过 `metadata.sidecar.enabled`、`recording.sidecar.enabled` 和 `sidecar_generation_mode` 禁用 sidecar
+  - [✅] MCAP metadata injection 与 sidecar JSON 生成解耦
+  - [✅] finish callback 和 `/rpc/status` 明确报告 `sidecar_enabled`、`sidecar_generated` 与 `sidecar_path: null`
+- [✅] Keystone 时间差诊断
+  - [✅] WebSocket client 模式下解析 Keystone 时间戳并计算本地时钟偏移
+  - [✅] 报告 `normal`、`warning`、`critical`、`unreliable` 和 `unavailable` 状态
+  - [✅] 在 `/rpc/status` 和 incident 诊断快照中暴露最近一次检查结果
+- [✅] Incident debug bundle
+  - [✅] 录制结束后可选生成 MCAP、sidecar 和 `manifest.json` 调试包
+  - [✅] bundle 失败不影响原始 MCAP 关闭与录制完成
+  - [✅] manifest 与异常日志对 token、secret、password、access key 和 callback URL 等敏感字段脱敏
+
 ### 内存优化
 - [✅] 零拷贝优化
   - [✅] 避免序列化时的额外拷贝

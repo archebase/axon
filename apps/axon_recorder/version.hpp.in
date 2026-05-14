@@ -15,6 +15,7 @@
 #define AXON_RECORDER_VERSION_MAJOR_MACRO @PROJECT_VERSION_MAJOR@
 #define AXON_RECORDER_VERSION_MINOR_MACRO @PROJECT_VERSION_MINOR@
 #define AXON_RECORDER_VERSION_PATCH_MACRO @PROJECT_VERSION_PATCH@
+#define AXON_RECORDER_GIT_SHA_MACRO "@AXON_GIT_SHA@"
 
 // C++ namespace with constexpr variables
 namespace axon {
@@ -24,6 +25,7 @@ constexpr const char* AXON_RECORDER_VERSION_STRING = "@PROJECT_VERSION@";
 constexpr int AXON_RECORDER_VERSION_MAJOR = @PROJECT_VERSION_MAJOR@;
 constexpr int AXON_RECORDER_VERSION_MINOR = @PROJECT_VERSION_MINOR@;
 constexpr int AXON_RECORDER_VERSION_PATCH = @PROJECT_VERSION_PATCH@;
+constexpr const char* AXON_RECORDER_GIT_SHA = "@AXON_GIT_SHA@";
 
 // Convenience alias for use in code
 constexpr const char* AXON_RECORDER_VERSION = AXON_RECORDER_VERSION_STRING;
@@ -36,6 +38,7 @@ inline const char* get_version() {
 inline const char* get_version_info() {
   static constexpr char version_info[] =
     "Axon Recorder @PROJECT_VERSION@\n"
+    "Git SHA: @AXON_GIT_SHA@\n"
     "Copyright (c) 2026 ArcheBase\n"
     "Licensed under Mulan PSL v2\n"
     "\n"
@@ -49,4 +52,3 @@ inline const char* get_version_info() {
 }  // namespace axon
 
 #endif  // AXON_RECORDER_VERSION_HPP
-

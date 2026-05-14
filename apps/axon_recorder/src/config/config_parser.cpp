@@ -186,6 +186,39 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       parse_upload(node["upload"], config.upload);
     }
 
+    if (node["metadata"]) {
+      const auto& metadata = node["metadata"];
+      if (metadata["sidecar"]) {
+        const auto& sidecar = metadata["sidecar"];
+        if (sidecar.IsMap() && sidecar["enabled"]) {
+          config.recording.sidecar_json_enabled = sidecar["enabled"].as<bool>();
+        } else if (sidecar.IsScalar()) {
+          config.recording.sidecar_json_enabled = sidecar.as<bool>();
+        }
+      }
+      if (metadata["sidecar_enabled"]) {
+        config.recording.sidecar_json_enabled = metadata["sidecar_enabled"].as<bool>();
+      }
+      if (metadata["sidecar_generation_mode"]) {
+        const std::string mode = metadata["sidecar_generation_mode"].as<std::string>();
+        config.recording.sidecar_json_enabled =
+          mode != "disabled" && mode != "off" && mode != "none";
+      }
+      if (metadata["incident_bundle"]) {
+        parse_incident_bundle(metadata["incident_bundle"], config.incident_bundle);
+      }
+      if (metadata["incident_debug_bundle"]) {
+        parse_incident_bundle(metadata["incident_debug_bundle"], config.incident_bundle);
+      }
+    }
+
+    if (node["incident_bundle"]) {
+      parse_incident_bundle(node["incident_bundle"], config.incident_bundle);
+    }
+    if (node["incident_debug_bundle"]) {
+      parse_incident_bundle(node["incident_debug_bundle"], config.incident_bundle);
+    }
+
     // Parse HTTP server config
     if (node["http_server"]) {
       parse_http_server(node["http_server"], config.http_server);
@@ -238,6 +271,9 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
       config.recording.disk_usage.cleanup_min_age_sec;
     node["recording"]["disk_usage"]["cleanup_upload_backlog"] =
       config.recording.disk_usage.cleanup_upload_backlog;
+    node["recording"]["sidecar"]["enabled"] = config.recording.sidecar_json_enabled;
+    node["metadata"]["incident_bundle"]["enabled"] = config.incident_bundle.enabled;
+    node["metadata"]["incident_bundle"]["directory"] = config.incident_bundle.directory;
 
     std::ofstream file(path);
     file << node;
@@ -408,6 +444,24 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
     recording.enforce_monotonic_timestamps_per_topic =
       node["enforce_monotonic_timestamps_per_topic"].as<bool>();
   }
+  if (node["sidecar_enabled"]) {
+    recording.sidecar_json_enabled = node["sidecar_enabled"].as<bool>();
+  }
+  if (node["sidecar_json_enabled"]) {
+    recording.sidecar_json_enabled = node["sidecar_json_enabled"].as<bool>();
+  }
+  if (node["sidecar_generation_mode"]) {
+    const std::string mode = node["sidecar_generation_mode"].as<std::string>();
+    recording.sidecar_json_enabled = mode != "disabled" && mode != "off" && mode != "none";
+  }
+  if (node["sidecar"]) {
+    const auto& sidecar = node["sidecar"];
+    if (sidecar.IsMap() && sidecar["enabled"]) {
+      recording.sidecar_json_enabled = sidecar["enabled"].as<bool>();
+    } else if (sidecar.IsScalar()) {
+      recording.sidecar_json_enabled = sidecar.as<bool>();
+    }
+  }
 
   return true;
 }
@@ -527,6 +581,22 @@ bool ConfigParser::parse_upload(const YAML::Node& node, UploadConfig& upload) {
   return true;
 }
 
+bool ConfigParser::parse_incident_bundle(
+  const YAML::Node& node, IncidentBundleConfig& incident_bundle
+) {
+  if (node["enabled"]) {
+    incident_bundle.enabled = node["enabled"].as<bool>();
+  }
+  if (node["directory"]) {
+    incident_bundle.directory = node["directory"].as<std::string>();
+  }
+  if (node["path"]) {
+    incident_bundle.directory = node["path"].as<std::string>();
+  }
+
+  return true;
+}
+
 bool ConfigParser::parse_http_server(const YAML::Node& node, HttpServerConfig& http_server) {
   if (node["host"]) {
     http_server.host = node["host"].as<std::string>();
@@ -578,6 +648,20 @@ bool ConfigParser::parse_rpc(const YAML::Node& node, RpcModeConfig& rpc) {
     }
     if (ws["ping_interval_ms"]) {
       rpc.ws_client.ping_interval_ms = ws["ping_interval_ms"].as<int>();
+    }
+    if (ws["time_gap_check_enabled"]) {
+      rpc.ws_client.time_gap_check_enabled = ws["time_gap_check_enabled"].as<bool>();
+    }
+    if (ws["time_gap_warning_threshold_ms"]) {
+      rpc.ws_client.time_gap_warning_threshold_ms =
+        ws["time_gap_warning_threshold_ms"].as<int64_t>();
+    }
+    if (ws["time_gap_critical_threshold_ms"]) {
+      rpc.ws_client.time_gap_critical_threshold_ms =
+        ws["time_gap_critical_threshold_ms"].as<int64_t>();
+    }
+    if (ws["time_gap_stale_after_ms"]) {
+      rpc.ws_client.time_gap_stale_after_ms = ws["time_gap_stale_after_ms"].as<int64_t>();
     }
   }
 

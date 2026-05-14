@@ -418,9 +418,12 @@ bool success                  # True if configuration cached successfully
 string message                # Human-readable status message
 ```
 
-**Always-on behaviors** (not configurable):
-- Sidecar JSON generation: always enabled for edge processing
-- SHA-256 checksum: always computed for data integrity
+**Default behaviors**:
+- MCAP metadata injection is always attempted when a task config is present.
+- Sidecar JSON generation is enabled by default for edge processing, but can be disabled with `metadata.sidecar.enabled: false` or `recording.sidecar.enabled: false`.
+- SHA-256 checksum is computed when the sidecar is generated. If sidecar generation is disabled, the finish callback and status report `sidecar_path: null` and `sidecar_generated: false`.
+
+This keeps embedded MCAP metadata independent from the optional sidecar path: disabling the sidecar must not prevent a recording from finalizing or from carrying `axon.task`, `axon.device`, `axon.recording`, and `axon.topics` records.
 
 ### Extended Finish Callback Payload
 
@@ -438,6 +441,8 @@ Include metadata summary in finish callback:
   "file_size_bytes": 2147483648,
   "output_path": "/data/recordings/task_20251220_143052_abc123.mcap",
   "sidecar_path": "/data/recordings/task_20251220_143052_abc123.json",
+  "sidecar_enabled": true,
+  "sidecar_generated": true,
   "topics": ["/camera/image_raw", "/joint_states", "/tf"],
   "metadata": {
     "scene": "warehouse_picking",
@@ -448,6 +453,85 @@ Include metadata summary in finish callback:
   "error": null
 }
 ```
+
+When sidecar generation is disabled or fails after the MCAP is finalized:
+
+```json
+{
+  "sidecar_path": null,
+  "sidecar_enabled": false,
+  "sidecar_generated": false
+}
+```
+
+Downstream clients must treat `sidecar_path: null` as a clear absence of a JSON sidecar, not as an empty path to open.
+
+### Keystone Time-Gap Diagnostics
+
+When the recorder runs in WebSocket client mode, inbound Keystone messages may include a millisecond epoch timestamp in one of these fields: `timestamp_ms`, `server_time_ms`, `keystone_time_ms`, or `timestamp`. The recorder compares that value to local wall-clock receive time and exposes the latest check in `/rpc/status` under `keystone_time_gap`:
+
+```json
+{
+  "enabled": true,
+  "status": "normal",
+  "reliable": true,
+  "offset_ms": 12,
+  "absolute_offset_ms": 12,
+  "warning_threshold_ms": 1000,
+  "critical_threshold_ms": 5000,
+  "stale_after_ms": 60000,
+  "checked_at_ms": 1766200000000,
+  "reason": "ok"
+}
+```
+
+Status values:
+
+| Status | Meaning |
+|--------|---------|
+| `normal` | Offset is below the warning threshold |
+| `warning` | Absolute offset is at or above `time_gap_warning_threshold_ms` |
+| `critical` | Absolute offset is at or above `time_gap_critical_threshold_ms` |
+| `unreliable` | Keystone timestamp is missing, invalid, disabled, or stale |
+| `unavailable` | Recorder is not in WebSocket client mode or the client is not running |
+
+Configuration:
+
+```yaml
+rpc:
+  mode: ws_client
+  ws_client:
+    url: ws://keystone:8090/rpc
+    time_gap_check_enabled: true
+    time_gap_warning_threshold_ms: 1000
+    time_gap_critical_threshold_ms: 5000
+    time_gap_stale_after_ms: 60000
+```
+
+The recorder logs status transitions for this check without logging authentication tokens or sensitive request fields.
+
+### Incident Debug Bundle
+
+An optional incident debug bundle can be emitted after MCAP close. It is disabled by default because it copies the finalized MCAP. A bundle failure is non-fatal and must not modify or delete the original MCAP.
+
+Configuration:
+
+```yaml
+metadata:
+  incident_bundle:
+    enabled: true
+    directory: /tmp/axon-incident-bundles
+```
+
+Bundle contents:
+
+| File | Description |
+|------|-------------|
+| `recording.mcap` | Copy of the finalized MCAP |
+| `sidecar.json` | Copy of the JSON sidecar when generated |
+| `manifest.json` | Redacted manifest with artifact paths, task/config summary, recorder version, git SHA, runtime context, and diagnostic snapshot |
+
+The manifest recursively redacts sensitive keys including `token`, `secret`, `password`, `credential`, `authorization`, `access_key`, and callback URL fields. The same redaction is used for bundle manifests and WebSocket invalid-message logs.
 
 ## Implementation Details
 
@@ -669,7 +753,7 @@ For each recording session, `axon_recorder` produces:
 | File | Format | Description |
 |------|--------|-------------|
 | `{task_id}.mcap` | MCAP v1 | Self-describing recording with embedded metadata |
-| `{task_id}.json` | JSON | Sidecar file for fast metadata parsing (always generated) |
+| `{task_id}.json` | JSON | Sidecar file for fast metadata parsing (enabled by default, optional) |
 
 ### Output Directory
 
@@ -693,17 +777,17 @@ The output directory is configured via:
 | Guarantee | Description |
 |-----------|-------------|
 | **Atomic write** | Files are written to a temp location first, then renamed to final path |
-| **Paired output** | `.json` sidecar is always written after `.mcap` is finalized |
+| **Paired output** | `.json` sidecar is written after `.mcap` is finalized when sidecar generation is enabled |
 | **Self-describing** | MCAP file contains all metadata even without the sidecar |
 | **Consistent naming** | Both files share the same basename (task_id) |
-| **Checksum integrity** | SHA-256 checksum is always computed and included in sidecar |
+| **Checksum integrity** | SHA-256 checksum is included in sidecar when sidecar generation is enabled |
 
 ### Downstream System Responsibilities
 
 Any downstream system (Synapse, cloud uploader, etc.) should:
 
 1. **Watch** the output directory for new files
-2. **Parse** the `.json` sidecar for fast metadata access (or read MCAP metadata as fallback)
+2. **Parse** the `.json` sidecar for fast metadata access when present (or read MCAP metadata as fallback)
 3. **Validate** required fields are present before processing
 4. **Handle** the files according to its own workflow (upload, archive, etc.)
 

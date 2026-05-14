@@ -231,6 +231,12 @@ add_axon_test(test_disk_usage_monitor
             ../src/core/disk_usage_monitor.cpp
 )
 
+# test_incident_debug_bundle.cpp - Incident bundle manifest and redaction tests
+add_axon_test(test_incident_debug_bundle
+    SOURCES unit/test_incident_debug_bundle.cpp
+            ../src/core/incident_debug_bundle.cpp
+)
+
 # test_websocket_rpc_handler.cpp - WebSocket RPC handler tests
 add_axon_test(test_websocket_rpc_handler
     SOURCES unit/test_websocket_rpc_handler.cpp
@@ -321,6 +327,7 @@ if(AXON_BUILD_INTEGRATION_TESTS)
     add_axon_test(test_recorder_integration
         SOURCES integration/test_recorder_integration.cpp
                 ../src/core/recorder.cpp
+                ../src/core/incident_debug_bundle.cpp
                 ../src/core/disk_usage_monitor.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp
@@ -378,6 +385,7 @@ if(
     add_axon_test(test_e2e_full_workflow
         SOURCES e2e/test_e2e_full_workflow.cpp
                 ../src/core/recorder.cpp
+                ../src/core/incident_debug_bundle.cpp
                 ../src/core/disk_usage_monitor.cpp
                 ../src/state/state_machine.cpp
                 ../src/core/recording_session.cpp

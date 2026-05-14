@@ -191,6 +191,46 @@ upload:
   EXPECT_EQ(config.upload.num_workers, 4);
 }
 
+TEST_F(ConfigParserTest, ParseMetadataSidecarIncidentAndTimeGapConfig) {
+  const std::string yaml = R"(
+dataset:
+  path: /data/recordings
+subscriptions:
+  - name: /status
+    message_type: std_msgs/String
+metadata:
+  sidecar:
+    enabled: false
+  incident_bundle:
+    enabled: true
+    directory: /tmp/axon-bundles
+rpc:
+  mode: ws_client
+  ws_client:
+    url: ws://keystone:8090/rpc
+    auth_token: keep_me_secret
+    time_gap_check_enabled: true
+    time_gap_warning_threshold_ms: 250
+    time_gap_critical_threshold_ms: 1000
+    time_gap_stale_after_ms: 5000
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  EXPECT_TRUE(parser.load_from_string(yaml, config));
+
+  EXPECT_FALSE(config.recording.sidecar_json_enabled);
+  EXPECT_TRUE(config.incident_bundle.enabled);
+  EXPECT_EQ(config.incident_bundle.directory, "/tmp/axon-bundles");
+  EXPECT_EQ(config.rpc.mode, RpcMode::WS_CLIENT);
+  EXPECT_EQ(config.rpc.ws_client.url, "ws://keystone:8090/rpc");
+  EXPECT_EQ(config.rpc.ws_client.auth_token, "keep_me_secret");
+  EXPECT_TRUE(config.rpc.ws_client.time_gap_check_enabled);
+  EXPECT_EQ(config.rpc.ws_client.time_gap_warning_threshold_ms, 250);
+  EXPECT_EQ(config.rpc.ws_client.time_gap_critical_threshold_ms, 1000);
+  EXPECT_EQ(config.rpc.ws_client.time_gap_stale_after_ms, 5000);
+}
+
 // ============================================================================
 // Default Values Tests
 // ============================================================================

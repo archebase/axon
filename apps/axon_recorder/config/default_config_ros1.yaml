@@ -124,6 +124,19 @@ recording:
   schema_search_paths:
     - /opt/ros/noetic/share
 
+  # Optional JSON sidecar generation. MCAP metadata injection remains enabled
+  # even when this is false.
+  sidecar:
+    enabled: true
+
+# ============================================================================
+# Metadata Diagnostics
+# ============================================================================
+metadata:
+  incident_bundle:
+    enabled: false
+    directory: ""        # Empty means write bundle next to the MCAP file
+
 # ============================================================================
 # Logging Configuration
 # ============================================================================
@@ -184,3 +197,9 @@ rpc:
 
     # Keepalive ping interval (0 to disable)
     ping_interval_ms: 30000
+
+    # Keystone/local clock gap diagnostics, exposed in /rpc/status.
+    time_gap_check_enabled: true
+    time_gap_warning_threshold_ms: 1000
+    time_gap_critical_threshold_ms: 5000
+    time_gap_stale_after_ms: 60000

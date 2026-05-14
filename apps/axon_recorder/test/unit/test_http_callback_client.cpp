@@ -1041,6 +1041,8 @@ TEST_F(FinishCallbackPayloadTest, MetadataAllFields) {
   payload.file_size_bytes = 500 * 1024 * 1024;  // 500MB
   payload.output_path = "/axon/recording/task_001.mcap";
   payload.sidecar_path = "/axon/recording/task_001.json";
+  payload.sidecar_enabled = true;
+  payload.sidecar_generated = true;
   payload.topics = {"/camera", "/lidar", "/imu"};
   payload.error = "";
 
@@ -1058,6 +1060,22 @@ TEST_F(FinishCallbackPayloadTest, MetadataAllFields) {
   EXPECT_TRUE(json.find("obstacle_detection") != std::string::npos);
   EXPECT_TRUE(json.find("factory_001") != std::string::npos);
   EXPECT_TRUE(json.find("sidecar_path") != std::string::npos);
+  EXPECT_TRUE(json.find("\"sidecar_enabled\": true") != std::string::npos);
+  EXPECT_TRUE(json.find("\"sidecar_generated\": true") != std::string::npos);
+}
+
+TEST_F(FinishCallbackPayloadTest, SidecarDisabledUsesNullPath) {
+  FinishCallbackPayload payload;
+  payload.task_id = "task_001";
+  payload.status = "finished";
+  payload.sidecar_enabled = false;
+  payload.sidecar_generated = false;
+
+  std::string json = payload.to_json();
+
+  EXPECT_TRUE(json.find("\"sidecar_path\": null") != std::string::npos);
+  EXPECT_TRUE(json.find("\"sidecar_enabled\": false") != std::string::npos);
+  EXPECT_TRUE(json.find("\"sidecar_generated\": false") != std::string::npos);
 }
 
 TEST_F(FinishCallbackPayloadTest, MetadataEmptyFields) {

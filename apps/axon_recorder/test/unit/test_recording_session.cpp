@@ -577,6 +577,34 @@ TEST_F(RecordingSessionTest, SidecarContainsChecksum) {
   EXPECT_EQ(64, checksum.length());  // SHA-256 = 64 hex chars
 }
 
+TEST_F(RecordingSessionTest, SidecarDisabledStillFinalizesMcap) {
+  RecordingSession session;
+  auto path = get_test_path("test_sidecar_disabled.mcap");
+
+  McapWriterOptions options;
+  ASSERT_TRUE(session.open(path, options));
+  session.set_sidecar_json_enabled(false);
+
+  TaskConfig config;
+  config.task_id = "test_task_no_sidecar";
+  config.device_id = "robot";
+  config.scene = "test";
+  session.set_task_config(config);
+
+  session.close();
+
+  EXPECT_FALSE(session.is_open());
+  EXPECT_TRUE(is_valid_mcap(path));
+  EXPECT_FALSE(session.sidecar_json_enabled());
+  EXPECT_FALSE(session.was_sidecar_generated());
+  EXPECT_TRUE(session.get_sidecar_path().empty());
+  EXPECT_TRUE(session.get_checksum().empty());
+
+  fs::path json_path(path);
+  json_path.replace_extension(".json");
+  EXPECT_FALSE(fs::exists(json_path));
+}
+
 TEST_F(RecordingSessionTest, NoSidecarWithoutTaskConfig) {
   RecordingSession session;
   auto path = get_test_path("test_no_sidecar.mcap");

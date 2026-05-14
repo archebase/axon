@@ -14,9 +14,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
 
@@ -91,6 +93,16 @@ public:
    */
   bool is_connected() const;
 
+  /**
+   * Latest Keystone/local clock-gap check as JSON for status APIs.
+   */
+  nlohmann::json get_time_gap_status_json() const;
+
+  /**
+   * Test hook for evaluating Keystone timestamp samples without a live socket.
+   */
+  void observe_keystone_time_gap_for_test(const nlohmann::json& msg);
+
 private:
   // Connection management
   void do_resolve();
@@ -108,6 +120,9 @@ private:
 
   // Message handling
   void handle_server_message(const nlohmann::json& msg);
+  void observe_keystone_time_gap(const nlohmann::json& msg);
+  std::optional<int64_t> extract_message_timestamp_ms(const nlohmann::json& msg) const;
+  int64_t now_epoch_ms() const;
   void send_rpc_response(const std::string& request_id, const RpcResponse& response);
   void send_message(const nlohmann::json& msg);
 
@@ -159,6 +174,15 @@ private:
 
   // Callbacks
   RpcCallbacks callbacks_;
+
+  mutable std::mutex time_gap_mutex_;
+  bool time_gap_has_sample_ = false;
+  bool time_gap_reliable_ = false;
+  int64_t time_gap_offset_ms_ = 0;
+  int64_t time_gap_checked_at_ms_ = 0;
+  std::string time_gap_status_ = "unreliable";
+  std::string time_gap_reason_ = "no Keystone timestamp observed";
+  std::string last_logged_time_gap_status_;
 };
 
 }  // namespace recorder

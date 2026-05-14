@@ -126,6 +126,21 @@ target_link_libraries(axon_plugin_loader dl)
 # =============================================================================
 # Version Header
 # =============================================================================
+set(AXON_GIT_SHA "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short=12 HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        OUTPUT_VARIABLE AXON_GIT_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT AXON_GIT_SHA)
+        set(AXON_GIT_SHA "unknown")
+    endif()
+endif()
+
 # Generate version.hpp from version.hpp.in
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/version.hpp.in
@@ -142,6 +157,7 @@ add_executable(
     axon_recorder
     axon_recorder.cpp
     src/core/recorder.cpp
+    src/core/incident_debug_bundle.cpp
     src/core/disk_usage_monitor.cpp
     src/state/state_machine.cpp
     src/core/recording_session.cpp
