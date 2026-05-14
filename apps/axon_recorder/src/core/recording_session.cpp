@@ -284,8 +284,9 @@ bool RecordingSession::write(
   return success;
 }
 
-uint16_t RecordingSession::get_channel_id(const std::string& topic, const std::string& message_type)
-  const {
+uint16_t RecordingSession::get_channel_id(
+  const std::string& topic, const std::string& message_type
+) const {
   std::string composite_key = topic + COMPOSITE_KEY_SEPARATOR + message_type;
   std::lock_guard<std::mutex> lock(registry_mutex_);
   auto it = topic_channel_ids_.find(composite_key);

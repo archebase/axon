@@ -54,7 +54,8 @@ std::string formatSystemTimestamp(std::chrono::system_clock::time_point time_poi
   return ss.str();
 }
 
-std::optional<std::chrono::system_clock::time_point> parseSystemTimestamp(const std::string& value
+std::optional<std::chrono::system_clock::time_point> parseSystemTimestamp(
+  const std::string& value
 ) {
   if (value.empty()) {
     return std::nullopt;
