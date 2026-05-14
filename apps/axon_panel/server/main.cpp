@@ -17,9 +17,11 @@ void print_usage(const char* program_name) {
             << "\nOptions:\n"
             << "  --port PORT       HTTP server port (default: 8082)\n"
             << "  --rpc PORT        Recorder RPC port (default: panel port - 2)\n"
-            << "  --config-dir DIR  Robot config directory (default: AXON_PANEL_CONFIG_DIR or ~/.axon/config)\n"
+            << "  --config-dir DIR  Robot config directory (default: AXON_PANEL_CONFIG_DIR or "
+               "~/.axon/config)\n"
             << "  --recording-dir DIR\n"
-            << "                    Recording task directory (default: AXON_PANEL_RECORDING_DIR or /tmp/axon/recording)\n"
+            << "                    Recording task directory (default: AXON_PANEL_RECORDING_DIR or "
+               "/tmp/axon/recording)\n"
             << "  --version         Show version information\n"
             << "  --help            Show this help message\n"
             << std::endl;
