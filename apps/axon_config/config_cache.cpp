@@ -8,6 +8,7 @@
 #include <mcap/reader.hpp>
 #include <sys/stat.h>
 
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -21,6 +22,38 @@ namespace axon {
 namespace config {
 
 namespace fs = std::filesystem;
+
+namespace {
+
+bool read_file_into_cache_entry(
+  const std::string& full_path, const std::string& rel_path, uint64_t mtime, uint64_t size,
+  CachedFile& cached
+) {
+  std::vector<uint8_t> data(static_cast<size_t>(size));
+  std::ifstream file(full_path, std::ios::binary);
+  if (!file) {
+    return false;
+  }
+  if (size > 0) {
+    file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
+    if (!file) {
+      return false;
+    }
+  }
+
+  cached.name = rel_path;
+  cached.content_type = guess_content_type(rel_path);
+  cached.data = std::move(data);
+  cached.size = size;
+  cached.mtime = mtime;
+  return true;
+}
+
+bool cache_entry_has_content(const CachedFile& cached) {
+  return cached.size == 0 || cached.data.size() == static_cast<size_t>(cached.size);
+}
+
+}  // namespace
 
 // =============================================================================
 // Content type detection
@@ -184,38 +217,32 @@ ConfigCache::ScanResult ConfigCache::scan(bool incremental) {
       if (change.type == FileChange::Type::Unchanged) {
         auto it = old_file_map.find(change.path);
         if (it != old_file_map.end()) {
-          new_files.push_back(files_[it->second]);
+          const CachedFile& old_file = files_[it->second];
+          if (cache_entry_has_content(old_file)) {
+            new_files.push_back(old_file);
+            continue;
+          }
         }
-      } else {
-        // Added or Modified - need to read file content
-        std::string full_path = config_dir_ + "/" + change.path;
-
-        // Get file stats
-        uint64_t mtime, size;
-        if (!get_file_stats(full_path, mtime, size)) {
-          continue;
-        }
-
-        // Read file content
-        std::vector<uint8_t> data(size);
-        std::ifstream file(full_path, std::ios::binary);
-        if (!file) {
-          continue;
-        }
-        file.read(reinterpret_cast<char*>(data.data()), size);
-        if (!file) {
-          continue;
-        }
-
-        CachedFile cached;
-        cached.name = change.path;
-        cached.content_type = guess_content_type(change.path);
-        cached.data = std::move(data);
-        cached.size = size;
-        cached.mtime = mtime;
-
-        new_files.push_back(std::move(cached));
       }
+
+      // Added, modified, or metadata-only unchanged entries need source bytes.
+      std::string full_path = config_dir_ + "/" + change.path;
+
+      uint64_t mtime, size;
+      if (!get_file_stats(full_path, mtime, size)) {
+        result.status = Status::ReadError;
+        result.message = "Failed to stat file: " + change.path;
+        return result;
+      }
+
+      CachedFile cached;
+      if (!read_file_into_cache_entry(full_path, change.path, mtime, size, cached)) {
+        result.status = Status::ReadError;
+        result.message = "Failed to read file content: " + change.path;
+        return result;
+      }
+
+      new_files.push_back(std::move(cached));
     }
 
     files_ = std::move(new_files);
@@ -233,27 +260,12 @@ ConfigCache::ScanResult ConfigCache::scan(bool incremental) {
     for (const auto& [rel_path, meta] : current_files) {
       std::string full_path = config_dir_ + "/" + rel_path;
 
-      // Read file content
-      std::vector<uint8_t> data(meta.size);
-      std::ifstream file(full_path, std::ios::binary);
-      if (!file) {
-        result.status = Status::ReadError;
-        result.message = "Failed to read file: " + rel_path;
-        return result;
-      }
-      file.read(reinterpret_cast<char*>(data.data()), meta.size);
-      if (!file) {
+      CachedFile cached;
+      if (!read_file_into_cache_entry(full_path, rel_path, meta.mtime, meta.size, cached)) {
         result.status = Status::ReadError;
         result.message = "Failed to read file content: " + rel_path;
         return result;
       }
-
-      CachedFile cached;
-      cached.name = rel_path;
-      cached.content_type = guess_content_type(rel_path);
-      cached.data = std::move(data);
-      cached.size = meta.size;
-      cached.mtime = meta.mtime;
 
       files_.push_back(std::move(cached));
     }
@@ -280,14 +292,18 @@ ConfigCache::Status ConfigCache::scan_directory(
   std::unordered_map<std::string, ConfigCache::FileMeta>& file_map
 ) {
   try {
-    for (const auto& entry : fs::recursive_directory_iterator(dir)) {
-      if (entry.is_regular_file()) {
-        // Skip hidden files and marker file
-        std::string filename = entry.path().filename();
-        if (filename[0] == '.') {
-          continue;
+    for (auto it = fs::recursive_directory_iterator(dir); it != fs::recursive_directory_iterator();
+         ++it) {
+      const auto& entry = *it;
+      const std::string filename = entry.path().filename().string();
+      if (!filename.empty() && filename[0] == '.') {
+        if (entry.is_directory()) {
+          it.disable_recursion_pending();
         }
+        continue;
+      }
 
+      if (entry.is_regular_file()) {
         // Get relative path from config_dir
         std::string full_path = entry.path().string();
         std::string rel_path = full_path.substr(config_dir_.size() + 1);

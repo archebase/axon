@@ -38,6 +38,12 @@
           @command="handleCommand"
         />
 
+        <!-- Robot Config Workspace -->
+        <ConfigWorkspace
+          class="config-workspace-panel"
+          @log="addLog"
+        />
+
         <!-- Config Panel -->
         <ConfigPanel
           v-if="showConfigPanel"
@@ -72,6 +78,7 @@ import ConnectionStatus from './components/ConnectionStatus.vue'
 import StatePanel from './components/StatePanel.vue'
 import ControlPanel from './components/ControlPanel.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
+import ConfigWorkspace from './components/ConfigWorkspace.vue'
 import LogPanel from './components/LogPanel.vue'
 import RpcModeToggle from './components/RpcModeToggle.vue'
 
@@ -773,5 +780,9 @@ onUnmounted(() => {
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   gap: 1.5rem;
   margin-bottom: 1.5rem;
+}
+
+.config-workspace-panel {
+  grid-column: 1 / -1;
 }
 </style>
