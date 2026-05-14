@@ -27,6 +27,8 @@ struct WsConfig {
 struct ScannerConfig {
   std::string data_dir{"/tmp/axon/recording"};
   bool require_json_sidecar{true};
+  std::string completion_marker_suffix{".done"};
+  std::chrono::milliseconds min_ready_age_ms{0};
 };
 
 struct S3Config {

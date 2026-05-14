@@ -215,6 +215,14 @@ public:
    */
   std::string get_sidecar_path() const;
 
+  /**
+   * Get the path to the MCAP completion marker emitted after close().
+   * Empty until the marker has been created.
+   */
+  std::string get_completion_marker_path() const {
+    return completion_marker_path_;
+  }
+
   bool was_sidecar_generated() const {
     return sidecar_generated_;
   }
@@ -279,6 +287,7 @@ private:
   bool has_task_config_ = false;
   bool sidecar_json_enabled_ = true;
   bool sidecar_generated_ = false;
+  std::string completion_marker_path_;
 
   // Statistics (atomic for thread-safe reads)
   std::atomic<uint64_t> messages_written_{0};

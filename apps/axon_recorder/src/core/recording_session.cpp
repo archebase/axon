@@ -5,6 +5,7 @@
 #include "recording_session.hpp"
 
 #include <filesystem>
+#include <fstream>
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "recording_session"
@@ -16,6 +17,41 @@ namespace recorder {
 // ROS topic names cannot contain null characters (per ROS naming rules)
 // Using '\0' as separator ensures no collision with valid topic/message_type names
 static constexpr char COMPOSITE_KEY_SEPARATOR = '\0';
+
+namespace {
+
+std::string completion_marker_path_for_output(const std::string& output_path) {
+  return output_path.empty() ? "" : output_path + ".done";
+}
+
+bool write_completion_marker(const std::string& output_path, std::string& marker_path) {
+  marker_path = completion_marker_path_for_output(output_path);
+  if (marker_path.empty()) {
+    return false;
+  }
+
+  const std::string tmp_path = marker_path + ".tmp";
+  {
+    std::ofstream marker(tmp_path, std::ios::out | std::ios::trunc);
+    if (!marker) {
+      return false;
+    }
+    marker << "done\n";
+  }
+
+  std::error_code ec;
+  std::filesystem::rename(tmp_path, marker_path, ec);
+  if (ec) {
+    std::error_code remove_ec;
+    std::filesystem::remove(tmp_path, remove_ec);
+    marker_path.clear();
+    return false;
+  }
+
+  return true;
+}
+
+}  // namespace
 
 RecordingSession::RecordingSession()
     : writer_(std::make_unique<mcap_wrapper::McapWriterWrapper>()) {}
@@ -45,6 +81,7 @@ bool RecordingSession::open(
   sidecar_generated_ = false;
   final_file_size_ = 0;
   close_time_ = std::chrono::system_clock::time_point{};
+  completion_marker_path_.clear();
 
   // Set recording start time for metadata
   metadata_injector_.reset_recording_state();
@@ -135,6 +172,16 @@ void RecordingSession::close() {
         );
       }
       // LCOV_EXCL_BR_STOP
+    }
+
+    // 5. Emit completion marker last. Transfer uses this in MCAP-only mode
+    // to distinguish finalized files from interrupted writer output.
+    if (!output_path_.empty() && !ec) {
+      if (!write_completion_marker(output_path_, completion_marker_path_)) {
+        AXON_LOG_WARN(
+          "Failed to write MCAP completion marker" << axon::logging::kv("path", output_path_)
+        );
+      }
     }
   }
 

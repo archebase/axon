@@ -12,6 +12,9 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -31,11 +34,21 @@ class EdgeUploaderMockedTest : public ::testing::Test {
 protected:
   void SetUp() override {
     mock_filesystem_ = std::make_unique<MockFileSystem>();
+    test_dir_ = std::filesystem::temp_directory_path() /
+                ("edge_uploader_mocked_" +
+                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(test_dir_);
+  }
+
+  void TearDown() override {
+    std::error_code ec;
+    std::filesystem::remove_all(test_dir_, ec);
   }
 
   std::unique_ptr<MockFileSystem> mock_filesystem_;
   std::string test_mcap_path_ = "/test/path/file.mcap";
   std::string test_json_path_ = "/test/path/file.json";
+  std::filesystem::path test_dir_;
 };
 
 // =============================================================================
@@ -65,6 +78,14 @@ TEST_F(EdgeUploaderMockedTest, ValidateFilesExist_BothExist) {
   EXPECT_CALL(*mock_filesystem_, exists(test_json_path_)).WillOnce(Return(true));
 
   bool result = validateFilesExistImpl(test_mcap_path_, test_json_path_, *mock_filesystem_);
+  EXPECT_TRUE(result);
+}
+
+TEST_F(EdgeUploaderMockedTest, ValidateFilesExist_McapOnly) {
+  EXPECT_CALL(*mock_filesystem_, exists(test_mcap_path_)).WillOnce(Return(true));
+  EXPECT_CALL(*mock_filesystem_, exists(test_json_path_)).Times(0);
+
+  bool result = validateFilesExistImpl(test_mcap_path_, "", *mock_filesystem_);
   EXPECT_TRUE(result);
 }
 
@@ -216,6 +237,24 @@ TEST_F(EdgeUploaderMockedTest, UploadSingleFile_FileNotFound) {
   EXPECT_FALSE(result.success);
   EXPECT_NE(result.error_message.find("not found"), std::string::npos);
   EXPECT_FALSE(result.is_retryable);
+}
+
+TEST_F(EdgeUploaderMockedTest, EnqueueMcapOnlyWithoutSidecar) {
+  auto mcap_path = test_dir_ / "task_001.mcap";
+  std::ofstream(mcap_path, std::ios::binary) << "mcap payload";
+
+  UploaderConfig config;
+  config.state_db_path = (test_dir_ / "state.db").string();
+  config.failed_uploads_dir = (test_dir_ / "failed").string();
+  config.s3.bucket = "test-bucket";
+  config.s3.region = "us-east-1";
+  config.s3.access_key = "test";
+  config.s3.secret_key = "test";
+
+  EdgeUploader uploader(config);
+  uploader.enqueue(mcap_path.string(), "", "task_001", "factory", "device", "");
+
+  EXPECT_EQ(uploader.stats().files_pending.load(), 1);
 }
 
 int main(int argc, char** argv) {

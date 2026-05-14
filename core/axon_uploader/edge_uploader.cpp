@@ -4,12 +4,18 @@
 
 #include "edge_uploader.hpp"
 
+#include <openssl/evp.h>
+
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 #include "uploader_impl.hpp"
 
@@ -32,6 +38,89 @@ namespace fs = std::filesystem;
 namespace axon {
 namespace uploader {
 
+namespace {
+
+std::string formatSystemTimestamp(std::chrono::system_clock::time_point time_point) {
+  auto time = std::chrono::system_clock::to_time_t(time_point);
+  std::tm tm{};
+#ifdef _WIN32
+  gmtime_s(&tm, &time);
+#else
+  gmtime_r(&time, &tm);
+#endif
+
+  std::ostringstream ss;
+  ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+  return ss.str();
+}
+
+std::optional<std::chrono::system_clock::time_point> parseSystemTimestamp(
+  const std::string& value
+) {
+  if (value.empty()) {
+    return std::nullopt;
+  }
+
+  std::tm tm{};
+  std::istringstream iss(value);
+  iss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+  if (iss.fail()) {
+    return std::nullopt;
+  }
+
+#ifdef _WIN32
+  std::time_t time = _mkgmtime(&tm);
+#else
+  std::time_t time = timegm(&tm);
+#endif
+  if (time < 0) {
+    return std::nullopt;
+  }
+  return std::chrono::system_clock::from_time_t(time);
+}
+
+std::string computeSha256(const std::string& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    return "";
+  }
+
+  EVP_MD_CTX* context = EVP_MD_CTX_new();
+  if (!context) {
+    return "";
+  }
+
+  std::string checksum;
+  if (EVP_DigestInit_ex(context, EVP_sha256(), nullptr) == 1) {
+    std::vector<char> buffer(64 * 1024);
+    while (input.good()) {
+      input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+      const std::streamsize read_count = input.gcount();
+      if (read_count > 0 &&
+          EVP_DigestUpdate(context, buffer.data(), static_cast<size_t>(read_count)) != 1) {
+        EVP_MD_CTX_free(context);
+        return "";
+      }
+    }
+
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+    if (!input.bad() && EVP_DigestFinal_ex(context, digest, &digest_len) == 1) {
+      std::ostringstream out;
+      out << std::hex << std::setfill('0');
+      for (unsigned int i = 0; i < digest_len; ++i) {
+        out << std::setw(2) << static_cast<int>(digest[i]);
+      }
+      checksum = out.str();
+    }
+  }
+
+  EVP_MD_CTX_free(context);
+  return checksum;
+}
+
+}  // namespace
+
 // Internal implementation with dependency injection
 // Exposed for testing via edge_uploader_test_helpers.hpp
 bool validateFilesExistImpl(
@@ -40,7 +129,7 @@ bool validateFilesExistImpl(
   if (!filesystem.exists(mcap_path)) {
     return false;
   }
-  if (!filesystem.exists(json_path)) {
+  if (!json_path.empty() && !filesystem.exists(json_path)) {
     return false;
   }
   return true;
@@ -81,7 +170,7 @@ void moveToFailedDirImpl(
 
 FileUploadResult uploadSingleFileImpl(
   const std::string& local_path, const std::string& s3_key, const std::string& checksum,
-  const IFileSystem& filesystem, S3Client* s3_client
+  const IFileSystem& filesystem, S3Client* s3_client, ProgressCallback progress_cb
 ) {
   // Check file exists
   // LCOV_EXCL_BR_START - File existence check is a common operation
@@ -100,7 +189,9 @@ FileUploadResult uploadSingleFileImpl(
   }
 
   // Upload
-  auto result = s3_client->uploadFile(local_path, s3_key, metadata);  // LCOV_EXCL_BR_LINE
+  auto result = s3_client->uploadFile(
+    local_path, s3_key, metadata, std::move(progress_cb)
+  );  // LCOV_EXCL_BR_LINE
 
   if (result.success) {
     // Verify checksum if provided
@@ -173,7 +264,19 @@ void EdgeUploader::start() {
       );
     }
 
-    // Reset status to pending for re-upload
+    if (record.status == UploadStatus::RETRY_WAIT) {
+      const auto retry_at = parseSystemTimestamp(record.next_retry_at);
+      if (retry_at && retry_at.value() > std::chrono::system_clock::now()) {
+        const auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(
+          retry_at.value() - std::chrono::system_clock::now()
+        );
+        item.next_retry_at = std::chrono::steady_clock::now() + delay;
+        queue_->requeue_for_retry(std::move(item));  // LCOV_EXCL_BR_LINE
+        continue;
+      }
+    }
+
+    // Reset interrupted active uploads to pending for re-upload.
     state_manager_->updateStatus(record.file_path, UploadStatus::PENDING);  // LCOV_EXCL_BR_LINE
     queue_->enqueue(std::move(item));                                       // LCOV_EXCL_BR_LINE
   }
@@ -218,12 +321,6 @@ void EdgeUploader::enqueue(
     AXON_LOG_ERROR("Cannot enqueue upload - mcap_path is empty");  // LCOV_EXCL_BR_LINE
     return;
   }
-  if (json_path.empty()) {
-    AXON_LOG_ERROR(
-      "Cannot enqueue upload - json_path is empty (JSON sidecar is required)"
-    );  // LCOV_EXCL_BR_LINE
-    return;
-  }
   if (task_id.empty()) {
     AXON_LOG_ERROR("Cannot enqueue upload - task_id is empty");  // LCOV_EXCL_BR_LINE
     return;
@@ -237,9 +334,8 @@ void EdgeUploader::enqueue(
     return;
   }
 
-  // Validate both files exist before enqueueing to prevent orphaned uploads:
-  // If MCAP uploads successfully but JSON fails (file not found), the entire
-  // upload is marked as permanently failed, leaving MCAP orphaned in S3.
+  // Validate local inputs before enqueueing. JSON is optional in MCAP-only mode,
+  // but when provided it remains the legacy completion sentinel and is uploaded last.
   // LCOV_EXCL_BR_START - Smart pointer operations generate exception-safety branches
   static FileSystemImpl default_filesystem;
   if (!validateFilesExistImpl(mcap_path, json_path, default_filesystem)) {
@@ -254,10 +350,18 @@ void EdgeUploader::enqueue(
 
   // Get file size (file existence already verified above)
   uint64_t file_size = getFileSizeImpl(mcap_path, default_filesystem);  // LCOV_EXCL_BR_LINE
+  std::string checksum_to_store = checksum_sha256;
+  if (checksum_to_store.empty()) {
+    checksum_to_store = computeSha256(mcap_path);
+    if (checksum_to_store.empty()) {
+      AXON_LOG_ERROR("Cannot enqueue upload - failed to compute SHA-256 for " << mcap_path);
+      return;
+    }
+  }
 
   // Create upload item
   UploadItem item(
-    mcap_path, json_path, task_id, factory_id, device_id, checksum_sha256, file_size
+    mcap_path, json_path, task_id, factory_id, device_id, checksum_to_store, file_size
   );  // LCOV_EXCL_BR_LINE
 
   // Construct S3 key prefix
@@ -274,7 +378,7 @@ void EdgeUploader::enqueue(
   record.factory_id = factory_id;
   record.device_id = device_id;
   record.file_size_bytes = file_size;
-  record.checksum_sha256 = checksum_sha256;
+  record.checksum_sha256 = checksum_to_store;
   record.status = UploadStatus::PENDING;
   // LCOV_EXCL_BR_STOP
 
@@ -364,10 +468,10 @@ void EdgeUploader::workerLoop(int worker_id) {
 }
 
 void EdgeUploader::processItem(const UploadItem& item) {
-  // Update state to UPLOADING
-  state_manager_->updateStatus(item.mcap_path, UploadStatus::UPLOADING);
+  // Update state to ACTIVE
+  state_manager_->updateStatus(item.mcap_path, UploadStatus::ACTIVE);
 
-  // Upload order: MCAP first, JSON last (JSON signals completion)
+  // Upload order: MCAP first, optional JSON last for legacy sidecar mode.
   std::string mcap_s3_key = item.s3_key_prefix + "/" + item.task_id + ".mcap";  // LCOV_EXCL_BR_LINE
   std::string json_s3_key = item.s3_key_prefix + "/" + item.task_id + ".json";  // LCOV_EXCL_BR_LINE
 
@@ -393,7 +497,12 @@ void EdgeUploader::processItem(const UploadItem& item) {
     return;
   }
 
-  // Step 2: Upload JSON sidecar (signals completion)
+  if (item.json_path.empty()) {
+    onUploadSuccess(item);
+    return;
+  }
+
+  // Step 2: Upload JSON sidecar (legacy mode signals completion)
   FileUploadResult json_result = uploadSingleFile(item.json_path, json_s3_key, "");
 
   if (!json_result.success) {
@@ -414,7 +523,27 @@ FileUploadResult EdgeUploader::uploadSingleFile(
   const std::string& local_path, const std::string& s3_key, const std::string& checksum
 ) {
   static FileSystemImpl default_filesystem;  // LCOV_EXCL_BR_LINE
-  return uploadSingleFileImpl(local_path, s3_key, checksum, default_filesystem, s3_client_.get());
+  auto last_update = std::chrono::steady_clock::now();
+  uint64_t last_bytes = 0;
+  auto progress_cb = [this, last_update, last_bytes](uint64_t transferred, uint64_t total) mutable {
+    (void)total;
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - last_update).count();
+    if (elapsed_ms <= 0) {
+      return;
+    }
+
+    const uint64_t delta = transferred >= last_bytes ? transferred - last_bytes : 0;
+    stats_.current_upload_bytes_per_sec =
+      static_cast<uint64_t>((delta * 1000ULL) / static_cast<uint64_t>(elapsed_ms));
+    last_update = now;
+    last_bytes = transferred;
+  };
+
+  return uploadSingleFileImpl(
+    local_path, s3_key, checksum, default_filesystem, s3_client_.get(), std::move(progress_cb)
+  );
 }
 
 std::string EdgeUploader::constructS3Key(
@@ -499,7 +628,10 @@ void EdgeUploader::onUploadFailure(
     // Re-queue with delay
     UploadItem retry_item = item;
     retry_item.retry_count = current_retry_count;
-    retry_item.next_retry_at = retry_handler_->nextRetryTime(current_retry_count);
+    const auto delay = retry_handler_->getDelay(current_retry_count);
+    retry_item.next_retry_at = std::chrono::steady_clock::now() + delay;
+    const auto next_retry_at = formatSystemTimestamp(std::chrono::system_clock::now() + delay);
+    state_manager_->markRetryWait(item.mcap_path, next_retry_at, error);
     // Increment pending count BEFORE requeue to avoid race condition
     stats_.files_pending++;
     queue_->requeue_for_retry(std::move(retry_item));

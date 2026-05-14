@@ -92,6 +92,10 @@ std::string sidecar_path_for_output(const std::string& output_path) {
   return path.string();
 }
 
+std::string completion_marker_path_for_output(const std::string& output_path) {
+  return output_path.empty() ? "" : output_path + ".done";
+}
+
 TaskConfig task_config_from_json(const nlohmann::json& config_json) {
   TaskConfig config;
   auto get_string = [&config_json](const char* key) -> std::string {
@@ -1415,6 +1419,11 @@ bool AxonRecorder::discard_recording_artifacts(
   };
 
   remove_if_present(output_path, "mcap");
+  const std::string completion_marker_path = completion_marker_path_for_output(output_path);
+  remove_if_present(completion_marker_path, "completion_marker");
+  if (!completion_marker_path.empty()) {
+    remove_if_present(completion_marker_path + ".tmp", "completion_marker_tmp");
+  }
   remove_if_present(sidecar_path, "sidecar");
   if (!sidecar_path.empty()) {
     remove_if_present(sidecar_path + ".tmp", "sidecar_tmp");

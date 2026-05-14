@@ -41,6 +41,8 @@ factory_id: "test_factory"
   EXPECT_EQ(config.ws.url, "ws://localhost:8090/transfer");
   EXPECT_EQ(config.scanner.data_dir, "/tmp/axon/recording");
   EXPECT_TRUE(config.scanner.require_json_sidecar);
+  EXPECT_EQ(config.scanner.completion_marker_suffix, ".done");
+  EXPECT_EQ(config.scanner.min_ready_age_ms.count(), 0);
   EXPECT_EQ(config.uploader.state_db_path, "/tmp/axon/transfer/transfer_state.db");
   EXPECT_EQ(config.uploader.failed_uploads_dir, "/tmp/axon/transfer/failed_uploads/");
   EXPECT_EQ(config.uploader.num_workers, 2);
@@ -63,6 +65,8 @@ ws:
 scanner:
   data_dir: "/data/recordings"
   require_json_sidecar: false
+  completion_marker_suffix: ".ready"
+  min_ready_age_ms: 2500
 uploader:
   num_workers: 4
   cleanup_retry:
@@ -85,6 +89,8 @@ uploader:
   EXPECT_EQ(config.ws.reconnect.max_delay_ms.count(), 30000);
   EXPECT_EQ(config.scanner.data_dir, "/data/recordings");
   EXPECT_FALSE(config.scanner.require_json_sidecar);
+  EXPECT_EQ(config.scanner.completion_marker_suffix, ".ready");
+  EXPECT_EQ(config.scanner.min_ready_age_ms.count(), 2500);
   EXPECT_EQ(config.uploader.num_workers, 4);
   EXPECT_EQ(config.uploader.cleanup_retry.max_retries, 9);
   EXPECT_EQ(config.uploader.cleanup_retry.initial_delay_ms.count(), 5000);

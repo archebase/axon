@@ -25,8 +25,10 @@ namespace transfer {
 struct FileGroup {
   boost::filesystem::path mcap_path;
   boost::filesystem::path json_path;
+  boost::filesystem::path completion_marker_path;
   std::string task_id;
   uint64_t mcap_size_bytes;
+  std::string checksum_sha256;
 };
 
 class FileScanner {

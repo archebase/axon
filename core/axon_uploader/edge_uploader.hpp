@@ -109,7 +109,7 @@ struct FileUploadResult {
  * - Worker threads for concurrent uploads
  * - Crash recovery via SQLite state persistence
  * - Automatic retry with exponential backoff
- * - Upload order: MCAP first, JSON last (JSON signals completion)
+ * - Upload order: MCAP first, optional JSON last for legacy sidecar mode
  * - Backpressure alerts when queue grows too large
  *
  * Usage:
@@ -168,11 +168,11 @@ public:
    * Thread-safe.
    *
    * @param mcap_path Path to MCAP file
-   * @param json_path Path to sidecar JSON file
+   * @param json_path Path to sidecar JSON file (empty for MCAP-only mode)
    * @param task_id Task identifier
    * @param factory_id Factory identifier
    * @param device_id Device identifier
-   * @param checksum_sha256 Pre-computed SHA-256 checksum
+   * @param checksum_sha256 Pre-computed SHA-256 checksum, or empty to compute during enqueue
    */
   void enqueue(
     const std::string& mcap_path, const std::string& json_path, const std::string& task_id,

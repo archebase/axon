@@ -68,7 +68,10 @@ public:
       const char* create_sql = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
       std::string schema_sql = create_sql ? create_sql : "";
       needs_migration = schema_sql.find("uploaded_wait_ack") == std::string::npos ||
-                        schema_sql.find("delete_retry_count") == std::string::npos;
+                        schema_sql.find("delete_retry_count") == std::string::npos ||
+                        schema_sql.find("next_retry_at") == std::string::npos ||
+                        schema_sql.find("'active'") == std::string::npos ||
+                        schema_sql.find("'retry-wait'") == std::string::npos;
     }
 
     sqlite3_finalize(stmt);
@@ -90,9 +93,10 @@ public:
             device_id TEXT,
             file_size_bytes INTEGER,
             checksum_sha256 TEXT,
-            status TEXT NOT NULL CHECK(status IN ('pending', 'uploading', 'uploaded_wait_ack', 'completed', 'failed')),
+            status TEXT NOT NULL CHECK(status IN ('pending', 'active', 'retry-wait', 'uploaded_wait_ack', 'completed', 'failed')),
             retry_count INTEGER DEFAULT 0,
             last_error TEXT,
+            next_retry_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             completed_at TEXT,
@@ -109,13 +113,22 @@ public:
         R"(
           INSERT INTO upload_state_new (
             file_path, json_path, s3_key, task_id, factory_id, device_id,
-            file_size_bytes, checksum_sha256, status, retry_count, last_error,
+            file_size_bytes, checksum_sha256, status, retry_count, last_error, next_retry_at,
             created_at, updated_at, completed_at,
             delete_retry_count, delete_next_retry_at, delete_last_error
           )
           SELECT
             file_path, json_path, s3_key, task_id, factory_id, device_id,
-            file_size_bytes, checksum_sha256, status, retry_count, last_error,
+            file_size_bytes,
+            checksum_sha256,
+            CASE status
+              WHEN 'uploading' THEN 'active'
+              WHEN 'retry_wait' THEN 'retry-wait'
+              ELSE status
+            END,
+            retry_count,
+            last_error,
+            NULL,
             created_at, updated_at, completed_at,
             0, NULL, ''
           FROM upload_state;
@@ -189,9 +202,10 @@ public:
         device_id TEXT,
         file_size_bytes INTEGER,
         checksum_sha256 TEXT,
-        status TEXT NOT NULL CHECK(status IN ('pending', 'uploading', 'uploaded_wait_ack', 'completed', 'failed')),
+        status TEXT NOT NULL CHECK(status IN ('pending', 'active', 'retry-wait', 'uploaded_wait_ack', 'completed', 'failed')),
         retry_count INTEGER DEFAULT 0,
         last_error TEXT,
+        next_retry_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         completed_at TEXT,
@@ -247,17 +261,20 @@ public:
     record.last_error = sqlite3_column_text(stmt, 10)
                           ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10))
                           : "";
-    record.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11));
-    record.updated_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
-    record.completed_at = sqlite3_column_text(stmt, 13)
-                            ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13))
+    record.next_retry_at = sqlite3_column_text(stmt, 11)
+                             ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11))
+                             : "";
+    record.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+    record.updated_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
+    record.completed_at = sqlite3_column_text(stmt, 14)
+                            ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 14))
                             : "";
-    record.delete_retry_count = sqlite3_column_int(stmt, 14);
-    record.delete_next_retry_at = sqlite3_column_text(stmt, 15)
-                                    ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 15))
+    record.delete_retry_count = sqlite3_column_int(stmt, 15);
+    record.delete_next_retry_at = sqlite3_column_text(stmt, 16)
+                                    ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 16))
                                     : "";
-    record.delete_last_error = sqlite3_column_text(stmt, 16)
-                                 ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 16))
+    record.delete_last_error = sqlite3_column_text(stmt, 17)
+                                 ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 17))
                                  : "";
     // LCOV_EXCL_BR_STOP
     return record;
@@ -282,9 +299,9 @@ bool UploadStateManager::insert(const UploadRecord& record) {
   const char* sql = R"(
     INSERT INTO upload_state 
     (file_path, json_path, s3_key, task_id, factory_id, device_id, file_size_bytes, 
-     checksum_sha256, status, retry_count, last_error, created_at, updated_at,
+     checksum_sha256, status, retry_count, last_error, next_retry_at, created_at, updated_at,
      delete_retry_count, delete_next_retry_at, delete_last_error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   )";
 
   sqlite3_stmt* stmt = nullptr;
@@ -306,11 +323,12 @@ bool UploadStateManager::insert(const UploadRecord& record) {
   sqlite3_bind_text(stmt, 9, uploadStatusToString(record.status).c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_int(stmt, 10, record.retry_count);
   sqlite3_bind_text(stmt, 11, record.last_error.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 12, now.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 12, record.next_retry_at.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 13, now.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int(stmt, 14, record.delete_retry_count);
-  sqlite3_bind_text(stmt, 15, record.delete_next_retry_at.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 16, record.delete_last_error.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 14, now.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 15, record.delete_retry_count);
+  sqlite3_bind_text(stmt, 16, record.delete_next_retry_at.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 17, record.delete_last_error.c_str(), -1, SQLITE_TRANSIENT);
 
   rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
@@ -326,7 +344,7 @@ bool UploadStateManager::updateStatus(
 
   const char* sql = R"(
     UPDATE upload_state 
-    SET status = ?, last_error = ?, updated_at = ?
+    SET status = ?, last_error = ?, next_retry_at = '', updated_at = ?
     WHERE file_path = ?
   )";
 
@@ -356,6 +374,7 @@ bool UploadStateManager::markCompleted(const std::string& file_path) {
   const char* sql = R"(
     UPDATE upload_state 
     SET status = 'completed', completed_at = ?, updated_at = ?,
+        next_retry_at = '',
         delete_retry_count = 0, delete_next_retry_at = NULL, delete_last_error = ''
     WHERE file_path = ?
   )";
@@ -385,6 +404,7 @@ bool UploadStateManager::markUploadedWaitAck(const std::string& file_path) {
   const char* sql = R"(
     UPDATE upload_state
     SET status = 'uploaded_wait_ack', updated_at = ?,
+        next_retry_at = '',
         delete_retry_count = 0, delete_next_retry_at = NULL, delete_last_error = ''
     WHERE file_path = ?
   )";
@@ -407,6 +427,35 @@ bool UploadStateManager::markUploadedWaitAck(const std::string& file_path) {
 
 bool UploadStateManager::markFailed(const std::string& file_path, const std::string& error) {
   return updateStatus(file_path, UploadStatus::FAILED, error);
+}
+
+bool UploadStateManager::markRetryWait(
+  const std::string& file_path, const std::string& next_retry_at, const std::string& error
+) {
+  std::lock_guard<std::mutex> lock(impl_->mutex);
+
+  const char* sql = R"(
+    UPDATE upload_state
+    SET status = 'retry-wait', last_error = ?, next_retry_at = ?, updated_at = ?
+    WHERE file_path = ?
+  )";
+
+  sqlite3_stmt* stmt = nullptr;
+  int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+  if (rc != SQLITE_OK) {
+    return false;
+  }
+
+  std::string now = currentTimestamp();
+  sqlite3_bind_text(stmt, 1, error.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 2, next_retry_at.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, now.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 4, file_path.c_str(), -1, SQLITE_TRANSIENT);
+
+  rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+
+  return rc == SQLITE_DONE && sqlite3_changes(impl_->db) > 0;
 }
 
 bool UploadStateManager::incrementRetry(const std::string& file_path, const std::string& error) {
@@ -576,7 +625,7 @@ std::vector<UploadRecord> UploadStateManager::getIncomplete() {
   std::lock_guard<std::mutex> lock(impl_->mutex);
 
   const char* sql =
-    "SELECT * FROM upload_state WHERE status IN ('pending', 'uploading', 'uploaded_wait_ack') "
+    "SELECT * FROM upload_state WHERE status IN ('pending', 'active', 'retry-wait') "
     "ORDER BY created_at";
 
   sqlite3_stmt* stmt = nullptr;
@@ -625,7 +674,7 @@ uint64_t UploadStateManager::pendingBytes() {
 
   const char* sql =
     "SELECT COALESCE(SUM(file_size_bytes), 0) FROM upload_state WHERE status IN ('pending', "
-    "'uploading')";
+    "'active', 'retry-wait')";
 
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);

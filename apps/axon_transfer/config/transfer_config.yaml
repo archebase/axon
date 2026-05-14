@@ -19,7 +19,11 @@ ws:
 # File scanner configuration
 scanner:
   data_dir: "/tmp/axon/recording"
+  # true  = legacy mode, upload only when <task>.json exists next to <task>.mcap
+  # false = MCAP-only mode, upload only when <task>.mcap.done exists
   require_json_sidecar: true
+  completion_marker_suffix: ".done"
+  min_ready_age_ms: 0
 
 # S3 uploader configuration
 uploader:
