@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "../../src/config/task_config.hpp"
 #include "../../src/http/rpc_handlers.hpp"
@@ -437,7 +438,10 @@ TEST_F(RpcHandlersTest, ConfigInvalidTaskIdType) {
   RpcResponse response = handle_rpc_config(callbacks, params);
 
   EXPECT_FALSE(response.success);
-  EXPECT_EQ("task_id must be a string", response.message);
+  EXPECT_EQ("Task configuration validation failed", response.message);
+  ASSERT_TRUE(response.data.contains("validation_errors"));
+  EXPECT_EQ("task_id", response.data["validation_errors"][0]["field"]);
+  EXPECT_EQ("invalid_type", response.data["validation_errors"][0]["code"]);
 }
 
 TEST_F(RpcHandlersTest, ConfigCallbackFails) {
@@ -447,7 +451,7 @@ TEST_F(RpcHandlersTest, ConfigCallbackFails) {
   };
 
   nlohmann::json params;
-  params["task_config"] = {{"task_id", "new_task_123"}};
+  params["task_config"] = {{"task_id", "new_task_123"}, {"device_id", "robot_01"}};
 
   RpcResponse response = handle_rpc_config(callbacks, params);
 
@@ -462,12 +466,35 @@ TEST_F(RpcHandlersTest, ConfigParseException) {
   };
 
   nlohmann::json params;
-  params["task_config"] = {{"task_id", "new_task_123"}};
+  params["task_config"] = {{"task_id", "new_task_123"}, {"device_id", "robot_01"}};
 
   RpcResponse response = handle_rpc_config(callbacks, params);
 
   EXPECT_FALSE(response.success);
   EXPECT_TRUE(response.message.find("Failed to parse task config") != std::string::npos);
+}
+
+TEST_F(RpcHandlersTest, ConfigMissingDeviceIdReturnsFieldError) {
+  RpcCallbacks callbacks = create_mock_callbacks();
+  callbacks.set_config = [&](const std::string&, const nlohmann::json&) -> bool {
+    return true;
+  };
+
+  nlohmann::json params;
+  params["task_config"] = {{"task_id", "new_task_123"}};
+
+  RpcResponse response = handle_rpc_config(callbacks, params);
+
+  EXPECT_FALSE(response.success);
+  EXPECT_EQ("Task configuration validation failed", response.message);
+  ASSERT_TRUE(response.data.contains("validation_errors"));
+  bool saw_device_error = false;
+  for (const auto& error : response.data["validation_errors"]) {
+    if (error["field"] == "device_id" && error["code"] == "missing_required") {
+      saw_device_error = true;
+    }
+  }
+  EXPECT_TRUE(saw_device_error);
 }
 
 // ============================================================================
@@ -657,6 +684,106 @@ TEST_F(RpcHandlersTest, GetStatsCallbackException) {
 
   EXPECT_FALSE(response.success);
   EXPECT_TRUE(response.message.find("Failed to get statistics") != std::string::npos);
+}
+
+// ============================================================================
+// Task management and log-level RPC tests
+// ============================================================================
+
+TEST_F(RpcHandlersTest, ListTasksReturnsCurrentActiveTask) {
+  current_state_ = "ready";
+  current_config_ = TaskConfig{};
+  current_config_->task_id = "task_001";
+  current_config_->device_id = "robot_01";
+  test_stats_ = {{"duration_sec", 3.5}, {"messages_written", 42}, {"bytes_written", 2048}};
+
+  RpcCallbacks callbacks = create_mock_callbacks();
+  RpcResponse response = handle_rpc_list_tasks(callbacks, nlohmann::json::object());
+
+  EXPECT_TRUE(response.success);
+  ASSERT_EQ(1, response.data["tasks"].size());
+  EXPECT_EQ("task_001", response.data["tasks"][0]["task_id"]);
+  EXPECT_EQ("ready", response.data["tasks"][0]["state"]);
+  EXPECT_EQ(42, response.data["tasks"][0]["message_count"]);
+}
+
+TEST_F(RpcHandlersTest, ListTasksOmitsIdleCachedConfig) {
+  current_state_ = "idle";
+  current_config_ = TaskConfig{};
+  current_config_->task_id = "stale_task";
+
+  RpcCallbacks callbacks = create_mock_callbacks();
+  RpcResponse response = handle_rpc_list_tasks(callbacks, nlohmann::json::object());
+
+  EXPECT_TRUE(response.success);
+  EXPECT_EQ(0, response.data["count"]);
+  EXPECT_TRUE(response.data["tasks"].empty());
+}
+
+TEST_F(RpcHandlersTest, GetTaskStatusReturnsFoundForCurrentTask) {
+  current_state_ = "recording";
+  current_config_ = TaskConfig{};
+  current_config_->task_id = "task_status_001";
+  current_config_->device_id = "robot_01";
+
+  RpcCallbacks callbacks = create_mock_callbacks();
+  RpcResponse response = handle_rpc_get_task_status(callbacks, {{"task_id", "task_status_001"}});
+
+  EXPECT_TRUE(response.success);
+  EXPECT_TRUE(response.data["found"]);
+  EXPECT_EQ("recording", response.data["task"]["state"]);
+}
+
+TEST_F(RpcHandlersTest, BatchBeginReportsPerTaskResults) {
+  current_state_ = "ready";
+  current_config_ = TaskConfig{};
+  current_config_->task_id = "task_a";
+  current_config_->device_id = "robot_01";
+
+  RpcCallbacks callbacks = create_mock_callbacks();
+  callbacks.begin_recording = [&](const std::string& task_id) -> bool {
+    begin_recording_called = true;
+    current_state_ = "recording";
+    return task_id == "task_a";
+  };
+
+  RpcResponse response = handle_rpc_batch_begin(callbacks, {{"task_ids", {"task_a", "task_b"}}});
+
+  EXPECT_FALSE(response.success);
+  EXPECT_EQ(1, response.data["succeeded"]);
+  EXPECT_EQ(1, response.data["failed"]);
+  ASSERT_EQ(2, response.data["results"].size());
+  EXPECT_TRUE(response.data["results"][0]["success"]);
+  EXPECT_FALSE(response.data["results"][1]["success"]);
+}
+
+TEST_F(RpcHandlersTest, GetAndSetLogLevels) {
+  RpcCallbacks callbacks = create_mock_callbacks();
+  std::string console_level = "info";
+  std::string file_level = "debug";
+  callbacks.get_log_levels = [&]() -> nlohmann::json {
+    return {{"console_level", console_level}, {"file_level", file_level}};
+  };
+  callbacks.set_log_levels = [&](const nlohmann::json& params, nlohmann::json& result) -> bool {
+    if (params.contains("console_level")) {
+      console_level = params["console_level"];
+    }
+    if (params.contains("file_level")) {
+      file_level = params["file_level"];
+    }
+    result = {{"console_level", console_level}, {"file_level", file_level}};
+    return true;
+  };
+
+  RpcResponse response = handle_rpc_get_log_levels(callbacks, nlohmann::json::object());
+  EXPECT_TRUE(response.success);
+  EXPECT_EQ("info", response.data["console_level"]);
+
+  response =
+    handle_rpc_set_log_levels(callbacks, {{"console_level", "warn"}, {"file_level", "error"}});
+  EXPECT_TRUE(response.success);
+  EXPECT_EQ("warn", response.data["console_level"]);
+  EXPECT_EQ("error", response.data["file_level"]);
 }
 
 // ============================================================================

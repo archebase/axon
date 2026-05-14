@@ -116,7 +116,17 @@ Content-Type: application/json
 ```json
 {
   "success": false,
-  "message": "Missing 'task_config' in request parameters"
+  "message": "Task configuration validation failed",
+  "data": {
+    "state": "idle",
+    "validation_errors": [
+      {
+        "field": "device_id",
+        "code": "missing_required",
+        "message": "device_id is required"
+      }
+    ]
+  }
 }
 ```
 
@@ -420,15 +430,16 @@ Content-Type: application/json
   "success": true,
   "message": "Recording cancelled successfully",
   "data": {
-    "state": "idle",
-    "task_id": "task_123"
+    "state": "idle"
   }
 }
 ```
 
 **Behavior:**
-- TODO: Currently implemented the same as finish, should discard partial recording
-- Should delete incomplete MCAP files in the future
+- Stops producers and drains in-flight messages so plugin-owned buffers are released safely
+- Closes the active MCAP session without sending the normal `finished` callback
+- Deletes the partial MCAP and generated sidecar JSON artifacts
+- Clears the cached task configuration; subsequent state/status/task APIs do not expose the cancelled task
 
 **Valid From States:**
 - ✅ `RECORDING`
@@ -460,19 +471,21 @@ Content-Type: application/json
 }
 ```
 
-**Error Response (501 Not Implemented):**
+**Error Response (400 Bad Request):**
 ```json
 {
   "success": false,
-  "message": "Clear functionality not yet implemented",
+  "message": "Cannot clear task configuration from state: recording. Must be in READY state.",
   "data": {
-    "state": "ready"
+    "state": "recording"
   }
 }
 ```
 
 **Behavior:**
-- TODO: Reset task configuration and return to IDLE state
+- Resets the cached task configuration
+- Broadcasts a config-clear event to WebSocket clients
+- Returns to `IDLE`; state/API responses do not return the old task after clear
 - Used to abandon unstarted recording tasks
 
 **Valid From States:**
@@ -616,7 +629,154 @@ GET /rpc/status HTTP/1.1
 
 ---
 
-### 11. GET /rpc/drop_stats
+### 11. GET /rpc/tasks
+
+List the currently cached/running task. The recorder keeps a single active task model in v0.4, so the list has either zero or one item.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Tasks retrieved successfully",
+  "data": {
+    "state": "recording",
+    "count": 1,
+    "tasks": [
+      {
+        "task_id": "task_123",
+        "state": "recording",
+        "active": true,
+        "duration_sec": 12.5,
+        "message_count": 2048,
+        "bytes_written": 1048576,
+        "task_config": {
+          "task_id": "task_123",
+          "device_id": "robot_01",
+          "topics": ["/camera/image", "/lidar/scan"]
+        }
+      }
+    ]
+  }
+}
+```
+
+When the recorder is `IDLE`, `tasks` is empty even if a previous task has finished, cancelled, or been cleared.
+
+---
+
+### 12. POST /rpc/task_status
+
+Return the status snapshot for a specific task ID.
+
+**Request:**
+```json
+{
+  "task_id": "task_123"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Task status retrieved successfully",
+  "data": {
+    "task_id": "task_123",
+    "state": "recording",
+    "found": true,
+    "task": {
+      "task_id": "task_123",
+      "state": "recording",
+      "active": true
+    }
+  }
+}
+```
+
+---
+
+### 13. POST /rpc/begin_batch, /rpc/finish_batch, /rpc/cancel_batch
+
+Minimal batch control surface for fleet managers that issue one request shape for multiple task IDs. In v0.4 the recorder can execute only the current cached task; non-current task IDs return per-item errors.
+
+**Request:**
+```json
+{
+  "task_ids": ["task_123", "task_456"]
+}
+```
+
+**Response (mixed result):**
+```json
+{
+  "success": false,
+  "message": "Batch begin completed with errors",
+  "data": {
+    "state": "recording",
+    "succeeded": 1,
+    "failed": 1,
+    "results": [
+      {
+        "task_id": "task_123",
+        "success": true,
+        "message": "Recording started successfully"
+      },
+      {
+        "task_id": "task_456",
+        "success": false,
+        "message": "task_id mismatch: expected 'task_123' but got 'task_456'"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 14. GET/POST /rpc/log_levels
+
+Query or adjust dynamic console/file log levels. Supported levels are `debug`, `info`, `warn`, `error`, and `fatal`.
+
+**GET Response:**
+```json
+{
+  "success": true,
+  "message": "Log levels retrieved successfully",
+  "data": {
+    "console_level": "info",
+    "file_level": "debug",
+    "effective_console_level": "info",
+    "effective_file_level": "debug",
+    "console_enabled": true,
+    "file_enabled": false,
+    "logging_initialized": true
+  }
+}
+```
+
+**POST Request:**
+```json
+{
+  "console_level": "warn",
+  "file_level": "error"
+}
+```
+
+**POST Response:**
+```json
+{
+  "success": true,
+  "message": "Log levels updated successfully",
+  "data": {
+    "console_level": "warn",
+    "file_level": "error"
+  }
+}
+```
+
+---
+
+### 15. GET /rpc/drop_stats
 
 Query per-topic message drop statistics and current recording state
 
@@ -670,7 +830,7 @@ GET /rpc/drop_stats HTTP/1.1
 
 ---
 
-### 12. GET / or /health
+### 16. GET / or /health
 
 Health check
 
@@ -931,10 +1091,9 @@ Recommend adding rate limiting to prevent abuse:
 ### Planned Features
 
 1. **WebSocket Support**: Real-time status updates and statistics push
-2. **Batch Operations**: Configure multiple tasks in batch
-3. **File Upload**: Upload MCAP files directly to server
-4. **Task Queue**: Support task queues with sequential execution
-5. **OAuth 2.0**: Integrate OAuth 2.0 authentication
+2. **File Upload**: Upload MCAP files directly to server
+3. **Task Queue**: Support queued execution beyond the current single active task model
+4. **OAuth 2.0**: Integrate OAuth 2.0 authentication
 
 ## Appendix
 
@@ -953,6 +1112,13 @@ Recommend adding rate limiting to prevent abuse:
 | GET | `/rpc/state` | Get current state | Any |
 | GET | `/rpc/stats` | Get statistics | Any |
 | GET | `/rpc/status` | Get status, statistics, and disk usage | Any |
+| GET | `/rpc/tasks` | List current task snapshot | Any |
+| POST | `/rpc/task_status` | Get one task status | Any |
+| POST | `/rpc/begin_batch` | Batch begin current task IDs | READY |
+| POST | `/rpc/finish_batch` | Batch finish current task IDs | RECORDING, PAUSED |
+| POST | `/rpc/cancel_batch` | Batch cancel current task IDs | RECORDING, PAUSED |
+| GET | `/rpc/log_levels` | Get console/file log levels | Any |
+| POST | `/rpc/log_levels` | Set console/file log levels | Any |
 | GET | `/` or `/health` | Health check | Any |
 
 ### B. HTTP Status Codes

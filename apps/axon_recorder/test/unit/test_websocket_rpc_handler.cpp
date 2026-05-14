@@ -99,6 +99,22 @@ protected:
       return true;
     };
 
+    callbacks_.get_log_levels = [this]() -> nlohmann::json {
+      return {{"console_level", console_level_}, {"file_level", file_level_}};
+    };
+
+    callbacks_.set_log_levels = [this](const nlohmann::json& params, nlohmann::json& result) {
+      log_levels_called_ = true;
+      if (params.contains("console_level")) {
+        console_level_ = params["console_level"];
+      }
+      if (params.contains("file_level")) {
+        file_level_ = params["file_level"];
+      }
+      result = {{"console_level", console_level_}, {"file_level", file_level_}};
+      return true;
+    };
+
     callbacks_.quit = [&]() -> void {
       quit_called_ = true;
     };
@@ -123,8 +139,11 @@ protected:
     cancel_called_ = false;
     clear_called_ = false;
     config_called_ = false;
+    log_levels_called_ = false;
     quit_called_ = false;
     begin_return_value_ = true;
+    console_level_ = "info";
+    file_level_ = "debug";
   }
 
   // Wait for response with timeout
@@ -165,9 +184,12 @@ protected:
   std::atomic<bool> cancel_called_;
   std::atomic<bool> clear_called_;
   std::atomic<bool> config_called_;
+  std::atomic<bool> log_levels_called_;
   std::atomic<bool> quit_called_;
   std::string last_task_id_;
   bool begin_return_value_;
+  std::string console_level_;
+  std::string file_level_;
 };
 
 // ============================================================================
@@ -356,6 +378,90 @@ TEST_F(WebSocketRpcHandlerTest, HandleValidGetStatusMessage) {
   EXPECT_EQ("warn", last_response_["data"]["disk_usage"]["state"]);
 }
 
+TEST_F(WebSocketRpcHandlerTest, HandleValidListTasksMessage) {
+  current_state_ = "ready";
+  current_config_ = TaskConfig{};
+  current_config_->task_id = "task_ws_001";
+  current_config_->device_id = "robot_ws";
+  test_stats_ = {{"messages_written", 7}, {"duration_sec", 1.25}};
+
+  std::string message = R"({
+    "action": "list_tasks",
+    "request_id": "req_tasks"
+  })";
+
+  handler_->handle_message("client_tasks", message);
+
+  EXPECT_TRUE(wait_for_response());
+  EXPECT_TRUE(last_response_["success"]);
+  ASSERT_EQ(1, last_response_["data"]["tasks"].size());
+  EXPECT_EQ("task_ws_001", last_response_["data"]["tasks"][0]["task_id"]);
+}
+
+TEST_F(WebSocketRpcHandlerTest, HandleValidGetTaskStatusMessage) {
+  current_state_ = "recording";
+  current_config_ = TaskConfig{};
+  current_config_->task_id = "task_ws_status";
+  current_config_->device_id = "robot_ws";
+
+  std::string message = R"({
+    "action": "get_task_status",
+    "request_id": "req_task_status",
+    "task_id": "task_ws_status"
+  })";
+
+  handler_->handle_message("client_task_status", message);
+
+  EXPECT_TRUE(wait_for_response());
+  EXPECT_TRUE(last_response_["success"]);
+  EXPECT_TRUE(last_response_["data"]["found"]);
+  EXPECT_EQ("recording", last_response_["data"]["task"]["state"]);
+}
+
+TEST_F(WebSocketRpcHandlerTest, HandleValidBatchBeginMessage) {
+  std::string message = R"({
+    "action": "begin_batch",
+    "request_id": "req_batch_begin",
+    "task_ids": ["batch_task"]
+  })";
+
+  handler_->handle_message("client_batch", message);
+
+  EXPECT_TRUE(wait_for_response());
+  EXPECT_TRUE(last_response_["success"]);
+  EXPECT_TRUE(begin_called_);
+  EXPECT_EQ("batch_task", last_task_id_);
+  EXPECT_EQ(1, last_response_["data"]["succeeded"]);
+}
+
+TEST_F(WebSocketRpcHandlerTest, HandleValidLogLevelMessages) {
+  std::string get_message = R"({
+    "action": "get_log_levels",
+    "request_id": "req_get_logs"
+  })";
+
+  handler_->handle_message("client_logs", get_message);
+  EXPECT_TRUE(wait_for_response());
+  EXPECT_TRUE(last_response_["success"]);
+  EXPECT_EQ("info", last_response_["data"]["console_level"]);
+
+  reset_response_state();
+
+  std::string set_message = R"({
+    "action": "set_log_levels",
+    "request_id": "req_set_logs",
+    "console_level": "warn",
+    "file_level": "error"
+  })";
+
+  handler_->handle_message("client_logs", set_message);
+  EXPECT_TRUE(wait_for_response());
+  EXPECT_TRUE(last_response_["success"]);
+  EXPECT_TRUE(log_levels_called_);
+  EXPECT_EQ("warn", last_response_["data"]["console_level"]);
+  EXPECT_EQ("error", last_response_["data"]["file_level"]);
+}
+
 // ============================================================================
 // Error Handling Tests
 // ============================================================================
@@ -440,6 +546,23 @@ TEST_F(WebSocketRpcHandlerTest, HandleConfigWithMissingTaskConfig) {
   EXPECT_TRUE(wait_for_response());
   EXPECT_FALSE(last_response_["success"]);
   EXPECT_EQ("Missing 'task_config' in request parameters", last_response_["message"]);
+}
+
+TEST_F(WebSocketRpcHandlerTest, HandleConfigValidationErrors) {
+  std::string message = R"({
+    "action": "config",
+    "request_id": "req_config_validation",
+    "task_config": {
+      "task_id": "missing_device"
+    }
+  })";
+
+  handler_->handle_message("client_validation", message);
+
+  EXPECT_TRUE(wait_for_response());
+  EXPECT_FALSE(last_response_["success"]);
+  EXPECT_EQ("Task configuration validation failed", last_response_["message"]);
+  ASSERT_TRUE(last_response_["data"].contains("validation_errors"));
 }
 
 // ============================================================================

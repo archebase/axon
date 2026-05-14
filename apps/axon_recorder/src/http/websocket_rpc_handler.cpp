@@ -103,6 +103,20 @@ nlohmann::json WebSocketRpcHandler::route_action(
     return handle_rpc_get_drop_stats(callbacks_, params).to_json();
   } else if (action == "get_latency_stats") {
     return handle_rpc_get_latency_stats(callbacks_, params).to_json();
+  } else if (action == "list_tasks") {
+    return handle_rpc_list_tasks(callbacks_, params).to_json();
+  } else if (action == "get_task_status") {
+    return handle_rpc_get_task_status(callbacks_, params).to_json();
+  } else if (action == "begin_batch") {
+    return handle_rpc_batch_begin(callbacks_, params).to_json();
+  } else if (action == "finish_batch") {
+    return handle_rpc_batch_finish(callbacks_, params).to_json();
+  } else if (action == "cancel_batch") {
+    return handle_rpc_batch_cancel(callbacks_, params).to_json();
+  } else if (action == "get_log_levels") {
+    return handle_rpc_get_log_levels(callbacks_, params).to_json();
+  } else if (action == "set_log_levels") {
+    return handle_rpc_set_log_levels(callbacks_, params).to_json();
   } else {
     // Unknown action
     nlohmann::json error_response;
