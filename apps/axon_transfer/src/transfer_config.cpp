@@ -76,10 +76,22 @@ TransferConfig load_config(const std::string& yaml_path) {
     }
   }
 
-  config.scanner.data_dir = get_env(
-    "AXON_TRANSFER_DATA_DIR", yaml["scanner"]["data_dir"].as<std::string>(config.scanner.data_dir)
-  );
-  config.scanner.require_json_sidecar = yaml["scanner"]["require_json_sidecar"].as<bool>(true);
+  if (yaml["scanner"]) {
+    config.scanner.data_dir = get_env(
+      "AXON_TRANSFER_DATA_DIR", yaml["scanner"]["data_dir"].as<std::string>(config.scanner.data_dir)
+    );
+    config.scanner.require_json_sidecar =
+      yaml["scanner"]["require_json_sidecar"].as<bool>(config.scanner.require_json_sidecar);
+    config.scanner.completion_marker_suffix =
+      yaml["scanner"]["completion_marker_suffix"].as<std::string>(
+        config.scanner.completion_marker_suffix
+      );
+    config.scanner.min_ready_age_ms = std::chrono::milliseconds(
+      yaml["scanner"]["min_ready_age_ms"].as<int>(config.scanner.min_ready_age_ms.count())
+    );
+  } else {
+    config.scanner.data_dir = get_env("AXON_TRANSFER_DATA_DIR", config.scanner.data_dir);
+  }
 
   if (yaml["uploader"]) {
     config.uploader.state_db_path =
@@ -127,9 +139,9 @@ TransferConfig load_config(const std::string& yaml_path) {
       );
       config.uploader.cleanup_retry.backoff_multiplier =
         yaml["uploader"]["cleanup_retry"]["backoff_multiplier"].as<double>(2.0);
-      config.uploader.cleanup_retry.max_delay_ms = std::chrono::milliseconds(
-        yaml["uploader"]["cleanup_retry"]["max_delay_ms"].as<int>(600000)
-      );
+      const auto cleanup_max_delay_ms =
+        yaml["uploader"]["cleanup_retry"]["max_delay_ms"].as<int>(600000);
+      config.uploader.cleanup_retry.max_delay_ms = std::chrono::milliseconds(cleanup_max_delay_ms);
     }
   }
 

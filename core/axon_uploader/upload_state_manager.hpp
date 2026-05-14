@@ -19,11 +19,13 @@ namespace uploader {
  * Upload status enumeration
  */
 enum class UploadStatus {
-  PENDING,            // Queued for upload
-  UPLOADING,          // Currently being uploaded
-  UPLOADED_WAIT_ACK,  // Uploaded to S3, waiting for fleet ACK before finalize
-  COMPLETED,          // Successfully uploaded
-  FAILED              // Permanently failed (exceeded retries)
+  PENDING,             // Queued for upload
+  ACTIVE,              // Currently being uploaded
+  UPLOADING = ACTIVE,  // Backward-compatible alias for older callers
+  RETRY_WAIT,          // Waiting for retry backoff before next attempt
+  UPLOADED_WAIT_ACK,   // Uploaded to S3, waiting for fleet ACK before finalize
+  COMPLETED,           // Successfully uploaded
+  FAILED               // Permanently failed (exceeded retries)
 };
 
 /**
@@ -33,8 +35,10 @@ inline std::string uploadStatusToString(UploadStatus status) {
   switch (status) {
     case UploadStatus::PENDING:
       return "pending";
-    case UploadStatus::UPLOADING:
-      return "uploading";
+    case UploadStatus::ACTIVE:
+      return "active";
+    case UploadStatus::RETRY_WAIT:
+      return "retry-wait";
     case UploadStatus::UPLOADED_WAIT_ACK:
       return "uploaded_wait_ack";
     case UploadStatus::COMPLETED:
@@ -51,7 +55,8 @@ inline std::string uploadStatusToString(UploadStatus status) {
  */
 inline UploadStatus uploadStatusFromString(const std::string& str) {
   if (str == "pending") return UploadStatus::PENDING;
-  if (str == "uploading") return UploadStatus::UPLOADING;
+  if (str == "active" || str == "uploading") return UploadStatus::ACTIVE;
+  if (str == "retry-wait" || str == "retry_wait") return UploadStatus::RETRY_WAIT;
   if (str == "uploaded_wait_ack") return UploadStatus::UPLOADED_WAIT_ACK;
   if (str == "completed") return UploadStatus::COMPLETED;
   if (str == "failed") return UploadStatus::FAILED;
@@ -73,6 +78,7 @@ struct UploadRecord {
   UploadStatus status;               // Current status
   int retry_count;                   // Number of retries so far
   std::string last_error;            // Last error message
+  std::string next_retry_at;         // Next upload retry time (ISO 8601)
   std::string created_at;            // ISO 8601 timestamp
   std::string updated_at;            // ISO 8601 timestamp
   std::string completed_at;          // ISO 8601 timestamp (empty if not completed)
@@ -162,6 +168,18 @@ public:
   bool markFailed(const std::string& file_path, const std::string& error);
 
   /**
+   * Mark an upload as waiting for retry backoff.
+   *
+   * @param file_path Primary key
+   * @param next_retry_at ISO 8601 timestamp for next retry
+   * @param error Error message from last attempt
+   * @return true if updated
+   */
+  bool markRetryWait(
+    const std::string& file_path, const std::string& next_retry_at, const std::string& error
+  );
+
+  /**
    * Increment retry count for an upload
    *
    * @param file_path Primary key
@@ -211,10 +229,10 @@ public:
   std::vector<UploadRecord> getFailed();
 
   /**
-   * Get all incomplete uploads (PENDING or UPLOADING)
+   * Get all incomplete uploads (PENDING, ACTIVE, or RETRY_WAIT)
    *
-   * Used for crash recovery: uploads that were in progress when
-   * the recorder crashed need to be retried.
+   * Used for crash recovery: queued, in-progress, and backoff-delayed uploads
+   * from a previous process need to be retried.
    *
    * @return Vector of incomplete records
    */
@@ -231,7 +249,7 @@ public:
   /**
    * Get total bytes of pending uploads
    *
-   * @return Total file size of all pending/uploading records
+   * @return Total file size of all pending, active, and retry-wait records
    */
   uint64_t pendingBytes();
 

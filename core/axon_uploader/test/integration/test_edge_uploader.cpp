@@ -277,8 +277,8 @@ TEST_F(EdgeUploaderIntegrationTest, CrashRecovery) {
 
     // Wait for recovery upload
     auto start = std::chrono::steady_clock::now();
-    while (!upload_completed &&
-           std::chrono::steady_clock::now() - start < std::chrono::seconds(30)) {
+    while (!upload_completed && std::chrono::steady_clock::now() - start < std::chrono::seconds(30)
+    ) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
@@ -418,7 +418,12 @@ TEST_F(EdgeUploaderIntegrationTest, EnqueueEmptyJsonPath) {
   uploader.enqueue(mcap_path, "", "task1", "factory", "device", "sha256");
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  EXPECT_EQ(uploader.stats().files_pending, 0);
+  const auto& stats = uploader.stats();
+  EXPECT_GT(
+    stats.files_pending.load() + stats.files_uploading.load() + stats.files_completed.load() +
+      stats.files_failed.load(),
+    0
+  ) << "Empty json_path is accepted for MCAP-only uploads";
 
   uploader.stop();
 }
@@ -1061,7 +1066,7 @@ TEST_F(EdgeUploaderIntegrationTest, ChecksumVerificationPath) {
 }
 
 TEST_F(EdgeUploaderIntegrationTest, EmptyChecksumPath) {
-  // Test upload with empty checksum (should skip verification)
+  // Test upload with empty checksum (uploader computes SHA-256 before enqueue)
   EdgeUploader uploader(config_);
   uploader.start();
 

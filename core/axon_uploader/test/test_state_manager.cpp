@@ -181,18 +181,21 @@ TEST_F(UploadStateManagerTest, GetIncomplete) {
   auto uploading = createTestRecord("/tmp/uploading.mcap", "task_002");
   auto completed = createTestRecord("/tmp/completed.mcap", "task_003");
   auto failed = createTestRecord("/tmp/failed.mcap", "task_004");
+  auto retry_wait = createTestRecord("/tmp/retry_wait.mcap", "task_005");
 
   ASSERT_TRUE(manager_->insert(pending));
   ASSERT_TRUE(manager_->insert(uploading));
   ASSERT_TRUE(manager_->insert(completed));
   ASSERT_TRUE(manager_->insert(failed));
+  ASSERT_TRUE(manager_->insert(retry_wait));
 
   ASSERT_TRUE(manager_->updateStatus("/tmp/uploading.mcap", UploadStatus::UPLOADING));
   ASSERT_TRUE(manager_->markCompleted("/tmp/completed.mcap"));
   ASSERT_TRUE(manager_->markFailed("/tmp/failed.mcap", "Error"));
+  ASSERT_TRUE(manager_->markRetryWait("/tmp/retry_wait.mcap", "2026-03-02T12:30:00Z", "retry"));
 
   auto incomplete = manager_->getIncomplete();
-  EXPECT_EQ(incomplete.size(), 2);  // pending + uploading
+  EXPECT_EQ(incomplete.size(), 3);  // pending + active + retry-wait
 }
 
 TEST_F(UploadStateManagerTest, CountByStatus) {
@@ -251,13 +254,17 @@ TEST_F(UploadStateManagerTest, DbPath) {
 
 TEST_F(UploadStateManagerTest, StatusConversion) {
   EXPECT_EQ(uploadStatusToString(UploadStatus::PENDING), "pending");
-  EXPECT_EQ(uploadStatusToString(UploadStatus::UPLOADING), "uploading");
+  EXPECT_EQ(uploadStatusToString(UploadStatus::ACTIVE), "active");
+  EXPECT_EQ(uploadStatusToString(UploadStatus::UPLOADING), "active");
+  EXPECT_EQ(uploadStatusToString(UploadStatus::RETRY_WAIT), "retry-wait");
   EXPECT_EQ(uploadStatusToString(UploadStatus::UPLOADED_WAIT_ACK), "uploaded_wait_ack");
   EXPECT_EQ(uploadStatusToString(UploadStatus::COMPLETED), "completed");
   EXPECT_EQ(uploadStatusToString(UploadStatus::FAILED), "failed");
 
   EXPECT_EQ(uploadStatusFromString("pending"), UploadStatus::PENDING);
+  EXPECT_EQ(uploadStatusFromString("active"), UploadStatus::ACTIVE);
   EXPECT_EQ(uploadStatusFromString("uploading"), UploadStatus::UPLOADING);
+  EXPECT_EQ(uploadStatusFromString("retry-wait"), UploadStatus::RETRY_WAIT);
   EXPECT_EQ(uploadStatusFromString("uploaded_wait_ack"), UploadStatus::UPLOADED_WAIT_ACK);
   EXPECT_EQ(uploadStatusFromString("completed"), UploadStatus::COMPLETED);
   EXPECT_EQ(uploadStatusFromString("failed"), UploadStatus::FAILED);
@@ -372,18 +379,22 @@ TEST_F(UploadStateManagerTest, CountByStatusAllStatuses) {
   auto uploading = createTestRecord("/tmp/uploading.mcap", "task_002");
   auto completed = createTestRecord("/tmp/completed.mcap", "task_003");
   auto failed = createTestRecord("/tmp/failed.mcap", "task_004");
+  auto retry_wait = createTestRecord("/tmp/retry_wait.mcap", "task_005");
 
   ASSERT_TRUE(manager_->insert(pending));
   ASSERT_TRUE(manager_->insert(uploading));
   ASSERT_TRUE(manager_->insert(completed));
   ASSERT_TRUE(manager_->insert(failed));
+  ASSERT_TRUE(manager_->insert(retry_wait));
 
   ASSERT_TRUE(manager_->updateStatus("/tmp/uploading.mcap", UploadStatus::UPLOADING));
   ASSERT_TRUE(manager_->markCompleted("/tmp/completed.mcap"));
   ASSERT_TRUE(manager_->markFailed("/tmp/failed.mcap", "error"));
+  ASSERT_TRUE(manager_->markRetryWait("/tmp/retry_wait.mcap", "2026-03-02T12:30:00Z", "retry"));
 
   EXPECT_EQ(manager_->countByStatus(UploadStatus::PENDING), 1);
   EXPECT_EQ(manager_->countByStatus(UploadStatus::UPLOADING), 1);
+  EXPECT_EQ(manager_->countByStatus(UploadStatus::RETRY_WAIT), 1);
   EXPECT_EQ(manager_->countByStatus(UploadStatus::COMPLETED), 1);
   EXPECT_EQ(manager_->countByStatus(UploadStatus::FAILED), 1);
 }
@@ -398,17 +409,21 @@ TEST_F(UploadStateManagerTest, PendingBytesEmpty) {
 }
 
 TEST_F(UploadStateManagerTest, PendingBytesWithUploading) {
-  // Test pendingBytes() includes both pending and uploading status
+  // Test pendingBytes() includes pending, active, and retry-wait status
   auto pending = createTestRecord("/tmp/pending.mcap", "task_001");
   pending.file_size_bytes = 1000;
   auto uploading = createTestRecord("/tmp/uploading.mcap", "task_002");
   uploading.file_size_bytes = 2000;
+  auto retry_wait = createTestRecord("/tmp/retry_wait.mcap", "task_003");
+  retry_wait.file_size_bytes = 3000;
 
   ASSERT_TRUE(manager_->insert(pending));
   ASSERT_TRUE(manager_->insert(uploading));
+  ASSERT_TRUE(manager_->insert(retry_wait));
   ASSERT_TRUE(manager_->updateStatus("/tmp/uploading.mcap", UploadStatus::UPLOADING));
+  ASSERT_TRUE(manager_->markRetryWait("/tmp/retry_wait.mcap", "2026-03-02T12:30:00Z", "retry"));
 
-  EXPECT_EQ(manager_->pendingBytes(), 3000);
+  EXPECT_EQ(manager_->pendingBytes(), 6000);
 }
 
 TEST_F(UploadStateManagerTest, DeleteCompletedEmpty) {
@@ -566,6 +581,22 @@ TEST_F(UploadStateManagerTest, UpdateDeleteRetryFields) {
   EXPECT_EQ(retrieved->delete_retry_count, 2);
   EXPECT_EQ(retrieved->delete_next_retry_at, "2026-03-02T12:00:00Z");
   EXPECT_EQ(retrieved->delete_last_error, "permission denied");
+}
+
+TEST_F(UploadStateManagerTest, MarkRetryWait) {
+  auto record = createTestRecord("/tmp/test_retry_wait.mcap", "task_retry_wait");
+  ASSERT_TRUE(manager_->insert(record));
+
+  ASSERT_TRUE(
+    manager_->markRetryWait(record.file_path, "2026-03-02T12:30:00Z", "temporary network error")
+  );
+
+  auto retrieved = manager_->get(record.file_path);
+  ASSERT_TRUE(retrieved.has_value());
+  EXPECT_EQ(retrieved->status, UploadStatus::RETRY_WAIT);
+  EXPECT_EQ(retrieved->next_retry_at, "2026-03-02T12:30:00Z");
+  EXPECT_EQ(retrieved->last_error, "temporary network error");
+  EXPECT_EQ(manager_->pendingBytes(), record.file_size_bytes);
 }
 
 // ============================================================================

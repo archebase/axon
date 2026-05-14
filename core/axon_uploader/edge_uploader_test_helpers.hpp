@@ -69,7 +69,7 @@ void moveToFailedDirImpl(
  */
 FileUploadResult uploadSingleFileImpl(
   const std::string& local_path, const std::string& s3_key, const std::string& checksum,
-  const IFileSystem& filesystem, S3Client* s3_client
+  const IFileSystem& filesystem, S3Client* s3_client, ProgressCallback progress_cb = nullptr
 );
 
 }  // namespace uploader

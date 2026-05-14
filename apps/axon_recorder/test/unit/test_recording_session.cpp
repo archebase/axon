@@ -599,6 +599,8 @@ TEST_F(RecordingSessionTest, SidecarDisabledStillFinalizesMcap) {
   EXPECT_FALSE(session.was_sidecar_generated());
   EXPECT_TRUE(session.get_sidecar_path().empty());
   EXPECT_TRUE(session.get_checksum().empty());
+  EXPECT_EQ(session.get_completion_marker_path(), path + ".done");
+  EXPECT_TRUE(fs::exists(path + ".done"));
 
   fs::path json_path(path);
   json_path.replace_extension(".json");
