@@ -481,6 +481,20 @@ void WsRpcClient::handle_server_message(const nlohmann::json& msg) {
     response = handle_rpc_get_drop_stats(callbacks_, params);
   } else if (action == "get_latency_stats") {
     response = handle_rpc_get_latency_stats(callbacks_, params);
+  } else if (action == "list_tasks") {
+    response = handle_rpc_list_tasks(callbacks_, params);
+  } else if (action == "get_task_status") {
+    response = handle_rpc_get_task_status(callbacks_, params);
+  } else if (action == "begin_batch") {
+    response = handle_rpc_batch_begin(callbacks_, params);
+  } else if (action == "finish_batch") {
+    response = handle_rpc_batch_finish(callbacks_, params);
+  } else if (action == "cancel_batch") {
+    response = handle_rpc_batch_cancel(callbacks_, params);
+  } else if (action == "get_log_levels") {
+    response = handle_rpc_get_log_levels(callbacks_, params);
+  } else if (action == "set_log_levels") {
+    response = handle_rpc_set_log_levels(callbacks_, params);
   } else if (action == "test") {
     response = handle_rpc_test(callbacks_, params);
   } else {

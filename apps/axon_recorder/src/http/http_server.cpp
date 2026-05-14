@@ -112,23 +112,8 @@ bool HttpServer::start() {
 
     AXON_LOG_INFO("EventBroadcaster started with 1s stats interval");
 
-    // Set up WebSocket RPC handler
-    // Convert callbacks to RpcCallbacks for the RPC handler
-    RpcCallbacks rpc_callbacks;
-    rpc_callbacks.get_state = callbacks_.get_state;
-    rpc_callbacks.get_stats = callbacks_.get_stats;
-    rpc_callbacks.get_task_config = callbacks_.get_task_config;
-    rpc_callbacks.set_config = callbacks_.set_config;
-    rpc_callbacks.begin_recording = callbacks_.begin_recording;
-    rpc_callbacks.finish_recording = callbacks_.finish_recording;
-    rpc_callbacks.cancel_recording = callbacks_.cancel_recording;
-    rpc_callbacks.pause_recording = callbacks_.pause_recording;
-    rpc_callbacks.resume_recording = callbacks_.resume_recording;
-    rpc_callbacks.clear_config = callbacks_.clear_config;
-    rpc_callbacks.quit = callbacks_.quit;
-
     ws_rpc_handler_ = std::make_unique<WebSocketRpcHandler>(
-      rpc_callbacks, [this](const std::string& client_id, const nlohmann::json& response) {
+      callbacks_, [this](const std::string& client_id, const nlohmann::json& response) {
         // Send RPC response to specific client via WebSocket
         if (ws_server_) {
           ws_server_->send_to_client(client_id, response.dump());
@@ -417,6 +402,27 @@ void HttpServer::handle_request(
       } else if (rpc_method == "latency_stats" && method_str == "GET") {
         AXON_LOG_DEBUG("Routing to handle_rpc_get_latency_stats");
         rpc_response = handle_rpc_get_latency_stats(params);
+      } else if (rpc_method == "tasks" && method_str == "GET") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_list_tasks");
+        rpc_response = handle_rpc_list_tasks(params);
+      } else if (rpc_method == "task_status" && method_str == "POST") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_get_task_status");
+        rpc_response = handle_rpc_get_task_status(params);
+      } else if (rpc_method == "begin_batch" && method_str == "POST") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_batch_begin");
+        rpc_response = handle_rpc_batch_begin(params);
+      } else if (rpc_method == "finish_batch" && method_str == "POST") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_batch_finish");
+        rpc_response = handle_rpc_batch_finish(params);
+      } else if (rpc_method == "cancel_batch" && method_str == "POST") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_batch_cancel");
+        rpc_response = handle_rpc_batch_cancel(params);
+      } else if (rpc_method == "log_levels" && method_str == "GET") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_get_log_levels");
+        rpc_response = handle_rpc_get_log_levels(params);
+      } else if (rpc_method == "log_levels" && method_str == "POST") {
+        AXON_LOG_DEBUG("Routing to handle_rpc_set_log_levels");
+        rpc_response = handle_rpc_set_log_levels(params);
       } else if (rpc_method == "config" && method_str == "POST") {
         AXON_LOG_DEBUG("Routing to handle_rpc_set_config");
         rpc_response = handle_rpc_set_config(params);
@@ -509,6 +515,34 @@ HttpServer::RpcResponse HttpServer::handle_rpc_get_drop_stats(const nlohmann::js
 
 HttpServer::RpcResponse HttpServer::handle_rpc_get_latency_stats(const nlohmann::json& params) {
   return axon::recorder::handle_rpc_get_latency_stats(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_list_tasks(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_list_tasks(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_get_task_status(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_get_task_status(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_batch_begin(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_batch_begin(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_batch_finish(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_batch_finish(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_batch_cancel(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_batch_cancel(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_get_log_levels(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_get_log_levels(callbacks_, params);
+}
+
+HttpServer::RpcResponse HttpServer::handle_rpc_set_log_levels(const nlohmann::json& params) {
+  return axon::recorder::handle_rpc_set_log_levels(callbacks_, params);
 }
 
 HttpServer::RpcResponse HttpServer::handle_rpc_set_config(const nlohmann::json& params) {

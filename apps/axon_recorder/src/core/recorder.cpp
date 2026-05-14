@@ -6,6 +6,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <ctime>
@@ -17,6 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "../config/config_parser.hpp"
 #include "../http/rpc_handlers.hpp"
 #include "../http/ws_rpc_client.hpp"
 #include "incident_debug_bundle.hpp"
@@ -55,6 +58,69 @@ nlohmann::json buffer_pool_stats_json() {
   j["resident_bytes"] = pool_stats.resident_bytes;
   j["hit_rate"] = pool_stats.hit_rate();
   return j;
+}
+
+std::string to_lower_ascii(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+std::string severity_to_level_string(axon::logging::severity_level level) {
+  switch (level) {
+    case axon::logging::severity_level::debug:
+      return "debug";
+    case axon::logging::severity_level::info:
+      return "info";
+    case axon::logging::severity_level::warn:
+      return "warn";
+    case axon::logging::severity_level::error:
+      return "error";
+    case axon::logging::severity_level::fatal:
+      return "fatal";
+  }
+  return "info";
+}
+
+std::string sidecar_path_for_output(const std::string& output_path) {
+  if (output_path.empty()) {
+    return "";
+  }
+  std::filesystem::path path(output_path);
+  path.replace_extension(".json");
+  return path.string();
+}
+
+TaskConfig task_config_from_json(const nlohmann::json& config_json) {
+  TaskConfig config;
+  auto get_string = [&config_json](const char* key) -> std::string {
+    return config_json.contains(key) ? config_json[key].get<std::string>() : "";
+  };
+
+  config.task_id = get_string("task_id");
+  config.device_id = get_string("device_id");
+  config.data_collector_id = get_string("data_collector_id");
+  config.order_id = get_string("order_id");
+  config.operator_name = get_string("operator_name");
+  config.scene = get_string("scene");
+  config.subscene = get_string("subscene");
+  config.factory = get_string("factory");
+  config.start_callback_url = get_string("start_callback_url");
+  config.finish_callback_url = get_string("finish_callback_url");
+  config.user_token = get_string("user_token");
+
+  if (config_json.contains("skills")) {
+    for (const auto& skill : config_json["skills"]) {
+      config.skills.push_back(skill.get<std::string>());
+    }
+  }
+  if (config_json.contains("topics")) {
+    for (const auto& topic : config_json["topics"]) {
+      config.topics.push_back(topic.get<std::string>());
+    }
+  }
+  return config;
 }
 
 // C callback wrapper for plugin (ABI v1.0 / v1.1 — borrowed buffer, copy-out)
@@ -118,6 +184,10 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
   config_ = config;
   last_session_sidecar_enabled_ = config_.recording.sidecar_json_enabled;
   last_session_incident_bundle_enabled_ = config_.incident_bundle.enabled;
+
+  ::axon::logging::LoggingConfig log_config;
+  convert_logging_config(config_.logging, log_config);
+  ::axon::logging::reconfigure_logging(log_config);
 
   // Configure and create worker thread pool
   WorkerThreadPool::Config pool_config;
@@ -372,6 +442,9 @@ void AxonRecorder::maybe_create_incident_bundle(const std::string& output_path) 
   last_session_incident_bundle_error_.clear();
 
   if (!config_.incident_bundle.enabled) {
+    return;
+  }
+  if (cancel_in_progress_.load(std::memory_order_acquire)) {
     return;
   }
 
@@ -966,18 +1039,15 @@ std::string AxonRecorder::get_state_string() const {
   return state_manager_.get_state_string();
 }
 
-bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
-  if (http_server_) {
-    set_error_helper("HTTP server already running");
-    return false;
-  }
+RpcCallbacks AxonRecorder::make_rpc_callbacks() {
+  RpcCallbacks callbacks;
 
-  http_server_ = std::make_unique<HttpServer>(host, port);
-
-  // Register callbacks with the HTTP server
-  HttpServer::Callbacks callbacks;
   callbacks.get_state = [this]() -> std::string {
     return this->get_state_string();
+  };
+
+  callbacks.get_last_error = [this]() -> std::string {
+    return this->get_last_error();
   };
 
   callbacks.get_stats = [this]() -> nlohmann::json {
@@ -991,13 +1061,9 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
     j["bytes_received"] = stats.bytes_received;
     j["receive_rate_mbps"] = stats.receive_rate_mbps;
     j["write_rate_mbps"] = stats.write_rate_mbps;
-    // Surface the running recording duration and an explicit message_count
-    // alias so clients don't have to infer "数据条数" from messages_written.
     j["duration_sec"] = stats.duration_sec;
     j["message_count"] = stats.messages_written;
 
-    // Add queue depth monitoring and per-topic message counts so the status
-    // response includes a per-topic breakdown of written/received/dropped.
     if (worker_pool_) {
       auto depths = worker_pool_->get_queue_depths();
       nlohmann::json queue_depths = nlohmann::json::object();
@@ -1023,21 +1089,17 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
       j["topic_message_counts"] = topic_counts;
     }
 
-    // Expose BufferPool counters so operators can track hit rate and
-    // resident memory in real time via /rpc/status.
     j["buffer_pool"] = buffer_pool_stats_json();
     j["disk_usage"] = this->get_disk_usage_status_json();
     j["metadata"] = this->get_metadata_status_json();
     j["keystone_time_gap"] = this->get_keystone_time_gap_status_json();
-
     return j;
   };
 
   callbacks.get_drop_stats = [this]() -> nlohmann::json {
-    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    auto stats = this->get_statistics();
     nlohmann::json j;
     j["state"] = this->get_state_string();
-    auto stats = this->get_statistics();
     j["messages_received"] = stats.messages_received;
     j["messages_dropped"] = stats.messages_dropped;
     nlohmann::json topics = nlohmann::json::object();
@@ -1056,7 +1118,6 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
   };
 
   callbacks.get_latency_stats = [this]() -> nlohmann::json {
-    std::lock_guard<std::mutex> lock(recorder_mutex_);
     if (latency_monitor_) {
       return latency_monitor_->get_stats_json();
     }
@@ -1070,194 +1131,161 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
   callbacks.set_config =
     [this](const std::string& task_id, const nlohmann::json& config_json) -> bool {
     try {
-      TaskConfig config;
-
-      // Parse the config JSON
-      if (config_json.contains("task_id")) {
-        config.task_id = config_json["task_id"];
-      }
-      if (config_json.contains("device_id")) {
-        config.device_id = config_json["device_id"];
-      }
-      if (config_json.contains("data_collector_id")) {
-        config.data_collector_id = config_json["data_collector_id"];
-      }
-      if (config_json.contains("order_id")) {
-        config.order_id = config_json["order_id"];
-      }
-      if (config_json.contains("operator_name")) {
-        config.operator_name = config_json["operator_name"];
-      }
-      if (config_json.contains("scene")) {
-        config.scene = config_json["scene"];
-      }
-      if (config_json.contains("subscene")) {
-        config.subscene = config_json["subscene"];
-      }
-      if (config_json.contains("skills")) {
-        for (const auto& skill : config_json["skills"]) {
-          config.skills.push_back(skill);
-        }
-      }
-      if (config_json.contains("factory")) {
-        config.factory = config_json["factory"];
-      }
-      if (config_json.contains("topics")) {
-        for (const auto& topic : config_json["topics"]) {
-          config.topics.push_back(topic);
-        }
-      }
-      if (config_json.contains("start_callback_url")) {
-        config.start_callback_url = config_json["start_callback_url"];
-      }
-      if (config_json.contains("finish_callback_url")) {
-        config.finish_callback_url = config_json["finish_callback_url"];
-      }
-      if (config_json.contains("user_token")) {
-        config.user_token = config_json["user_token"];
+      TaskConfig config = task_config_from_json(config_json);
+      if (task_id != config.task_id) {
+        set_error_helper(
+          "task_id mismatch: expected '" + config.task_id + "' but got '" + task_id + "'"
+        );
+        return false;
       }
 
-      // Set the task config
+      auto current_state = this->get_state();
+      if (current_state == RecorderState::RECORDING || current_state == RecorderState::PAUSED) {
+        set_error_helper(
+          "Cannot set task configuration from state: " + state_to_string(current_state) +
+          ". Finish or cancel the active recording first."
+        );
+        return false;
+      }
+
       this->set_task_config(config);
 
-      // Broadcast config change via WebSocket
       if (http_server_) {
         http_server_->broadcast_config_change(&config);
       }
+      if (ws_rpc_client_) {
+        ws_rpc_client_->send_config_update(config);
+      }
 
-      // Transition state from IDLE to READY
-      auto current_state = this->get_state();
       if (current_state == RecorderState::IDLE) {
         std::string error_msg;
         if (!this->transition_to(RecorderState::READY, error_msg)) {
+          set_error_helper("State transition to READY failed: " + error_msg);
           return false;
         }
       }
 
       return true;
     } catch (const std::exception& e) {
+      set_error_helper(std::string("Failed to parse task config: ") + e.what());
       return false;
     }
   };
 
   callbacks.begin_recording = [this](const std::string& task_id) -> bool {
-    // Verify task_id matches
     const TaskConfig* task_config = this->get_task_config();
     if (!task_config || task_config->task_id.empty()) {
+      set_error_helper("No task configuration cached. Call /rpc/config first.");
       return false;
     }
 
     if (task_id != task_config->task_id) {
+      set_error_helper(
+        "task_id mismatch: expected '" + task_config->task_id + "' but got '" + task_id + "'"
+      );
       return false;
     }
 
-    // Check if we're in READY state
     if (this->get_state() != RecorderState::READY) {
+      set_error_helper(
+        "Cannot start recording from state: " + this->get_state_string() +
+        ". Must be in READY state."
+      );
       return false;
     }
 
-    // Start recording
     return this->start();
   };
 
   callbacks.finish_recording = [this](const std::string& task_id) -> bool {
-    // Verify task_id matches
-    const TaskConfig* task_config = this->get_task_config();
-    if (!task_config || task_config->task_id.empty()) {
+    const TaskConfig* current_task_config = this->get_task_config();
+    if (!current_task_config || current_task_config->task_id.empty()) {
+      set_error_helper("No task configuration cached. Call /rpc/config first.");
+      return false;
+    }
+    TaskConfig task_config = *current_task_config;
+
+    if (task_id != task_config.task_id) {
+      set_error_helper(
+        "task_id mismatch: expected '" + task_config.task_id + "' but got '" + task_id + "'"
+      );
       return false;
     }
 
-    if (task_id != task_config->task_id) {
-      return false;
-    }
-
-    // Check if we're in RECORDING or PAUSED state
     auto current_state = this->get_state();
     if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
+      set_error_helper(
+        "Cannot finish recording from state: " + state_to_string(current_state) +
+        ". Must be in RECORDING or PAUSED state."
+      );
       return false;
     }
 
     std::string output_path;
     std::chrono::system_clock::time_point start_time;
-    auto pre_stop_stats = this->get_statistics();
-
     if (recording_session_) {
       output_path = recording_session_->get_path();
       start_time = recording_session_->get_start_time();
     }
 
-    // Convert start_time to ISO8601 string
     std::string started_at;
     if (start_time != std::chrono::system_clock::time_point{}) {
       started_at = HttpCallbackClient::get_iso8601_timestamp(start_time);
     }
 
-    // Stop recording
-    if (this->is_running()) {
-      this->stop();
-
-      int64_t file_size_bytes = (last_session_final_file_size_ > 0)
-                                  ? static_cast<int64_t>(last_session_final_file_size_)
-                                  : static_cast<int64_t>(pre_stop_stats.bytes_written);
-
-      std::string finished_at;
-      double duration_sec = 0.0;
-      if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
-        finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
-        if (last_session_active_duration_sec_ > 0.0) {
-          duration_sec = last_session_active_duration_sec_;
-        } else if (start_time != std::chrono::system_clock::time_point{}) {
-          duration_sec =
-            std::chrono::duration<double>(last_session_close_time_ - start_time).count();
-        }
-      } else {
-        finished_at = HttpCallbackClient::get_iso8601_timestamp();
-      }
-
-      // Send finish callback if URL is configured
-      if (http_callback_client_ && !task_config->finish_callback_url.empty()) {
-        FinishCallbackPayload payload;
-        payload.task_id = task_id;
-        payload.device_id = task_config->device_id;
-        payload.status = "finished";
-        payload.started_at = started_at;
-        payload.finished_at = finished_at;
-        payload.duration_sec = duration_sec;
-        payload.message_count = static_cast<int64_t>(pre_stop_stats.messages_written);
-        payload.file_size_bytes = file_size_bytes;
-        payload.output_path = output_path;
-        payload.sidecar_path = last_session_sidecar_path_;
-        payload.sidecar_enabled = last_session_sidecar_enabled_;
-        payload.sidecar_generated = last_session_sidecar_generated_;
-        payload.topics = task_config->topics;
-
-        // Map TaskConfig fields to CallbackMetadata
-        payload.metadata.scene = task_config->scene;
-        payload.metadata.subscene = task_config->subscene;
-        payload.metadata.skills = task_config->skills;
-        payload.metadata.factory = task_config->factory;
-
-        http_callback_client_->post_finish_callback_async(*task_config, payload);
-      }
-
-      return true;
-    }
-    return false;
-  };
-
-  callbacks.cancel_recording = [this]() -> bool {
-    // Check if we're in RECORDING or PAUSED state
-    auto current_state = this->get_state();
-    if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
+    if (!this->is_running()) {
+      set_error_helper("Recorder is not running");
       return false;
     }
 
-    // Stop recording (TODO: add cleanup to discard partial recording)
-    if (this->is_running()) {
-      this->stop();
-      return true;
+    auto pre_stop_stats = this->get_statistics();
+    this->stop();
+
+    int64_t file_size_bytes = (last_session_final_file_size_ > 0)
+                                ? static_cast<int64_t>(last_session_final_file_size_)
+                                : static_cast<int64_t>(pre_stop_stats.bytes_written);
+
+    std::string finished_at;
+    double duration_sec = 0.0;
+    if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
+      finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
+      if (last_session_active_duration_sec_ > 0.0) {
+        duration_sec = last_session_active_duration_sec_;
+      } else if (start_time != std::chrono::system_clock::time_point{}) {
+        duration_sec = std::chrono::duration<double>(last_session_close_time_ - start_time).count();
+      }
+    } else {
+      finished_at = HttpCallbackClient::get_iso8601_timestamp();
     }
-    return false;
+
+    if (http_callback_client_ && !task_config.finish_callback_url.empty()) {
+      FinishCallbackPayload payload;
+      payload.task_id = task_id;
+      payload.device_id = task_config.device_id;
+      payload.status = "finished";
+      payload.started_at = started_at;
+      payload.finished_at = finished_at;
+      payload.duration_sec = duration_sec;
+      payload.message_count = static_cast<int64_t>(pre_stop_stats.messages_written);
+      payload.file_size_bytes = file_size_bytes;
+      payload.output_path = output_path;
+      payload.sidecar_path = last_session_sidecar_path_;
+      payload.sidecar_enabled = last_session_sidecar_enabled_;
+      payload.sidecar_generated = last_session_sidecar_generated_;
+      payload.topics = task_config.topics;
+      payload.metadata.scene = task_config.scene;
+      payload.metadata.subscene = task_config.subscene;
+      payload.metadata.skills = task_config.skills;
+      payload.metadata.factory = task_config.factory;
+
+      http_callback_client_->post_finish_callback_async(task_config, payload);
+    }
+
+    return true;
+  };
+
+  callbacks.cancel_recording = [this]() -> bool {
+    return this->cancel_current_recording();
   };
 
   callbacks.pause_recording = [this]() -> bool {
@@ -1269,24 +1297,33 @@ bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
   };
 
   callbacks.clear_config = [this]() -> bool {
-    // Check if we're in READY state
-    if (this->get_state() != RecorderState::READY) {
-      return false;
-    }
-
-    // TODO: Implement clear to reset task config and return to IDLE
-    std::string error_msg;
-    return this->transition_to(RecorderState::IDLE, error_msg);
+    return this->clear_task_config();
   };
 
-  callbacks.get_task_config = [this]() -> const TaskConfig* {
-    return this->get_task_config();
+  callbacks.get_log_levels = [this]() -> nlohmann::json {
+    return this->get_log_levels_json();
+  };
+
+  callbacks.set_log_levels = [this](const nlohmann::json& params, nlohmann::json& result) -> bool {
+    return this->set_log_levels_from_rpc(params, result);
   };
 
   callbacks.quit = [this]() -> void {
     this->request_shutdown();
   };
 
+  return callbacks;
+}
+
+bool AxonRecorder::start_http_server(const std::string& host, uint16_t port) {
+  if (http_server_) {
+    set_error_helper("HTTP server already running");
+    return false;
+  }
+
+  http_server_ = std::make_unique<HttpServer>(host, port);
+
+  HttpServer::Callbacks callbacks = make_rpc_callbacks();
   http_server_->register_callbacks(callbacks);
 
   if (!http_server_->start()) {
@@ -1313,8 +1350,203 @@ bool AxonRecorder::transition_to(RecorderState to, std::string& error_msg) {
   return state_manager_.transition_to(to, error_msg);
 }
 
+bool AxonRecorder::clear_task_config() {
+  if (get_state() != RecorderState::READY) {
+    set_error_helper(
+      "Cannot clear task configuration from state: " + get_state_string() +
+      ". Must be in READY state."
+    );
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    task_config_.reset();
+  }
+
+  std::string error_msg;
+  if (!transition_to(RecorderState::IDLE, error_msg)) {
+    set_error_helper("State transition to IDLE failed: " + error_msg);
+    return false;
+  }
+
+  if (http_server_) {
+    http_server_->broadcast_config_change(nullptr);
+  }
+
+  return true;
+}
+
+bool AxonRecorder::discard_recording_artifacts(
+  const std::string& output_path, const std::string& sidecar_path
+) {
+  bool success = true;
+  auto remove_if_present = [this, &success](const std::string& path, const char* label) {
+    if (path.empty()) {
+      return;
+    }
+
+    std::error_code ec;
+    const bool exists = std::filesystem::exists(path, ec);
+    if (ec) {
+      set_error_helper(
+        std::string("Failed to inspect cancelled ") + label + ": " + path + " - " + ec.message()
+      );
+      success = false;
+      return;
+    }
+    if (!exists) {
+      return;
+    }
+
+    std::filesystem::remove(path, ec);
+    if (ec) {
+      set_error_helper(
+        std::string("Failed to delete cancelled ") + label + ": " + path + " - " + ec.message()
+      );
+      success = false;
+      return;
+    }
+
+    AXON_LOG_INFO(
+      "Deleted cancelled recording artifact" << axon::logging::kv("path", path)
+                                             << axon::logging::kv("type", label)
+    );
+  };
+
+  remove_if_present(output_path, "mcap");
+  remove_if_present(sidecar_path, "sidecar");
+  if (!sidecar_path.empty()) {
+    remove_if_present(sidecar_path + ".tmp", "sidecar_tmp");
+  }
+  return success;
+}
+
+bool AxonRecorder::cancel_current_recording() {
+  auto current_state = get_state();
+  if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
+    set_error_helper(
+      "Cannot cancel recording from state: " + state_to_string(current_state) +
+      ". Must be in RECORDING or PAUSED state."
+    );
+    return false;
+  }
+
+  if (!is_running()) {
+    set_error_helper("Recorder is not running");
+    return false;
+  }
+
+  std::string output_path;
+  if (recording_session_) {
+    output_path = recording_session_->get_path();
+  }
+  const std::string sidecar_path = sidecar_path_for_output(output_path);
+
+  cancel_in_progress_.store(true, std::memory_order_release);
+  this->stop();
+  cancel_in_progress_.store(false, std::memory_order_release);
+
+  const bool discarded = discard_recording_artifacts(output_path, sidecar_path);
+  {
+    std::lock_guard<std::mutex> lock(recorder_mutex_);
+    task_config_.reset();
+  }
+  if (http_server_) {
+    http_server_->broadcast_config_change(nullptr);
+  }
+
+  return discarded;
+}
+
+nlohmann::json AxonRecorder::get_log_levels_json() const {
+  ::axon::logging::LoggingConfig effective;
+  convert_logging_config(config_.logging, effective);
+  ::axon::logging::apply_env_overrides(effective);
+
+  nlohmann::json j;
+  j["console_enabled"] = config_.logging.console_enabled;
+  j["file_enabled"] = config_.logging.file_enabled;
+  j["console_level"] = to_lower_ascii(config_.logging.console_level);
+  j["file_level"] = to_lower_ascii(config_.logging.file_level);
+  j["effective_console_level"] = severity_to_level_string(effective.console_level);
+  j["effective_file_level"] = severity_to_level_string(effective.file_level);
+  j["logging_initialized"] = ::axon::logging::is_logging_initialized();
+  return j;
+}
+
+bool AxonRecorder::set_log_levels_from_rpc(const nlohmann::json& params, nlohmann::json& result) {
+  nlohmann::json request = params.is_object() ? params : nlohmann::json::object();
+  if (request.contains("console") && request["console"].is_object() &&
+      request["console"].contains("level")) {
+    request["console_level"] = request["console"]["level"];
+  }
+  if (request.contains("file") && request["file"].is_object() &&
+      request["file"].contains("level")) {
+    request["file_level"] = request["file"]["level"];
+  }
+
+  std::vector<ValidationError> errors;
+  bool has_update = false;
+  std::string console_level = to_lower_ascii(config_.logging.console_level);
+  std::string file_level = to_lower_ascii(config_.logging.file_level);
+
+  auto parse_level = [&](const char* field, std::string& out_level) {
+    if (!request.contains(field)) {
+      return;
+    }
+    has_update = true;
+    if (!request[field].is_string()) {
+      errors.push_back({field, "invalid_type", std::string(field) + " must be a string"});
+      return;
+    }
+    const std::string raw = request[field].get<std::string>();
+    auto parsed = ::axon::logging::parse_severity_level(raw);
+    if (!parsed.has_value()) {
+      errors.push_back(
+        {field,
+         "invalid_value",
+         std::string(field) + " must be one of debug, info, warn, error, fatal"}
+      );
+      return;
+    }
+    out_level = severity_to_level_string(parsed.value());
+  };
+
+  parse_level("console_level", console_level);
+  parse_level("file_level", file_level);
+
+  if (!has_update) {
+    errors.push_back(
+      {"log_levels", "missing_required", "At least one of console_level or file_level is required"}
+    );
+  }
+
+  if (!errors.empty()) {
+    result["message"] = "Log level validation failed";
+    result["validation_errors"] = nlohmann::json::array();
+    for (const auto& error : errors) {
+      result["validation_errors"].push_back(error.to_json());
+    }
+    return false;
+  }
+
+  config_.logging.console_level = console_level;
+  config_.logging.file_level = file_level;
+
+  ::axon::logging::LoggingConfig log_config;
+  convert_logging_config(config_.logging, log_config);
+  ::axon::logging::reconfigure_logging(log_config);
+
+  result = get_log_levels_json();
+  return true;
+}
+
 bool AxonRecorder::pause_recording() {
   if (get_state() != RecorderState::RECORDING) {
+    set_error_helper(
+      "Cannot pause recording from state: " + get_state_string() + ". Must be in RECORDING state."
+    );
     return false;
   }
 
@@ -1323,12 +1555,17 @@ bool AxonRecorder::pause_recording() {
     state_manager_.transition(RecorderState::RECORDING, RecorderState::PAUSED, error_msg);
   if (success) {
     mark_pause_started();
+  } else {
+    set_error_helper("State transition to PAUSED failed: " + error_msg);
   }
   return success;
 }
 
 bool AxonRecorder::resume_recording() {
   if (get_state() != RecorderState::PAUSED) {
+    set_error_helper(
+      "Cannot resume recording from state: " + get_state_string() + ". Must be in PAUSED state."
+    );
     return false;
   }
 
@@ -1339,6 +1576,7 @@ bool AxonRecorder::resume_recording() {
     state_manager_.transition(RecorderState::PAUSED, RecorderState::RECORDING, error_msg);
   if (!success && get_state() == RecorderState::PAUSED) {
     mark_pause_started();
+    set_error_helper("State transition to RECORDING failed: " + error_msg);
   }
   return success;
 }
@@ -2005,14 +2243,14 @@ void AxonRecorder::on_state_transition(RecorderState from, RecorderState to) {
     http_server_->broadcast_state_change(from, to, task_id);
 
     // Broadcast log for important state transitions
+    const bool cancelled = cancel_in_progress_.load(std::memory_order_acquire);
     if (to == RecorderState::RECORDING) {
       http_server_->broadcast_log("info", "Recording started");
     } else if (to == RecorderState::PAUSED) {
       http_server_->broadcast_log("info", "Recording paused");
-    } else if (to == RecorderState::IDLE && from == RecorderState::RECORDING) {
-      http_server_->broadcast_log("info", "Recording finished");
-    } else if (to == RecorderState::IDLE && from == RecorderState::PAUSED) {
-      http_server_->broadcast_log("info", "Recording cancelled");
+    } else if (to == RecorderState::IDLE &&
+               (from == RecorderState::RECORDING || from == RecorderState::PAUSED)) {
+      http_server_->broadcast_log("info", cancelled ? "Recording cancelled" : "Recording finished");
     } else if (to == RecorderState::READY) {
       http_server_->broadcast_log("info", "Configuration set, ready to record");
     }
@@ -2053,314 +2291,7 @@ bool AxonRecorder::start_ws_rpc_client(const WsClientConfig& config) {
 
   AXON_LOG_INFO("Starting WebSocket RPC client, url=" << config.url);
 
-  // Create RpcCallbacks structure (same as HTTP server)
-  RpcCallbacks callbacks;
-  callbacks.get_state = [this]() -> std::string {
-    return this->get_state_string();
-  };
-
-  callbacks.get_stats = [this]() -> nlohmann::json {
-    auto stats = this->get_statistics();
-    nlohmann::json j;
-    j["state"] = this->get_state_string();
-    j["messages_received"] = stats.messages_received;
-    j["messages_written"] = stats.messages_written;
-    j["messages_dropped"] = stats.messages_dropped;
-    j["bytes_written"] = stats.bytes_written;
-    j["bytes_received"] = stats.bytes_received;
-    j["receive_rate_mbps"] = stats.receive_rate_mbps;
-    j["write_rate_mbps"] = stats.write_rate_mbps;
-    // Surface the running recording duration and an explicit message_count
-    // alias so clients don't have to infer "数据条数" from messages_written.
-    j["duration_sec"] = stats.duration_sec;
-    j["message_count"] = stats.messages_written;
-
-    // Add queue depth monitoring and per-topic message counts so the status
-    // response includes a per-topic breakdown of written/received/dropped.
-    if (worker_pool_) {
-      auto depths = worker_pool_->get_queue_depths();
-      nlohmann::json queue_depths = nlohmann::json::object();
-      for (const auto& [topic, info] : depths) {
-        nlohmann::json q;
-        q["depth"] = info.depth;
-        q["capacity"] = info.capacity;
-        q["utilization"] =
-          info.capacity > 0 ? static_cast<double>(info.depth) / info.capacity * 100.0 : 0.0;
-        queue_depths[topic] = q;
-      }
-      j["queue_depths"] = queue_depths;
-
-      nlohmann::json topic_counts = nlohmann::json::object();
-      for (const auto& topic_name : worker_pool_->get_topics()) {
-        auto ts = worker_pool_->get_topic_stats(topic_name);
-        nlohmann::json t;
-        t["received"] = ts.received;
-        t["written"] = ts.written;
-        t["dropped"] = ts.dropped;
-        topic_counts[topic_name] = t;
-      }
-      j["topic_message_counts"] = topic_counts;
-    }
-
-    // Expose BufferPool counters so operators can track hit rate and
-    // resident memory in real time via /rpc/status.
-    j["buffer_pool"] = buffer_pool_stats_json();
-    j["disk_usage"] = this->get_disk_usage_status_json();
-    j["metadata"] = this->get_metadata_status_json();
-    j["keystone_time_gap"] = this->get_keystone_time_gap_status_json();
-
-    return j;
-  };
-
-  callbacks.get_drop_stats = [this]() -> nlohmann::json {
-    std::lock_guard<std::mutex> lock(recorder_mutex_);
-    nlohmann::json j;
-    j["state"] = this->get_state_string();
-    auto stats = this->get_statistics();
-    j["messages_received"] = stats.messages_received;
-    j["messages_dropped"] = stats.messages_dropped;
-    nlohmann::json topics = nlohmann::json::object();
-    if (worker_pool_) {
-      for (const auto& topic_name : worker_pool_->get_topics()) {
-        auto ts = worker_pool_->get_topic_stats(topic_name);
-        nlohmann::json t;
-        t["received"] = ts.received;
-        t["dropped"] = ts.dropped;
-        t["written"] = ts.written;
-        topics[topic_name] = t;
-      }
-    }
-    j["topics"] = topics;
-    return j;
-  };
-
-  callbacks.get_latency_stats = [this]() -> nlohmann::json {
-    std::lock_guard<std::mutex> lock(recorder_mutex_);
-    if (latency_monitor_) {
-      return latency_monitor_->get_stats_json();
-    }
-    return nlohmann::json::object();
-  };
-
-  callbacks.get_task_config = [this]() -> const TaskConfig* {
-    return this->get_task_config();
-  };
-
-  callbacks.set_config =
-    [this](const std::string& task_id, const nlohmann::json& config_json) -> bool {
-    try {
-      TaskConfig config;
-
-      // Parse the config JSON
-      if (config_json.contains("task_id")) {
-        config.task_id = config_json["task_id"];
-      }
-      if (config_json.contains("device_id")) {
-        config.device_id = config_json["device_id"];
-      }
-      if (config_json.contains("data_collector_id")) {
-        config.data_collector_id = config_json["data_collector_id"];
-      }
-      if (config_json.contains("order_id")) {
-        config.order_id = config_json["order_id"];
-      }
-      if (config_json.contains("operator_name")) {
-        config.operator_name = config_json["operator_name"];
-      }
-      if (config_json.contains("scene")) {
-        config.scene = config_json["scene"];
-      }
-      if (config_json.contains("subscene")) {
-        config.subscene = config_json["subscene"];
-      }
-      if (config_json.contains("skills")) {
-        for (const auto& skill : config_json["skills"]) {
-          config.skills.push_back(skill);
-        }
-      }
-      if (config_json.contains("factory")) {
-        config.factory = config_json["factory"];
-      }
-      if (config_json.contains("topics")) {
-        for (const auto& topic : config_json["topics"]) {
-          config.topics.push_back(topic);
-        }
-      }
-      if (config_json.contains("start_callback_url")) {
-        config.start_callback_url = config_json["start_callback_url"];
-      }
-      if (config_json.contains("finish_callback_url")) {
-        config.finish_callback_url = config_json["finish_callback_url"];
-      }
-      if (config_json.contains("user_token")) {
-        config.user_token = config_json["user_token"];
-      }
-
-      // Set the task config
-      this->set_task_config(config);
-
-      // Notify keystone that the config was accepted (ws-client equivalent of
-      // HttpServer::broadcast_config_change in HTTP-server mode).
-      if (ws_rpc_client_) {
-        ws_rpc_client_->send_config_update(config);
-      }
-
-      // Transition state from IDLE to READY
-      auto current_state = this->get_state();
-      if (current_state == RecorderState::IDLE) {
-        std::string error_msg;
-        if (!this->transition_to(RecorderState::READY, error_msg)) {
-          return false;
-        }
-      }
-
-      return true;
-    } catch (const std::exception& e) {
-      return false;
-    }
-  };
-
-  callbacks.begin_recording = [this](const std::string& task_id) -> bool {
-    // Verify task_id matches
-    const TaskConfig* task_config = this->get_task_config();
-    if (!task_config || task_config->task_id.empty()) {
-      return false;
-    }
-
-    if (task_id != task_config->task_id) {
-      return false;
-    }
-
-    // Check if we're in READY state
-    if (this->get_state() != RecorderState::READY) {
-      return false;
-    }
-
-    // Start recording
-    return this->start();
-  };
-
-  callbacks.finish_recording = [this](const std::string& task_id) -> bool {
-    // Verify task_id matches
-    const TaskConfig* task_config = this->get_task_config();
-    if (!task_config || task_config->task_id.empty()) {
-      return false;
-    }
-
-    if (task_id != task_config->task_id) {
-      return false;
-    }
-
-    // Check if we're in RECORDING or PAUSED state
-    auto current_state = this->get_state();
-    if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
-      return false;
-    }
-
-    std::string output_path;
-    std::chrono::system_clock::time_point start_time;
-    auto pre_stop_stats = this->get_statistics();
-
-    if (recording_session_) {
-      output_path = recording_session_->get_path();
-      start_time = recording_session_->get_start_time();
-    }
-
-    // Convert start_time to ISO8601 string
-    std::string started_at;
-    if (start_time != std::chrono::system_clock::time_point{}) {
-      started_at = HttpCallbackClient::get_iso8601_timestamp(start_time);
-    }
-
-    // Stop recording
-    if (this->is_running()) {
-      this->stop();
-
-      int64_t file_size_bytes = (last_session_final_file_size_ > 0)
-                                  ? static_cast<int64_t>(last_session_final_file_size_)
-                                  : static_cast<int64_t>(pre_stop_stats.bytes_written);
-
-      std::string finished_at;
-      double duration_sec = 0.0;
-      if (last_session_close_time_ != std::chrono::system_clock::time_point{}) {
-        finished_at = HttpCallbackClient::get_iso8601_timestamp(last_session_close_time_);
-        if (last_session_active_duration_sec_ > 0.0) {
-          duration_sec = last_session_active_duration_sec_;
-        } else if (start_time != std::chrono::system_clock::time_point{}) {
-          duration_sec =
-            std::chrono::duration<double>(last_session_close_time_ - start_time).count();
-        }
-      } else {
-        finished_at = HttpCallbackClient::get_iso8601_timestamp();
-      }
-
-      // Send finish callback if URL is configured
-      if (http_callback_client_ && !task_config->finish_callback_url.empty()) {
-        FinishCallbackPayload payload;
-        payload.task_id = task_id;
-        payload.device_id = task_config->device_id;
-        payload.status = "finished";
-        payload.started_at = started_at;
-        payload.finished_at = finished_at;
-        payload.duration_sec = duration_sec;
-        payload.message_count = static_cast<int64_t>(pre_stop_stats.messages_written);
-        payload.file_size_bytes = file_size_bytes;
-        payload.output_path = output_path;
-        payload.sidecar_path = last_session_sidecar_path_;
-        payload.sidecar_enabled = last_session_sidecar_enabled_;
-        payload.sidecar_generated = last_session_sidecar_generated_;
-        payload.topics = task_config->topics;
-
-        // Map TaskConfig fields to CallbackMetadata
-        payload.metadata.scene = task_config->scene;
-        payload.metadata.subscene = task_config->subscene;
-        payload.metadata.skills = task_config->skills;
-        payload.metadata.factory = task_config->factory;
-
-        http_callback_client_->post_finish_callback_async(*task_config, payload);
-      }
-
-      return true;
-    }
-    return false;
-  };
-
-  callbacks.cancel_recording = [this]() -> bool {
-    // Check if we're in RECORDING or PAUSED state
-    auto current_state = this->get_state();
-    if (current_state != RecorderState::RECORDING && current_state != RecorderState::PAUSED) {
-      return false;
-    }
-
-    // Stop recording
-    if (this->is_running()) {
-      this->stop();
-      return true;
-    }
-    return false;
-  };
-
-  callbacks.pause_recording = [this]() -> bool {
-    return this->pause_recording();
-  };
-
-  callbacks.resume_recording = [this]() -> bool {
-    return this->resume_recording();
-  };
-
-  callbacks.clear_config = [this]() -> bool {
-    // Check if we're in READY state
-    if (this->get_state() != RecorderState::READY) {
-      return false;
-    }
-
-    std::string error_msg;
-    return this->transition_to(RecorderState::IDLE, error_msg);
-  };
-
-  callbacks.quit = [this]() -> void {
-    this->request_shutdown();
-  };
+  RpcCallbacks callbacks = make_rpc_callbacks();
 
   // Create WS RPC client and run io_context on a dedicated thread
   ws_rpc_client_ = std::make_unique<WsRpcClient>(ws_ioc_, config);

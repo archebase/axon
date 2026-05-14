@@ -553,6 +553,12 @@ private:
   /**
    * Pause/resume helpers that keep the recorded timeline contiguous.
    */
+  RpcCallbacks make_rpc_callbacks();
+  bool clear_task_config();
+  bool cancel_current_recording();
+  bool discard_recording_artifacts(const std::string& output_path, const std::string& sidecar_path);
+  nlohmann::json get_log_levels_json() const;
+  bool set_log_levels_from_rpc(const nlohmann::json& params, nlohmann::json& result);
   bool pause_recording();
   bool resume_recording();
   void reset_pause_tracking();
@@ -668,6 +674,7 @@ private:
   bool last_session_incident_bundle_created_ = false;
   std::string last_session_incident_bundle_path_;
   std::string last_session_incident_bundle_error_;
+  std::atomic<bool> cancel_in_progress_{false};
 
   mutable std::mutex pause_time_mutex_;
   std::optional<std::chrono::steady_clock::time_point> pause_started_at_;
