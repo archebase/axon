@@ -9,7 +9,7 @@
           </div>
 
           <div class="modal-body">
-            <form @submit.prevent="handleSubmit">
+            <form id="config-form" @submit.prevent="handleSubmit">
               <div class="form-group">
                 <label>Task ID *</label>
                 <input
@@ -126,7 +126,7 @@
             <button type="button" @click="$emit('cancel')" class="cancel-btn">
               Cancel
             </button>
-            <button type="submit" form="config-form" class="submit-btn" @click="handleSubmit">
+            <button type="submit" form="config-form" class="submit-btn">
               ✓ Set Config
             </button>
           </div>

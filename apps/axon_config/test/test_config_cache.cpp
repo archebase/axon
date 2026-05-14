@@ -4,8 +4,11 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <vector>
 
 #include "config_cache.hpp"
@@ -19,31 +22,32 @@ namespace test {
 class ConfigCacheTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    // Create a temporary test directory
-    test_dir_ = fs::temp_directory_path() / "axon_config_test_XXXXXX";
-    fs::create_directory(test_dir_);
+    test_root_ = fs::temp_directory_path() /
+                 ("axon_config_test_" +
+                  std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    test_dir_ = test_root_ / "config";
+    home_dir_ = test_root_ / "home";
+    fs::create_directories(test_dir_);
+    fs::create_directories(home_dir_);
+
+    const char* home = std::getenv("HOME");
+    original_home_ = home == nullptr ? "" : std::string(home);
+    had_home_ = home != nullptr;
+    setenv("HOME", home_dir_.string().c_str(), 1);
 
     // Set config dir to test directory
     cache_.set_config_dir(test_dir_.string());
-
-    // Clean up any existing global enabled marker from previous tests
-    std::string marker_path = cache_.enabled_marker_path();
-    fs::path marker_file(marker_path);
-    if (fs::exists(marker_file)) {
-      fs::remove(marker_file);
-    }
   }
 
   void TearDown() override {
-    // Clean up test directory
-    if (fs::exists(test_dir_)) {
-      fs::remove_all(test_dir_);
+    if (had_home_) {
+      setenv("HOME", original_home_.c_str(), 1);
+    } else {
+      unsetenv("HOME");
     }
-    // Also clean up the global enabled marker
-    std::string marker_path = cache_.enabled_marker_path();
-    fs::path marker_file(marker_path);
-    if (fs::exists(marker_file)) {
-      fs::remove(marker_file);
+
+    if (fs::exists(test_root_)) {
+      fs::remove_all(test_root_);
     }
   }
 
@@ -63,7 +67,11 @@ protected:
   }
 
   ConfigCache cache_;
+  fs::path test_root_;
   fs::path test_dir_;
+  fs::path home_dir_;
+  std::string original_home_;
+  bool had_home_ = false;
 };
 
 // =============================================================================
@@ -328,6 +336,26 @@ TEST_F(ConfigCacheTest, IncrementalScanNoChanges) {
   );
 }
 
+TEST_F(ConfigCacheTest, IncrementalScanAfterLoadPreservesUnchangedAttachmentSize) {
+  const std::string unchanged_content = "unchanged-content";
+  const std::string modified_content = "modified-content-that-is-longer";
+  create_test_file("file1.txt", unchanged_content);
+  create_test_file("file2.txt", "old");
+  ASSERT_EQ(cache_.scan(false).status, ConfigCache::Status::Ok);
+
+  ConfigCache fresh_cache;
+  fresh_cache.set_config_dir(test_dir_.string());
+  ASSERT_EQ(fresh_cache.load(), ConfigCache::Status::Ok);
+
+  create_test_file("file2.txt", modified_content);
+  auto result = fresh_cache.scan(true);
+  ASSERT_EQ(result.status, ConfigCache::Status::Ok);
+
+  const auto info = fresh_cache.get_status();
+  EXPECT_EQ(info.file_count, 2);
+  EXPECT_EQ(info.total_size, unchanged_content.size() + modified_content.size());
+}
+
 // =============================================================================
 // Test: Hidden files are skipped
 // =============================================================================
@@ -341,6 +369,15 @@ TEST_F(ConfigCacheTest, ScanSkipsHiddenFiles) {
   EXPECT_EQ(result.status, ConfigCache::Status::Ok);
 
   // Should only count non-hidden files
+  EXPECT_EQ(result.file_count, 1);
+}
+
+TEST_F(ConfigCacheTest, ScanSkipsHiddenDirectories) {
+  create_test_file(".panel_history/previous.snapshot", "old config");
+  create_test_file("robot/type.txt", "AGV-500");
+
+  auto result = cache_.scan(false);
+  EXPECT_EQ(result.status, ConfigCache::Status::Ok);
   EXPECT_EQ(result.file_count, 1);
 }
 

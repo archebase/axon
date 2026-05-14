@@ -10,12 +10,16 @@
 
 #include "embedded_assets.hpp"
 #include "httplib.h"
+#include "panel_api.hpp"
 
 void print_usage(const char* program_name) {
   std::cout << "Usage: " << program_name << " [OPTIONS]\n"
             << "\nOptions:\n"
             << "  --port PORT       HTTP server port (default: 8082)\n"
             << "  --rpc PORT        Recorder RPC port (default: panel port - 2)\n"
+            << "  --config-dir DIR  Robot config directory (default: AXON_PANEL_CONFIG_DIR or ~/.axon/config)\n"
+            << "  --recording-dir DIR\n"
+            << "                    Recording task directory (default: AXON_PANEL_RECORDING_DIR or /tmp/axon/recording)\n"
             << "  --version         Show version information\n"
             << "  --help            Show this help message\n"
             << std::endl;
@@ -24,6 +28,7 @@ void print_usage(const char* program_name) {
 int main(int argc, char* argv[]) {
   int port = 8082;    // Default: recorder HTTP RPC port (8080) + 2
   int rpc_port = -1;  // -1 means derive from panel port (port - 2)
+  axon::panel::PanelApiOptions panel_options = axon::panel::make_default_panel_api_options();
 
   // Simple argument parsing
   for (int i = 1; i < argc; i++) {
@@ -50,8 +55,20 @@ int main(int argc, char* argv[]) {
         std::cerr << "RPC port must be between 1 and 65535" << std::endl;
         return 1;
       }
+    } else if (arg == "--config-dir" && i + 1 < argc) {
+      panel_options.config_dir = argv[++i];
+      if (panel_options.config_dir.empty()) {
+        std::cerr << "Config directory must not be empty" << std::endl;
+        return 1;
+      }
+    } else if (arg == "--recording-dir" && i + 1 < argc) {
+      panel_options.recording_dir = argv[++i];
+      if (panel_options.recording_dir.empty()) {
+        std::cerr << "Recording directory must not be empty" << std::endl;
+        return 1;
+      }
     } else if (arg == "--version") {
-      std::cout << "AxonPanel v0.3.0" << std::endl;
+      std::cout << "AxonPanel v0.4.0" << std::endl;
       return 0;
     } else if (arg == "--help") {
       print_usage(argv[0]);
@@ -75,8 +92,11 @@ int main(int argc, char* argv[]) {
 
   httplib::Server svr;
 
+  axon::panel::register_panel_api(svr, panel_options);
+
   // Serve runtime configuration as JavaScript
   svr.Get("/config.js", [effective_rpc_port](const httplib::Request& req, httplib::Response& res) {
+    (void)req;
     std::string config_js = "window.__AXON_CONFIG__=" + std::to_string(effective_rpc_port) + ";";
     res.set_content(config_js, "application/javascript");
   });
@@ -109,6 +129,8 @@ int main(int argc, char* argv[]) {
 
   std::cout << "Starting AxonPanel on http://0.0.0.0:" << port << std::endl;
   std::cout << "Recorder RPC port: " << effective_rpc_port << std::endl;
+  std::cout << "Config directory: " << panel_options.config_dir << std::endl;
+  std::cout << "Recording directory: " << panel_options.recording_dir << std::endl;
 
   if (!svr.listen("0.0.0.0", port)) {
     std::cerr << "Failed to start server on port " << port << std::endl;
