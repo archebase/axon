@@ -14,7 +14,7 @@
 #
 # Prerequisites:
 #   - Python 3.11+
-#   - fsfe-reuse (pip install reuse)
+#   - fsfe-reuse on PATH, or Python venv support for local auto-install
 # =============================================================================
 
 set -e
@@ -76,13 +76,30 @@ fi
 PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP '\d+\.\d+' | head -1)
 echo -e "Python version: ${GREEN}${PYTHON_VERSION}${NC}"
 
-# Check reuse
-if ! command -v reuse &> /dev/null; then
-    echo -e "${YELLOW}reuse not found, installing...${NC}"
-    pip install reuse
+REUSE_CMD=()
+if command -v reuse &> /dev/null; then
+    REUSE_CMD=(reuse)
+else
+    REUSE_VENV="${PROJECT_ROOT}/.cache/ci-tools/reuse"
+    echo -e "${YELLOW}reuse not found, preparing local venv: ${REUSE_VENV}${NC}"
+
+    if [ ! -x "${REUSE_VENV}/bin/reuse" ]; then
+        if ! python3 -m venv "${REUSE_VENV}"; then
+            echo -e "${RED}Error: failed to create Python venv for reuse${NC}"
+            echo "Install python3-venv or install reuse on PATH, then rerun this script."
+            exit 1
+        fi
+        "${REUSE_VENV}/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --timeout 60 \
+            --retries 5 \
+            reuse
+    fi
+
+    REUSE_CMD=("${REUSE_VENV}/bin/reuse")
 fi
 
-REUSE_VERSION=$(reuse --version 2>&1 | head -1)
+REUSE_VERSION=$("${REUSE_CMD[@]}" --version 2>&1 | head -1)
 echo -e "reuse version: ${GREEN}${REUSE_VERSION}${NC}"
 
 echo ""
@@ -93,7 +110,7 @@ echo ""
 echo -e "${YELLOW}Running REUSE compliance check...${NC}"
 echo ""
 
-if reuse lint; then
+if "${REUSE_CMD[@]}" lint; then
     echo ""
     echo -e "${GREEN}✓ REUSE compliance check passed!${NC}"
 else
@@ -116,7 +133,7 @@ if [ "$GENERATE_SBOM" = true ]; then
     echo ""
     echo -e "${YELLOW}Generating SPDX SBOM...${NC}"
 
-    reuse spdx --output reuse.spdx
+    "${REUSE_CMD[@]}" spdx --output reuse.spdx
     echo -e "${GREEN}✓ SPDX SBOM generated: ${PROJECT_ROOT}/reuse.spdx${NC}"
 
     # Show summary

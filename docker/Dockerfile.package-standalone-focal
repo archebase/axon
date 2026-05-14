@@ -34,8 +34,8 @@ RUN apt-get update && apt-get install -y \
     vim-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Add focal-backports for debhelper 13
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
+# Enable focal-backports for debhelper 13
+RUN add-apt-repository -y "deb http://archive.ubuntu.com/ubuntu focal-backports main universe" && \
     apt-get update && \
     apt-get install -y -t focal-backports debhelper && \
     rm -rf /var/lib/apt/lists/*

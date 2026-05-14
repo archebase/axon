@@ -9,7 +9,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/axon/bin/axon-recorder --plugin /opt/axon/plugins/%i
+ExecStart=/opt/axon/bin/axon-recorder --plugin /opt/axon/plugins/symlinks/%i.so
 Restart=on-failure
 User=axon
 Group=axon
