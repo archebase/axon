@@ -134,6 +134,10 @@ struct RecordingConfig {
   /// decrease within a topic (reduces playback backward skips after pause
   /// compensation).
   bool enforce_monotonic_timestamps_per_topic = false;
+
+  /// Generate the fast-parse JSON sidecar after MCAP close. MCAP metadata
+  /// injection remains enabled when this is false.
+  bool sidecar_json_enabled = true;
 };
 
 /**
@@ -209,6 +213,22 @@ struct WsClientConfig {
   int reconnect_max_delay_ms = 60000;         // Maximum reconnect delay
   double reconnect_jitter_factor = 0.2;       // Jitter factor for reconnection
   int ping_interval_ms = 30000;               // Ping interval for keepalive
+  bool time_gap_check_enabled = true;         // Compare Keystone message time with local time
+  int64_t time_gap_warning_threshold_ms = 1000;
+  int64_t time_gap_critical_threshold_ms = 5000;
+  int64_t time_gap_stale_after_ms = 60000;
+};
+
+/**
+ * Optional incident bundle emitted after a completed recording.
+ *
+ * The bundle is written after the MCAP is finalized, so failures here must not
+ * affect the original MCAP. It contains a copy of the MCAP plus a redacted
+ * manifest with config, version/runtime context, and diagnostics.
+ */
+struct IncidentBundleConfig {
+  bool enabled = false;
+  std::string directory;  // Empty means next to the MCAP file.
 };
 
 /**
@@ -271,6 +291,7 @@ struct RecorderConfig {
   RecordingConfig recording;
   LoggingConfig logging;
   UploadConfig upload;
+  IncidentBundleConfig incident_bundle;
 
   // RPC configuration (HTTP server or WebSocket client mode)
   RpcModeConfig rpc;
@@ -555,6 +576,10 @@ private:
   std::vector<DiskUsagePathConfig> make_disk_usage_paths() const;
   DiskUsageSnapshot collect_disk_usage_snapshot(uint64_t current_task_bytes = 0) const;
   nlohmann::json get_disk_usage_status_json() const;
+  nlohmann::json get_keystone_time_gap_status_json() const;
+  nlohmann::json get_metadata_status_json() const;
+  nlohmann::json build_incident_diagnostic_snapshot() const;
+  void maybe_create_incident_bundle(const std::string& output_path);
   bool ensure_disk_capacity_before_start(const std::string& output_file);
   bool ensure_disk_capacity_before_write(size_t next_write_bytes);
   bool maybe_cleanup_disk_usage(
@@ -640,6 +665,15 @@ private:
   uint64_t last_session_final_file_size_ = 0;
   double last_session_active_duration_sec_ = 0.0;
   std::chrono::system_clock::time_point last_session_close_time_;
+  std::string last_session_output_path_;
+  bool last_session_sidecar_enabled_ = true;
+  bool last_session_sidecar_generated_ = false;
+  std::string last_session_sidecar_path_;
+  std::string last_session_checksum_;
+  bool last_session_incident_bundle_enabled_ = false;
+  bool last_session_incident_bundle_created_ = false;
+  std::string last_session_incident_bundle_path_;
+  std::string last_session_incident_bundle_error_;
   std::atomic<bool> cancel_in_progress_{false};
 
   mutable std::mutex pause_time_mutex_;

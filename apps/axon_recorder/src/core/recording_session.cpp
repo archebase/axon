@@ -42,8 +42,12 @@ bool RecordingSession::open(
   output_path_ = path;
   start_time_ = std::chrono::system_clock::now();
   messages_written_.store(0, std::memory_order_relaxed);
+  sidecar_generated_ = false;
+  final_file_size_ = 0;
+  close_time_ = std::chrono::system_clock::time_point{};
 
   // Set recording start time for metadata
+  metadata_injector_.reset_recording_state();
   metadata_injector_.set_recording_start_time(start_time_);
 
   // Clear registries
@@ -109,7 +113,7 @@ void RecordingSession::close() {
       final_file_size_ = actual_size;
     }
 
-    // 4. Patch final size into MCAP metadata, then generate sidecar JSON.
+    // 4. Patch final size into MCAP metadata, then optionally generate sidecar JSON.
     if (has_task_config_ && !output_path_.empty() && !ec) {
       // LCOV_EXCL_BR_START - logging macro branch coverage
       if (!metadata_injector_.update_mcap_file_size_metadata(output_path_, actual_size)) {
@@ -117,8 +121,18 @@ void RecordingSession::close() {
           "Failed to update MCAP file size metadata" << axon::logging::kv("path", output_path_)
         );
       }
-      if (!metadata_injector_.generate_sidecar_json(output_path_, actual_size)) {
-        AXON_LOG_WARN("Failed to generate sidecar JSON" << axon::logging::kv("path", output_path_));
+      if (sidecar_json_enabled_) {
+        sidecar_generated_ = metadata_injector_.generate_sidecar_json(output_path_, actual_size);
+        if (!sidecar_generated_) {
+          AXON_LOG_WARN(
+            "Failed to generate sidecar JSON" << axon::logging::kv("path", output_path_)
+          );
+        }
+      } else {
+        sidecar_generated_ = false;
+        AXON_LOG_INFO(
+          "Sidecar JSON generation disabled" << axon::logging::kv("path", output_path_)
+        );
       }
       // LCOV_EXCL_BR_STOP
     }
@@ -328,6 +342,10 @@ std::string RecordingSession::get_path() const {
 void RecordingSession::set_task_config(const TaskConfig& config) {
   metadata_injector_.set_task_config(config);
   has_task_config_ = true;
+}
+
+void RecordingSession::set_sidecar_json_enabled(bool enabled) {
+  sidecar_json_enabled_ = enabled;
 }
 
 std::string RecordingSession::get_sidecar_path() const {

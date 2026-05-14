@@ -200,10 +200,24 @@ public:
   void set_task_config(const TaskConfig& config);
 
   /**
+   * Enable or disable JSON sidecar generation. This does not affect embedded
+   * MCAP metadata injection.
+   */
+  void set_sidecar_json_enabled(bool enabled);
+
+  bool sidecar_json_enabled() const {
+    return sidecar_json_enabled_;
+  }
+
+  /**
    * Get the path to the generated sidecar JSON file.
    * Empty if metadata injection was not enabled or not yet generated.
    */
   std::string get_sidecar_path() const;
+
+  bool was_sidecar_generated() const {
+    return sidecar_generated_;
+  }
 
   /**
    * Get the computed checksum of the MCAP file.
@@ -263,6 +277,8 @@ private:
   // Metadata injection
   MetadataInjector metadata_injector_;
   bool has_task_config_ = false;
+  bool sidecar_json_enabled_ = true;
+  bool sidecar_generated_ = false;
 
   // Statistics (atomic for thread-safe reads)
   std::atomic<uint64_t> messages_written_{0};

@@ -8,11 +8,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <future>
 #include <iostream>
 #include <random>
 
 #include "../config/task_config.hpp"
+#include "../core/sensitive_data_filter.hpp"
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "ws_rpc_client"
@@ -44,8 +46,11 @@ WsRpcClient::~WsRpcClient() {
 }
 
 void WsRpcClient::start() {
+  stopped_ = false;
   net::post(strand_, [this]() {
-    stopped_ = false;
+    if (stopped_) {
+      return;
+    }
     connected_ = false;
     reconnect_attempt_ = 0;
     reconnect_scheduled_ = false;
@@ -55,6 +60,14 @@ void WsRpcClient::start() {
 }
 
 void WsRpcClient::stop() {
+  if (stopped_.exchange(true)) {
+    return;
+  }
+
+  if (!connected_.load() && state_ == ConnectionState::kStopped) {
+    return;
+  }
+
   auto cleanup = [this]() {
     stopped_ = true;
     connected_ = false;
@@ -91,6 +104,58 @@ bool WsRpcClient::is_connected() const {
 
 void WsRpcClient::register_callbacks(const RpcCallbacks& callbacks) {
   callbacks_ = callbacks;
+}
+
+nlohmann::json WsRpcClient::get_time_gap_status_json() const {
+  std::lock_guard<std::mutex> lock(time_gap_mutex_);
+  nlohmann::json j;
+  j["enabled"] = config_.time_gap_check_enabled;
+  j["warning_threshold_ms"] = config_.time_gap_warning_threshold_ms;
+  j["critical_threshold_ms"] = config_.time_gap_critical_threshold_ms;
+  j["stale_after_ms"] = config_.time_gap_stale_after_ms;
+
+  if (!config_.time_gap_check_enabled) {
+    j["status"] = "disabled";
+    j["reliable"] = false;
+    j["offset_ms"] = nullptr;
+    j["absolute_offset_ms"] = nullptr;
+    j["checked_at_ms"] = 0;
+    j["reason"] = "time-gap check disabled";
+    return j;
+  }
+
+  if (!time_gap_has_sample_) {
+    j["status"] = "unreliable";
+    j["reliable"] = false;
+    j["offset_ms"] = nullptr;
+    j["absolute_offset_ms"] = nullptr;
+    j["checked_at_ms"] = 0;
+    j["reason"] = time_gap_reason_;
+    return j;
+  }
+
+  std::string status = time_gap_status_;
+  bool reliable = time_gap_reliable_;
+  std::string reason = time_gap_reason_;
+  const int64_t now_ms = now_epoch_ms();
+  if (config_.time_gap_stale_after_ms > 0 &&
+      now_ms - time_gap_checked_at_ms_ > config_.time_gap_stale_after_ms) {
+    status = "unreliable";
+    reliable = false;
+    reason = "last Keystone time-gap check is stale";
+  }
+
+  j["status"] = status;
+  j["reliable"] = reliable;
+  j["offset_ms"] = time_gap_offset_ms_;
+  j["absolute_offset_ms"] = std::llabs(time_gap_offset_ms_);
+  j["checked_at_ms"] = time_gap_checked_at_ms_;
+  j["reason"] = reason;
+  return j;
+}
+
+void WsRpcClient::observe_keystone_time_gap_for_test(const nlohmann::json& msg) {
+  observe_keystone_time_gap(msg);
 }
 
 void WsRpcClient::send_state_update(
@@ -322,6 +387,7 @@ void WsRpcClient::on_read(beast::error_code ec, std::size_t bytes) {
 
   try {
     auto json = nlohmann::json::parse(data);
+    observe_keystone_time_gap(json);
     handle_server_message(json);
   } catch (const std::exception& e) {
     AXON_LOG_ERROR("Failed to parse WebSocket message" << kv("error", e.what()));
@@ -376,7 +442,7 @@ void WsRpcClient::on_write(beast::error_code ec, std::size_t bytes) {
 void WsRpcClient::handle_server_message(const nlohmann::json& msg) {
   // Check if this is an RPC request
   if (!msg.contains("action") || !msg.contains("request_id")) {
-    AXON_LOG_WARN("Invalid RPC message format" << kv("msg", msg.dump()));
+    AXON_LOG_WARN("Invalid RPC message format" << kv("msg", redact_sensitive_json(msg).dump()));
     return;
   }
 
@@ -438,6 +504,105 @@ void WsRpcClient::handle_server_message(const nlohmann::json& msg) {
 
   // Send response
   send_rpc_response(request_id, response);
+}
+
+void WsRpcClient::observe_keystone_time_gap(const nlohmann::json& msg) {
+  if (!config_.time_gap_check_enabled) {
+    return;
+  }
+
+  const int64_t local_ms = now_epoch_ms();
+  const auto remote_ms = extract_message_timestamp_ms(msg);
+  std::string status;
+  bool reliable = false;
+  int64_t offset_ms = 0;
+  std::string reason;
+
+  if (!remote_ms.has_value()) {
+    status = "unreliable";
+    reason = "Keystone message has no timestamp";
+  } else {
+    offset_ms = local_ms - remote_ms.value();
+    const int64_t absolute_offset_ms = std::llabs(offset_ms);
+    reliable = true;
+    reason = "ok";
+    if (absolute_offset_ms >= config_.time_gap_critical_threshold_ms) {
+      status = "critical";
+      reason = "clock offset reached critical threshold";
+    } else if (absolute_offset_ms >= config_.time_gap_warning_threshold_ms) {
+      status = "warning";
+      reason = "clock offset reached warning threshold";
+    } else {
+      status = "normal";
+    }
+  }
+
+  bool should_log = false;
+  {
+    std::lock_guard<std::mutex> lock(time_gap_mutex_);
+    time_gap_has_sample_ = true;
+    time_gap_reliable_ = reliable;
+    time_gap_offset_ms_ = offset_ms;
+    time_gap_checked_at_ms_ = local_ms;
+    time_gap_status_ = status;
+    time_gap_reason_ = reason;
+    should_log = last_logged_time_gap_status_ != status;
+    if (should_log) {
+      last_logged_time_gap_status_ = status;
+    }
+  }
+
+  if (should_log) {
+    if (status == "critical") {
+      AXON_LOG_ERROR(
+        "Keystone time-gap check critical"
+        << kv("offset_ms", offset_ms) << kv("threshold_ms", config_.time_gap_critical_threshold_ms)
+      );
+    } else if (status == "warning") {
+      AXON_LOG_WARN(
+        "Keystone time-gap check warning"
+        << kv("offset_ms", offset_ms) << kv("threshold_ms", config_.time_gap_warning_threshold_ms)
+      );
+    } else if (status == "unreliable") {
+      AXON_LOG_WARN("Keystone time-gap check unreliable" << kv("reason", reason));
+    } else {
+      AXON_LOG_INFO("Keystone time-gap check normal" << kv("offset_ms", offset_ms));
+    }
+  }
+}
+
+std::optional<int64_t> WsRpcClient::extract_message_timestamp_ms(const nlohmann::json& msg) const {
+  const char* keys[] = {"timestamp_ms", "server_time_ms", "keystone_time_ms", "timestamp"};
+  for (const char* key : keys) {
+    if (!msg.contains(key)) {
+      continue;
+    }
+    const auto& value = msg.at(key);
+    if (value.is_number_integer()) {
+      return value.get<int64_t>();
+    }
+    if (value.is_number_float()) {
+      return static_cast<int64_t>(value.get<double>());
+    }
+    if (value.is_string()) {
+      try {
+        size_t parsed = 0;
+        const int64_t result = std::stoll(value.get<std::string>(), &parsed);
+        if (parsed == value.get<std::string>().size()) {
+          return result;
+        }
+      } catch (const std::exception&) {
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+int64_t WsRpcClient::now_epoch_ms() const {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch()
+  )
+    .count();
 }
 
 void WsRpcClient::send_rpc_response(const std::string& request_id, const RpcResponse& response) {

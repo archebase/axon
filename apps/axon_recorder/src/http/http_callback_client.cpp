@@ -115,7 +115,13 @@ std::string FinishCallbackPayload::to_json() const {
   oss << "\"message_count\": " << message_count << ", ";
   oss << "\"file_size_bytes\": " << file_size_bytes << ", ";
   oss << "\"output_path\": \"" << escape_json_string(output_path) << "\", ";
-  oss << "\"sidecar_path\": \"" << escape_json_string(sidecar_path) << "\", ";
+  if (sidecar_path.empty()) {
+    oss << "\"sidecar_path\": null, ";
+  } else {
+    oss << "\"sidecar_path\": \"" << escape_json_string(sidecar_path) << "\", ";
+  }
+  oss << "\"sidecar_enabled\": " << (sidecar_enabled ? "true" : "false") << ", ";
+  oss << "\"sidecar_generated\": " << (sidecar_generated ? "true" : "false") << ", ";
   oss << "\"topics\": " << string_array_to_json(topics) << ", ";
   // Metadata summary
   oss << "\"metadata\": {";

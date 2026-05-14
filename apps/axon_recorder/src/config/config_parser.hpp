@@ -29,6 +29,7 @@ struct S3Config;
 struct RetryConfig;
 struct UploadConfig;
 struct LoggingConfig;
+struct IncidentBundleConfig;
 struct HttpServerConfig;
 struct RpcModeConfig;
 struct RecorderConfig;
@@ -83,6 +84,7 @@ private:
   bool parse_recording(const YAML::Node& node, RecordingConfig& recording);
   bool parse_logging(const YAML::Node& node, LoggingConfig& logging);
   bool parse_upload(const YAML::Node& node, UploadConfig& upload);
+  bool parse_incident_bundle(const YAML::Node& node, IncidentBundleConfig& incident_bundle);
   bool parse_http_server(const YAML::Node& node, HttpServerConfig& http_server);
   bool parse_rpc(const YAML::Node& node, RpcModeConfig& rpc);
 

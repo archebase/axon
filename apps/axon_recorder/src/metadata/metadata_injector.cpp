@@ -192,6 +192,16 @@ void MetadataInjector::set_task_config(const TaskConfig& config) {
   has_task_config_ = true;
 }
 
+void MetadataInjector::reset_recording_state() {
+  start_time_ = std::chrono::system_clock::time_point{};
+  finish_time_ = std::chrono::system_clock::time_point{};
+  topic_stats_.clear();
+  sidecar_path_.clear();
+  checksum_.clear();
+  injected_message_count_ = 0;
+  has_injected_message_count_ = false;
+}
+
 void MetadataInjector::set_recording_start_time(std::chrono::system_clock::time_point time) {
   start_time_ = time;
 }

@@ -55,6 +55,8 @@ struct FinishCallbackPayload {
   int64_t file_size_bytes;
   std::string output_path;
   std::string sidecar_path;  // Path to the JSON sidecar file
+  bool sidecar_enabled = true;
+  bool sidecar_generated = false;
   std::vector<std::string> topics;
   CallbackMetadata metadata;  // Task metadata summary
   std::string error;          // Empty if no error

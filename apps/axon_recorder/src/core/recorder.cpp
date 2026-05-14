@@ -22,6 +22,7 @@
 #include "../config/config_parser.hpp"
 #include "../http/rpc_handlers.hpp"
 #include "../http/ws_rpc_client.hpp"
+#include "incident_debug_bundle.hpp"
 
 // Logging infrastructure
 #define AXON_LOG_COMPONENT "recorder"
@@ -181,6 +182,8 @@ AxonRecorder::~AxonRecorder() {
 
 bool AxonRecorder::initialize(const RecorderConfig& config) {
   config_ = config;
+  last_session_sidecar_enabled_ = config_.recording.sidecar_json_enabled;
+  last_session_incident_bundle_enabled_ = config_.incident_bundle.enabled;
 
   ::axon::logging::LoggingConfig log_config;
   convert_logging_config(config_.logging, log_config);
@@ -350,6 +353,125 @@ nlohmann::json AxonRecorder::get_disk_usage_status_json() const {
     }
   }
   return collect_disk_usage_snapshot(current_task_bytes).to_json();
+}
+
+nlohmann::json AxonRecorder::get_keystone_time_gap_status_json() const {
+  if (config_.rpc.mode != RpcMode::WS_CLIENT) {
+    return nlohmann::json{
+      {"enabled", false},
+      {"status", "unavailable"},
+      {"reliable", false},
+      {"offset_ms", nullptr},
+      {"absolute_offset_ms", nullptr},
+      {"reason", "recorder is not running in WebSocket client mode"}
+    };
+  }
+
+  if (!ws_rpc_client_) {
+    return nlohmann::json{
+      {"enabled", config_.rpc.ws_client.time_gap_check_enabled},
+      {"status", "unavailable"},
+      {"reliable", false},
+      {"offset_ms", nullptr},
+      {"absolute_offset_ms", nullptr},
+      {"reason", "WebSocket RPC client is not running"}
+    };
+  }
+
+  return ws_rpc_client_->get_time_gap_status_json();
+}
+
+nlohmann::json AxonRecorder::get_metadata_status_json() const {
+  nlohmann::json j;
+  j["output_path"] = last_session_output_path_.empty() ? nlohmann::json(nullptr)
+                                                       : nlohmann::json(last_session_output_path_);
+  j["sidecar_enabled"] = last_session_sidecar_enabled_;
+  j["sidecar_generated"] = last_session_sidecar_generated_;
+  j["sidecar_path"] = last_session_sidecar_path_.empty()
+                        ? nlohmann::json(nullptr)
+                        : nlohmann::json(last_session_sidecar_path_);
+  j["checksum_sha256"] = last_session_checksum_.empty() ? nlohmann::json(nullptr)
+                                                        : nlohmann::json(last_session_checksum_);
+  j["incident_bundle_enabled"] = last_session_incident_bundle_enabled_;
+  j["incident_bundle_created"] = last_session_incident_bundle_created_;
+  j["incident_bundle_path"] = last_session_incident_bundle_path_.empty()
+                                ? nlohmann::json(nullptr)
+                                : nlohmann::json(last_session_incident_bundle_path_);
+  j["incident_bundle_error"] = last_session_incident_bundle_error_.empty()
+                                 ? nlohmann::json(nullptr)
+                                 : nlohmann::json(last_session_incident_bundle_error_);
+  return j;
+}
+
+nlohmann::json AxonRecorder::build_incident_diagnostic_snapshot() const {
+  auto stats = get_statistics();
+  nlohmann::json j;
+  j["state"] = get_state_string();
+  j["messages_received"] = stats.messages_received;
+  j["messages_written"] = stats.messages_written;
+  j["messages_dropped"] = stats.messages_dropped;
+  j["bytes_written"] = stats.bytes_written;
+  j["bytes_received"] = stats.bytes_received;
+  j["duration_sec"] = stats.duration_sec;
+  j["metadata"] = get_metadata_status_json();
+  j["disk_usage"] = get_disk_usage_status_json();
+  j["keystone_time_gap"] = get_keystone_time_gap_status_json();
+  if (latency_monitor_) {
+    j["latency"] = latency_monitor_->get_stats_json();
+  }
+  if (worker_pool_) {
+    nlohmann::json topic_counts = nlohmann::json::object();
+    for (const auto& topic_name : worker_pool_->get_topics()) {
+      auto ts = worker_pool_->get_topic_stats(topic_name);
+      nlohmann::json t;
+      t["received"] = ts.received;
+      t["written"] = ts.written;
+      t["dropped"] = ts.dropped;
+      topic_counts[topic_name] = t;
+    }
+    j["topic_message_counts"] = topic_counts;
+  }
+  j["buffer_pool"] = buffer_pool_stats_json();
+  return j;
+}
+
+void AxonRecorder::maybe_create_incident_bundle(const std::string& output_path) {
+  last_session_incident_bundle_enabled_ = config_.incident_bundle.enabled;
+  last_session_incident_bundle_created_ = false;
+  last_session_incident_bundle_path_.clear();
+  last_session_incident_bundle_error_.clear();
+
+  if (!config_.incident_bundle.enabled) {
+    return;
+  }
+  if (cancel_in_progress_.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  IncidentDebugBundleRequest request;
+  request.config = config_.incident_bundle;
+  request.mcap_path = output_path;
+  request.mcap_file_size = last_session_final_file_size_;
+  request.checksum_sha256 = last_session_checksum_;
+  request.sidecar_path = last_session_sidecar_path_;
+  request.sidecar_enabled = last_session_sidecar_enabled_;
+  request.sidecar_generated = last_session_sidecar_generated_;
+  request.task_config = task_config_ ? &task_config_.value() : nullptr;
+  request.recorder_config = &config_;
+  request.diagnostic_snapshot = build_incident_diagnostic_snapshot();
+
+  IncidentDebugBundleWriter writer;
+  auto result = writer.create(request);
+  last_session_incident_bundle_created_ = result.created;
+  last_session_incident_bundle_path_ = result.bundle_path;
+  if (!result.success) {
+    last_session_incident_bundle_error_ = result.error_message;
+    AXON_LOG_WARN(
+      "Failed to create incident debug bundle" << axon::logging::kv("error", result.error_message)
+    );
+  } else if (result.created) {
+    AXON_LOG_INFO("Incident debug bundle created" << axon::logging::kv("path", result.bundle_path));
+  }
 }
 
 bool AxonRecorder::maybe_cleanup_disk_usage(
@@ -574,6 +696,15 @@ bool AxonRecorder::start() {
   last_session_active_duration_sec_ = 0.0;
   last_session_final_file_size_ = 0;
   last_session_close_time_ = std::chrono::system_clock::time_point{};
+  last_session_output_path_.clear();
+  last_session_sidecar_enabled_ = config_.recording.sidecar_json_enabled;
+  last_session_sidecar_generated_ = false;
+  last_session_sidecar_path_.clear();
+  last_session_checksum_.clear();
+  last_session_incident_bundle_enabled_ = config_.incident_bundle.enabled;
+  last_session_incident_bundle_created_ = false;
+  last_session_incident_bundle_path_.clear();
+  last_session_incident_bundle_error_.clear();
 
   for (const auto& name : plugin_startup_order_) {
     const auto* pd = plugin_loader_.get_descriptor(name);
@@ -586,6 +717,7 @@ bool AxonRecorder::start() {
 
   // Create recording session
   recording_session_ = std::make_unique<RecordingSession>();
+  recording_session_->set_sidecar_json_enabled(config_.recording.sidecar_json_enabled);
 
   // Configure MCAP options
   mcap_wrapper::McapWriterOptions mcap_options;
@@ -820,6 +952,7 @@ void AxonRecorder::stop() {
   // 4. Close recording session (injects metadata, generates sidecar).
   if (recording_session_) {
     AXON_LOG_INFO("Closing recording session");
+    const std::string output_path = recording_session_->get_path();
     const double wall_duration_sec = recording_session_->get_duration_sec();
     const double paused_duration_sec = static_cast<double>(current_pause_offset_ns()) / 1e9;
     last_session_active_duration_sec_ =
@@ -830,6 +963,13 @@ void AxonRecorder::stop() {
 
     last_session_final_file_size_ = recording_session_->get_final_file_size();
     last_session_close_time_ = recording_session_->get_close_time();
+    last_session_output_path_ = output_path;
+    last_session_sidecar_enabled_ = recording_session_->sidecar_json_enabled();
+    last_session_sidecar_generated_ = recording_session_->was_sidecar_generated();
+    last_session_sidecar_path_ = recording_session_->get_sidecar_path();
+    last_session_checksum_ = recording_session_->get_checksum();
+
+    maybe_create_incident_bundle(output_path);
 
     recording_session_.reset();
   }
@@ -951,6 +1091,8 @@ RpcCallbacks AxonRecorder::make_rpc_callbacks() {
 
     j["buffer_pool"] = buffer_pool_stats_json();
     j["disk_usage"] = this->get_disk_usage_status_json();
+    j["metadata"] = this->get_metadata_status_json();
+    j["keystone_time_gap"] = this->get_keystone_time_gap_status_json();
     return j;
   };
 
@@ -1080,11 +1222,9 @@ RpcCallbacks AxonRecorder::make_rpc_callbacks() {
     }
 
     std::string output_path;
-    std::string sidecar_path;
     std::chrono::system_clock::time_point start_time;
     if (recording_session_) {
       output_path = recording_session_->get_path();
-      sidecar_path = sidecar_path_for_output(output_path);
       start_time = recording_session_->get_start_time();
     }
 
@@ -1129,7 +1269,9 @@ RpcCallbacks AxonRecorder::make_rpc_callbacks() {
       payload.message_count = static_cast<int64_t>(pre_stop_stats.messages_written);
       payload.file_size_bytes = file_size_bytes;
       payload.output_path = output_path;
-      payload.sidecar_path = sidecar_path;
+      payload.sidecar_path = last_session_sidecar_path_;
+      payload.sidecar_enabled = last_session_sidecar_enabled_;
+      payload.sidecar_generated = last_session_sidecar_generated_;
       payload.topics = task_config.topics;
       payload.metadata.scene = task_config.scene;
       payload.metadata.subscene = task_config.subscene;

@@ -4,7 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <thread>
 
 #include "../../src/core/recorder.hpp"
@@ -12,6 +14,17 @@
 #include "../../src/http/ws_rpc_client.hpp"
 
 using namespace axon::recorder;
+
+namespace {
+
+int64_t now_epoch_ms_for_test() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch()
+  )
+    .count();
+}
+
+}  // namespace
 
 class WsRpcClientTest : public ::testing::Test {
 protected:
@@ -146,6 +159,39 @@ TEST_F(WsRpcClientTest, ConfigDefaults) {
   EXPECT_EQ(config.reconnect_max_delay_ms, 60000);
   EXPECT_DOUBLE_EQ(config.reconnect_jitter_factor, 0.2);
   EXPECT_EQ(config.ping_interval_ms, 30000);
+  EXPECT_TRUE(config.time_gap_check_enabled);
+  EXPECT_EQ(config.time_gap_warning_threshold_ms, 1000);
+  EXPECT_EQ(config.time_gap_critical_threshold_ms, 5000);
+  EXPECT_EQ(config.time_gap_stale_after_ms, 60000);
+}
+
+TEST_F(WsRpcClientTest, TimeGapReportsNormalWarningCriticalAndUnreliable) {
+  WsClientConfig config = test_config_;
+  config.time_gap_warning_threshold_ms = 100;
+  config.time_gap_critical_threshold_ms = 500;
+  WsRpcClient client(ioc_, config);
+
+  client.observe_keystone_time_gap_for_test({{"timestamp", now_epoch_ms_for_test()}});
+  auto status = client.get_time_gap_status_json();
+  EXPECT_EQ(status["status"], "normal");
+  EXPECT_TRUE(status["reliable"]);
+
+  client.observe_keystone_time_gap_for_test({{"timestamp", now_epoch_ms_for_test() - 200}});
+  status = client.get_time_gap_status_json();
+  EXPECT_EQ(status["status"], "warning");
+  EXPECT_TRUE(status["reliable"]);
+  EXPECT_GE(status["absolute_offset_ms"].get<int64_t>(), 100);
+
+  client.observe_keystone_time_gap_for_test({{"timestamp", now_epoch_ms_for_test() - 800}});
+  status = client.get_time_gap_status_json();
+  EXPECT_EQ(status["status"], "critical");
+  EXPECT_TRUE(status["reliable"]);
+  EXPECT_GE(status["absolute_offset_ms"].get<int64_t>(), 500);
+
+  client.observe_keystone_time_gap_for_test({{"action", "get_state"}});
+  status = client.get_time_gap_status_json();
+  EXPECT_EQ(status["status"], "unreliable");
+  EXPECT_FALSE(status["reliable"]);
 }
 
 // Test: RpcModeConfig defaults
