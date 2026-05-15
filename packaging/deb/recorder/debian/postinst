@@ -35,6 +35,10 @@ if [ ! -d /var/lib/axon ]; then
     chmod 755 /var/lib/axon
 fi
 
+# Create plugin symlink directory used by axon-recorder@<plugin>.service
+mkdir -p /opt/axon/plugins/symlinks
+chmod 755 /opt/axon/plugins /opt/axon/plugins/symlinks
+
 # Create system config directory
 if [ ! -d /etc/axon ]; then
     mkdir -p /etc/axon

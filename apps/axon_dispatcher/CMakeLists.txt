@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 
 cmake_minimum_required(VERSION 3.14)
-project(axon_dispatcher VERSION 0.3.0 LANGUAGES CXX)
+project(axon_dispatcher VERSION 0.4.0 LANGUAGES CXX)
 
 # =============================================================================
 # Installation Configuration
