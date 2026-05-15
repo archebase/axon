@@ -157,7 +157,7 @@ axon-system --host 127.0.0.1 --port 8091 --state-dir /var/lib/axon/system
   "data": {
     "service": {
       "name": "axon-system",
-      "version": "0.4.0-dev",
+      "version": "0.4.0",
       "state": "running",
       "pid": 1234,
       "started_at": "2026-05-12T08:00:00Z",

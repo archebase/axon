@@ -343,7 +343,7 @@ bool MetadataInjector::generate_sidecar_json(
     finish_time_ = std::chrono::system_clock::now();
   }
 
-  // Compute SHA-256 checksum (always enabled)
+  // Compute SHA-256 checksum for the optional JSON sidecar.
   checksum_ = compute_sha256(mcap_path);
   if (checksum_.empty()) {
     return false;

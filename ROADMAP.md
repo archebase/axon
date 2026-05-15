@@ -2,7 +2,7 @@
 
 This document outlines the development roadmap for the Axon project. Axon is an **in-process**, high-performance robotic data recorder with a plugin-based architecture. The core objective is to operate reliably in high-bandwidth scenarios (images/point clouds) while providing observable and maintainable recording capabilities.
 
-## Version 0.2.0 (Current Version)
+## Version 0.2.0 (Baseline)
 
 ### Plugin System (Core Feature)
 - ✅ **Plugin Architecture**: Middleware-agnostic core with dynamic plugin loading
@@ -66,7 +66,7 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ---
 
-## Version 0.3.0 (In Planning)
+## Version 0.3.0 (Completed)
 
 ### Web Control Panel (AxonPanel)
 - ✅ Frontend Interface
@@ -150,7 +150,7 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ---
 
-## Version 0.4.0 (Performance Optimization)
+## Version 0.4.0 (Current Release: Performance and Operations)
 
 ### Advanced Monitoring
 - [ ] Message Integrity Monitoring
@@ -167,6 +167,20 @@ This document outlines the development roadmap for the Axon project. Axon is an 
   - ✅ Bandwidth utilization
   - ✅ Queue depth monitoring
 
+### Recording Metadata and Diagnostics
+- [✅] Optional Sidecar JSON
+  - [✅] Disable sidecar generation with `metadata.sidecar.enabled`, `recording.sidecar.enabled`, or `sidecar_generation_mode`
+  - [✅] Decouple MCAP metadata injection from sidecar JSON generation
+  - [✅] Report `sidecar_enabled`, `sidecar_generated`, and `sidecar_path: null` in finish callbacks and `/rpc/status`
+- [✅] Keystone Time-Gap Diagnostics
+  - [✅] Parse Keystone timestamps in WebSocket client mode and calculate local clock offset
+  - [✅] Report `normal`, `warning`, `critical`, `unreliable`, and `unavailable` states
+  - [✅] Expose the latest check in `/rpc/status` and incident diagnostic snapshots
+- [✅] Incident Debug Bundle
+  - [✅] Optionally generate MCAP, sidecar, and `manifest.json` debug bundles after recording finishes
+  - [✅] Keep bundle failures isolated from MCAP close and normal recording completion
+  - [✅] Redact token, secret, password, access key, and callback URL values in manifests and anomaly logs
+
 ### Memory Optimization
 - [✅] Zero-Copy Optimization
   - [✅] Avoid extra copies during serialization
@@ -177,12 +191,12 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ### Copy Optimization
 - [✅] Batch Writes
-  - [✅] Multi-message aggregation for single write
-  - [✅] Reduce system call overhead
+  - [✅] Multi-message aggregation for single write (`McapWriterWrapper::write_batch()`)
+  - [✅] Reduce system call overhead through single lock acquisition and batch stats updates
 - [✅] Compression Optimization
-  - [✅] Compression and write decoupling
-  - [✅] Zstd/LZ4 compression benchmark comparison
-  - [✅] Optional compression level tuning
+  - [✅] Decouple compression and disk writes with `AsyncMcapWriter`
+  - [✅] Zstd/LZ4 compression benchmark comparison (`core/axon_mcap/bench/bench_compression`)
+  - [✅] Optional compression level tuning through unified `CompressionLevel` presets
 
 ### Hybrid Recording
 - [✅] Unified recording pipeline for ROS binary + UDP JSON in a single MCAP file
@@ -190,22 +204,22 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 - [✅] Per-source topic namespace isolation
 
 ### Robot Configuration Management via Web UI
-- [ ] **AxonPanel Config Integration**
-  - [ ] View current robot configuration (URDF, calibration, sensors)
-  - [ ] Upload and update configuration files
-  - [ ] Trigger config scan and cache rebuild
-  - [ ] Enable/disable config injection toggle
-  - [ ] Config change history and diff view
+- [✅] **AxonPanel Config Integration**
+  - [✅] View current robot configuration (URDF, calibration, sensors)
+  - [✅] Upload and update configuration files
+  - [✅] Trigger config scan and cache rebuild
+  - [✅] Enable/disable config injection toggle
+  - [✅] Config change history and diff view
 
 ### Usability Enhancements
 - [ ] Configuration Management Enhancements
-  - [ ] Configuration validation and error messages
+  - [✅] Configuration validation and error messages
   - [ ] More configuration templates and presets
-- [ ] Recording Task Management
-  - [ ] Task list viewing
-  - [ ] Batch operations
+- [✅] Recording Task Management
+  - [✅] Task list viewing
+  - [✅] Batch operations
 - [ ] Logging and Troubleshooting
-  - [ ] Dynamic log level adjustment
+  - [✅] Dynamic log level adjustment
   - [ ] Key event highlighting
   - [ ] Error diagnostic suggestions
 

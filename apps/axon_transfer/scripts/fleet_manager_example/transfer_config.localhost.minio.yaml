@@ -21,7 +21,10 @@ ws:
 
 scanner:
   data_dir: "/tmp/axon/recording"
+  # true = legacy MCAP+JSON mode; false = MCAP-only mode with <task>.mcap.done
   require_json_sidecar: true
+  completion_marker_suffix: ".done"
+  min_ready_age_ms: 0
 
 uploader:
   state_db_path: "/tmp/axon/transfer/transfer_state.db"

@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/ArcheBase/Axon/graph/badge.svg?token=2NJARPM7KH)](https://codecov.io/gh/ArcheBase/Axon)
 [![License](https://img.shields.io/badge/License-Mulan%20PSL%20v2-blue)](LICENSE)
 
-A high-performance, plugin-based data recorder with ROS1/ROS2 compatibility and fleet-ready HTTP RPC control for task-centric recording to MCAP format.
+A high-performance, plugin-based data recorder with ROS1/ROS2 compatibility, fleet-ready RPC control, local operations services, and task-centric recording to MCAP format.
 
 **Current version:** 0.4.0
 
@@ -36,8 +36,19 @@ Server/Fleet Manager → Recording Services → State Machine → MCAP
 - **MCAP Format**: Efficient append-only container compatible with Foxglove Studio
 - **Lock-Free Queues**: Per-topic SPSC queues for zero-copy message handling
 - **Multi-ROS Support**: ROS 1 Noetic and ROS 2 Humble/Jazzy/Rolling
-- **Metadata Injection**: Embeds task/device/recording metadata + sidecar JSON
+- **Metadata Injection**: Embeds task/device/recording metadata with optional sidecar JSON
+- **Transfer Daemon**: Uploads MCAP artifacts to S3-compatible storage with crash recovery and ACK-gated cleanup
+- **Robot Configuration Management**: Registers devices, refreshes Keystone configs, and injects config cache attachments
+- **Operations Services**: Agent and system monitor services expose robot actions, process state, resources, and alerts
 - **Structured Logging**: Boost.Log with console/file/ROS sinks
+
+## Version 0.4.0 Highlights
+
+- **Sidecar-Optional Recording**: MCAP metadata remains embedded when JSON sidecar generation is disabled.
+- **MCAP-Only Upload**: `axon-transfer` can treat `<task_id>.mcap.done` as the completion signal instead of requiring `<task_id>.json`.
+- **Control Plane Expansion**: AxonPanel now includes robot config upload, scan, injection toggles, history, diffs, task batching, and log-level controls.
+- **Fleet Operations**: New `axon-agent` and `axon-system` services cover local action execution, managed process control, resource telemetry, and alerts.
+- **Diagnostics**: Recorder status and callbacks now report disk guard state, sidecar state, Keystone time gap, and optional incident debug bundles.
 
 ## Dependencies
 
@@ -220,6 +231,13 @@ recording:
     hard_limit_gb: 100.0
     max_task_size_gb: 0.0
     cleanup_enabled: false
+  sidecar:
+    enabled: true
+
+metadata:
+  incident_bundle:
+    enabled: false
+    directory: ""
 
 # HTTP RPC server configuration
 http_server:
@@ -288,7 +306,9 @@ curl http://localhost:8080/rpc/stats
 `/rpc/status` returns the same operational snapshot as `/rpc/stats` and includes
 `disk_usage.state` (`normal`, `warn`, or `hard_limit`), monitored recording and
 upload backlog paths, total used bytes, filesystem capacity, and configured
-warn/hard thresholds.
+warn/hard thresholds. It also reports sidecar state (`sidecar_enabled`,
+`sidecar_generated`, `sidecar_path`), the current task snapshot, and Keystone
+time-gap diagnostics when the recorder runs in WebSocket client mode.
 
 **Complete API Documentation:**
 
@@ -349,6 +369,7 @@ docker-compose exec ros1-noetic /bin/bash
 - **Lock-Free Queues**: Per-topic SPSC queues with cache-line alignment prevent false sharing
 - **Copy-Minimized**: Minimized allocations and copies in message path
 - **Direct Serialization**: MCAP stores ROS messages directly without conversion overhead
+- **Batch and Async Writes**: Batch aggregation and async MCAP writers decouple serialization, compression, and disk I/O
 - **Bounded Memory**: Fixed-capacity queues with backpressure
 - **Async I/O**: Non-blocking HTTP callbacks
 
@@ -379,7 +400,7 @@ ctest --output-on-failure
 - ✅ Logging infrastructure (console/file sinks)
 - ✅ SPSC queue (lock-free operations)
 - ✅ State machine (transitions, guards)
-- ✅ Metadata injector (MCAP metadata, sidecar JSON)
+- ✅ Metadata injector (MCAP metadata, optional sidecar JSON)
 - ✅ HTTP RPC server (all endpoints)
 - ✅ Plugin interface (ABI compatibility)
 - ✅ Configuration parser (YAML validation)
@@ -453,7 +474,11 @@ The system uses ROS message introspection to handle all message types dynamicall
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed system architecture
 - **[ROADMAP.md](ROADMAP.md)** - Project development roadmap ([中文版](ROADMAP_ZH.md))
+- **[docs/release-notes/v0.4.0.md](docs/release-notes/v0.4.0.md)** - v0.4.0 release notes and migration checklist
 - **[docs/designs/rpc-api-design.md](docs/designs/rpc-api-design.md)** - HTTP RPC API specification
+- **[apps/axon_transfer/README.md](apps/axon_transfer/README.md)** - Transfer daemon configuration and MCAP-only upload notes
+- **[apps/axon_config/README.md](apps/axon_config/README.md)** - Robot config registration, refresh, cache, and injection workflow
+- **[apps/axon_system/README.md](apps/axon_system/README.md)** - Local system monitor service
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributor guidelines ([中文版](CONTRIBUTING_ZH.md))
 - **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** - Code of conduct ([中文版](CODE_OF_CONDUCT_ZH.md))
 

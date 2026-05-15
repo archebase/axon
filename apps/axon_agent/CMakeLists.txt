@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 
 cmake_minimum_required(VERSION 3.14)
-project(axon_agent LANGUAGES CXX)
+project(axon_agent VERSION 0.4.0 LANGUAGES CXX)
 
 if(CMAKE_PROJECT_VERSION)
     set(AXON_AGENT_VERSION "${CMAKE_PROJECT_VERSION}")
 else()
-    set(AXON_AGENT_VERSION "0.4.0-dev")
+    set(AXON_AGENT_VERSION "0.4.0")
 endif()
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)

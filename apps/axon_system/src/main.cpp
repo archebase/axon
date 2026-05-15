@@ -18,7 +18,7 @@
 #include "system_service.hpp"
 
 #ifndef AXON_SYSTEM_VERSION
-#define AXON_SYSTEM_VERSION "0.4.0-dev"
+#define AXON_SYSTEM_VERSION "0.4.0"
 #endif
 
 namespace {

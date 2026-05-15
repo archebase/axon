@@ -17,6 +17,10 @@ The scanner supports two completion modes:
 `completion_marker_suffix` defaults to `.done`. `min_ready_age_ms` can add a quiet period for both
 the MCAP and completion sentinel when deployments need extra protection against filesystem latency.
 
+The packaged sample keeps `require_json_sidecar: true` for backward compatibility with existing
+MCAP+JSON deployments. New sidecar-optional fleets should switch it to `false` after recorder
+finalization is configured to write the `.done` marker.
+
 ## Upload State
 
 Upload state is stored in `uploader.state_db_path` and survives process restarts. Records include:
@@ -81,3 +85,9 @@ For MCAP-first deployments, recorder finalization writes `<task_id>.mcap.done` a
 is closed and metadata handling is complete. Switch transfer configs to `require_json_sidecar:
 false` to consume that marker. Legacy MCAP+JSON deployments can keep `require_json_sidecar: true`
 without changing object layout.
+
+When `require_json_sidecar: false`, transfer does not require or upload `<task_id>.json`. Fleet
+indexers that previously depended on the JSON sidecar should read `axon.task`, `axon.device`,
+`axon.recording`, and `axon.topics` metadata from the MCAP file instead. Mixed fleets can run both
+modes by assigning devices to separate transfer configs or by keeping JSON sidecars enabled until
+cloud-side metadata extraction supports MCAP metadata fallback.

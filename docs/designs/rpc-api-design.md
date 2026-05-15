@@ -288,7 +288,7 @@ Content-Type: application/json
 
 **Behavior:**
 - Stop recording and save MCAP file
-- Inject metadata and generate sidecar JSON
+- Inject MCAP metadata and generate sidecar JSON when enabled
 - Return to IDLE state
 - **Program continues running**, HTTP server keeps listening
 - Can call `/rpc/begin` again to start a new recording
@@ -438,7 +438,7 @@ Content-Type: application/json
 **Behavior:**
 - Stops producers and drains in-flight messages so plugin-owned buffers are released safely
 - Closes the active MCAP session without sending the normal `finished` callback
-- Deletes the partial MCAP and generated sidecar JSON artifacts
+- Deletes the partial MCAP and any generated sidecar JSON artifacts
 - Clears the cached task configuration; subsequent state/status/task APIs do not expose the cancelled task
 
 **Valid From States:**
@@ -844,7 +844,7 @@ GET / HTTP/1.1
 {
   "status": "ok",
   "service": "AxonRecorder",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "running": true,
   "state": "recording"
 }
