@@ -761,7 +761,7 @@ std::optional<json> find_history_item(
   const json history = read_history(options, 500);
   for (const auto& item : history) {
     if (item.value("id", "") == history_id) {
-      return item;
+      return std::optional<json>{item};
     }
   }
   return std::nullopt;
