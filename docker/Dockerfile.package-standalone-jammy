@@ -15,8 +15,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
 ARG AXON_APT_MIRROR=default
-COPY docker/scripts/setup-apt-mirror.sh /usr/local/bin/setup-apt-mirror.sh
-RUN chmod +x /usr/local/bin/setup-apt-mirror.sh && \
+COPY docker/scripts/setup-apt-mirror.sh docker/scripts/install-nodejs.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh /usr/local/bin/install-nodejs.sh && \
     /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
 
 # Install basic build tools and packaging dependencies
@@ -41,12 +41,10 @@ RUN apt-get update && apt-get install -y \
     vim-common \
     && rm -rf /var/lib/apt/lists/*
 
-ARG CURL_RETRY_ARGS="--retry 5 --retry-delay 10 --retry-connrefused --connect-timeout 30 --max-time 600"
+ARG CURL_RETRY_ARGS="--retry 5 --retry-delay 10 --retry-connrefused --retry-all-errors --connect-timeout 30 --max-time 600"
 
 # Install Node.js 18.x from NodeSource repository (required for axon-panel)
-RUN curl -fsSL ${CURL_RETRY_ARGS} https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+RUN CURL_RETRY_ARGS="${CURL_RETRY_ARGS}" NODE_MAJOR=18 /usr/local/bin/install-nodejs.sh
 
 # Install common dependencies
 RUN apt-get update && apt-get install -y \
