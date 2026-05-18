@@ -76,6 +76,49 @@ proxy_for_container() {
     printf "%s" "$proxy"
 }
 
+detect_host_country_code() {
+    local country="${AXON_PACKAGE_COUNTRY:-}"
+
+    if [ -z "$country" ] && command -v curl &> /dev/null; then
+        country="$(curl -fsSL --max-time 8 https://ipinfo.io/country 2>/dev/null || true)"
+    fi
+    if [ -z "$country" ] && command -v curl &> /dev/null; then
+        country="$(curl -fsSL --max-time 8 https://ifconfig.co/country-iso 2>/dev/null || true)"
+    fi
+
+    country="$(printf "%s" "$country" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+    printf "%.2s" "$country"
+}
+
+configure_package_apt_mirror_args() {
+    local requested="${AXON_PACKAGE_APT_MIRROR:-auto}"
+    local country=""
+
+    case "$requested" in
+        ""|auto)
+            country="$(detect_host_country_code)"
+            if [ "$country" = "CN" ]; then
+                AXON_PACKAGE_APT_MIRROR="tsinghua"
+            else
+                AXON_PACKAGE_APT_MIRROR="default"
+            fi
+            ;;
+        cn|CN|china|China|tsinghua|tuna)
+            AXON_PACKAGE_APT_MIRROR="tsinghua"
+            ;;
+        default|none|off|http://*|https://*)
+            AXON_PACKAGE_APT_MIRROR="$requested"
+            ;;
+        *)
+            log_warn "Unsupported AXON_PACKAGE_APT_MIRROR='${requested}', using default Ubuntu apt mirror"
+            AXON_PACKAGE_APT_MIRROR="default"
+            ;;
+    esac
+
+    export AXON_PACKAGE_APT_MIRROR
+    DOCKER_APT_MIRROR_BUILD_ARGS=(--build-arg "AXON_APT_MIRROR=${AXON_PACKAGE_APT_MIRROR}")
+}
+
 configure_docker_proxy_args() {
     local host_http_proxy="${AXON_PACKAGE_HTTP_PROXY:-}"
     local host_https_proxy="${AXON_PACKAGE_HTTPS_PROXY:-}"
@@ -147,7 +190,9 @@ fi
 DOCKER_PROXY_BUILD_ARGS=()
 DOCKER_PROXY_RUN_ARGS=()
 DOCKER_HOST_GATEWAY_ARGS=()
+DOCKER_APT_MIRROR_BUILD_ARGS=()
 AXON_PACKAGE_PROXY_INHERITED="${AXON_PACKAGE_PROXY_INHERITED:-0}"
+configure_package_apt_mirror_args
 configure_docker_proxy_args
 
 # Create output directory
@@ -267,9 +312,12 @@ log_section "Building ${IMAGE_NAME} Image"
 if [ "${AXON_PACKAGE_PROXY_INHERITED}" -eq 1 ]; then
     log_info "Host proxy inherited for Docker package builds."
 fi
+if [ "${AXON_PACKAGE_APT_MIRROR}" != "default" ] && [ "${AXON_PACKAGE_APT_MIRROR}" != "none" ] && [ "${AXON_PACKAGE_APT_MIRROR}" != "off" ]; then
+    log_info "Using ${AXON_PACKAGE_APT_MIRROR} Ubuntu apt mirror for Docker package builds."
+fi
 
 # Build Docker image
-if docker build "${DOCKER_HOST_GATEWAY_ARGS[@]}" "${DOCKER_PROXY_BUILD_ARGS[@]}" -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" "${PROJECT_ROOT}"; then
+if docker build "${DOCKER_HOST_GATEWAY_ARGS[@]}" "${DOCKER_APT_MIRROR_BUILD_ARGS[@]}" "${DOCKER_PROXY_BUILD_ARGS[@]}" -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" "${PROJECT_ROOT}"; then
     log_info "Docker image built successfully"
 else
     log_error "Failed to build Docker image"

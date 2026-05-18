@@ -80,6 +80,48 @@ proxy_for_container() {
     printf "%s" "$proxy"
 }
 
+detect_host_country_code() {
+    local country="${AXON_PACKAGE_COUNTRY:-}"
+
+    if [ -z "$country" ] && command -v curl &> /dev/null; then
+        country="$(curl -fsSL --max-time 8 https://ipinfo.io/country 2>/dev/null || true)"
+    fi
+    if [ -z "$country" ] && command -v curl &> /dev/null; then
+        country="$(curl -fsSL --max-time 8 https://ifconfig.co/country-iso 2>/dev/null || true)"
+    fi
+
+    country="$(printf "%s" "$country" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+    printf "%.2s" "$country"
+}
+
+configure_package_apt_mirror_env() {
+    local requested="${AXON_PACKAGE_APT_MIRROR:-auto}"
+    local country=""
+
+    case "$requested" in
+        ""|auto)
+            country="$(detect_host_country_code)"
+            if [ "$country" = "CN" ]; then
+                AXON_PACKAGE_APT_MIRROR="tsinghua"
+            else
+                AXON_PACKAGE_APT_MIRROR="default"
+            fi
+            ;;
+        cn|CN|china|China|tsinghua|tuna)
+            AXON_PACKAGE_APT_MIRROR="tsinghua"
+            ;;
+        default|none|off|http://*|https://*)
+            AXON_PACKAGE_APT_MIRROR="$requested"
+            ;;
+        *)
+            log_warn "Unsupported AXON_PACKAGE_APT_MIRROR='${requested}', using default Ubuntu apt mirror"
+            AXON_PACKAGE_APT_MIRROR="default"
+            ;;
+    esac
+
+    export AXON_PACKAGE_APT_MIRROR
+}
+
 configure_package_proxy_env() {
     local host_http_proxy=""
     local host_https_proxy=""
@@ -196,6 +238,9 @@ print_progress_snapshot() {
     if [ "${AXON_PACKAGE_PROXY_INHERITED:-0}" -eq 1 ]; then
         log_info "Host proxy inherited for Docker package builds."
     fi
+    if [ "${AXON_PACKAGE_APT_MIRROR:-default}" != "default" ] && [ "${AXON_PACKAGE_APT_MIRROR:-default}" != "none" ] && [ "${AXON_PACKAGE_APT_MIRROR:-default}" != "off" ]; then
+        log_info "Using ${AXON_PACKAGE_APT_MIRROR} Ubuntu apt mirror for Docker package builds."
+    fi
     printf "%-10s %-8s %s\n" "Distro" "Status" "Latest output"
     printf "%-10s %-8s %s\n" "------" "------" "-------------"
 
@@ -243,6 +288,7 @@ if ! command -v docker &> /dev/null; then
 fi
 
 configure_package_proxy_env
+configure_package_apt_mirror_env
 
 mkdir -p "${OUTPUT_DIR}" "${LOG_DIR}"
 
@@ -258,6 +304,9 @@ log_info "Logs: ${LOG_DIR}"
 log_info "Progress snapshot interval: ${STATUS_INTERVAL}s"
 if [ "${AXON_PACKAGE_PROXY_INHERITED}" -eq 1 ]; then
     log_info "Host proxy inherited for Docker package builds."
+fi
+if [ "${AXON_PACKAGE_APT_MIRROR}" != "default" ] && [ "${AXON_PACKAGE_APT_MIRROR}" != "none" ] && [ "${AXON_PACKAGE_APT_MIRROR}" != "off" ]; then
+    log_info "Using ${AXON_PACKAGE_APT_MIRROR} Ubuntu apt mirror for Docker package builds."
 fi
 
 for distro in "${distros[@]}"; do

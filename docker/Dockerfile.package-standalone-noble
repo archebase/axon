@@ -14,6 +14,11 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
+ARG AXON_APT_MIRROR=default
+COPY docker/scripts/setup-apt-mirror.sh /usr/local/bin/setup-apt-mirror.sh
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh && \
+    /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
+
 # Install basic build tools and packaging dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \

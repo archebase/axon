@@ -28,6 +28,11 @@ Thumbs.db
 *.gcno
 coverage/
 
+# Package build artifacts
+packaging/deb/build/
+packaging/deb/output/
+packaging/deb/logs/
+
 # Documentation builds
 docs/_build/
 
@@ -39,7 +44,6 @@ __pycache__/
 # Docker files (avoid recursive copying)
 docker/*.md
 docker/TROUBLESHOOTING.md
-
 
 
 

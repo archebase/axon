@@ -13,8 +13,14 @@ FROM ros:noetic-ros-base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
+ARG AXON_APT_MIRROR=default
+COPY docker/scripts/setup-apt-mirror.sh /usr/local/bin/setup-apt-mirror.sh
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh && \
+    /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
+
 # Add Ubuntu 20.04 backports for debhelper 13
-RUN echo "deb http://archive.ubuntu.com/ubuntu/ focal-backports main restricted universe multiverse" > /etc/apt/sources.list.d/backports.list
+RUN ubuntu_mirror="$(cat /etc/apt/axon-ubuntu-mirror-url)" && \
+    echo "deb ${ubuntu_mirror} focal-backports main restricted universe multiverse" > /etc/apt/sources.list.d/backports.list
 
 # Install Debian packaging tools (from backports for debhelper 13)
 RUN apt-get update && apt-get install -y \
