@@ -15,8 +15,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
 ARG AXON_APT_MIRROR=default
-COPY docker/scripts/setup-apt-mirror.sh docker/scripts/install-nodejs.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/setup-apt-mirror.sh /usr/local/bin/install-nodejs.sh && \
+COPY docker/scripts/setup-apt-mirror.sh docker/scripts/install-nodejs.sh docker/scripts/retry-curl.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh /usr/local/bin/install-nodejs.sh /usr/local/bin/retry-curl.sh && \
     /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
 
 # Install basic build tools and packaging dependencies
@@ -41,10 +41,12 @@ RUN apt-get update && apt-get install -y \
     vim-common \
     && rm -rf /var/lib/apt/lists/*
 
-ARG CURL_RETRY_ARGS="--retry 5 --retry-delay 10 --retry-connrefused --retry-all-errors --connect-timeout 30 --max-time 600"
+ARG CURL_RETRY_ARGS="--connect-timeout 30 --max-time 600"
+ARG CURL_RETRY_ATTEMPTS=5
+ARG CURL_RETRY_DELAY=10
 
 # Install Node.js 18.x from NodeSource repository (required for axon-panel)
-RUN CURL_RETRY_ARGS="${CURL_RETRY_ARGS}" NODE_MAJOR=18 /usr/local/bin/install-nodejs.sh
+RUN CURL_RETRY_ARGS="${CURL_RETRY_ARGS}" CURL_RETRY_ATTEMPTS="${CURL_RETRY_ATTEMPTS}" CURL_RETRY_DELAY="${CURL_RETRY_DELAY}" NODE_MAJOR=18 /usr/local/bin/install-nodejs.sh
 
 # Install common dependencies
 RUN apt-get update && apt-get install -y \
@@ -69,7 +71,7 @@ RUN apt-get update && apt-get install -y \
 # This avoids network access during package builds.
 ARG MCAP_COMMIT=a7eeff1383cc95a29dd9c5cac94104d277b5414e
 RUN cd /tmp && \
-    curl -fsSL ${CURL_RETRY_ARGS} "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz" -o mcap.tar.gz && \
+    retry-curl.sh "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz" -o mcap.tar.gz && \
     tar xzf mcap.tar.gz && \
     mkdir -p /opt/mcap && \
     mv "mcap-${MCAP_COMMIT}"/* /opt/mcap/ && \
@@ -78,7 +80,7 @@ RUN cd /tmp && \
 
 # Pre-download cpp-httplib for axon-panel FetchContent
 RUN cd /tmp && \
-    curl -fsSL ${CURL_RETRY_ARGS} "https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.15.3.tar.gz" -o httplib.tar.gz && \
+    retry-curl.sh "https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.15.3.tar.gz" -o httplib.tar.gz && \
     tar xzf httplib.tar.gz && \
     mkdir -p /opt/cpp-httplib && \
     mv cpp-httplib-0.15.3/* /opt/cpp-httplib/ && \

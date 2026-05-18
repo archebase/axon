@@ -5,7 +5,7 @@
 set -u
 
 node_major="${NODE_MAJOR:-18}"
-curl_retry_args="${CURL_RETRY_ARGS:---retry 5 --retry-delay 10 --retry-connrefused --retry-all-errors --connect-timeout 30 --max-time 600}"
+curl_retry_args="${CURL_RETRY_ARGS:---connect-timeout 30 --max-time 600}"
 retry_attempts="${CURL_RETRY_ATTEMPTS:-5}"
 retry_delay="${CURL_RETRY_DELAY:-10}"
 nodesource_keyring="/usr/share/keyrings/nodesource.gpg"
@@ -31,6 +31,14 @@ run_with_retry() {
 }
 
 curl_fetch() {
+    if command -v retry-curl.sh >/dev/null 2>&1; then
+        CURL_RETRY_ARGS="$curl_retry_args" \
+            CURL_RETRY_ATTEMPTS="$retry_attempts" \
+            CURL_RETRY_DELAY="$retry_delay" \
+            retry-curl.sh "$@"
+        return "$?"
+    fi
+
     # Intentionally allow word splitting so Docker build args can pass curl flags.
     # shellcheck disable=SC2086
     run_with_retry curl -fsSL ${curl_retry_args} "$@"
@@ -203,9 +211,10 @@ else
     status="$?"
     echo "NodeSource install failed with ${status}; trying fallback installer." >&2
     clear_nodesource_repo
-    install_from_node_binary
+    install_from_node_binary || exit 1
 fi
 
-node --version
-npm --version
+verify_nodejs || exit 1
+node --version || exit 1
+npm --version || exit 1
 rm -rf /var/lib/apt/lists/*
