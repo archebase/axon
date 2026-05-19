@@ -9,6 +9,7 @@ default_mirror="http://archive.ubuntu.com/ubuntu"
 ubuntu_mirror="$default_mirror"
 ros1_mirror="http://packages.ros.org/ros/ubuntu"
 ros2_mirror="http://packages.ros.org/ros2/ubuntu"
+strip_ros_sources=0
 
 case "$mirror" in
     ""|default|none|off)
@@ -17,6 +18,7 @@ case "$mirror" in
         ubuntu_mirror="http://mirrors.tuna.tsinghua.edu.cn/ubuntu"
         ros1_mirror="http://mirrors.tuna.tsinghua.edu.cn/ros/ubuntu"
         ros2_mirror="http://mirrors.tuna.tsinghua.edu.cn/ros2/ubuntu"
+        strip_ros_sources=1
         ;;
     http://*|https://*)
         ubuntu_mirror="${mirror%/}"
@@ -63,6 +65,16 @@ rewrite_file() {
         -e "s|http://packages.ros.org/ros2/ubuntu|${ros2_mirror}|g" \
         -e "s|https://packages.ros.org/ros2/ubuntu|${ros2_mirror}|g" \
         "$file"
+
+    if [ "$strip_ros_sources" -eq 1 ] && { grep -Fq "$ros1_mirror" "$file" || grep -Fq "$ros2_mirror" "$file"; }; then
+        sed -i \
+            -e '/^Types:/s/[[:space:]]deb-src//g' \
+            -e '/^Types:/s/deb-src[[:space:]]//g' \
+            -e '/^Types:[[:space:]]*$/s/.*/Types: deb/' \
+            -e "\|^[[:space:]]*deb-src[[:space:]].*${ros1_mirror}|d" \
+            -e "\|^[[:space:]]*deb-src[[:space:]].*${ros2_mirror}|d" \
+            "$file"
+    fi
 }
 
 rewrite_file /etc/apt/sources.list
