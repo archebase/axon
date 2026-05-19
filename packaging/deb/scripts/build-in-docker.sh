@@ -181,6 +181,16 @@ configure_docker_proxy_args() {
     fi
 }
 
+prefetch_docker_sources_if_needed() {
+    case "$DOCKERFILE" in
+        Dockerfile.package-standalone-*)
+            log_section "Prefetching Docker Package Sources"
+            AXON_PACKAGE_SOURCE_CACHE_DIR="${PROJECT_ROOT}/packaging/deb/source-cache" \
+                "${SCRIPT_DIR}/prefetch-docker-sources.sh"
+            ;;
+    esac
+}
+
 # Check if Docker is available
 if ! command -v docker &> /dev/null; then
     log_error "Docker not found. Please install Docker first."
@@ -307,6 +317,8 @@ if [ ! -f "$DOCKERFILE_PATH" ]; then
     log_error "Dockerfile not found: $DOCKERFILE_PATH"
     exit 1
 fi
+
+prefetch_docker_sources_if_needed
 
 log_section "Building ${IMAGE_NAME} Image"
 if [ "${AXON_PACKAGE_PROXY_INHERITED}" -eq 1 ]; then
