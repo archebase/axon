@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [0.4.0] - 2026-05-22
+
+### Added
+- **agent**: Add the Axon Agent supervisor service with robot profiles, process lifecycle control, local action registry, and robot adapter plugin interface.
+- **system**: Add the `axon-system` monitor service for process/resource telemetry, alert evaluation, and local HTTP status APIs.
+- **config**: Add Keystone device registration, config refresh, persisted registration status, and rendered robot config download support.
+- **panel**: Add the robot configuration workspace with file upload/update, validation, cache scans, injection toggles, history, and diffs.
+- **recorder**: Add disk usage guards, task-size limits, cleanup controls, control-plane task APIs, incident debug bundles, and Keystone time-gap diagnostics.
+- **recorder**: Add sidecar-equivalent MCAP metadata so task, device, recording, and topic metadata remain embedded when JSON sidecars are disabled.
+- **transfer**: Add MCAP-only completion mode using `<task_id>.mcap.done` markers, optional JSON sidecar upload state, and richer transfer status diagnostics.
+- **packaging**: Add agent/system Debian packages, systemd units, standalone packaging fixes, and release packaging validation updates.
+
+### Changed
+- **version**: Bump Axon release metadata to `0.4.0` across CMake, app/package versions, runtime fallbacks, and Debian changelogs.
+- **recorder**: Make JSON sidecar generation optional while keeping MCAP metadata injection enabled by default.
+- **recorder**: Expand `/rpc/status`, callbacks, and WebSocket status surfaces with sidecar state, disk usage, Keystone time gap, and task diagnostics.
+- **transfer**: Preserve legacy MCAP+JSON scanning by default while allowing deployments to switch to MCAP-only scanning with `require_json_sidecar: false`.
+- **docs**: Update roadmap, README, transfer docs, and metadata/RPC design notes for v0.4.0 behavior and migration impact.
+
+### Fixed
+- **packaging**: Resolve v0.4 release blockers around standalone builds, package versions, service installation, and reuse/format checks.
+- **recorder**: Harden cancellation and finalization so partial artifacts and optional sidecars are handled consistently.
+- **transfer**: Avoid treating changing MCAP files as complete by requiring a fresh completion sentinel in MCAP-only mode.
+- **ci**: Restore complete format checks and local REUSE validation coverage.
+
+### Migration Notes
+- Deployments that disable JSON sidecars should set recorder `recording.sidecar.enabled: false` or `metadata.sidecar.enabled: false`; downstream clients must treat `sidecar_path: null` as the expected absence of a sidecar.
+- Transfer deployments that consume MCAP-only recordings must set `scanner.require_json_sidecar: false` and rely on `<task_id>.mcap.done` markers. Existing MCAP+JSON deployments can keep `scanner.require_json_sidecar: true`.
+- The new agent/system services install as separate packages and systemd units; installations that use the `axon-all` meta package should review the added services before enabling them on production robots.
+
 ## [0.3.4] - 2026-04-29
 
 ### Added
@@ -198,7 +228,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/ArcheBase/Axon/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ArcheBase/Axon/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/ArcheBase/Axon/compare/v0.3.0...v0.3.4
 [0.3.0]: https://github.com/ArcheBase/Axon/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/ArcheBase/Axon/compare/v0.2.0...v0.2.1

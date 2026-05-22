@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(axon_config LANGUAGES CXX)
+project(axon_config VERSION 0.4.0 LANGUAGES CXX)
 
 # =============================================================================
 # Installation Configuration

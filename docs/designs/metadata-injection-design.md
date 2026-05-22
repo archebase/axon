@@ -231,7 +231,7 @@ In addition to Metadata records, we set standard MCAP Header fields:
 
 ### File Naming Convention
 
-For each MCAP file, generate a corresponding JSON sidecar:
+When sidecar generation is enabled, generate a corresponding JSON sidecar:
 
 ```
 task_20251220_143052_abc123.mcap  →  task_20251220_143052_abc123.json
@@ -606,11 +606,11 @@ void McapWriter::finalize() {
     // 7. Patch final file size into the fixed-width MCAP metadata value.
     patchFileSizeMetadata(output_path_, getFileSize());
 
-    // 8. Compute checksum (always enabled). The checksum is not written into MCAP.
-    std::string checksum = computeSHA256(output_path_);
-
-    // 9. Generate sidecar JSON (always enabled)
-    generateSidecarJson(checksum);
+    // 8. Generate sidecar JSON only when sidecar generation is enabled.
+    if (sidecar_enabled_) {
+        std::string checksum = computeSHA256(output_path_);
+        generateSidecarJson(checksum);
+    }
 }
 ```
 
@@ -781,6 +781,7 @@ The output directory is configured via:
 | **Self-describing** | MCAP file contains all metadata even without the sidecar |
 | **Consistent naming** | Both files share the same basename (task_id) |
 | **Checksum integrity** | SHA-256 checksum is included in sidecar when sidecar generation is enabled |
+| **MCAP-only completion** | Sidecar-disabled deployments can use a fresh `.mcap.done` marker for transfer readiness |
 
 ### Downstream System Responsibilities
 
@@ -801,7 +802,7 @@ Downstream systems may validate:
 | `factory` valid | JSON/MCAP | Required for multi-factory deployments |
 | `file_size_bytes` matches | JSON vs filesystem | Data integrity check |
 | `mcap_file` matches filename | JSON | Sidecar/MCAP pairing check |
-| `checksum_sha256` valid | JSON vs computed | Integrity verification (always available) |
+| `checksum_sha256` valid | JSON vs computed | Integrity verification when sidecar is generated |
 | `message_count > 0` | JSON/MCAP | Non-empty recording check |
 
 ## Performance Considerations
@@ -811,10 +812,10 @@ Downstream systems may validate:
 | Operation | Timing | Impact |
 |-----------|--------|--------|
 | MCAP metadata records | At finalization | ~1ms (negligible) |
-| Sidecar JSON generation | At finalization | ~5ms |
-| SHA-256 checksum | At finalization | ~10ms/GB (always computed) |
+| Sidecar JSON generation | At finalization when enabled | ~5ms |
+| SHA-256 checksum | At finalization when sidecar is enabled | ~10ms/GB |
 
-**Note**: All operations are performed at finalization. SHA-256 checksum adds ~10ms/GB overhead but ensures data integrity for all recordings. For a typical 2GB recording, this adds ~20ms to finalization time.
+**Note**: All operations are performed at finalization. Disabling sidecar generation skips sidecar JSON and recorder-side checksum generation, while MCAP metadata records are still written.
 
 ### Read Performance
 
@@ -831,7 +832,7 @@ Downstream systems may validate:
 1. **Metadata Sanitization**: All string values should be sanitized before writing
 2. **Size Limits**: Enforce maximum lengths on metadata fields to prevent abuse
 3. **No Secrets**: Never store credentials, tokens, or PII in metadata
-4. **Checksum Integrity**: SHA-256 checksum (always computed) enables tamper detection
+4. **Checksum Integrity**: SHA-256 checksum in the JSON sidecar or upload state enables tamper detection when generated
 
 ### Field Length Limits
 
@@ -849,13 +850,13 @@ Downstream systems may validate:
 ### Unit Tests
 
 1. **Metadata writing**: Verify MCAP metadata records are correctly formatted
-2. **JSON generation**: Verify sidecar JSON matches schema
+2. **JSON generation**: Verify sidecar JSON matches schema when enabled
 3. **Field sanitization**: Verify special characters are handled
 4. **Size limits**: Verify oversized fields are truncated
 
 ### Integration Tests
 
-1. **End-to-end**: Record → Finalize → Verify MCAP metadata → Verify JSON sidecar
+1. **End-to-end**: Record → Finalize → Verify MCAP metadata → Verify JSON sidecar when enabled
 2. **Edge compatibility**: JSON can be parsed by Synapse validators
 3. **Python SDK**: Metadata can be read with mcap Python package
 
@@ -901,7 +902,8 @@ TEST(MetadataInjectionTest, WriteAndReadTaskMetadata) {
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2025-12-20 | Initial design |
-| 1.1 | 2025-12-21 | Final design: removed `session_id`, `episode_number`, and `tags` fields; renamed `organization` to `factory`; sidecar JSON and SHA-256 checksum are always-on (not configurable) |
+| 1.1 | 2025-12-21 | Removed `session_id`, `episode_number`, and `tags` fields; renamed `organization` to `factory`; sidecar JSON and SHA-256 checksum were non-configurable in this revision |
+| 1.2 | 2026-05-22 | Sidecar JSON became optional; MCAP metadata remains authoritative and MCAP-only transfer uses `.mcap.done` markers |
 
 ## Appendix: MCAP Metadata Record Format
 

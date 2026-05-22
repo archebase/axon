@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(axon_transfer LANGUAGES CXX)
+project(axon_transfer VERSION 0.4.0 LANGUAGES CXX)
 
 # =============================================================================
 # Installation Configuration

@@ -73,9 +73,9 @@ The original `edge-uploader-design.md` specified the uploader as an in-process m
 ```
 
 **Relationship with axon_recorder:**
-- `axon_recorder` writes completed recordings to `data_dir` (MCAP + JSON sidecar)
+- `axon_recorder` writes completed recordings to `data_dir` (MCAP + optional JSON sidecar)
 - `axon_transfer` reads from the same `data_dir`; it never writes to it
-- Both can run concurrently; `axon_transfer` only picks up files after the recorder has finalized them (JSON sidecar present = recording is complete)
+- Both can run concurrently; `axon_transfer` only picks up files after the recorder has finalized them (JSON sidecar in legacy mode, `.mcap.done` marker in MCAP-only mode)
 
 ## WebSocket Client Design
 
@@ -466,24 +466,27 @@ The scanner assumes that `axon_recorder` writes recordings using the task_id as 
 ```
 {data_dir}/
 ├── {task_id}.mcap     ← recording data
-└── {task_id}.json     ← sidecar metadata (presence = recording is finalized)
+├── {task_id}.json     ← optional sidecar metadata for legacy mode
+└── {task_id}.mcap.done ← MCAP-only completion marker
 ```
 
-Both files must exist for a recording to be considered complete and uploadable.
+The scanner supports two completion contracts:
+- `require_json_sidecar: true`: `{task_id}.mcap` and `{task_id}.json` must both exist. The JSON sidecar is uploaded after the MCAP object.
+- `require_json_sidecar: false`: `{task_id}.mcap` and `{task_id}.mcap.done` must both exist, and the marker mtime must be at least as new as the MCAP mtime. No JSON sidecar is required.
 
 ### Scan by Task ID
 
 Used for `upload_request`:
-1. Construct `{data_dir}/{task_id}.mcap` and `{data_dir}/{task_id}.json`
-2. Verify both files exist and are regular files
+1. Construct `{data_dir}/{task_id}.mcap`, `{data_dir}/{task_id}.json`, and `{data_dir}/{task_id}.mcap.done`
+2. Verify the MCAP and the configured completion sentinel exist and are regular files
 3. Check `UploadStateManager` — skip if status is `COMPLETED`, `UPLOADING`, or `UPLOADED_WAIT_ACK`
-4. Return `FileGroup{mcap_path, json_path, task_id, file_size}`
+4. Return `FileGroup{mcap_path, json_path, completion_marker_path, task_id, file_size}`
 
 ### Bulk Scan
 
 Used for `upload_all`:
 1. Iterate `data_dir` recursively for all `*.mcap` files
-2. For each MCAP, check for a matching `*.json` sidecar in the same directory
+2. For each MCAP, check the configured completion sentinel in the same directory
 3. Filter out tasks already `COMPLETED`, `UPLOADING`, or `UPLOADED_WAIT_ACK` in SQLite
 4. Return sorted list of `FileGroup` (oldest mtime first, so backlog drains in order)
 
@@ -496,6 +499,7 @@ namespace transfer {
 struct FileGroup {
   std::filesystem::path mcap_path;
   std::filesystem::path json_path;
+  std::filesystem::path completion_marker_path;
   std::string task_id;
   uint64_t mcap_size_bytes;
 };
@@ -694,7 +698,9 @@ ws:
 # File scanner
 scanner:
   data_dir: "/axon/recording"       # Root directory to scan for recordings
-  require_json_sidecar: true       # Skip MCAP files without a matching .json
+  require_json_sidecar: true        # true = legacy MCAP+JSON, false = MCAP-only .done marker
+  completion_marker_suffix: ".done" # Used when require_json_sidecar is false
+  min_ready_age_ms: 0               # Optional quiet period for MCAP and sentinel
 
 # S3 uploader (passed to core/axon_uploader)
 uploader:
@@ -741,7 +747,8 @@ Environment variables take precedence over YAML values.
 | Error Condition | Behaviour |
 |-----------------|-----------|
 | `upload_request` for unknown task_id | Scan fails → send `upload_not_found`; no crash |
-| MCAP present but JSON sidecar missing | Skip file (recording not yet finalized by recorder) |
+| MCAP present but configured completion sentinel missing | Skip file (recording not yet finalized by recorder) |
+| `.mcap.done` marker is older than the MCAP file | Skip file until recorder writes a fresh marker |
 | File disappears between scan and enqueue | `EdgeUploader` reports failure → send `upload_failed` |
 | S3 transient error | `EdgeUploader` retries with backoff (up to `max_retries`) |
 | S3 permanent failure | State set to `FAILED`; files moved to `failed_uploads_dir`; send `upload_failed` |

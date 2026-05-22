@@ -25,7 +25,7 @@
 #include <vector>
 
 #ifndef AXON_AGENT_VERSION
-#define AXON_AGENT_VERSION "0.4.0-dev"
+#define AXON_AGENT_VERSION "0.4.0"
 #endif
 
 namespace axon {

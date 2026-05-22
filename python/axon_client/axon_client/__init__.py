@@ -9,7 +9,7 @@ A Python client for controlling Axon recorder via HTTP RPC API.
 Supports both synchronous and asynchronous operations.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Core classes
 from .client import AxonRecorderClient
