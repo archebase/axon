@@ -4,4 +4,4 @@ axon-plugin-ros2-jazzy (0.4.0-1) unstable; urgency=medium
   * Based on Axon v0.4.0
   * Target: Ubuntu 24.04 (Noble) with ROS2 Jazzy
 
- -- ArcheBase <noreply@archebase.com>  Fri, 15 May 2026 00:00:00 +0800
+ -- ArcheBase <noreply@archebase.com>  Fri, 22 May 2026 00:00:00 +0800

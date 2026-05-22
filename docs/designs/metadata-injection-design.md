@@ -903,7 +903,7 @@ TEST(MetadataInjectionTest, WriteAndReadTaskMetadata) {
 |---------|------|---------|
 | 1.0 | 2025-12-20 | Initial design |
 | 1.1 | 2025-12-21 | Removed `session_id`, `episode_number`, and `tags` fields; renamed `organization` to `factory`; sidecar JSON and SHA-256 checksum were non-configurable in this revision |
-| 1.2 | 2026-05-15 | Sidecar JSON became optional; MCAP metadata remains authoritative and MCAP-only transfer uses `.mcap.done` markers |
+| 1.2 | 2026-05-22 | Sidecar JSON became optional; MCAP metadata remains authoritative and MCAP-only transfer uses `.mcap.done` markers |
 
 ## Appendix: MCAP Metadata Record Format
 
