@@ -39,7 +39,7 @@ static const std::vector<std::string> DEFAULT_SUBDIRS = {
 namespace {
 
 constexpr const char* kRegisterPath = "/api/v1/devices/register";
-constexpr const char* kConfigPathPrefix = "/configs";
+constexpr const char* kRobotTypesPathPrefix = "/api/v1/robot_types";
 constexpr const char* kDeviceStateFilename = "device.json";
 constexpr const char* kRegistrationStatusFilename = "registration_status.json";
 
@@ -150,39 +150,12 @@ std::string context_value_or_empty(const RegistrationContext& context, const std
   return it == context.values.end() ? "" : it->second;
 }
 
-void append_query_param(
-  std::ostringstream& oss, bool& first, const std::string& key, const std::string& value
-) {
-  if (value.empty()) {
-    return;
-  }
-  oss << (first ? "?" : "&") << url_encode(key) << "=" << url_encode(value);
-  first = false;
-}
-
 std::string build_config_url(
-  const std::string& keystone_url, const std::string& factory, const std::string& robot_type,
-  const std::string& filename, const RegistrationContext* context = nullptr
+  const std::string& keystone_url, const std::string& robot_type_id, const std::string& filename
 ) {
   std::ostringstream url;
-  url << trim_trailing_slashes(keystone_url) << kConfigPathPrefix << "/" << url_encode(factory)
-      << "/" << url_encode(robot_type) << "/" << url_encode(filename);
-
-  if (context == nullptr) {
-    return url.str();
-  }
-
-  const std::string robot_id = context_value_or_empty(*context, "robot_id");
-  if (robot_id.empty()) {
-    return url.str();
-  }
-
-  // Keystone config lookup uses site/model/serial as wire-level aliases for
-  // Axon's factory/robot_type/robot_id identity.
-  bool first = true;
-  append_query_param(url, first, "site", context_value_or_empty(*context, "factory"));
-  append_query_param(url, first, "model", context_value_or_empty(*context, "robot_type"));
-  append_query_param(url, first, "serial", robot_id);
+  url << trim_trailing_slashes(keystone_url) << kRobotTypesPathPrefix << "/"
+      << url_encode(robot_type_id) << "/configs/" << url_encode(filename);
   return url.str();
 }
 
@@ -769,9 +742,14 @@ bool download_keystone_configs(
   http_options.timeout_seconds = options.timeout_seconds;
   HttpClient http_client(http_options);
 
+  const std::string robot_type_id = context_value_or_empty(context, "robot_type_id");
+  if (robot_type_id.empty()) {
+    error = "robot_type_id is required to download recorder.yaml and transfer.yaml templates";
+    return false;
+  }
+
   for (auto& file : files) {
-    const std::string url =
-      build_config_url(keystone_url, options.factory, options.robot_type, file.name, &context);
+    const std::string url = build_config_url(keystone_url, robot_type_id, file.name);
     std::cerr << "Downloading template " << url << std::endl;
 
     HttpResponse response = http_client.get_text(url);
@@ -1647,7 +1625,7 @@ void Commands::print_register_usage() {
   std::cout << std::endl;
   std::cout << "After registration, recorder.yaml and transfer.yaml templates are downloaded from:"
             << std::endl;
-  std::cout << "  <keystone>/configs/<factory>/<robot-type>/" << std::endl;
+  std::cout << "  <keystone>/api/v1/robot_types/<robot-type-id>/configs/<filename>" << std::endl;
   std::cout << "HTTP 404 from that config path is treated as a warning and leaves existing "
                "templates/configs unchanged."
             << std::endl;
@@ -1699,10 +1677,9 @@ std::string Commands::build_register_url_for_test(const std::string& keystone_ur
 }
 
 std::string Commands::build_config_url_for_test(
-  const std::string& keystone_url, const std::string& factory, const std::string& robot_type,
-  const std::string& filename
+  const std::string& keystone_url, const std::string& robot_type_id, const std::string& filename
 ) {
-  return build_config_url(keystone_url, factory, robot_type, filename);
+  return build_config_url(keystone_url, robot_type_id, filename);
 }
 #endif
 

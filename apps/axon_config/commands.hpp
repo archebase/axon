@@ -114,8 +114,7 @@ public:
   static std::string build_register_url_for_test(const std::string& keystone_url);
 
   static std::string build_config_url_for_test(
-    const std::string& keystone_url, const std::string& factory, const std::string& robot_type,
-    const std::string& filename
+    const std::string& keystone_url, const std::string& robot_type_id, const std::string& filename
   );
 #endif
 
