@@ -13,6 +13,11 @@ FROM ros:jazzy-ros-base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
+ARG AXON_APT_MIRROR=default
+COPY docker/scripts/setup-apt-mirror.sh /usr/local/bin/setup-apt-mirror.sh
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh && \
+    /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
+
 # Install Debian packaging tools
 RUN apt-get update && apt-get install -y \
     debhelper \

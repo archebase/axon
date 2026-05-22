@@ -41,11 +41,169 @@ log_section() {
     echo -e "${BLUE}=== $1 ===${NC}"
 }
 
+first_non_empty_env() {
+    local var_name=""
+    local value=""
+
+    for var_name in "$@"; do
+        value="${!var_name:-}"
+        if [ -n "$value" ]; then
+            printf "%s" "$value"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+docker_info_proxy_field() {
+    local field="$1"
+    local value=""
+
+    value="$(docker info --format "{{.${field}}}" 2>/dev/null || true)"
+    if [ "$value" = "<no value>" ]; then
+        value=""
+    fi
+    printf "%s" "$value"
+}
+
+proxy_for_container() {
+    local proxy="$1"
+
+    proxy="${proxy//\/\/127.0.0.1/\/\/host.docker.internal}"
+    proxy="${proxy//\/\/localhost/\/\/host.docker.internal}"
+    proxy="${proxy//\/\/\[::1\]/\/\/host.docker.internal}"
+    printf "%s" "$proxy"
+}
+
+detect_host_country_code() {
+    local country="${AXON_PACKAGE_COUNTRY:-}"
+
+    if [ -z "$country" ] && command -v curl &> /dev/null; then
+        country="$(curl -fsSL --max-time 8 https://ipinfo.io/country 2>/dev/null || true)"
+    fi
+    if [ -z "$country" ] && command -v curl &> /dev/null; then
+        country="$(curl -fsSL --max-time 8 https://ifconfig.co/country-iso 2>/dev/null || true)"
+    fi
+
+    country="$(printf "%s" "$country" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+    printf "%.2s" "$country"
+}
+
+configure_package_apt_mirror_args() {
+    local requested="${AXON_PACKAGE_APT_MIRROR:-auto}"
+    local country=""
+
+    case "$requested" in
+        ""|auto)
+            country="$(detect_host_country_code)"
+            if [ "$country" = "CN" ]; then
+                AXON_PACKAGE_APT_MIRROR="tsinghua"
+            else
+                AXON_PACKAGE_APT_MIRROR="default"
+            fi
+            ;;
+        cn|CN|china|China|tsinghua|tuna)
+            AXON_PACKAGE_APT_MIRROR="tsinghua"
+            ;;
+        default|none|off|http://*|https://*)
+            AXON_PACKAGE_APT_MIRROR="$requested"
+            ;;
+        *)
+            log_warn "Unsupported AXON_PACKAGE_APT_MIRROR='${requested}', using default Ubuntu apt mirror"
+            AXON_PACKAGE_APT_MIRROR="default"
+            ;;
+    esac
+
+    export AXON_PACKAGE_APT_MIRROR
+    DOCKER_APT_MIRROR_BUILD_ARGS=(--build-arg "AXON_APT_MIRROR=${AXON_PACKAGE_APT_MIRROR}")
+}
+
+configure_docker_proxy_args() {
+    local host_http_proxy="${AXON_PACKAGE_HTTP_PROXY:-}"
+    local host_https_proxy="${AXON_PACKAGE_HTTPS_PROXY:-}"
+    local host_all_proxy="${AXON_PACKAGE_ALL_PROXY:-}"
+    local host_no_proxy="${AXON_PACKAGE_NO_PROXY:-}"
+    local http_proxy_value=""
+    local https_proxy_value=""
+    local all_proxy_value=""
+    local no_proxy_value=""
+
+    if [ -z "$host_http_proxy" ]; then
+        host_http_proxy="$(first_non_empty_env HTTP_PROXY http_proxy HTTPPROXY || true)"
+    fi
+    if [ -z "$host_https_proxy" ]; then
+        host_https_proxy="$(first_non_empty_env HTTPS_PROXY https_proxy HTTPSPROXY || true)"
+    fi
+    if [ -z "$host_all_proxy" ]; then
+        host_all_proxy="$(first_non_empty_env ALL_PROXY all_proxy ALLPROXY || true)"
+    fi
+    if [ -z "$host_no_proxy" ]; then
+        host_no_proxy="$(first_non_empty_env NO_PROXY no_proxy NOPROXY || true)"
+    fi
+
+    if [ -z "$host_http_proxy" ] && [ -z "$host_https_proxy" ] && [ -z "$host_all_proxy" ]; then
+        host_http_proxy="$(docker_info_proxy_field HTTPProxy)"
+        host_https_proxy="$(docker_info_proxy_field HTTPSProxy)"
+        if [ -z "$host_no_proxy" ]; then
+            host_no_proxy="$(docker_info_proxy_field NoProxy)"
+        fi
+    fi
+
+    http_proxy_value="$(proxy_for_container "${host_http_proxy:-${host_https_proxy:-$host_all_proxy}}")"
+    https_proxy_value="$(proxy_for_container "${host_https_proxy:-${host_http_proxy:-$host_all_proxy}}")"
+    all_proxy_value="$(proxy_for_container "$host_all_proxy")"
+    no_proxy_value="${host_no_proxy:-localhost,127.0.0.1,::1}"
+
+    if [ -z "$http_proxy_value" ] && [ -z "$https_proxy_value" ] && [ -z "$all_proxy_value" ]; then
+        AXON_PACKAGE_PROXY_INHERITED=0
+        return
+    fi
+
+    AXON_PACKAGE_PROXY_INHERITED=1
+    DOCKER_HOST_GATEWAY_ARGS=(--add-host=host.docker.internal:host-gateway)
+
+    if [ -n "$http_proxy_value" ]; then
+        DOCKER_PROXY_BUILD_ARGS+=(--build-arg "HTTP_PROXY=${http_proxy_value}" --build-arg "http_proxy=${http_proxy_value}")
+        DOCKER_PROXY_RUN_ARGS+=(-e "HTTP_PROXY=${http_proxy_value}" -e "http_proxy=${http_proxy_value}")
+    fi
+    if [ -n "$https_proxy_value" ]; then
+        DOCKER_PROXY_BUILD_ARGS+=(--build-arg "HTTPS_PROXY=${https_proxy_value}" --build-arg "https_proxy=${https_proxy_value}")
+        DOCKER_PROXY_RUN_ARGS+=(-e "HTTPS_PROXY=${https_proxy_value}" -e "https_proxy=${https_proxy_value}")
+    fi
+    if [ -n "$all_proxy_value" ]; then
+        DOCKER_PROXY_BUILD_ARGS+=(--build-arg "ALL_PROXY=${all_proxy_value}" --build-arg "all_proxy=${all_proxy_value}")
+        DOCKER_PROXY_RUN_ARGS+=(-e "ALL_PROXY=${all_proxy_value}" -e "all_proxy=${all_proxy_value}")
+    fi
+    if [ -n "$no_proxy_value" ]; then
+        DOCKER_PROXY_BUILD_ARGS+=(--build-arg "NO_PROXY=${no_proxy_value}" --build-arg "no_proxy=${no_proxy_value}")
+        DOCKER_PROXY_RUN_ARGS+=(-e "NO_PROXY=${no_proxy_value}" -e "no_proxy=${no_proxy_value}")
+    fi
+}
+
+prefetch_docker_sources_if_needed() {
+    case "$DOCKERFILE" in
+        Dockerfile.package-standalone-*)
+            log_section "Prefetching Docker Package Sources"
+            AXON_PACKAGE_SOURCE_CACHE_DIR="${PROJECT_ROOT}/packaging/deb/source-cache" \
+                "${SCRIPT_DIR}/prefetch-docker-sources.sh"
+            ;;
+    esac
+}
+
 # Check if Docker is available
 if ! command -v docker &> /dev/null; then
     log_error "Docker not found. Please install Docker first."
     exit 1
 fi
+
+DOCKER_PROXY_BUILD_ARGS=()
+DOCKER_PROXY_RUN_ARGS=()
+DOCKER_HOST_GATEWAY_ARGS=()
+DOCKER_APT_MIRROR_BUILD_ARGS=()
+AXON_PACKAGE_PROXY_INHERITED="${AXON_PACKAGE_PROXY_INHERITED:-0}"
+configure_package_apt_mirror_args
+configure_docker_proxy_args
 
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
@@ -160,10 +318,18 @@ if [ ! -f "$DOCKERFILE_PATH" ]; then
     exit 1
 fi
 
+prefetch_docker_sources_if_needed
+
 log_section "Building ${IMAGE_NAME} Image"
+if [ "${AXON_PACKAGE_PROXY_INHERITED}" -eq 1 ]; then
+    log_info "Host proxy inherited for Docker package builds."
+fi
+if [ "${AXON_PACKAGE_APT_MIRROR}" != "default" ] && [ "${AXON_PACKAGE_APT_MIRROR}" != "none" ] && [ "${AXON_PACKAGE_APT_MIRROR}" != "off" ]; then
+    log_info "Using ${AXON_PACKAGE_APT_MIRROR} Ubuntu apt mirror for Docker package builds."
+fi
 
 # Build Docker image
-if docker build -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" "${PROJECT_ROOT}"; then
+if docker build "${DOCKER_HOST_GATEWAY_ARGS[@]}" "${DOCKER_APT_MIRROR_BUILD_ARGS[@]}" "${DOCKER_PROXY_BUILD_ARGS[@]}" -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" "${PROJECT_ROOT}"; then
     log_info "Docker image built successfully"
 else
     log_error "Failed to build Docker image"
@@ -175,6 +341,8 @@ log_section "Building Packages in Container"
 
 # Run build in container
 docker run --rm \
+    "${DOCKER_HOST_GATEWAY_ARGS[@]}" \
+    "${DOCKER_PROXY_RUN_ARGS[@]}" \
     -v "${PROJECT_ROOT}:/axon:rw" \
     -e ROS_DISTRO="${ROS_DISTRO}" \
     -e DISTRO="${UBUNTU_DISTRO}" \
@@ -188,6 +356,7 @@ docker run --rm \
 
 # Ensure output directory has correct permissions
 docker run --rm \
+    "${DOCKER_HOST_GATEWAY_ARGS[@]}" \
     -v "${PROJECT_ROOT}:/axon:rw" \
     -w /axon \
     "$IMAGE_NAME" \

@@ -14,6 +14,11 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
+ARG AXON_APT_MIRROR=default
+COPY docker/scripts/setup-apt-mirror.sh docker/scripts/install-nodejs.sh docker/scripts/retry-curl.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh /usr/local/bin/install-nodejs.sh /usr/local/bin/retry-curl.sh && \
+    /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
+
 # Install basic build tools and packaging dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -36,10 +41,12 @@ RUN apt-get update && apt-get install -y \
     vim-common \
     && rm -rf /var/lib/apt/lists/*
 
+ARG CURL_RETRY_ARGS="--connect-timeout 30 --max-time 600"
+ARG CURL_RETRY_ATTEMPTS=5
+ARG CURL_RETRY_DELAY=10
+
 # Install Node.js 18.x from NodeSource repository (required for axon-panel)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+RUN CURL_RETRY_ARGS="${CURL_RETRY_ARGS}" CURL_RETRY_ATTEMPTS="${CURL_RETRY_ATTEMPTS}" CURL_RETRY_DELAY="${CURL_RETRY_DELAY}" NODE_MAJOR=18 /usr/local/bin/install-nodejs.sh
 
 # Install common dependencies
 RUN apt-get update && apt-get install -y \
@@ -60,36 +67,37 @@ RUN apt-get update && apt-get install -y \
     xxd \
     && rm -rf /var/lib/apt/lists/*
 
-# Pre-download MCAP library for FetchContent
-# This avoids network access during package builds.
+# Load host-prefetched MCAP library for FetchContent.
 ARG MCAP_COMMIT=a7eeff1383cc95a29dd9c5cac94104d277b5414e
-RUN cd /tmp && \
-    curl -fsSL "https://github.com/foxglove/mcap/archive/${MCAP_COMMIT}.tar.gz" -o mcap.tar.gz && \
-    tar xzf mcap.tar.gz && \
+COPY packaging/deb/source-cache/mcap-a7eeff1383cc95a29dd9c5cac94104d277b5414e.tar.gz /tmp/package-sources/mcap.tar.gz
+RUN \
+    cd /tmp && \
+    tar xzf /tmp/package-sources/mcap.tar.gz && \
     mkdir -p /opt/mcap && \
     mv "mcap-${MCAP_COMMIT}"/* /opt/mcap/ && \
-    rm -rf "mcap-${MCAP_COMMIT}" mcap.tar.gz && \
-    echo "MCAP pre-downloaded to /opt/mcap from commit ${MCAP_COMMIT}"
+    rm -rf "mcap-${MCAP_COMMIT}" && \
+    echo "MCAP loaded to /opt/mcap from host cache commit ${MCAP_COMMIT}"
 
-# Pre-download cpp-httplib for axon-panel FetchContent
-RUN cd /tmp && \
-    curl -fsSL "https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.15.3.tar.gz" -o httplib.tar.gz && \
-    tar xzf httplib.tar.gz && \
+# Load host-prefetched cpp-httplib for axon-panel FetchContent.
+COPY packaging/deb/source-cache/cpp-httplib-0.15.3.tar.gz /tmp/package-sources/httplib.tar.gz
+RUN \
+    cd /tmp && \
+    tar xzf /tmp/package-sources/httplib.tar.gz && \
     mkdir -p /opt/cpp-httplib && \
     mv cpp-httplib-0.15.3/* /opt/cpp-httplib/ && \
-    rm -rf cpp-httplib-0.15.3 httplib.tar.gz && \
-    echo "cpp-httplib pre-downloaded to /opt/cpp-httplib v0.15.3"
+    rm -rf cpp-httplib-0.15.3 && \
+    echo "cpp-httplib loaded to /opt/cpp-httplib v0.15.3"
 
 # Install AWS SDK for C++ (required for axon-transfer for S3 uploads)
 # Build from source with minimal components to reduce build time
 # Build statically to create portable packages (no runtime dependency on AWS SDK)
 # This takes ~15-20 minutes but is required for S3 upload functionality
-RUN git clone --depth 1 --recurse-submodules \
-    --branch 1.11.479 \
-    --single-branch \
-    https://github.com/aws/aws-sdk-cpp.git \
-    /tmp/aws-sdk-cpp && \
-    cd /tmp/aws-sdk-cpp && \
+ARG AWS_SDK_CPP_VERSION=1.11.479
+COPY packaging/deb/source-cache/aws-sdk-cpp-1.11.479.tar.gz /tmp/package-sources/aws-sdk-cpp.tar.gz
+RUN \
+    cd /tmp && \
+    tar xzf /tmp/package-sources/aws-sdk-cpp.tar.gz && \
+    cd "aws-sdk-cpp-${AWS_SDK_CPP_VERSION}" && \
     cmake -B build \
         -GNinja \
         -DCMAKE_BUILD_TYPE=Release \
@@ -101,7 +109,7 @@ RUN git clone --depth 1 --recurse-submodules \
         -DUNITY_BUILD=OFF && \
     cmake --build build -j"$(nproc)" && \
     cmake --install build && \
-    rm -rf /tmp/aws-sdk-cpp
+    rm -rf "/tmp/aws-sdk-cpp-${AWS_SDK_CPP_VERSION}" /tmp/package-sources
 
 # Set working directory
 WORKDIR /axon
