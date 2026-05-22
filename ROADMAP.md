@@ -154,7 +154,7 @@ This document outlines the development roadmap for the Axon project. Axon is an 
 
 ### Advanced Monitoring
 - [ ] Message Integrity Monitoring
-  - [ ] Sequence number tracking
+  - [ ] Sequence number tracking (not included in v0.4.0)
   - ✅ Message gap detection and reporting
   - ✅ Packet loss statistics
   - ✅ Real-time alert notifications
