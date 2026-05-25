@@ -25,15 +25,26 @@ class AgentClient:
         self.base_url = base_url.rstrip("/")
         self.client = httpx.Client(timeout=5.0)
 
+    @staticmethod
+    def _decode_response(response: httpx.Response) -> dict[str, Any]:
+        try:
+            payload = response.json()
+        except ValueError:
+            response.raise_for_status()
+            return {"success": response.is_success, "message": response.text}
+
+        if response.is_error and isinstance(payload, dict):
+            return payload
+        response.raise_for_status()
+        return payload
+
     def rpc_get(self, path: str) -> dict[str, Any]:
         response = self.client.get(f"{self.base_url}/agent/rpc/{path}")
-        response.raise_for_status()
-        return response.json()
+        return self._decode_response(response)
 
     def rpc_post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         response = self.client.post(f"{self.base_url}/agent/rpc/{path}", json=payload)
-        response.raise_for_status()
-        return response.json()
+        return self._decode_response(response)
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +58,12 @@ def parse_args() -> argparse.Namespace:
 args = parse_args()
 client = AgentClient(args.agent_url)
 
+PROCESS_ROWS = [
+    ("robot_startup", "Robot"),
+    ("recorder", "Recorder"),
+    ("transfer", "Transfer"),
+]
+
 profile_select: ui.select
 log_process_select: ui.select
 log_stream_select: ui.select
@@ -55,6 +72,8 @@ log_view: ui.textarea
 state_view: ui.json_editor
 profiles_view: ui.json_editor
 status_label: ui.label
+process_status_labels: dict[str, ui.label] = {}
+process_detail_labels: dict[str, ui.label] = {}
 
 
 def show_status(message: str, *, error: bool = False) -> None:
@@ -66,12 +85,52 @@ def call_agent(action: str, callback) -> None:  # type: ignore[no-untyped-def]
     try:
         result = callback()
         show_status(f"{action}: {result.get('message', 'ok')}", error=not result.get("success", False))
-        refresh()
+        refresh(announce=False)
     except Exception as exc:  # noqa: BLE001 - validation panel should surface raw errors.
         show_status(f"{action} failed: {exc}", error=True)
 
 
-def refresh() -> None:
+def process_status(process: dict[str, Any]) -> tuple[str, str]:
+    if process.get("running", False):
+        return "Running", "bg-green-100 text-green-800 border border-green-300"
+
+    state = str(process.get("state", "")).lower()
+    if state == "stopped" or not process:
+        return "Stopped", "bg-gray-100 text-gray-700 border border-gray-300"
+
+    return state or "Unknown", "bg-amber-100 text-amber-800 border border-amber-300"
+
+
+def update_process_rows(process_items: dict[str, Any]) -> None:
+    for process_id, _label in PROCESS_ROWS:
+        process = process_items.get(process_id, {})
+        status_text, status_classes = process_status(process)
+
+        if status_label_widget := process_status_labels.get(process_id):
+            status_label_widget.text = status_text
+            status_label_widget.classes(
+                replace=f"min-w-20 rounded px-3 py-1 text-center text-sm font-semibold {status_classes}"
+            )
+
+        details = []
+        pid = int(process.get("pid", -1) or -1)
+        if pid > 0:
+            details.append(f"PID {pid}")
+
+        health = process.get("health", {})
+        health_message = health.get("message")
+        if health_message:
+            details.append(str(health_message))
+
+        last_error = process.get("last_error")
+        if last_error:
+            details.append(f"Error: {last_error}")
+
+        if detail_label := process_detail_labels.get(process_id):
+            detail_label.text = " | ".join(details) if details else "Not started"
+
+
+def refresh(*, announce: bool = True) -> None:
     try:
         profiles = client.rpc_get("profiles")
         state = client.rpc_get("state")
@@ -93,6 +152,8 @@ def refresh() -> None:
     state_view.content = {"json": state}
 
     process_items = state.get("data", {}).get("processes", {})
+    update_process_rows(process_items)
+
     process_options = {process_id: process_id for process_id in process_items.keys()}
     if not process_options:
         process_options = {
@@ -105,7 +166,8 @@ def refresh() -> None:
         log_process_select.value = next(iter(process_options))
     log_process_select.update()
 
-    show_status("refreshed")
+    if announce:
+        show_status("refreshed")
 
 
 def select_profile() -> None:
@@ -169,16 +231,19 @@ def main_page() -> None:
 
         with ui.card().classes("w-full"):
             ui.label("Process Controls").classes("text-lg font-semibold")
-            with ui.row().classes("gap-2"):
-                for pid, label in [
-                    ("robot_startup", "Robot"),
-                    ("recorder", "Recorder"),
-                    ("transfer", "Transfer"),
-                ]:
-                    ui.button(f"Start {label}", on_click=lambda process_id=pid: start_process(process_id))
-                    ui.button(f"Stop {label}", on_click=lambda process_id=pid: stop_process(process_id))
+            for pid, label in PROCESS_ROWS:
+                with ui.row().classes("w-full items-center gap-3 py-2 border-b border-gray-200 last:border-b-0"):
+                    ui.label(label).classes("w-28 text-lg font-semibold")
+                    process_status_labels[pid] = ui.label("Unknown").classes(
+                        "min-w-20 rounded px-3 py-1 text-center text-sm font-semibold bg-gray-100 text-gray-700"
+                    )
+                    process_detail_labels[pid] = ui.label("Not started").classes(
+                        "min-w-0 flex-1 truncate text-sm text-gray-600"
+                    )
+                    ui.button("Start", on_click=lambda process_id=pid: start_process(process_id))
+                    ui.button("Stop", on_click=lambda process_id=pid: stop_process(process_id))
                     ui.button(
-                        f"Force Stop {label}",
+                        "Force Stop",
                         color="negative",
                         on_click=lambda process_id=pid: stop_process(process_id, force=True),
                     )
@@ -206,6 +271,7 @@ def main_page() -> None:
                 log_view = ui.textarea(label="Log").props("readonly").classes("w-full h-96 font-mono")
 
     refresh()
+    ui.timer(2.0, lambda: refresh(announce=False))
 
 
 ui.run(host=args.host, port=args.port, title="Axon Agent Validation Panel", reload=False)

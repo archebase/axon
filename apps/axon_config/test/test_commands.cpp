@@ -341,10 +341,8 @@ TEST(CommandsRegisterTest, BuildsRegisterUrlWithoutDuplicateSlash) {
 
 TEST(CommandsRegisterTest, BuildsConfigUrlWithEncodedPathParts) {
   EXPECT_EQ(
-    Commands::build_config_url_for_test(
-      "http://keystone:8080/", "Factory Shanghai", "Syn/Gloves", "recorder.yaml"
-    ),
-    "http://keystone:8080/configs/Factory%20Shanghai/Syn%2FGloves/recorder.yaml"
+    Commands::build_config_url_for_test("http://keystone:8080/", "robot/type 3", "recorder.yaml"),
+    "http://keystone:8080/api/v1/robot_types/robot%2Ftype%203/configs/recorder.yaml"
   );
 }
 
@@ -729,18 +727,10 @@ TEST(CommandsRegisterTest, DownloadsRecorderAndTransferConfigsAfterRegistration)
   EXPECT_EQ(server.request_count(), 3);
   EXPECT_NE(server.request(0).find("POST /api/v1/devices/register "), std::string::npos);
   EXPECT_NE(
-    server.request(1).find(
-      "GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
-      "site=Factory%20Shanghai&model=SynGloves&serial=9 "
-    ),
-    std::string::npos
+    server.request(1).find("GET /api/v1/robot_types/3/configs/recorder.yaml "), std::string::npos
   );
   EXPECT_NE(
-    server.request(2).find(
-      "GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml?"
-      "site=Factory%20Shanghai&model=SynGloves&serial=9 "
-    ),
-    std::string::npos
+    server.request(2).find("GET /api/v1/robot_types/3/configs/transfer.yaml "), std::string::npos
   );
 
   const std::string ws_base = "ws://" + server.url().substr(std::string("http://").size());
@@ -797,7 +787,9 @@ TEST(CommandsRegisterTest, RetriesConfigDownloadOnRateLimit) {
   unsetenv("AXON_KEYSTONE_URL");
   MockKeystoneServer server(
     std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
+      {201,
+       "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_type_id\":\"3\","
+       "\"robot_id\":\"9\"}"},
       {429, "{\"error\":\"rate limited\"}"},
       {200, "device_id: \"{{ device_id }}\"\nrobot_id: \"{{ robot_id }}\"\n"},
       {200, "transfer_device: \"{{ device_id }}\"\n"},
@@ -828,25 +820,13 @@ TEST(CommandsRegisterTest, RetriesConfigDownloadOnRateLimit) {
 
   EXPECT_EQ(server.request_count(), 4);
   EXPECT_NE(
-    server.request(1).find(
-      "GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
-      "site=Factory%20Shanghai&model=SynGloves&serial=9 "
-    ),
-    std::string::npos
+    server.request(1).find("GET /api/v1/robot_types/3/configs/recorder.yaml "), std::string::npos
   );
   EXPECT_NE(
-    server.request(2).find(
-      "GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
-      "site=Factory%20Shanghai&model=SynGloves&serial=9 "
-    ),
-    std::string::npos
+    server.request(2).find("GET /api/v1/robot_types/3/configs/recorder.yaml "), std::string::npos
   );
   EXPECT_NE(
-    server.request(3).find(
-      "GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml?"
-      "site=Factory%20Shanghai&model=SynGloves&serial=9 "
-    ),
-    std::string::npos
+    server.request(3).find("GET /api/v1/robot_types/3/configs/transfer.yaml "), std::string::npos
   );
   EXPECT_EQ(
     read_text_file(config_dir / "recorder.yaml"),
@@ -863,7 +843,7 @@ TEST(CommandsRegisterTest, WarnsAndSkipsConfigDownloadWhenKeystoneReturns404) {
   unsetenv("AXON_KEYSTONE_URL");
   MockKeystoneServer server(
     std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_type_id\":\"3\"}"},
       {404, "{\"error\":\"config not found\"}"},
     }
   );
@@ -904,7 +884,7 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTransferConfigRetur
   unsetenv("AXON_KEYSTONE_URL");
   MockKeystoneServer server(
     std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\"}"},
+      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_type_id\":\"3\"}"},
       {200, "new_recorder: true\n"},
       {404, "{\"error\":\"transfer config not found\"}"},
     }
@@ -948,7 +928,9 @@ TEST(CommandsRegisterTest, LeavesExistingConfigsUnchangedWhenTemplateRenderingFa
   unsetenv("AXON_KEYSTONE_URL");
   MockKeystoneServer server(
     std::vector<MockHttpResponse>{
-      {201, "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_id\":\"9\"}"},
+      {201,
+       "{\"device_id\":\"AB-F0001-T0003-000001\",\"robot_type_id\":\"3\","
+       "\"robot_id\":\"9\"}"},
       {200, "device_id: \"{{ device_id }}\"\nmissing: \"{{ missing_value }}\"\n"},
       {200, "robot_id: \"{{ robot_id }}\"\n"},
     }
@@ -1039,18 +1021,10 @@ TEST(CommandsRefreshTest, RefreshesConfigsFromSavedDeviceState) {
 
   EXPECT_EQ(server.request_count(), 2);
   EXPECT_NE(
-    server.request(0).find(
-      "GET /configs/Factory%20Shanghai/SynGloves/recorder.yaml?"
-      "site=Factory%20Shanghai&model=SynGloves&serial=9 "
-    ),
-    std::string::npos
+    server.request(0).find("GET /api/v1/robot_types/3/configs/recorder.yaml "), std::string::npos
   );
   EXPECT_NE(
-    server.request(1).find(
-      "GET /configs/Factory%20Shanghai/SynGloves/transfer.yaml?"
-      "site=Factory%20Shanghai&model=SynGloves&serial=9 "
-    ),
-    std::string::npos
+    server.request(1).find("GET /api/v1/robot_types/3/configs/transfer.yaml "), std::string::npos
   );
   EXPECT_EQ(read_text_file(config_dir / "device.json"), device_body);
   EXPECT_EQ(
@@ -1104,6 +1078,7 @@ TEST(CommandsRefreshTest, LeavesExistingConfigsUnchangedWhenTemplateReturns404) 
                                             << "  \"device_id\": \"AB-F0001-T0003-000001\",\n"
                                             << "  \"factory\": \"Factory Shanghai\",\n"
                                             << "  \"robot_type\": \"SynGloves\",\n"
+                                            << "  \"robot_type_id\": \"3\",\n"
                                             << "  \"robot_id\": \"9\",\n"
                                             << "  \"keystone_url\": \"" << server.url() << "\"\n"
                                             << "}\n";

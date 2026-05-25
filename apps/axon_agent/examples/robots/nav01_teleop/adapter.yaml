@@ -17,4 +17,10 @@ managed_processes:
     working_directory: /home/nav01
     env:
       HOME: /home/nav01
+      USER: nav01
+      LOGNAME: nav01
+      SHELL: /bin/bash
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      PATH: /snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       AXON_PROFILE: nav01_teleop

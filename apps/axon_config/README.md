@@ -44,8 +44,8 @@ prints the HTTP status and response body to stderr and exits non-zero.
 After a successful registration, `register` downloads runtime config templates from Keystone:
 
 ```text
-GET <keystone>/configs/<factory>/<robot_type>/recorder.yaml
-GET <keystone>/configs/<factory>/<robot_type>/transfer.yaml
+GET <keystone>/api/v1/robot_types/<robot_type_id>/configs/recorder.yaml
+GET <keystone>/api/v1/robot_types/<robot_type_id>/configs/transfer.yaml
 ```
 
 The downloaded templates are saved under `/etc/axon/templates/` as `recorder.yaml.tpl`
