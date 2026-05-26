@@ -212,6 +212,7 @@ rpc:
     time_gap_check_enabled: true
     time_gap_warning_threshold_ms: 250
     time_gap_critical_threshold_ms: 1000
+    time_gap_max_round_trip_ms: 1500
     time_gap_stale_after_ms: 5000
 )";
 
@@ -228,6 +229,7 @@ rpc:
   EXPECT_TRUE(config.rpc.ws_client.time_gap_check_enabled);
   EXPECT_EQ(config.rpc.ws_client.time_gap_warning_threshold_ms, 250);
   EXPECT_EQ(config.rpc.ws_client.time_gap_critical_threshold_ms, 1000);
+  EXPECT_EQ(config.rpc.ws_client.time_gap_max_round_trip_ms, 1500);
   EXPECT_EQ(config.rpc.ws_client.time_gap_stale_after_ms, 5000);
 }
 

@@ -162,6 +162,7 @@ TEST_F(WsRpcClientTest, ConfigDefaults) {
   EXPECT_TRUE(config.time_gap_check_enabled);
   EXPECT_EQ(config.time_gap_warning_threshold_ms, 1000);
   EXPECT_EQ(config.time_gap_critical_threshold_ms, 5000);
+  EXPECT_EQ(config.time_gap_max_round_trip_ms, 2000);
   EXPECT_EQ(config.time_gap_stale_after_ms, 60000);
 }
 
@@ -192,6 +193,27 @@ TEST_F(WsRpcClientTest, TimeGapReportsNormalWarningCriticalAndUnreliable) {
   status = client.get_time_gap_status_json();
   EXPECT_EQ(status["status"], "unreliable");
   EXPECT_FALSE(status["reliable"]);
+  EXPECT_TRUE(status["offset_ms"].is_null());
+}
+
+TEST_F(WsRpcClientTest, TimeGapMarksExcessiveRoundTripUnreliable) {
+  WsClientConfig config = test_config_;
+  config.time_gap_warning_threshold_ms = 100;
+  config.time_gap_critical_threshold_ms = 500;
+  config.time_gap_max_round_trip_ms = 50;
+  WsRpcClient client(ioc_, config);
+
+  client.observe_keystone_time_gap_for_test(
+    {{"timestamp", now_epoch_ms_for_test() - 800}, {"round_trip_ms", 250}}
+  );
+
+  auto status = client.get_time_gap_status_json();
+  EXPECT_EQ(status["status"], "unreliable");
+  EXPECT_FALSE(status["reliable"]);
+  EXPECT_EQ(status["round_trip_ms"], 250);
+  EXPECT_EQ(status["max_round_trip_ms"], 50);
+  EXPECT_GE(status["absolute_offset_ms"].get<int64_t>(), 500);
+  EXPECT_EQ(status["reason"], "round trip time exceeded reliability threshold");
 }
 
 // Test: RpcModeConfig defaults

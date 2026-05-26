@@ -208,4 +208,5 @@ rpc:
     time_gap_check_enabled: true
     time_gap_warning_threshold_ms: 1000
     time_gap_critical_threshold_ms: 5000
+    time_gap_max_round_trip_ms: 2000
     time_gap_stale_after_ms: 60000

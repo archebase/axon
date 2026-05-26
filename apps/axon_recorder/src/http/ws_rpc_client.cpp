@@ -112,6 +112,7 @@ nlohmann::json WsRpcClient::get_time_gap_status_json() const {
   j["enabled"] = config_.time_gap_check_enabled;
   j["warning_threshold_ms"] = config_.time_gap_warning_threshold_ms;
   j["critical_threshold_ms"] = config_.time_gap_critical_threshold_ms;
+  j["max_round_trip_ms"] = config_.time_gap_max_round_trip_ms;
   j["stale_after_ms"] = config_.time_gap_stale_after_ms;
 
   if (!config_.time_gap_check_enabled) {
@@ -119,6 +120,7 @@ nlohmann::json WsRpcClient::get_time_gap_status_json() const {
     j["reliable"] = false;
     j["offset_ms"] = nullptr;
     j["absolute_offset_ms"] = nullptr;
+    j["round_trip_ms"] = nullptr;
     j["checked_at_ms"] = 0;
     j["reason"] = "time-gap check disabled";
     return j;
@@ -129,6 +131,7 @@ nlohmann::json WsRpcClient::get_time_gap_status_json() const {
     j["reliable"] = false;
     j["offset_ms"] = nullptr;
     j["absolute_offset_ms"] = nullptr;
+    j["round_trip_ms"] = nullptr;
     j["checked_at_ms"] = 0;
     j["reason"] = time_gap_reason_;
     return j;
@@ -147,8 +150,18 @@ nlohmann::json WsRpcClient::get_time_gap_status_json() const {
 
   j["status"] = status;
   j["reliable"] = reliable;
-  j["offset_ms"] = time_gap_offset_ms_;
-  j["absolute_offset_ms"] = std::llabs(time_gap_offset_ms_);
+  if (time_gap_has_offset_) {
+    j["offset_ms"] = time_gap_offset_ms_;
+    j["absolute_offset_ms"] = std::llabs(time_gap_offset_ms_);
+  } else {
+    j["offset_ms"] = nullptr;
+    j["absolute_offset_ms"] = nullptr;
+  }
+  if (time_gap_has_round_trip_) {
+    j["round_trip_ms"] = time_gap_round_trip_ms_;
+  } else {
+    j["round_trip_ms"] = nullptr;
+  }
   j["checked_at_ms"] = time_gap_checked_at_ms_;
   j["reason"] = reason;
   return j;
@@ -513,8 +526,10 @@ void WsRpcClient::observe_keystone_time_gap(const nlohmann::json& msg) {
 
   const int64_t local_ms = now_epoch_ms();
   const auto remote_ms = extract_message_timestamp_ms(msg);
+  const auto round_trip_ms = extract_round_trip_ms(msg, local_ms);
   std::string status;
   bool reliable = false;
+  bool has_offset = false;
   int64_t offset_ms = 0;
   std::string reason;
 
@@ -523,10 +538,16 @@ void WsRpcClient::observe_keystone_time_gap(const nlohmann::json& msg) {
     reason = "Keystone message has no timestamp";
   } else {
     offset_ms = local_ms - remote_ms.value();
+    has_offset = true;
     const int64_t absolute_offset_ms = std::llabs(offset_ms);
     reliable = true;
     reason = "ok";
-    if (absolute_offset_ms >= config_.time_gap_critical_threshold_ms) {
+    if (round_trip_ms.has_value() && config_.time_gap_max_round_trip_ms > 0 &&
+        round_trip_ms.value() > config_.time_gap_max_round_trip_ms) {
+      status = "unreliable";
+      reliable = false;
+      reason = "round trip time exceeded reliability threshold";
+    } else if (absolute_offset_ms >= config_.time_gap_critical_threshold_ms) {
       status = "critical";
       reason = "clock offset reached critical threshold";
     } else if (absolute_offset_ms >= config_.time_gap_warning_threshold_ms) {
@@ -542,7 +563,10 @@ void WsRpcClient::observe_keystone_time_gap(const nlohmann::json& msg) {
     std::lock_guard<std::mutex> lock(time_gap_mutex_);
     time_gap_has_sample_ = true;
     time_gap_reliable_ = reliable;
+    time_gap_has_offset_ = has_offset;
+    time_gap_has_round_trip_ = round_trip_ms.has_value();
     time_gap_offset_ms_ = offset_ms;
+    time_gap_round_trip_ms_ = round_trip_ms.value_or(0);
     time_gap_checked_at_ms_ = local_ms;
     time_gap_status_ = status;
     time_gap_reason_ = reason;
@@ -595,6 +619,69 @@ std::optional<int64_t> WsRpcClient::extract_message_timestamp_ms(const nlohmann:
       }
     }
   }
+  return std::nullopt;
+}
+
+std::optional<int64_t> WsRpcClient::extract_round_trip_ms(
+  const nlohmann::json& msg, int64_t local_ms
+) const {
+  const char* direct_keys[] = {
+    "round_trip_ms", "rtt_ms", "request_round_trip_ms", "time_gap_round_trip_ms"
+  };
+  for (const char* key : direct_keys) {
+    if (!msg.contains(key)) {
+      continue;
+    }
+    const auto& value = msg.at(key);
+    int64_t round_trip_ms = -1;
+    if (value.is_number_integer()) {
+      round_trip_ms = value.get<int64_t>();
+    } else if (value.is_number_float()) {
+      round_trip_ms = static_cast<int64_t>(value.get<double>());
+    } else if (value.is_string()) {
+      try {
+        size_t parsed = 0;
+        const std::string text = value.get<std::string>();
+        round_trip_ms = std::stoll(text, &parsed);
+        if (parsed != text.size()) {
+          round_trip_ms = -1;
+        }
+      } catch (const std::exception&) {
+        round_trip_ms = -1;
+      }
+    }
+    if (round_trip_ms >= 0) {
+      return round_trip_ms;
+    }
+  }
+
+  const char* sent_keys[] = {"client_sent_at_ms", "request_sent_at_ms", "sent_at_ms"};
+  for (const char* key : sent_keys) {
+    if (!msg.contains(key)) {
+      continue;
+    }
+    const auto& value = msg.at(key);
+    std::optional<int64_t> sent_ms;
+    if (value.is_number_integer()) {
+      sent_ms = value.get<int64_t>();
+    } else if (value.is_number_float()) {
+      sent_ms = static_cast<int64_t>(value.get<double>());
+    } else if (value.is_string()) {
+      try {
+        size_t parsed = 0;
+        const std::string text = value.get<std::string>();
+        const int64_t parsed_ms = std::stoll(text, &parsed);
+        if (parsed == text.size()) {
+          sent_ms = parsed_ms;
+        }
+      } catch (const std::exception&) {
+      }
+    }
+    if (sent_ms.has_value() && local_ms >= sent_ms.value()) {
+      return local_ms - sent_ms.value();
+    }
+  }
+
   return std::nullopt;
 }
 

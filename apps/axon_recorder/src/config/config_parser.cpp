@@ -660,6 +660,9 @@ bool ConfigParser::parse_rpc(const YAML::Node& node, RpcModeConfig& rpc) {
       rpc.ws_client.time_gap_critical_threshold_ms =
         ws["time_gap_critical_threshold_ms"].as<int64_t>();
     }
+    if (ws["time_gap_max_round_trip_ms"]) {
+      rpc.ws_client.time_gap_max_round_trip_ms = ws["time_gap_max_round_trip_ms"].as<int64_t>();
+    }
     if (ws["time_gap_stale_after_ms"]) {
       rpc.ws_client.time_gap_stale_after_ms = ws["time_gap_stale_after_ms"].as<int64_t>();
     }
@@ -730,6 +733,19 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
       error_msg = "Disk cleanup_target_gb must be < hard_limit_gb when cleanup is enabled";
       return false;
     }
+  }
+
+  const auto& time_gap = config.rpc.ws_client;
+  if (time_gap.time_gap_warning_threshold_ms < 0 ||
+      time_gap.time_gap_critical_threshold_ms < 0 ||
+      time_gap.time_gap_max_round_trip_ms < 0 || time_gap.time_gap_stale_after_ms < 0) {
+    error_msg = "Keystone time-gap thresholds must be >= 0";
+    return false;
+  }
+  if (time_gap.time_gap_critical_threshold_ms > 0 &&
+      time_gap.time_gap_warning_threshold_ms > time_gap.time_gap_critical_threshold_ms) {
+    error_msg = "Keystone time-gap warning threshold must be <= critical threshold";
+    return false;
   }
 
   return true;
