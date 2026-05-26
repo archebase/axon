@@ -46,8 +46,8 @@ bool parse_http_url(const std::string& url, HttpUrl* parsed, std::string* error)
 
   const auto without_scheme = url.substr(std::string(kScheme).size());
   const auto slash_pos = without_scheme.find('/');
-  const auto authority = slash_pos == std::string::npos ? without_scheme
-                                                        : without_scheme.substr(0, slash_pos);
+  const auto authority =
+    slash_pos == std::string::npos ? without_scheme : without_scheme.substr(0, slash_pos);
   parsed->target = slash_pos == std::string::npos ? "/" : without_scheme.substr(slash_pos);
   if (authority.empty()) {
     if (error != nullptr) {

@@ -125,8 +125,7 @@ int main() {
     require(config.alert_options.sinks.size() == 2, "alert sink count");
     require(config.alert_options.sinks.at(1).type == "ops_http", "ops_http type");
     require(
-      config.alert_options.sinks.at(1).url == "http://127.0.0.1:18080/ops/alerts",
-      "ops_http url"
+      config.alert_options.sinks.at(1).url == "http://127.0.0.1:18080/ops/alerts", "ops_http url"
     );
     require(config.alert_options.sinks.at(1).timeout_ms == 1234, "ops_http timeout");
     require(config.alert_options.rules.size() == 1, "alert rule count");
