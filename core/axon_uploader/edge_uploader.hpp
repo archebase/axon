@@ -58,6 +58,7 @@ struct UploaderStats {
   std::atomic<uint64_t> files_failed{0};
   std::atomic<uint64_t> bytes_uploaded{0};
   std::atomic<uint64_t> current_upload_bytes_per_sec{0};
+  std::atomic<uint64_t> files_recovered_from_state{0};
 };
 
 /**

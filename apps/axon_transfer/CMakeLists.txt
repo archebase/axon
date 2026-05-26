@@ -62,6 +62,7 @@ set(AXON_TRANSFER_CORE_SOURCES
     src/transfer_config.cpp
     src/ws_client.cpp
     src/file_scanner.cpp
+    src/upload_observability.cpp
     src/upload_coordinator.cpp
     src/transfer_daemon.cpp
 )

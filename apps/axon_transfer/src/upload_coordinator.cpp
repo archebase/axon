@@ -15,9 +15,11 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 #include "edge_uploader.hpp"
+#include "upload_observability.hpp"
 #include "upload_state_manager.hpp"
 
 namespace axon {
@@ -64,29 +66,6 @@ std::optional<std::chrono::system_clock::time_point> parse_timestamp(const std::
     return std::nullopt;
   }
   return std::chrono::system_clock::from_time_t(tt);
-}
-
-nlohmann::json upload_record_to_json(const axon::uploader::UploadRecord& record) {
-  return {
-    {"task_id", record.task_id},
-    {"status", axon::uploader::uploadStatusToString(record.status)},
-    {"file_path", record.file_path},
-    {"s3_key", record.s3_key},
-    {"file_size_bytes", record.file_size_bytes},
-    {"checksum_sha256", record.checksum_sha256},
-    {"retry_count", record.retry_count},
-    {"last_error", record.last_error},
-    {"next_retry_at", record.next_retry_at},
-    {"updated_at", record.updated_at}
-  };
-}
-
-void append_records(
-  nlohmann::json& target, const std::vector<axon::uploader::UploadRecord>& records
-) {
-  for (const auto& record : records) {
-    target.push_back(upload_record_to_json(record));
-  }
 }
 
 }  // namespace
@@ -233,86 +212,21 @@ void UploadCoordinator::on_upload_ack(const std::string& task_id) {
 }
 
 void UploadCoordinator::send_connected() {
-  const auto pending_count =
-    static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::PENDING));
-  const auto active_count =
-    static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::ACTIVE));
-  const auto retry_wait_count =
-    static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::RETRY_WAIT));
-  const auto waiting_ack_status = axon::uploader::UploadStatus::UPLOADED_WAIT_ACK;
-  const auto waiting_ack_count =
-    static_cast<int>(state_manager_->countByStatus(waiting_ack_status));
-  const auto completed_count =
-    static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::COMPLETED));
-  const auto failed_count =
-    static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::FAILED));
+  auto data = build_upload_observability_status(config_, *state_manager_, uploader_->stats());
+  data["version"] = "0.1.0";
+  data["device_id"] = config_.device_id;
 
   nlohmann::json msg = {
-    {"type", "connected"},
-    {"timestamp", current_timestamp()},
-    {"data",
-     {{"version", "0.1.0"},
-      {"device_id", config_.device_id},
-      {"pending_count", pending_count},
-      {"active_count", active_count},
-      {"uploading_count", active_count},
-      {"retry_wait_count", retry_wait_count},
-      {"waiting_ack_count", waiting_ack_count},
-      {"completed_count", completed_count},
-      {"failed_count", failed_count}}}
+    {"type", "connected"}, {"timestamp", current_timestamp()}, {"data", std::move(data)}
   };
   ws_client_.send(msg);
 }
 
 void UploadCoordinator::send_status() {
-  const auto& stats = uploader_->stats();
-  auto pending_records = state_manager_->getByStatus(axon::uploader::UploadStatus::PENDING);
-  auto active_records = state_manager_->getByStatus(axon::uploader::UploadStatus::ACTIVE);
-  auto retry_wait_records = state_manager_->getByStatus(axon::uploader::UploadStatus::RETRY_WAIT);
-  auto waiting_ack_records =
-    state_manager_->getByStatus(axon::uploader::UploadStatus::UPLOADED_WAIT_ACK);
-  auto failed_records = state_manager_->getByStatus(axon::uploader::UploadStatus::FAILED);
-  nlohmann::json waiting_ack_task_ids = nlohmann::json::array();
-  for (const auto& record : waiting_ack_records) {
-    if (!record.task_id.empty()) {
-      waiting_ack_task_ids.push_back(record.task_id);
-    }
-  }
-  nlohmann::json uploads = nlohmann::json::array();
-  append_records(uploads, pending_records);
-  append_records(uploads, active_records);
-  append_records(uploads, retry_wait_records);
-  append_records(uploads, waiting_ack_records);
-  append_records(uploads, failed_records);
-
   nlohmann::json msg = {
     {"type", "status"},
     {"timestamp", current_timestamp()},
-    {"data",
-     {{"pending_count",
-       static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::PENDING))},
-      {"active_count",
-       static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::ACTIVE))},
-      {"uploading_count",
-       static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::ACTIVE))},
-      {"retry_wait_count",
-       static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::RETRY_WAIT))},
-      {"waiting_ack_count", static_cast<int>(waiting_ack_task_ids.size())},
-      {"waiting_ack_task_ids", waiting_ack_task_ids},
-      {"completed_count",
-       static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::COMPLETED))},
-      {"failed_count",
-       static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::FAILED))},
-      {"pending_bytes", state_manager_->pendingBytes()},
-      {"progress",
-       {{"bytes_uploaded", stats.bytes_uploaded.load()},
-        {"current_bytes_per_sec", stats.current_upload_bytes_per_sec.load()}}},
-      {"destination",
-       {{"bucket", config_.uploader.s3.bucket},
-        {"endpoint_url", config_.uploader.s3.endpoint_url},
-        {"region", config_.uploader.s3.region}}},
-      {"uploads", uploads},
-      {"bytes_per_sec", stats.current_upload_bytes_per_sec.load()}}}
+    {"data", build_upload_observability_status(config_, *state_manager_, uploader_->stats())}
   };
   ws_client_.send(msg);
 }
