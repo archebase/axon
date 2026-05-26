@@ -361,9 +361,9 @@ std::vector<AlertRuleConfig> default_alert_rules() {
 }
 
 std::vector<AlertSinkConfig> default_alert_sinks() {
-  return {
-    {"file", {}},
-  };
+  AlertSinkConfig sink;
+  sink.type = "file";
+  return {sink};
 }
 
 }  // namespace system

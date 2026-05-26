@@ -89,6 +89,13 @@ int main() {
         "      path: " +
         (root / "alerts.jsonl").string() +
         "\n"
+        "    - type: ops_http\n"
+        "      url: http://127.0.0.1:18080/ops/alerts\n"
+        "      auth_token_file: " +
+        (root / "ops-alert.token").string() +
+        "\n"
+        "      timeout_ms: 1234\n"
+        "\n"
         "  rules:\n"
         "    - id: recorder_unavailable\n"
         "      process_id: recorder\n"
@@ -115,7 +122,13 @@ int main() {
     require(config.process_options.targets.at(0).rpc.has_value(), "process target rpc");
     require(config.process_options.targets.at(0).rpc->timeout_ms == 250, "process rpc timeout");
     require(config.alert_options.evaluate_interval_ms == 4500, "alert cadence");
-    require(config.alert_options.sinks.size() == 1, "alert sink count");
+    require(config.alert_options.sinks.size() == 2, "alert sink count");
+    require(config.alert_options.sinks.at(1).type == "ops_http", "ops_http type");
+    require(
+      config.alert_options.sinks.at(1).url == "http://127.0.0.1:18080/ops/alerts",
+      "ops_http url"
+    );
+    require(config.alert_options.sinks.at(1).timeout_ms == 1234, "ops_http timeout");
     require(config.alert_options.rules.size() == 1, "alert rule count");
     require(config.alert_options.rules.at(0).severity == "critical", "alert severity");
 
@@ -160,7 +173,15 @@ int main() {
       "alerts:\n"
       "  sinks:\n"
       "    - type: ops_http\n",
-      "unsupported alerts.sinks type"
+      "ops_http requires url"
+    );
+    expect_bad_config(
+      "alerts:\n"
+      "  sinks:\n"
+      "    - type: ops_http\n"
+      "      url: http://127.0.0.1:18080/ops/alerts\n"
+      "      timeout_ms: 0\n",
+      "timeout_ms must be positive"
     );
     expect_bad_config(
       "alerts:\n"

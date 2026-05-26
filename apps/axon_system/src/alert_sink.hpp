@@ -17,6 +17,10 @@ namespace system {
 struct AlertSinkConfig {
   std::string type = "log";
   std::filesystem::path path;
+  std::string url;
+  std::string auth_token;
+  std::filesystem::path auth_token_file;
+  int timeout_ms = 2000;
 };
 
 struct AlertDeliveryResult {
