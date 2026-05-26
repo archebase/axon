@@ -30,6 +30,7 @@ recording:
     cleanup_upload_backlog: false
   sidecar:
     enabled: true
+    mode: always          # always, transient, or none
 
 metadata:
   incident_bundle:

@@ -150,6 +150,7 @@ recording:
   # even when this is false.
   sidecar:
     enabled: true
+    mode: always          # always, transient, or none
 
 # ============================================================================
 # Metadata Diagnostics

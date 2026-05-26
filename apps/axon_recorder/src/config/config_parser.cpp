@@ -21,6 +21,28 @@ using axon::logging::kv;
 namespace axon {
 namespace recorder {
 
+namespace {
+
+void apply_sidecar_enabled(RecordingConfig& recording, bool enabled) {
+  recording.sidecar_json_enabled = enabled;
+  recording.sidecar_generation_mode = enabled ? "always" : "none";
+}
+
+void apply_sidecar_generation_mode(RecordingConfig& recording, std::string mode) {
+  if (mode == "disabled" || mode == "off") {
+    mode = "none";
+  } else if (mode == "enabled" || mode == "on" || mode == "true") {
+    mode = "always";
+  }
+  if (mode != "always" && mode != "transient" && mode != "none") {
+    mode = "always";
+  }
+  recording.sidecar_generation_mode = mode;
+  recording.sidecar_json_enabled = mode != "none";
+}
+
+}  // namespace
+
 // ============================================================================
 // YAML to JSON conversion helper
 // ============================================================================
@@ -191,18 +213,21 @@ bool ConfigParser::load_from_string(const std::string& yaml_content, RecorderCon
       if (metadata["sidecar"]) {
         const auto& sidecar = metadata["sidecar"];
         if (sidecar.IsMap() && sidecar["enabled"]) {
-          config.recording.sidecar_json_enabled = sidecar["enabled"].as<bool>();
+          apply_sidecar_enabled(config.recording, sidecar["enabled"].as<bool>());
+        }
+        if (sidecar.IsMap() && sidecar["mode"]) {
+          apply_sidecar_generation_mode(config.recording, sidecar["mode"].as<std::string>());
         } else if (sidecar.IsScalar()) {
-          config.recording.sidecar_json_enabled = sidecar.as<bool>();
+          apply_sidecar_enabled(config.recording, sidecar.as<bool>());
         }
       }
       if (metadata["sidecar_enabled"]) {
-        config.recording.sidecar_json_enabled = metadata["sidecar_enabled"].as<bool>();
+        apply_sidecar_enabled(config.recording, metadata["sidecar_enabled"].as<bool>());
       }
       if (metadata["sidecar_generation_mode"]) {
-        const std::string mode = metadata["sidecar_generation_mode"].as<std::string>();
-        config.recording.sidecar_json_enabled =
-          mode != "disabled" && mode != "off" && mode != "none";
+        apply_sidecar_generation_mode(
+          config.recording, metadata["sidecar_generation_mode"].as<std::string>()
+        );
       }
       if (metadata["incident_bundle"]) {
         parse_incident_bundle(metadata["incident_bundle"], config.incident_bundle);
@@ -272,6 +297,7 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
     node["recording"]["disk_usage"]["cleanup_upload_backlog"] =
       config.recording.disk_usage.cleanup_upload_backlog;
     node["recording"]["sidecar"]["enabled"] = config.recording.sidecar_json_enabled;
+    node["recording"]["sidecar"]["mode"] = config.recording.sidecar_generation_mode;
     node["metadata"]["incident_bundle"]["enabled"] = config.incident_bundle.enabled;
     node["metadata"]["incident_bundle"]["directory"] = config.incident_bundle.directory;
 
@@ -445,21 +471,23 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
       node["enforce_monotonic_timestamps_per_topic"].as<bool>();
   }
   if (node["sidecar_enabled"]) {
-    recording.sidecar_json_enabled = node["sidecar_enabled"].as<bool>();
+    apply_sidecar_enabled(recording, node["sidecar_enabled"].as<bool>());
   }
   if (node["sidecar_json_enabled"]) {
-    recording.sidecar_json_enabled = node["sidecar_json_enabled"].as<bool>();
+    apply_sidecar_enabled(recording, node["sidecar_json_enabled"].as<bool>());
   }
   if (node["sidecar_generation_mode"]) {
-    const std::string mode = node["sidecar_generation_mode"].as<std::string>();
-    recording.sidecar_json_enabled = mode != "disabled" && mode != "off" && mode != "none";
+    apply_sidecar_generation_mode(recording, node["sidecar_generation_mode"].as<std::string>());
   }
   if (node["sidecar"]) {
     const auto& sidecar = node["sidecar"];
     if (sidecar.IsMap() && sidecar["enabled"]) {
-      recording.sidecar_json_enabled = sidecar["enabled"].as<bool>();
+      apply_sidecar_enabled(recording, sidecar["enabled"].as<bool>());
+    }
+    if (sidecar.IsMap() && sidecar["mode"]) {
+      apply_sidecar_generation_mode(recording, sidecar["mode"].as<std::string>());
     } else if (sidecar.IsScalar()) {
-      recording.sidecar_json_enabled = sidecar.as<bool>();
+      apply_sidecar_enabled(recording, sidecar.as<bool>());
     }
   }
 

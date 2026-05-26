@@ -187,6 +187,7 @@ AxonRecorder::~AxonRecorder() {
 bool AxonRecorder::initialize(const RecorderConfig& config) {
   config_ = config;
   last_session_sidecar_enabled_ = config_.recording.sidecar_json_enabled;
+  last_session_sidecar_generation_mode_ = config_.recording.sidecar_generation_mode;
   last_session_incident_bundle_enabled_ = config_.incident_bundle.enabled;
 
   ::axon::logging::LoggingConfig log_config;
@@ -390,6 +391,7 @@ nlohmann::json AxonRecorder::get_metadata_status_json() const {
   j["output_path"] = last_session_output_path_.empty() ? nlohmann::json(nullptr)
                                                        : nlohmann::json(last_session_output_path_);
   j["sidecar_enabled"] = last_session_sidecar_enabled_;
+  j["sidecar_generation_mode"] = last_session_sidecar_generation_mode_;
   j["sidecar_generated"] = last_session_sidecar_generated_;
   j["sidecar_path"] = last_session_sidecar_path_.empty()
                         ? nlohmann::json(nullptr)
@@ -702,6 +704,7 @@ bool AxonRecorder::start() {
   last_session_close_time_ = std::chrono::system_clock::time_point{};
   last_session_output_path_.clear();
   last_session_sidecar_enabled_ = config_.recording.sidecar_json_enabled;
+  last_session_sidecar_generation_mode_ = config_.recording.sidecar_generation_mode;
   last_session_sidecar_generated_ = false;
   last_session_sidecar_path_.clear();
   last_session_checksum_.clear();
@@ -969,6 +972,7 @@ void AxonRecorder::stop() {
     last_session_close_time_ = recording_session_->get_close_time();
     last_session_output_path_ = output_path;
     last_session_sidecar_enabled_ = recording_session_->sidecar_json_enabled();
+    last_session_sidecar_generation_mode_ = config_.recording.sidecar_generation_mode;
     last_session_sidecar_generated_ = recording_session_->was_sidecar_generated();
     last_session_sidecar_path_ = recording_session_->get_sidecar_path();
     last_session_checksum_ = recording_session_->get_checksum();

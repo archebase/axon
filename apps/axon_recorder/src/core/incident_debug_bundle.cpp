@@ -200,6 +200,7 @@ nlohmann::json IncidentDebugBundleWriter::safe_recorder_config_json(
   j["recording"]["compression"] = config->recording.compression;
   j["recording"]["compression_level"] = config->recording.compression_level;
   j["recording"]["sidecar_json_enabled"] = config->recording.sidecar_json_enabled;
+  j["recording"]["sidecar_generation_mode"] = config->recording.sidecar_generation_mode;
   j["recording"]["subtract_pause_duration_from_timestamps"] =
     config->recording.subtract_pause_duration_from_timestamps;
   j["recording"]["enforce_monotonic_timestamps_per_topic"] =

@@ -138,6 +138,10 @@ struct RecordingConfig {
   /// Generate the fast-parse JSON sidecar after MCAP close. MCAP metadata
   /// injection remains enabled when this is false.
   bool sidecar_json_enabled = true;
+  /// Sidecar generation mode: "always" preserves legacy behavior, "transient"
+  /// keeps compatibility while marking the sidecar as derived, and "none"
+  /// disables sidecar JSON output.
+  std::string sidecar_generation_mode = "always";
 };
 
 /**
@@ -667,6 +671,7 @@ private:
   std::chrono::system_clock::time_point last_session_close_time_;
   std::string last_session_output_path_;
   bool last_session_sidecar_enabled_ = true;
+  std::string last_session_sidecar_generation_mode_ = "always";
   bool last_session_sidecar_generated_ = false;
   std::string last_session_sidecar_path_;
   std::string last_session_checksum_;
