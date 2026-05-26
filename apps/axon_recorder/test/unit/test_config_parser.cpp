@@ -220,6 +220,7 @@ rpc:
   EXPECT_TRUE(parser.load_from_string(yaml, config));
 
   EXPECT_FALSE(config.recording.sidecar_json_enabled);
+  EXPECT_EQ(config.recording.sidecar_generation_mode, "none");
   EXPECT_TRUE(config.incident_bundle.enabled);
   EXPECT_EQ(config.incident_bundle.directory, "/tmp/axon-bundles");
   EXPECT_EQ(config.rpc.mode, RpcMode::WS_CLIENT);
@@ -229,6 +230,20 @@ rpc:
   EXPECT_EQ(config.rpc.ws_client.time_gap_warning_threshold_ms, 250);
   EXPECT_EQ(config.rpc.ws_client.time_gap_critical_threshold_ms, 1000);
   EXPECT_EQ(config.rpc.ws_client.time_gap_stale_after_ms, 5000);
+}
+
+TEST_F(ConfigParserTest, ParseTransientSidecarGenerationMode) {
+  const std::string yaml = R"(
+recording:
+  sidecar:
+    mode: transient
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  EXPECT_TRUE(parser.load_from_string(yaml, config));
+  EXPECT_TRUE(config.recording.sidecar_json_enabled);
+  EXPECT_EQ(config.recording.sidecar_generation_mode, "transient");
 }
 
 // ============================================================================
