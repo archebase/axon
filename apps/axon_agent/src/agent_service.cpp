@@ -289,6 +289,7 @@ AgentService::AgentService(
     : profile_root_(profile_root)
     , profiles_(std::move(profile_root))
     , actions_(std::move(action_manifest_dir), std::move(action_command_dir))
+    , action_executions_(state_dir / "action_executions.json")
     , processes_(state_dir)
     , state_dir_(std::move(state_dir))
     , started_at_iso_(now_iso8601()) {}
@@ -302,6 +303,15 @@ bool AgentService::initialize(std::string* error) {
     if (error != nullptr) {
       *error = action_error;
     }
+  }
+
+  std::string execution_error;
+  if (!action_executions_.load_and_recover(&execution_error)) {
+    last_error_ = execution_error;
+    if (error != nullptr) {
+      *error = execution_error;
+    }
+    return false;
   }
 
   if (!profiles_.scan(error)) {
@@ -327,6 +337,7 @@ RpcResponse AgentService::get_state() {
   nlohmann::json active_profile_json;
   nlohmann::json adapter_state;
   nlohmann::json processes_state;
+  nlohmann::json action_execution_state;
   std::string last_error;
 
   {
@@ -342,6 +353,7 @@ RpcResponse AgentService::get_state() {
       }
     }
     processes_state = processes_.state_to_json();
+    action_execution_state = action_executions_.to_json();
     last_error = last_error_;
   }
 
@@ -366,6 +378,7 @@ RpcResponse AgentService::get_state() {
     {"active_profile", active_profile_json},
     {"adapter", adapter_state},
     {"processes", processes_state},
+    {"action_executions", action_execution_state},
     {"components", build_components_state(active_profile)},
     {"last_error", last_error},
   };
@@ -388,6 +401,7 @@ RpcResponse AgentService::get_report() {
     {"adapter", adapter_state},
     {"processes", processes_.state_to_json()},
     {"actions", actions_.to_json()},
+    {"action_executions", action_executions_.to_json()},
   };
   return response;
 }
@@ -398,6 +412,161 @@ RpcResponse AgentService::list_actions() {
   response.message = "actions listed";
   response.data = actions_.to_json();
   return response;
+}
+
+RpcResponse AgentService::execute_action(const nlohmann::json& params) {
+  ActionDefinition action;
+  ActionExecutionRecord record;
+  nlohmann::json args = nlohmann::json::object();
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+      const auto request_id = require_string(params, "request_id");
+      const auto action_id = require_string(params, "action_id");
+      args = params.contains("args") ? params["args"] : nlohmann::json::object();
+
+      if (auto existing = action_executions_.get(request_id)) {
+        ++existing->duplicate_count;
+        std::string persist_error;
+        if (!action_executions_.upsert(*existing, &persist_error)) {
+          last_error_ = persist_error;
+          return {false, persist_error, ActionExecutionStore::record_to_json(*existing)};
+        }
+        auto data = ActionExecutionStore::record_to_json(*existing);
+        data["idempotent"] = true;
+        const auto existing_args = existing->args.dump();
+        const bool can_compare_args = existing_args.find("[REDACTED]") == std::string::npos;
+        data["request_mismatch"] =
+          existing->action_id != action_id || (can_compare_args && existing_args != args.dump());
+        return {true, "duplicate request_id; returning existing action execution", data};
+      }
+
+      record.request_id = request_id;
+      record.action_id = action_id;
+      record.args = args;
+      record.queued_at = action_execution_now_iso8601();
+      if (params.contains("expires_at") && !params["expires_at"].is_string()) {
+        record.status = "rejected";
+        record.finished_at = action_execution_now_iso8601();
+        record.error_summary = "expires_at must be a string";
+        std::string persist_error;
+        if (!action_executions_.upsert(record, &persist_error)) {
+          last_error_ = persist_error;
+          return {false, persist_error, ActionExecutionStore::record_to_json(record)};
+        }
+        last_error_ = record.error_summary;
+        return {false, record.error_summary, ActionExecutionStore::record_to_json(record)};
+      }
+      record.expires_at =
+        params.contains("expires_at") ? params["expires_at"].get<std::string>() : std::string();
+
+      std::string expires_error;
+      const bool expired = action_execution_is_expired(record.expires_at, &expires_error);
+      if (!expires_error.empty()) {
+        record.status = "rejected";
+        record.finished_at = action_execution_now_iso8601();
+        record.error_summary = expires_error;
+        std::string persist_error;
+        if (!action_executions_.upsert(record, &persist_error)) {
+          last_error_ = persist_error;
+          return {false, persist_error, ActionExecutionStore::record_to_json(record)};
+        }
+        last_error_ = expires_error;
+        return {false, expires_error, ActionExecutionStore::record_to_json(record)};
+      }
+      if (expired) {
+        record.status = "expired";
+        record.finished_at = action_execution_now_iso8601();
+        record.error_summary = "action request expired before execution";
+        std::string persist_error;
+        if (!action_executions_.upsert(record, &persist_error)) {
+          last_error_ = persist_error;
+          return {false, persist_error, ActionExecutionStore::record_to_json(record)};
+        }
+        return {false, record.error_summary, ActionExecutionStore::record_to_json(record)};
+      }
+
+      const auto* found = actions_.find_action(action_id);
+      if (found == nullptr) {
+        const auto error = "action not found: " + action_id;
+        record.status = "rejected";
+        record.finished_at = action_execution_now_iso8601();
+        record.error_summary = error;
+        std::string persist_error;
+        if (!action_executions_.upsert(record, &persist_error)) {
+          last_error_ = persist_error;
+          return {false, persist_error, ActionExecutionStore::record_to_json(record)};
+        }
+        last_error_ = error;
+        return {false, error, ActionExecutionStore::record_to_json(record)};
+      }
+      action = *found;
+
+      std::string validation_error;
+      if (!action_executor_.validate_args(action, args, &validation_error)) {
+        record.status = "rejected";
+        record.finished_at = action_execution_now_iso8601();
+        record.error_summary = validation_error;
+        std::string persist_error;
+        if (!action_executions_.upsert(record, &persist_error)) {
+          last_error_ = persist_error;
+          return {false, persist_error, ActionExecutionStore::record_to_json(record)};
+        }
+        last_error_ = validation_error;
+        return {false, validation_error, ActionExecutionStore::record_to_json(record)};
+      }
+
+      record.status = "running";
+      record.started_at = action_execution_now_iso8601();
+      std::string persist_error;
+      if (!action_executions_.upsert(record, &persist_error)) {
+        last_error_ = persist_error;
+        return {false, persist_error, ActionExecutionStore::record_to_json(record)};
+      }
+    } catch (const std::exception& ex) {
+      last_error_ = ex.what();
+      return {false, ex.what(), nullptr};
+    }
+  }
+
+  auto result = action_executor_.execute(action, args);
+  record.status = result.status == "succeeded" ? "completed" : result.status;
+  record.finished_at = action_execution_now_iso8601();
+  if (result.exit_code >= 0) {
+    record.exit_code = result.exit_code;
+  }
+  record.error_summary = result.error_summary;
+  record.stdout_text = result.stdout_text;
+  record.stderr_text = result.stderr_text;
+  record.stdout_truncated = result.stdout_truncated;
+  record.stderr_truncated = result.stderr_truncated;
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::string persist_error;
+    if (auto current = action_executions_.get(record.request_id)) {
+      record.duplicate_count = std::max(record.duplicate_count, current->duplicate_count);
+    }
+    if (!action_executions_.upsert(record, &persist_error)) {
+      last_error_ = persist_error;
+      return {false, persist_error, ActionExecutionStore::record_to_json(record)};
+    }
+    if (record.status != "completed") {
+      last_error_ = record.error_summary.empty() ? "action execution failed" : record.error_summary;
+    }
+  }
+
+  const bool completed = record.status == "completed";
+  return {
+    completed,
+    completed ? "action completed" : record.error_summary,
+    ActionExecutionStore::record_to_json(record)
+  };
+}
+
+RpcResponse AgentService::list_action_executions() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return {true, "action executions listed", action_executions_.to_json()};
 }
 
 RpcResponse AgentService::list_profiles() {

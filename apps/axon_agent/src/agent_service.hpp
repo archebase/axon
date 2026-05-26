@@ -12,6 +12,8 @@
 #include <mutex>
 #include <string>
 
+#include "action_execution.hpp"
+#include "action_executor.hpp"
 #include "action_registry.hpp"
 #include "adapter_loader.hpp"
 #include "process_manager.hpp"
@@ -33,6 +35,8 @@ public:
   RpcResponse get_state();
   RpcResponse get_report();
   RpcResponse list_actions();
+  RpcResponse execute_action(const nlohmann::json& params);
+  RpcResponse list_action_executions();
   RpcResponse list_profiles();
   RpcResponse select_profile(const nlohmann::json& params);
   RpcResponse start_process(const nlohmann::json& params);
@@ -68,6 +72,8 @@ private:
   std::filesystem::path profile_root_;
   ProfileManager profiles_;
   ActionRegistry actions_;
+  ActionExecutionStore action_executions_;
+  ActionExecutor action_executor_;
   AdapterLoader adapter_loader_;
   ProcessManager processes_;
   std::filesystem::path state_dir_;
