@@ -185,6 +185,20 @@ int main() {
     require(read_counter(counter_path) == 1, "duplicate request executed action twice");
 
     response = service.execute_action(
+      {{"request_id", "req-success"},
+       {"action_id", "fail_sensor"},
+       {"args", {{"sensor_id", "rear_lidar"}}}}
+    );
+    require(response.success, "mismatched duplicate should return existing state");
+    require(response.data["idempotent"].get<bool>(), "mismatched duplicate idempotent flag");
+    require(response.data["request_mismatch"].get<bool>(), "mismatched duplicate flag missing");
+    require(
+      response.data["status"].get<std::string>() == "completed", "mismatched duplicate status"
+    );
+    require(response.data["duplicate_count"].get<int>() == 2, "completed duplicate count mismatch");
+    require(read_counter(counter_path) == 1, "mismatched duplicate executed action");
+
+    response = service.execute_action(
       {{"request_id", "req-expired"},
        {"action_id", "restart_sensor"},
        {"expires_at", "2000-01-01T00:00:00Z"},
@@ -193,6 +207,20 @@ int main() {
     require(!response.success, "expired request should not succeed");
     require(response.data["status"].get<std::string>() == "expired", "expired status");
     require(read_counter(counter_path) == 1, "expired request executed action");
+
+    response = service.execute_action(
+      {{"request_id", "req-invalid-expires"},
+       {"action_id", "restart_sensor"},
+       {"expires_at", "not-a-timestamp"},
+       {"args", {{"sensor_id", "front_lidar"}}}}
+    );
+    require(!response.success, "invalid expires_at should not succeed");
+    require(response.data["status"].get<std::string>() == "rejected", "invalid expires_at status");
+    require(
+      response.data["error_summary"].get<std::string>().find("ISO-8601") != std::string::npos,
+      "invalid expires_at diagnostic missing"
+    );
+    require(read_counter(counter_path) == 1, "invalid expires_at executed action");
 
     response = service.execute_action(
       {{"request_id", "req-failed"},
@@ -229,14 +257,21 @@ int main() {
     auto completed = find_record(executions.data, "req-success");
     auto failed = find_record(executions.data, "req-failed");
     auto expired = find_record(executions.data, "req-expired");
+    auto invalid_expires = find_record(executions.data, "req-invalid-expires");
     auto running_duplicate = find_record(executions.data, "req-running");
     require(completed["status"].get<std::string>() == "completed", "completed not persisted");
+    require(
+      completed["duplicate_count"].get<int>() == 2, "completed duplicate count not persisted"
+    );
     require(failed["status"].get<std::string>() == "failed", "failed not persisted");
     require(expired["status"].get<std::string>() == "expired", "expired not persisted");
     require(
+      invalid_expires["status"].get<std::string>() == "rejected", "invalid expires_at not persisted"
+    );
+    require(
       running_duplicate["duplicate_count"].get<int>() == 1, "running duplicate count not preserved"
     );
-    require(executions.data["count"].get<std::size_t>() == 5, "diagnostic count mismatch");
+    require(executions.data["count"].get<std::size_t>() == 6, "diagnostic count mismatch");
 
     std::ifstream persisted_state(state_dir / "action_executions.json");
     const std::string persisted_content(
