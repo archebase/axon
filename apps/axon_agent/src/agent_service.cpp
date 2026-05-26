@@ -414,6 +414,65 @@ RpcResponse AgentService::list_actions() {
   return response;
 }
 
+std::string AgentService::resolve_robot_id(const std::string& configured_robot_id) {
+  if (!configured_robot_id.empty()) {
+    return configured_robot_id;
+  }
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto* profile = profiles_.active_profile();
+  if (profile == nullptr) {
+    return "";
+  }
+  return profile->profile_id;
+}
+
+nlohmann::json AgentService::build_keystone_action_catalog(const std::string& robot_id) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  nlohmann::json actions = nlohmann::json::array();
+  for (const auto& action : actions_.actions()) {
+    actions.push_back({
+      {"id", action.id},
+      {"title", action.title},
+      {"description", action.description},
+      {"args_schema", action.args_schema},
+      {"timeout_sec", action.timeout_sec},
+      {"run_as", action.run_as},
+      {"allowed_roles", action.allowed_roles},
+      {"requires_approval", action.requires_approval},
+    });
+  }
+
+  nlohmann::json diagnostics = nlohmann::json::array();
+  std::size_t invalid_count = 0;
+  for (const auto& diagnostic : actions_.diagnostics()) {
+    nlohmann::json item = {
+      {"severity", diagnostic.severity},
+      {"message", diagnostic.message},
+    };
+    if (!diagnostic.action_id.empty()) {
+      item["action_id"] = diagnostic.action_id;
+    }
+    diagnostics.push_back(std::move(item));
+    if (diagnostic.severity == "error") {
+      ++invalid_count;
+    }
+  }
+
+  return {
+    {"schema_version", 1},
+    {"robot_id", robot_id},
+    {"reported_at", action_execution_now_iso8601()},
+    {"agent", {{"name", "axon-agent"}, {"version", AXON_AGENT_VERSION}}},
+    {"active_profile", profiles_.active_profile_to_json()},
+    {"loaded_count", actions.size()},
+    {"invalid_count", invalid_count},
+    {"actions", actions},
+    {"diagnostics", diagnostics},
+  };
+}
+
 RpcResponse AgentService::execute_action(const nlohmann::json& params) {
   ActionDefinition action;
   ActionExecutionRecord record;

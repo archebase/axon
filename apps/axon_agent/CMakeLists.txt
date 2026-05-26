@@ -51,6 +51,7 @@ add_library(
     src/adapter_loader.cpp
     src/agent_service.cpp
     src/http_server.cpp
+    src/keystone_action_sync.cpp
     src/process_manager.cpp
     src/profile_manager.cpp
 )
