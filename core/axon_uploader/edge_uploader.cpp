@@ -313,26 +313,26 @@ bool EdgeUploader::isRunning() const {
   return running_.load();
 }
 
-void EdgeUploader::enqueue(
+bool EdgeUploader::enqueue(
   const std::string& mcap_path, const std::string& json_path, const std::string& task_id,
   const std::string& factory_id, const std::string& device_id, const std::string& checksum_sha256
 ) {
   // Validate required parameters to prevent malformed S3 keys
   if (mcap_path.empty()) {
     AXON_LOG_ERROR("Cannot enqueue upload - mcap_path is empty");  // LCOV_EXCL_BR_LINE
-    return;
+    return false;
   }
   if (task_id.empty()) {
     AXON_LOG_ERROR("Cannot enqueue upload - task_id is empty");  // LCOV_EXCL_BR_LINE
-    return;
+    return false;
   }
   if (factory_id.empty()) {
     AXON_LOG_ERROR("Cannot enqueue upload - factory_id is empty");  // LCOV_EXCL_BR_LINE
-    return;
+    return false;
   }
   if (device_id.empty()) {
     AXON_LOG_ERROR("Cannot enqueue upload - device_id is empty");  // LCOV_EXCL_BR_LINE
-    return;
+    return false;
   }
 
   // Validate local inputs before enqueueing. JSON is optional in MCAP-only mode,
@@ -345,7 +345,7 @@ void EdgeUploader::enqueue(
     } else {
       AXON_LOG_ERROR("Cannot enqueue upload - json_path does not exist: " << json_path);
     }
-    return;
+    return false;
   }
   // LCOV_EXCL_BR_STOP
 
@@ -356,7 +356,7 @@ void EdgeUploader::enqueue(
     checksum_to_store = computeSha256(mcap_path);
     if (checksum_to_store.empty()) {
       AXON_LOG_ERROR("Cannot enqueue upload - failed to compute SHA-256 for " << mcap_path);
-      return;
+      return false;
     }
   }
 
@@ -390,7 +390,7 @@ void EdgeUploader::enqueue(
       "Failed to persist upload state for " << mcap_path
                                             << " - upload not queued (disk full or DB error?)"
     );
-    return;
+    return false;
   }
 
   // Add to queue
@@ -403,11 +403,12 @@ void EdgeUploader::enqueue(
     stats_.files_pending--;
     state_manager_->remove(mcap_path);
     AXON_LOG_ERROR("Failed to enqueue upload for " << mcap_path << " - queue at capacity");
-    return;
+    return false;
   }
 
   // Check backpressure
   checkBackpressure();
+  return true;
 }
 
 const UploaderStats& EdgeUploader::stats() const {

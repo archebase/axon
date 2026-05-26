@@ -100,13 +100,15 @@ std::string sanitize_endpoint_url(const std::string& endpoint_url) {
 }
 
 nlohmann::json upload_record_to_json(const axon::uploader::UploadRecord& record) {
+  const bool mcap_only = record.json_path.empty();
   return {
     {"task_id", record.task_id},
     {"status", axon::uploader::uploadStatusToString(record.status)},
+    {"upload_mode", mcap_only ? "mcap_only" : "mcap_json"},
     {"file_path", record.file_path},
-    {"json_path",
-     record.json_path.empty() ? nlohmann::json(nullptr) : nlohmann::json(record.json_path)},
+    {"json_path", mcap_only ? nlohmann::json(nullptr) : nlohmann::json(record.json_path)},
     {"s3_key", record.s3_key},
+    {"object_key", record.s3_key},
     {"file_size_bytes", record.file_size_bytes},
     {"checksum_sha256", record.checksum_sha256},
     {"retry_count", record.retry_count},

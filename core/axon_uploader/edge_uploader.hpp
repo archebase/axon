@@ -174,8 +174,9 @@ public:
    * @param factory_id Factory identifier
    * @param device_id Device identifier
    * @param checksum_sha256 Pre-computed SHA-256 checksum, or empty to compute during enqueue
+   * @return true if the upload was persisted and queued, false if validation or queueing failed
    */
-  void enqueue(
+  bool enqueue(
     const std::string& mcap_path, const std::string& json_path, const std::string& task_id,
     const std::string& factory_id, const std::string& device_id, const std::string& checksum_sha256
   );

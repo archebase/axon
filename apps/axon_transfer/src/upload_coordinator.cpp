@@ -107,21 +107,42 @@ void UploadCoordinator::on_upload_request(const std::string& task_id, int priori
     return;
   }
 
-  enqueue(*group, priority);
+  if (!enqueue(*group, priority)) {
+    nlohmann::json msg = {
+      {"type", "upload_failed"},
+      {"timestamp", current_timestamp()},
+      {"data",
+       {{"task_id", task_id},
+        {"reason", "upload enqueue rejected"},
+        {"retry_count", 0},
+        {"next_retry_at", ""}}}
+    };
+    ws_client_.send(msg);
+    return;
+  }
 
   nlohmann::json files = nlohmann::json::array({task_id + ".mcap"});
   if (!group->json_path.empty()) {
     files.push_back(task_id + ".json");
   }
 
+  const auto record = state_manager_->get(group->mcap_path.string());
+  nlohmann::json data = {
+    {"task_id", task_id},
+    {"files", files},
+    {"total_bytes", group->mcap_size_bytes},
+    {"file_size_bytes", group->mcap_size_bytes},
+    {"checksum_sha256", group->checksum_sha256},
+    {"upload_mode", group->json_path.empty() ? "mcap_only" : "mcap_json"}
+  };
+  if (record) {
+    data["status"] = axon::uploader::uploadStatusToString(record->status);
+    data["s3_key"] = record->s3_key;
+    data["object_key"] = record->s3_key;
+  }
+
   nlohmann::json msg = {
-    {"type", "upload_started"},
-    {"timestamp", current_timestamp()},
-    {"data",
-     {{"task_id", task_id},
-      {"files", files},
-      {"total_bytes", group->mcap_size_bytes},
-      {"checksum_sha256", group->checksum_sha256}}}
+    {"type", "upload_started"}, {"timestamp", current_timestamp()}, {"data", data}
   };
   ws_client_.send(msg);
 }
@@ -129,15 +150,18 @@ void UploadCoordinator::on_upload_request(const std::string& task_id, int priori
 void UploadCoordinator::on_upload_all() {
   auto groups = scanner_.scan_all();
 
+  int enqueued_count = 0;
   for (const auto& group : groups) {
-    enqueue(group, 0);
+    if (enqueue(group, 0)) {
+      ++enqueued_count;
+    }
   }
 
   nlohmann::json msg = {
     {"type", "status"},
     {"timestamp", current_timestamp()},
     {"data",
-     {{"pending_count", static_cast<int>(groups.size())},
+     {{"pending_count", enqueued_count},
       {"active_count",
        static_cast<int>(state_manager_->countByStatus(axon::uploader::UploadStatus::ACTIVE))},
       {"uploading_count",
@@ -231,8 +255,9 @@ void UploadCoordinator::send_status() {
   ws_client_.send(msg);
 }
 
-void UploadCoordinator::enqueue(const FileGroup& group, int priority) {
-  uploader_->enqueue(
+bool UploadCoordinator::enqueue(const FileGroup& group, int priority) {
+  (void)priority;
+  return uploader_->enqueue(
     group.mcap_path.string(),
     group.json_path.string(),
     group.task_id,
@@ -251,8 +276,10 @@ void UploadCoordinator::on_upload_complete(
     if (record) {
       data["status"] = axon::uploader::uploadStatusToString(record->status);
       data["s3_key"] = record->s3_key;
+      data["object_key"] = record->s3_key;
       data["file_size_bytes"] = record->file_size_bytes;
       data["checksum_sha256"] = record->checksum_sha256;
+      data["upload_mode"] = record->json_path.empty() ? "mcap_only" : "mcap_json";
     }
     nlohmann::json msg = {
       {"type", "upload_complete"}, {"timestamp", current_timestamp()}, {"data", data}

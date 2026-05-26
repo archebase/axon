@@ -30,6 +30,26 @@ using ::testing::InSequence;
 using ::testing::Return;
 using ::testing::ReturnRef;
 
+namespace {
+
+bool ends_with(const std::string& value, const std::string& suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+UploaderConfig make_test_config(const std::filesystem::path& test_dir) {
+  UploaderConfig config;
+  config.state_db_path = (test_dir / "state.db").string();
+  config.failed_uploads_dir = (test_dir / "failed").string();
+  config.s3.bucket = "test-bucket";
+  config.s3.region = "us-east-1";
+  config.s3.access_key = "test";
+  config.s3.secret_key = "test";
+  return config;
+}
+
+}  // namespace
+
 class EdgeUploaderMockedTest : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -243,18 +263,83 @@ TEST_F(EdgeUploaderMockedTest, EnqueueMcapOnlyWithoutSidecar) {
   auto mcap_path = test_dir_ / "task_001.mcap";
   std::ofstream(mcap_path, std::ios::binary) << "mcap payload";
 
-  UploaderConfig config;
-  config.state_db_path = (test_dir_ / "state.db").string();
-  config.failed_uploads_dir = (test_dir_ / "failed").string();
-  config.s3.bucket = "test-bucket";
-  config.s3.region = "us-east-1";
-  config.s3.access_key = "test";
-  config.s3.secret_key = "test";
+  const auto config = make_test_config(test_dir_);
 
-  EdgeUploader uploader(config);
-  uploader.enqueue(mcap_path.string(), "", "task_001", "factory", "device", "");
+  {
+    EdgeUploader uploader(config);
+    EXPECT_TRUE(uploader.enqueue(mcap_path.string(), "", "task_001", "factory", "device", ""));
+    EXPECT_EQ(uploader.stats().files_pending.load(), 1);
+  }
 
-  EXPECT_EQ(uploader.stats().files_pending.load(), 1);
+  UploadStateManager state(config.state_db_path);
+  auto record = state.get(mcap_path.string());
+  ASSERT_TRUE(record.has_value());
+  EXPECT_TRUE(record->json_path.empty());
+  EXPECT_EQ(record->file_size_bytes, 12);
+  EXPECT_EQ(
+    record->checksum_sha256, "19518b7a61349c6b387cb8456bca7469d090156f62e21131de5dceb2274c7b40"
+  );
+  EXPECT_NE(record->s3_key.find("factory/device/"), std::string::npos);
+  EXPECT_TRUE(ends_with(record->s3_key, "/task_001.mcap"));
+  EXPECT_EQ(record->status, UploadStatus::PENDING);
+}
+
+TEST_F(EdgeUploaderMockedTest, EnqueuePairedMcapJsonPreservesSidecarCompatibility) {
+  auto mcap_path = test_dir_ / "task_002.mcap";
+  auto json_path = test_dir_ / "task_002.json";
+  std::ofstream(mcap_path, std::ios::binary) << "paired mcap payload";
+  std::ofstream(json_path, std::ios::binary) << R"({"task_id":"task_002"})";
+
+  const auto config = make_test_config(test_dir_);
+
+  {
+    EdgeUploader uploader(config);
+    EXPECT_TRUE(uploader.enqueue(
+      mcap_path.string(), json_path.string(), "task_002", "factory", "device", "provided-checksum"
+    ));
+    EXPECT_EQ(uploader.stats().files_pending.load(), 1);
+  }
+
+  UploadStateManager state(config.state_db_path);
+  auto record = state.get(mcap_path.string());
+  ASSERT_TRUE(record.has_value());
+  EXPECT_EQ(record->json_path, json_path.string());
+  EXPECT_EQ(record->checksum_sha256, "provided-checksum");
+  EXPECT_EQ(record->file_size_bytes, 19);
+  EXPECT_TRUE(ends_with(record->s3_key, "/task_002.mcap"));
+  EXPECT_EQ(record->status, UploadStatus::PENDING);
+}
+
+TEST_F(EdgeUploaderMockedTest, EnqueueMissingMcapFailsWithoutStateRecord) {
+  auto missing_mcap = test_dir_ / "missing.mcap";
+  const auto config = make_test_config(test_dir_);
+
+  {
+    EdgeUploader uploader(config);
+    EXPECT_FALSE(uploader.enqueue(missing_mcap.string(), "", "missing", "factory", "device", ""));
+    EXPECT_EQ(uploader.stats().files_pending.load(), 0);
+  }
+
+  UploadStateManager state(config.state_db_path);
+  EXPECT_FALSE(state.get(missing_mcap.string()).has_value());
+}
+
+TEST_F(EdgeUploaderMockedTest, EnqueueMissingJsonFailsWhenJsonPathProvided) {
+  auto mcap_path = test_dir_ / "task_003.mcap";
+  auto missing_json = test_dir_ / "task_003.json";
+  std::ofstream(mcap_path, std::ios::binary) << "mcap payload";
+  const auto config = make_test_config(test_dir_);
+
+  {
+    EdgeUploader uploader(config);
+    EXPECT_FALSE(uploader.enqueue(
+      mcap_path.string(), missing_json.string(), "task_003", "factory", "device", ""
+    ));
+    EXPECT_EQ(uploader.stats().files_pending.load(), 0);
+  }
+
+  UploadStateManager state(config.state_db_path);
+  EXPECT_FALSE(state.get(mcap_path.string()).has_value());
 }
 
 int main(int argc, char** argv) {
