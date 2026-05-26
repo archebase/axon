@@ -5,11 +5,14 @@
 #include "incident_debug_bundle.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <string_view>
 #include <system_error>
 #include <unistd.h>
+#include <utility>
 
 #include "sensitive_data_filter.hpp"
 #include "version.hpp"
@@ -17,6 +20,8 @@
 #ifndef AXON_RECORDER_GIT_SHA
 #define AXON_RECORDER_GIT_SHA "unknown"
 #endif
+
+extern char** environ;
 
 namespace axon {
 namespace recorder {
@@ -39,6 +44,76 @@ std::string hostname() {
   }
   buffer[sizeof(buffer) - 1] = '\0';
   return std::string(buffer);
+}
+
+bool starts_with(std::string_view value, std::string_view prefix) {
+  return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+bool is_relevant_environment_key(std::string_view key) {
+  return starts_with(key, "AXON_") || starts_with(key, "ROS_") || starts_with(key, "RMW_") ||
+         starts_with(key, "RCUTILS_") || starts_with(key, "AMENT_") ||
+         starts_with(key, "COLCON_") || key == "CYCLONEDDS_URI" ||
+         key == "FASTRTPS_DEFAULT_PROFILES_FILE";
+}
+
+nlohmann::json environment_summary() {
+  nlohmann::json env = nlohmann::json::object();
+  for (char** current = ::environ; current != nullptr && *current != nullptr; ++current) {
+    const std::string entry(*current);
+    const auto separator = entry.find('=');
+    if (separator == std::string::npos || separator == 0) {
+      continue;
+    }
+
+    const std::string key = entry.substr(0, separator);
+    if (!is_relevant_environment_key(key)) {
+      continue;
+    }
+    env[key] = entry.substr(separator + 1);
+  }
+  return redact_sensitive_json(env);
+}
+
+nlohmann::json getenv_if_set(const char* key) {
+  const char* value = std::getenv(key);
+  if (value == nullptr || value[0] == '\0') {
+    return nullptr;
+  }
+  return std::string(value);
+}
+
+nlohmann::json launch_context() {
+  nlohmann::json launch = nlohmann::json::object();
+  launch["source"] = "environment";
+  launch["available"] = false;
+
+  nlohmann::json files = nlohmann::json::array();
+  for (const char* key : {"AXON_LAUNCH_FILE", "ROS_LAUNCH_FILE", "ROS2_LAUNCH_FILE"}) {
+    const auto value = getenv_if_set(key);
+    if (!value.is_null()) {
+      files.push_back({{"env", key}, {"path", value}});
+    }
+  }
+  if (!files.empty()) {
+    launch["available"] = true;
+    launch["files"] = files;
+  }
+
+  for (const auto& [env_key, output_key] : {
+         std::pair<const char*, const char*>{"AXON_LAUNCH_PACKAGE", "package"},
+         std::pair<const char*, const char*>{"AXON_LAUNCH_ARGS", "args"},
+         std::pair<const char*, const char*>{"ROS_NAMESPACE", "namespace"},
+         std::pair<const char*, const char*>{"ROS_DOMAIN_ID", "ros_domain_id"},
+       }) {
+    const auto value = getenv_if_set(env_key);
+    if (!value.is_null()) {
+      launch["available"] = true;
+      launch[output_key] = value;
+    }
+  }
+
+  return redact_sensitive_json(launch);
 }
 
 }  // namespace
@@ -135,6 +210,8 @@ nlohmann::json IncidentDebugBundleWriter::build_manifest(
   manifest["runtime"]["pid"] = static_cast<int>(getpid());
   std::error_code ec;
   manifest["runtime"]["cwd"] = fs::current_path(ec).string();
+  manifest["runtime"]["environment"] = environment_summary();
+  manifest["runtime"]["launch"] = launch_context();
 
   manifest["artifacts"]["mcap"]["path"] = "recording.mcap";
   manifest["artifacts"]["mcap"]["original_path"] = request.mcap_path;
@@ -213,6 +290,8 @@ nlohmann::json IncidentDebugBundleWriter::safe_recorder_config_json(
     config->rpc.ws_client.time_gap_warning_threshold_ms;
   j["rpc"]["ws_client"]["time_gap_critical_threshold_ms"] =
     config->rpc.ws_client.time_gap_critical_threshold_ms;
+  j["rpc"]["ws_client"]["time_gap_max_round_trip_ms"] =
+    config->rpc.ws_client.time_gap_max_round_trip_ms;
   j["rpc"]["ws_client"]["time_gap_stale_after_ms"] = config->rpc.ws_client.time_gap_stale_after_ms;
 
   j["incident_bundle"]["enabled"] = config->incident_bundle.enabled;

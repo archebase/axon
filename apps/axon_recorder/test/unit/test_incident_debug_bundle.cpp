@@ -6,10 +6,13 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "../src/core/incident_debug_bundle.hpp"
 
@@ -41,7 +44,37 @@ protected:
   fs::path test_dir_;
 };
 
+class ScopedEnv {
+public:
+  ScopedEnv(std::string key, std::string value)
+      : key_(std::move(key)) {
+    const char* original = std::getenv(key_.c_str());
+    if (original != nullptr) {
+      original_ = std::string(original);
+    }
+    setenv(key_.c_str(), value.c_str(), 1);
+  }
+
+  ~ScopedEnv() {
+    if (original_.has_value()) {
+      setenv(key_.c_str(), original_->c_str(), 1);
+    } else {
+      unsetenv(key_.c_str());
+    }
+  }
+
+private:
+  std::string key_;
+  std::optional<std::string> original_;
+};
+
 TEST_F(IncidentDebugBundleTest, CreatesBundleManifestAndRedactsSensitiveFields) {
+  ScopedEnv axon_launch_file("AXON_LAUNCH_FILE", "/opt/robot/launch/recording.launch.py");
+  ScopedEnv axon_launch_args("AXON_LAUNCH_ARGS", "robot:=nav01");
+  ScopedEnv ros_distro("ROS_DISTRO", "humble");
+  ScopedEnv ros_domain("ROS_DOMAIN_ID", "42");
+  ScopedEnv axon_api_token("AXON_API_TOKEN", "env-secret-token");
+
   fs::path mcap_path = write_file("task_001.mcap", "mcap bytes");
 
   TaskConfig task_config;
@@ -86,12 +119,20 @@ TEST_F(IncidentDebugBundleTest, CreatesBundleManifestAndRedactsSensitiveFields) 
   EXPECT_EQ(manifest["diagnostics"]["api_token"], "[REDACTED]");
   EXPECT_EQ(manifest["diagnostics"]["nested"]["access_key"], "[REDACTED]");
   EXPECT_EQ(manifest["diagnostics"]["nested"]["safe"], "visible");
+  EXPECT_EQ(
+    manifest["runtime"]["launch"]["files"][0]["path"], "/opt/robot/launch/recording.launch.py"
+  );
+  EXPECT_EQ(manifest["runtime"]["launch"]["args"], "robot:=nav01");
+  EXPECT_EQ(manifest["runtime"]["launch"]["ros_domain_id"], "42");
+  EXPECT_EQ(manifest["runtime"]["environment"]["ROS_DISTRO"], "humble");
+  EXPECT_EQ(manifest["runtime"]["environment"]["AXON_API_TOKEN"], "[REDACTED]");
 
   const std::string manifest_text = manifest.dump();
   EXPECT_EQ(manifest_text.find("must_not_appear"), std::string::npos);
   EXPECT_EQ(manifest_text.find("also_must_not_appear"), std::string::npos);
   EXPECT_EQ(manifest_text.find("secret-token"), std::string::npos);
   EXPECT_EQ(manifest_text.find("access-key-value"), std::string::npos);
+  EXPECT_EQ(manifest_text.find("env-secret-token"), std::string::npos);
 }
 
 TEST_F(IncidentDebugBundleTest, FailureDoesNotModifyOriginalMcap) {

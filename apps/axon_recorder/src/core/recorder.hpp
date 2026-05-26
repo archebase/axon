@@ -220,6 +220,7 @@ struct WsClientConfig {
   bool time_gap_check_enabled = true;         // Compare Keystone message time with local time
   int64_t time_gap_warning_threshold_ms = 1000;
   int64_t time_gap_critical_threshold_ms = 5000;
+  int64_t time_gap_max_round_trip_ms = 2000;
   int64_t time_gap_stale_after_ms = 60000;
 };
 
