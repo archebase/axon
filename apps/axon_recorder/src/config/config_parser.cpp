@@ -736,8 +736,7 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
   }
 
   const auto& time_gap = config.rpc.ws_client;
-  if (time_gap.time_gap_warning_threshold_ms < 0 ||
-      time_gap.time_gap_critical_threshold_ms < 0 ||
+  if (time_gap.time_gap_warning_threshold_ms < 0 || time_gap.time_gap_critical_threshold_ms < 0 ||
       time_gap.time_gap_max_round_trip_ms < 0 || time_gap.time_gap_stale_after_ms < 0) {
     error_msg = "Keystone time-gap thresholds must be >= 0";
     return false;
