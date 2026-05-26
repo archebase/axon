@@ -82,6 +82,18 @@ TEST_F(FileScannerTest, FindMissingJson) {
   EXPECT_FALSE(result.has_value());
 }
 
+TEST_F(FileScannerTest, FindRequiresJsonEvenWhenDoneMarkerExists) {
+  create_file(test_dir_ / "task_001.mcap");
+  mark_mcap_done("task_001");
+
+  auto state_manager = std::make_shared<axon::uploader::UploadStateManager>(db_path_.string());
+  axon::transfer::FileScanner scanner({test_dir_.string(), true}, state_manager);
+
+  auto result = scanner.find("task_001");
+
+  EXPECT_FALSE(result.has_value());
+}
+
 TEST_F(FileScannerTest, FindWithoutJsonRequired) {
   create_file(test_dir_ / "task_001.mcap");
   mark_mcap_done("task_001");
@@ -95,6 +107,25 @@ TEST_F(FileScannerTest, FindWithoutJsonRequired) {
   EXPECT_EQ(result->task_id, "task_001");
   EXPECT_TRUE(result->json_path.empty());
   EXPECT_EQ(result->completion_marker_path.filename().string(), "task_001.mcap.done");
+}
+
+TEST_F(FileScannerTest, FindWithoutJsonRequiredUsesCustomMarkerSuffix) {
+  create_file(test_dir_ / "task_001.mcap");
+  create_file(test_dir_ / "task_001.mcap.ready", "");
+
+  axon::transfer::ScannerConfig config;
+  config.data_dir = test_dir_.string();
+  config.require_json_sidecar = false;
+  config.completion_marker_suffix = ".ready";
+
+  auto state_manager = std::make_shared<axon::uploader::UploadStateManager>(db_path_.string());
+  axon::transfer::FileScanner scanner(config, state_manager);
+
+  auto result = scanner.find("task_001");
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->json_path.empty());
+  EXPECT_EQ(result->completion_marker_path.filename().string(), "task_001.mcap.ready");
 }
 
 TEST_F(FileScannerTest, FindWithoutJsonRequiredSkipsMissingMarker) {
