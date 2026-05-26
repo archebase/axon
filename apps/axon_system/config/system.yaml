@@ -42,6 +42,11 @@ alerts:
   evaluate_interval_ms: 5000
   sinks:
     - type: file
+    # Send alerts to Keystone or another operations pipeline.
+    # - type: ops_http
+    #   url: http://127.0.0.1:18080/ops/alerts
+    #   auth_token_file: /etc/axon/ops-alert.token
+    #   timeout_ms: 2000
   rules:
     - id: memory_high
       metric: memory.used_percent

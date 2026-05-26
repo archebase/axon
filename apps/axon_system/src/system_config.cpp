@@ -172,7 +172,7 @@ bool parse_monitored_processes(const YAML::Node& node, SystemConfig* config, std
 }
 
 bool is_supported_alert_sink_type(const std::string& type) {
-  return type == "log" || type == "file";
+  return type == "log" || type == "file" || type == "ops_http";
 }
 
 bool is_supported_alert_metric(const std::string& metric) {
@@ -210,6 +210,24 @@ bool parse_alert_sinks(const YAML::Node& node, SystemConfig* config, std::string
     }
     if (item["path"]) {
       sink.path = item["path"].as<std::string>();
+    }
+    if (item["url"]) {
+      sink.url = item["url"].as<std::string>();
+    }
+    if (item["auth_token"]) {
+      sink.auth_token = item["auth_token"].as<std::string>();
+    }
+    if (item["auth_token_file"]) {
+      sink.auth_token_file = item["auth_token_file"].as<std::string>();
+    }
+    if (item["timeout_ms"]) {
+      sink.timeout_ms = item["timeout_ms"].as<int>();
+      if (sink.timeout_ms <= 0) {
+        return fail_with(error, "alerts.sinks timeout_ms must be positive");
+      }
+    }
+    if (sink.type == "ops_http" && sink.url.empty()) {
+      return fail_with(error, "alerts.sinks ops_http requires url");
     }
     sinks.push_back(std::move(sink));
   }

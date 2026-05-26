@@ -66,6 +66,21 @@ std::string read_file(const std::filesystem::path& path) {
   return stream.str();
 }
 
+axon::system::AlertSinkConfig file_sink(const std::filesystem::path& path) {
+  axon::system::AlertSinkConfig sink;
+  sink.type = "file";
+  sink.path = path;
+  return sink;
+}
+
+axon::system::AlertSinkConfig ops_http_sink(const std::string& url, int timeout_ms) {
+  axon::system::AlertSinkConfig sink;
+  sink.type = "ops_http";
+  sink.url = url;
+  sink.timeout_ms = timeout_ms;
+  return sink;
+}
+
 }  // namespace
 
 int main() {
@@ -75,7 +90,7 @@ int main() {
 
     axon::system::AlertEvaluatorOptions options;
     options.state_dir = root;
-    options.sinks = {{"file", alert_file}};
+    options.sinks = {file_sink(alert_file)};
     options.rules = {
       {"recorder_unavailable", "critical", "", "", 0.0, {}, "recorder", "unavailable", 0},
       {"memory_high", "warning", "memory.used_percent", "gt", 90.0, {}, "", "", 10},
@@ -118,7 +133,7 @@ int main() {
 
     axon::system::AlertEvaluatorOptions failing_options;
     failing_options.state_dir = root;
-    failing_options.sinks = {{"file", root}};
+    failing_options.sinks = {file_sink(root)};
     failing_options.rules = {
       {"recorder_unavailable", "critical", "", "", 0.0, {}, "recorder", "unavailable", 0},
     };
@@ -134,7 +149,7 @@ int main() {
     }
     axon::system::AlertEvaluatorOptions recoverable_options;
     recoverable_options.state_dir = root;
-    recoverable_options.sinks = {{"file", recoverable_parent / "alerts.jsonl"}};
+    recoverable_options.sinks = {file_sink(recoverable_parent / "alerts.jsonl")};
     recoverable_options.rules = {
       {"recorder_unavailable", "critical", "", "", 0.0, {}, "recorder", "unavailable", 0},
     };
@@ -152,9 +167,22 @@ int main() {
     require(alerts["delivery"]["queued_count"].get<std::size_t>() == 0, "recoverable drained");
     require(alerts["last_delivery_error"].get<std::string>().empty(), "recoverable error cleared");
 
+    axon::system::AlertEvaluatorOptions ops_http_options;
+    ops_http_options.state_dir = root;
+    ops_http_options.sinks = {ops_http_sink("http://127.0.0.1:1/ops/alerts", 50)};
+    ops_http_options.rules = {
+      {"recorder_unavailable", "critical", "", "", 0.0, {}, "recorder", "unavailable", 0},
+    };
+    axon::system::AlertEvaluator ops_http(ops_http_options);
+    alerts = ops_http.evaluate(snapshot("unavailable", 50.0));
+    require(alerts["delivery"]["queued_count"].get<std::size_t>() == 1, "ops_http queued");
+    require(!alerts["last_delivery_error"].get<std::string>().empty(), "ops_http delivery error");
+
     axon::system::AlertEvaluatorOptions unsupported_options;
     unsupported_options.state_dir = root;
-    unsupported_options.sinks = {{"ops_http", {}}};
+    axon::system::AlertSinkConfig unsupported_sink;
+    unsupported_sink.type = "pagerduty";
+    unsupported_options.sinks = {unsupported_sink};
     unsupported_options.rules = {
       {"recorder_unavailable", "critical", "", "", 0.0, {}, "recorder", "unavailable", 0},
     };
@@ -163,9 +191,9 @@ int main() {
       axon::system::AlertEvaluator unsupported(unsupported_options);
     } catch (const std::invalid_argument& ex) {
       unsupported_sink_rejected =
-        std::string(ex.what()).find("unsupported alert sink type: ops_http") != std::string::npos;
+        std::string(ex.what()).find("unsupported alert sink type: pagerduty") != std::string::npos;
     }
-    require(unsupported_sink_rejected, "unsupported ops_http sink should be rejected");
+    require(unsupported_sink_rejected, "unsupported sink should be rejected");
 
     std::filesystem::remove_all(root);
     return 0;
