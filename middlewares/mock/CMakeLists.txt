@@ -99,8 +99,7 @@ set_target_properties(
         VERSION ${PROJECT_VERSION}
         SOVERSION 0
         VISIBILITY_INLINES_HIDDEN ON
-        OUTPUT_NAME
-            "mock_plugin" # Produces libmock_plugin.so
+        OUTPUT_NAME "mock_plugin" # Produces libmock_plugin.so
 )
 
 target_include_directories(
