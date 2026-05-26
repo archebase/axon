@@ -230,6 +230,7 @@ void EdgeUploader::start() {
 
   // Crash recovery: re-queue incomplete uploads from previous run
   auto incomplete = state_manager_->getIncomplete();  // LCOV_EXCL_BR_LINE
+  stats_.files_recovered_from_state = incomplete.size();
   for (const auto& record : incomplete) {
     UploadItem item;                                // LCOV_EXCL_BR_LINE
     item.mcap_path = record.file_path;              // LCOV_EXCL_BR_LINE
