@@ -45,6 +45,8 @@ endif()
 
 add_library(
     axon_agent_core
+    src/action_execution.cpp
+    src/action_executor.cpp
     src/action_registry.cpp
     src/adapter_loader.cpp
     src/agent_service.cpp

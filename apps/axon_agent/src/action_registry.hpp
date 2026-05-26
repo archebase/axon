@@ -45,6 +45,7 @@ public:
   bool load(std::string* error);
   const std::vector<ActionDefinition>& actions() const;
   const std::vector<ActionRegistryDiagnostic>& diagnostics() const;
+  const ActionDefinition* find_action(const std::string& id) const;
   nlohmann::json to_json() const;
 
 private:

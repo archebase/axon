@@ -154,6 +154,14 @@ const std::vector<ActionRegistryDiagnostic>& ActionRegistry::diagnostics() const
   return diagnostics_;
 }
 
+const ActionDefinition* ActionRegistry::find_action(const std::string& id) const {
+  const auto it =
+    std::find_if(actions_.begin(), actions_.end(), [&id](const ActionDefinition& action) {
+      return action.id == id;
+    });
+  return it == actions_.end() ? nullptr : &*it;
+}
+
 nlohmann::json ActionRegistry::to_json() const {
   nlohmann::json actions = nlohmann::json::array();
   for (const auto& action : actions_) {

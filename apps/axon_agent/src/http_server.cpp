@@ -185,6 +185,15 @@ RpcResponse HttpServer::route_rpc(
   if (path == "actions" && method == "GET") {
     return service_.list_actions();
   }
+  if (path == "actions/executions" && method == "GET") {
+    return service_.list_action_executions();
+  }
+  if (path == "actions/execute" && method == "POST") {
+    return service_.execute_action(params);
+  }
+  if (path == "action/execute" && method == "POST") {
+    return service_.execute_action(params);
+  }
   if (path == "profiles" && method == "GET") {
     return service_.list_profiles();
   }

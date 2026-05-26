@@ -45,6 +45,10 @@ int main() {
     const auto profile_root = root / "profiles";
     const auto profile_dir = profile_root / "demo_robot";
     const auto state_dir = root / "state";
+    const auto action_manifest_dir = root / "actions.d";
+    const auto action_command_dir = root / "opt" / "axon" / "actions";
+    std::filesystem::create_directories(action_manifest_dir);
+    std::filesystem::create_directories(action_command_dir);
 
     write_file(
       profile_dir / "adapter.yaml",
@@ -99,7 +103,9 @@ managed_processes:
 )YAML"
     );
 
-    axon::agent::AgentService service(profile_root, state_dir);
+    axon::agent::AgentService service(
+      profile_root, state_dir, action_manifest_dir, action_command_dir
+    );
     std::string error;
     require(service.initialize(&error), "initialize failed: " + error);
 
@@ -150,6 +156,12 @@ managed_processes:
     require(
       robot["health"]["status"].get<std::string>() == "disabled", "robot health status mismatch"
     );
+
+    response = service.execute_action(
+      {{"request_id", "missing-request"}, {"action_id", "missing_action"}, {"args", {}}}
+    );
+    require(!response.success, "missing action should be rejected");
+    require(response.message.find("missing_action") != std::string::npos, "missing action message");
 
     std::filesystem::remove_all(root);
     return 0;
