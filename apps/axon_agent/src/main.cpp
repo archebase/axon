@@ -56,6 +56,7 @@ void print_usage() {
     << "  --keystone-url <url>          Enable Keystone action sync/polling against this URL\n"
     << "  --keystone-token <token>      Optional Keystone bearer token\n"
     << "  --keystone-robot-id <id>      Robot ID for Keystone sync (default: active profile ID)\n"
+    << "  --keystone-ws-url <url>       Optional Keystone ws:// notification URL\n"
     << "  --action-poll-interval-sec <n>       Keystone pending poll interval (default: 5)\n"
     << "  --action-catalog-sync-interval-sec <n>  Catalog sync interval (default: 60)\n"
     << "  --help                        Show this help\n";
@@ -79,6 +80,7 @@ int main(int argc, char** argv) {
   const auto keystone_url = get_arg(argc, argv, "--keystone-url", "");
   const auto keystone_token = get_arg(argc, argv, "--keystone-token", "");
   const auto keystone_robot_id = get_arg(argc, argv, "--keystone-robot-id", "");
+  const auto keystone_ws_url = get_arg(argc, argv, "--keystone-ws-url", "");
   const auto action_poll_interval_sec =
     std::stoi(get_arg(argc, argv, "--action-poll-interval-sec", "5"));
   const auto action_catalog_sync_interval_sec =
@@ -107,6 +109,7 @@ int main(int argc, char** argv) {
     sync_config.base_url = keystone_url;
     sync_config.auth_token = keystone_token;
     sync_config.robot_id = keystone_robot_id;
+    sync_config.websocket_url = keystone_ws_url;
     sync_config.poll_interval = std::chrono::seconds(action_poll_interval_sec);
     sync_config.catalog_sync_interval = std::chrono::seconds(action_catalog_sync_interval_sec);
     action_sync = std::make_unique<axon::agent::KeystoneActionSync>(service, sync_config);

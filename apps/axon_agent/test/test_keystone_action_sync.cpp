@@ -119,6 +119,11 @@ std::string action_manifest(const std::string& id, const std::filesystem::path& 
          "requires_approval: false\n";
 }
 
+bool ends_with(const std::string& value, const std::string& suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 }  // namespace
 
 int main() {
@@ -280,6 +285,187 @@ auto_start: false
     require(!outage_sync.poll_once(&error), "second outage poll should fail");
     status = outage_sync.status_to_json();
     require(status["current_backoff_ms"].get<int>() == 200, "bounded backoff mismatch");
+
+    auto push_transport = std::make_unique<FakeTransport>();
+    auto* push_fake = push_transport.get();
+    std::vector<std::string> push_statuses;
+    push_fake->handler =
+      [&push_statuses](
+        const std::string& method, const std::string& path, const nlohmann::json& body
+      ) {
+        if (method == "GET" && path == "/api/v1/action-requests/req-push") {
+          return axon::agent::KeystoneHttpResponse{
+            true,
+            200,
+            nlohmann::json{
+              {"request",
+               {{"request_id", "req-push"},
+                {"action_id", "restart_sensor"},
+                {"status", "pending"},
+                {"args", {{"sensor_id", "detail-from-keystone"}}}}}
+            },
+            ""
+          };
+        }
+        if (method == "GET" && path == "/api/v1/action-requests/req-dup") {
+          return axon::agent::KeystoneHttpResponse{
+            true,
+            200,
+            nlohmann::json{
+              {"request",
+               {{"request_id", "req-dup"},
+                {"action_id", "restart_sensor"},
+                {"status", "pending"},
+                {"args", {{"sensor_id", "duplicate-detail"}}}}}
+            },
+            ""
+          };
+        }
+        if (method == "GET" && path == "/api/v1/action-requests/req-expired") {
+          return axon::agent::KeystoneHttpResponse{
+            true,
+            200,
+            nlohmann::json{
+              {"request",
+               {{"request_id", "req-expired"},
+                {"action_id", "restart_sensor"},
+                {"status", "pending"},
+                {"expires_at", "2000-01-01T00:00:00Z"},
+                {"args", {{"sensor_id", "expired-detail"}}}}}
+            },
+            ""
+          };
+        }
+        if (method == "GET" && path == "/api/v1/action-requests/req-completed") {
+          return axon::agent::KeystoneHttpResponse{
+            true,
+            200,
+            nlohmann::json{{"request", {{"request_id", "req-completed"}, {"status", "completed"}}}},
+            ""
+          };
+        }
+        if (method == "POST" && ends_with(path, "/status")) {
+          push_statuses.push_back(body["status"].get<std::string>());
+          return axon::agent::KeystoneHttpResponse{true, 200, nlohmann::json::object(), ""};
+        }
+        return axon::agent::KeystoneHttpResponse{false, 404, nullptr, "unexpected request"};
+      };
+    axon::agent::KeystoneActionSync push_sync(service, config, std::move(push_transport));
+    require(
+      push_sync.handle_notification_once(
+        {{"type", "action.requested"},
+         {"data",
+          {{"request_id", "req-push"},
+           {"robot_id", "robot-A"},
+           {"action_id", "untrusted_action"},
+           {"args", {{"sensor_id", "untrusted"}, {"secret", "should-not-be-used"}}},
+           {"command", "rm -rf /"}}}},
+        &error
+      ),
+      "push notification failed: " + error
+    );
+    require(read_counter(counter_path) == 2, "push notification did not execute fetched detail");
+    require(push_fake->calls.size() == 4, "push should fetch detail and report three statuses");
+    require(
+      push_fake->calls[0].method == "GET" &&
+        push_fake->calls[0].path == "/api/v1/action-requests/req-push",
+      "push should fetch request details before execution"
+    );
+    require(push_statuses.size() == 3, "push status count mismatch");
+    require(push_statuses[0] == "queued", "push queued status missing");
+    require(push_statuses[1] == "running", "push running status missing");
+    require(push_statuses[2] == "succeeded", "push succeeded status missing");
+    status = push_sync.status_to_json();
+    require(status["notification_count"].get<std::uint64_t>() == 1, "notification count mismatch");
+
+    require(
+      push_sync.handle_notification_once(
+        {{"type", "action.requested"},
+         {"data", {{"request_id", "req-dup"}, {"robot_id", "robot-A"}}}},
+        &error
+      ),
+      "first duplicate push failed: " + error
+    );
+    require(read_counter(counter_path) == 3, "first duplicate request did not execute");
+    require(
+      push_sync.handle_notification_once(
+        {{"type", "action.requested"},
+         {"data", {{"request_id", "req-dup"}, {"robot_id", "robot-A"}}}},
+        &error
+      ),
+      "second duplicate push failed: " + error
+    );
+    require(read_counter(counter_path) == 3, "duplicate push executed action twice");
+
+    require(
+      push_sync.handle_notification_once(
+        {{"type", "action.requested"},
+         {"data", {{"request_id", "req-expired"}, {"robot_id", "robot-A"}}}},
+        &error
+      ),
+      "expired push failed: " + error
+    );
+    require(read_counter(counter_path) == 3, "expired push executed action");
+    require(push_statuses.back() == "expired", "expired push did not report expired status");
+
+    require(
+      push_sync.handle_notification_once(
+        {{"type", "action.requested"},
+         {"data", {{"request_id", "req-completed"}, {"robot_id", "robot-A"}}}},
+        &error
+      ),
+      "completed push failed: " + error
+    );
+    require(read_counter(counter_path) == 3, "completed push executed action");
+    require(push_statuses.back() == "succeeded", "completed push status mismatch");
+
+    auto fallback_transport = std::make_unique<FakeTransport>();
+    auto* fallback_fake = fallback_transport.get();
+    std::vector<std::string> fallback_statuses;
+    fallback_fake->handler =
+      [&fallback_statuses](
+        const std::string& method, const std::string& path, const nlohmann::json& body
+      ) {
+        if (method == "GET" && path == "/api/v1/robots/robot-A/action-requests/pending?limit=10") {
+          return axon::agent::KeystoneHttpResponse{
+            true, 200, nlohmann::json{{"requests", {{{"request_id", "req-fallback"}}}}}, ""
+          };
+        }
+        if (method == "GET" && path == "/api/v1/action-requests/req-fallback") {
+          return axon::agent::KeystoneHttpResponse{
+            true,
+            200,
+            nlohmann::json{
+              {"request",
+               {{"request_id", "req-fallback"},
+                {"action_id", "restart_sensor"},
+                {"status", "pending"},
+                {"args", {{"sensor_id", "fallback-detail"}}}}}
+            },
+            ""
+          };
+        }
+        if (method == "POST" && ends_with(path, "/status")) {
+          fallback_statuses.push_back(body["status"].get<std::string>());
+          return axon::agent::KeystoneHttpResponse{true, 200, nlohmann::json::object(), ""};
+        }
+        return axon::agent::KeystoneHttpResponse{false, 404, nullptr, "unexpected request"};
+      };
+    auto fallback_config = config;
+    fallback_config.websocket_url = "ws://keystone.local/actions";
+    axon::agent::KeystoneActionSync fallback_sync(
+      service, fallback_config, std::move(fallback_transport)
+    );
+    status = fallback_sync.status_to_json();
+    require(status["websocket_enabled"].get<bool>(), "websocket should be enabled");
+    require(!status["websocket_connected"].get<bool>(), "websocket should be disconnected");
+    require(fallback_sync.poll_once(&error), "poll fallback failed: " + error);
+    require(read_counter(counter_path) == 4, "poll fallback did not execute queued request");
+    require(fallback_statuses.size() == 3, "poll fallback status count mismatch");
+    require(
+      fallback_fake->calls.front().path.find("/pending?limit=10") != std::string::npos,
+      "poll fallback did not query persisted queue"
+    );
 
     std::filesystem::remove_all(root);
     return 0;

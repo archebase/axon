@@ -7,18 +7,22 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/beast/websocket.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <ctime>
 #include <exception>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+
+#include "action_execution.hpp"
 
 namespace axon {
 namespace agent {
@@ -28,6 +32,7 @@ namespace {
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
+namespace websocket = beast::websocket;
 using tcp = asio::ip::tcp;
 
 constexpr const char* kCatalogPathPrefix = "/api/v1/robots/";
@@ -35,6 +40,14 @@ constexpr const char* kCatalogPathSuffix = "/action-catalog";
 constexpr const char* kPendingPathSuffix = "/action-requests/pending?limit=";
 constexpr const char* kRequestPathPrefix = "/api/v1/action-requests/";
 constexpr const char* kStatusPathSuffix = "/status";
+constexpr const char* kActionRequestedEvent = "action.requested";
+
+struct ParsedWebSocketUrl {
+  std::string host;
+  std::string port;
+  std::string target;
+  std::string error;
+};
 
 std::string trim_trailing_slashes(std::string value) {
   while (!value.empty() && value.back() == '/') {
@@ -62,6 +75,29 @@ nlohmann::json json_object_or_empty(const nlohmann::json& value, const char* key
     return nlohmann::json::object();
   }
   return value[key];
+}
+
+const nlohmann::json* json_object_child(const nlohmann::json& value, const char* key) {
+  if (!value.is_object() || !value.contains(key) || !value[key].is_object()) {
+    return nullptr;
+  }
+  return &value[key];
+}
+
+std::optional<std::string> nested_json_string(const nlohmann::json& value, const char* key) {
+  if (auto found = json_string(value, key)) {
+    return found;
+  }
+  for (const auto* child_key : {"data", "payload", "request"}) {
+    const auto* child = json_object_child(value, child_key);
+    if (child == nullptr) {
+      continue;
+    }
+    if (auto found = json_string(*child, key)) {
+      return found;
+    }
+  }
+  return std::nullopt;
 }
 
 nlohmann::json extract_pending_requests(const nlohmann::json& body) {
@@ -101,6 +137,38 @@ nlohmann::json extract_request_detail(const nlohmann::json& body) {
   return body;
 }
 
+ParsedWebSocketUrl parse_websocket_url(std::string url) {
+  url = trim_trailing_slashes(std::move(url));
+  constexpr const char* ws_prefix = "ws://";
+  constexpr const char* wss_prefix = "wss://";
+  if (url.rfind(ws_prefix, 0) == 0) {
+    url.erase(0, std::string(ws_prefix).size());
+  } else if (url.rfind(wss_prefix, 0) == 0) {
+    return {"", "", "", "wss Keystone notification URLs are not supported by axon-agent yet"};
+  } else {
+    return {"", "", "", "Keystone notification URL must start with ws://"};
+  }
+
+  const auto path_pos = url.find('/');
+  auto authority = path_pos == std::string::npos ? url : url.substr(0, path_pos);
+  auto target = path_pos == std::string::npos ? std::string("/") : url.substr(path_pos);
+  if (target.empty()) {
+    target = "/";
+  }
+
+  const auto port_pos = authority.rfind(':');
+  const auto host = port_pos == std::string::npos ? authority : authority.substr(0, port_pos);
+  const auto port =
+    port_pos == std::string::npos ? std::string("80") : authority.substr(port_pos + 1);
+  if (host.empty()) {
+    return {"", "", "", "Keystone notification URL host must not be empty"};
+  }
+  if (port.empty()) {
+    return {"", "", "", "Keystone notification URL port must not be empty"};
+  }
+  return {host, port, target, ""};
+}
+
 std::string response_error(const std::string& operation, const KeystoneHttpResponse& response) {
   if (!response.error.empty()) {
     return operation + " failed: " + response.error;
@@ -126,6 +194,18 @@ http::verb verb_from_method(const std::string& method) {
     return http::verb::post;
   }
   throw std::runtime_error("unsupported HTTP method: " + method);
+}
+
+bool is_terminal_request_status(const std::string& status) {
+  return status == "cancelled" || status == "completed" || status == "succeeded" ||
+         status == "failed" || status == "expired" || status == "timed_out" || status == "rejected";
+}
+
+std::string normalize_terminal_request_status(const std::string& status) {
+  if (status == "completed") {
+    return "succeeded";
+  }
+  return status;
 }
 
 }  // namespace
@@ -290,6 +370,143 @@ KeystoneHttpResponse KeystoneActionHttpTransport::request(
   }
 }
 
+class KeystoneActionNotificationClient {
+public:
+  using Handler = std::function<void(const nlohmann::json&)>;
+
+  virtual ~KeystoneActionNotificationClient() = default;
+  virtual void start() = 0;
+  virtual void stop() = 0;
+  virtual bool is_connected() const = 0;
+};
+
+class KeystoneActionWebSocketClient final : public KeystoneActionNotificationClient {
+public:
+  KeystoneActionWebSocketClient(KeystoneActionSyncConfig config, Handler handler)
+      : config_(std::move(config))
+      , handler_(std::move(handler)) {}
+
+  ~KeystoneActionWebSocketClient() override {
+    stop();
+  }
+
+  void start() override {
+    if (running_) {
+      return;
+    }
+    running_ = true;
+    thread_ = std::make_unique<std::thread>(&KeystoneActionWebSocketClient::run, this);
+  }
+
+  void stop() override {
+    if (!running_.exchange(false)) {
+      return;
+    }
+    close_active_socket();
+    if (thread_ && thread_->joinable()) {
+      thread_->join();
+    }
+  }
+
+  bool is_connected() const override {
+    return connected_.load();
+  }
+
+private:
+  void run() {
+    while (running_) {
+      const auto parsed = parse_websocket_url(config_.websocket_url);
+      if (!parsed.error.empty()) {
+        std::cerr << "axon-agent Keystone notification WebSocket: " << parsed.error << std::endl;
+        sleep_before_reconnect();
+        continue;
+      }
+
+      try {
+        asio::io_context io_context;
+        tcp::resolver resolver(io_context);
+        auto ws = std::make_unique<websocket::stream<beast::tcp_stream>>(io_context);
+        ws->set_option(websocket::stream_base::timeout::suggested(beast::role_type::client));
+        ws->set_option(websocket::stream_base::decorator([this](websocket::request_type& req) {
+          req.set(http::field::user_agent, "axon-agent/" AXON_AGENT_VERSION);
+          if (!config_.auth_token.empty()) {
+            req.set(http::field::authorization, "Bearer " + config_.auth_token);
+          }
+        }));
+
+        beast::get_lowest_layer(*ws).expires_after(config_.http_timeout);
+        const auto resolved = resolver.resolve(parsed.host, parsed.port);
+        beast::get_lowest_layer(*ws).connect(resolved);
+        ws->handshake(parsed.host + ":" + parsed.port, parsed.target);
+
+        {
+          std::lock_guard<std::mutex> lock(ws_mutex_);
+          active_ws_ = ws.get();
+        }
+        connected_ = true;
+
+        while (running_) {
+          beast::flat_buffer buffer;
+          ws->read(buffer);
+          const auto text = beast::buffers_to_string(buffer.data());
+          auto message = nlohmann::json::parse(text, nullptr, false);
+          if (message.is_discarded()) {
+            std::cerr << "axon-agent Keystone notification WebSocket: invalid JSON" << std::endl;
+            continue;
+          }
+          if (handler_) {
+            handler_(message);
+          }
+        }
+      } catch (const std::exception& ex) {
+        if (running_) {
+          std::cerr << "axon-agent Keystone notification WebSocket: " << ex.what() << std::endl;
+        }
+      }
+
+      connected_ = false;
+      {
+        std::lock_guard<std::mutex> lock(ws_mutex_);
+        active_ws_ = nullptr;
+      }
+      sleep_before_reconnect();
+    }
+  }
+
+  void close_active_socket() {
+    std::lock_guard<std::mutex> lock(ws_mutex_);
+    if (active_ws_ == nullptr) {
+      return;
+    }
+
+    beast::error_code ec;
+    beast::get_lowest_layer(*active_ws_).socket().shutdown(tcp::socket::shutdown_both, ec);
+    beast::get_lowest_layer(*active_ws_).socket().close(ec);
+  }
+
+  void sleep_before_reconnect() const {
+    const auto delay = config_.websocket_reconnect_interval;
+    if (delay <= std::chrono::milliseconds(0)) {
+      return;
+    }
+
+    auto slept = std::chrono::milliseconds(0);
+    while (running_ && slept < delay) {
+      const auto step = std::min(std::chrono::milliseconds(100), delay - slept);
+      std::this_thread::sleep_for(step);
+      slept += step;
+    }
+  }
+
+  KeystoneActionSyncConfig config_;
+  Handler handler_;
+  std::unique_ptr<std::thread> thread_;
+  std::atomic<bool> running_{false};
+  std::atomic<bool> connected_{false};
+  mutable std::mutex ws_mutex_;
+  websocket::stream<beast::tcp_stream>* active_ws_ = nullptr;
+};
+
 KeystoneActionSync::KeystoneActionSync(
   AgentService& service, KeystoneActionSyncConfig config,
   std::unique_ptr<KeystoneActionTransport> transport
@@ -300,6 +517,16 @@ KeystoneActionSync::KeystoneActionSync(
   if (!transport_) {
     transport_ =
       std::make_unique<KeystoneActionHttpTransport>(config_.base_url, config_.auth_token);
+  }
+  if (!config_.websocket_url.empty()) {
+    notification_client_ = std::make_unique<KeystoneActionWebSocketClient>(
+      config_, [this](const nlohmann::json& notification) {
+        std::string error;
+        if (!handle_notification_once(notification, &error) && !error.empty()) {
+          std::cerr << "axon-agent Keystone action notification: " << error << std::endl;
+        }
+      }
+    );
   }
 }
 
@@ -312,6 +539,9 @@ bool KeystoneActionSync::start() {
     return false;
   }
   running_ = true;
+  if (notification_client_) {
+    notification_client_->start();
+  }
   thread_ = std::make_unique<std::thread>(&KeystoneActionSync::run, this);
   return true;
 }
@@ -321,6 +551,9 @@ void KeystoneActionSync::stop() {
     return;
   }
   running_ = false;
+  if (notification_client_) {
+    notification_client_->stop();
+  }
   if (thread_ && thread_->joinable()) {
     thread_->join();
   }
@@ -395,6 +628,51 @@ bool KeystoneActionSync::poll_once(std::string* error) {
   return true;
 }
 
+bool KeystoneActionSync::handle_notification_once(
+  const nlohmann::json& notification, std::string* error
+) {
+  const auto event =
+    json_string(notification, "type").value_or(json_string(notification, "event").value_or(""));
+  if (event != kActionRequestedEvent) {
+    return true;
+  }
+
+  const auto request_id = nested_json_string(notification, "request_id");
+  if (!request_id.has_value() || request_id->empty()) {
+    if (error != nullptr) {
+      *error = "Keystone action notification is missing request_id";
+    }
+    record_failure(error != nullptr ? *error : "missing notification request_id");
+    return false;
+  }
+
+  auto robot_id = robot_id_or_error(error);
+  if (robot_id.empty()) {
+    record_failure(error != nullptr ? *error : "missing robot identity");
+    return false;
+  }
+
+  const auto routed_robot_id = nested_json_string(notification, "robot_id");
+  if (routed_robot_id.has_value() && !routed_robot_id->empty() &&
+      routed_robot_id.value() != robot_id) {
+    return true;
+  }
+
+  const bool ok = process_request_id(robot_id, request_id.value(), error);
+  if (!ok) {
+    record_failure(error != nullptr ? *error : "failed to process Keystone action notification");
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    ++notification_count_;
+    last_notification_at_ = keystone_action_sync_now_iso8601();
+  }
+  record_success("notification");
+  return true;
+}
+
 nlohmann::json KeystoneActionSync::status_to_json() const {
   std::lock_guard<std::mutex> lock(stats_mutex_);
   return {
@@ -402,9 +680,14 @@ nlohmann::json KeystoneActionSync::status_to_json() const {
     {"running", running_.load()},
     {"base_url", config_.base_url},
     {"robot_id", config_.robot_id},
+    {"websocket_url", config_.websocket_url},
+    {"websocket_enabled", !config_.websocket_url.empty()},
+    {"websocket_connected",
+     notification_client_ != nullptr && notification_client_->is_connected()},
     {"pending_limit", config_.pending_limit},
     {"catalog_sync_count", catalog_sync_count_},
     {"poll_count", poll_count_},
+    {"notification_count", notification_count_},
     {"action_requests_executed", action_requests_executed_},
     {"status_updates_sent", status_updates_sent_},
     {"consecutive_failures", consecutive_failures_},
@@ -412,6 +695,7 @@ nlohmann::json KeystoneActionSync::status_to_json() const {
     {"last_error", last_error_},
     {"last_catalog_sync_at", last_catalog_sync_at_},
     {"last_poll_at", last_poll_at_},
+    {"last_notification_at", last_notification_at_},
   };
 }
 
@@ -497,7 +781,20 @@ bool KeystoneActionSync::process_request(
     return false;
   }
 
-  const auto encoded_request_id = keystone_url_encode_component(*pending_request_id);
+  return process_request_id(robot_id, pending_request_id.value(), error);
+}
+
+bool KeystoneActionSync::process_request_id(
+  const std::string& robot_id, const std::string& request_id, std::string* error
+) {
+  if (request_id.empty()) {
+    if (error != nullptr) {
+      *error = "Keystone action request is missing request_id";
+    }
+    return false;
+  }
+
+  const auto encoded_request_id = keystone_url_encode_component(request_id);
   const auto detail_path = std::string(kRequestPathPrefix) + encoded_request_id;
   const auto detail_response = transport_->get(detail_path, config_.http_timeout);
   if (!detail_response.ok) {
@@ -509,24 +806,26 @@ bool KeystoneActionSync::process_request(
   }
 
   const auto detail = extract_request_detail(detail_response.body);
-  const auto request_id = json_string(detail, "request_id").value_or(*pending_request_id);
+  const auto detail_request_id = json_string(detail, "request_id").value_or(request_id);
+  return execute_detail(robot_id, detail_request_id, detail, error);
+}
+
+bool KeystoneActionSync::execute_detail(
+  const std::string& robot_id, const std::string& request_id, const nlohmann::json& detail,
+  std::string* error
+) {
+  const auto request_status = json_string(detail, "status").value_or("");
+  if (is_terminal_request_status(request_status)) {
+    return report_status(
+      robot_id, request_id, normalize_terminal_request_status(request_status), detail, error
+    );
+  }
+
   const auto action_id = json_string(detail, "action_id");
   if (!action_id.has_value() || action_id->empty()) {
     if (error != nullptr) {
       *error = "Keystone action request " + request_id + " is missing action_id";
     }
-    return false;
-  }
-
-  const auto request_status = json_string(detail, "status").value_or("");
-  if (request_status == "cancelled") {
-    return report_status(robot_id, request_id, "cancelled", detail, error);
-  }
-
-  if (!report_status(robot_id, request_id, "queued", nullptr, error)) {
-    return false;
-  }
-  if (!report_status(robot_id, request_id, "running", nullptr, error)) {
     return false;
   }
 
@@ -537,6 +836,33 @@ bool KeystoneActionSync::process_request(
   };
   if (const auto expires_at = json_string(detail, "expires_at")) {
     execute_params["expires_at"] = *expires_at;
+
+    std::string expires_error;
+    const bool expired = action_execution_is_expired(*expires_at, &expires_error);
+    if (expired || !expires_error.empty()) {
+      auto execution = service_.execute_action(execute_params);
+      nlohmann::json execution_data =
+        execution.data.is_null() ? nlohmann::json::object() : execution.data;
+      execution_data["success"] = execution.success;
+      execution_data["message"] = execution.message;
+
+      {
+        std::lock_guard<std::mutex> lock(stats_mutex_);
+        ++action_requests_executed_;
+      }
+
+      const auto local_status =
+        json_string(execution_data, "status").value_or(execution.success ? "completed" : "failed");
+      const auto status = keystone_action_status_from_local(local_status);
+      return report_status(robot_id, request_id, status, execution_data, error);
+    }
+  }
+
+  if (!report_status(robot_id, request_id, "queued", nullptr, error)) {
+    return false;
+  }
+  if (!report_status(robot_id, request_id, "running", nullptr, error)) {
+    return false;
   }
 
   auto execution = service_.execute_action(execute_params);
