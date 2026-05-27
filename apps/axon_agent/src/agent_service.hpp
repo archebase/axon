@@ -35,6 +35,8 @@ public:
   RpcResponse get_state();
   RpcResponse get_report();
   RpcResponse list_actions();
+  std::string resolve_robot_id(const std::string& configured_robot_id);
+  nlohmann::json build_keystone_action_catalog(const std::string& robot_id);
   RpcResponse execute_action(const nlohmann::json& params);
   RpcResponse list_action_executions();
   RpcResponse list_profiles();

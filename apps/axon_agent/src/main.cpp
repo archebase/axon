@@ -7,11 +7,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 
 #include "agent_service.hpp"
 #include "http_server.hpp"
+#include "keystone_action_sync.hpp"
 
 namespace {
 
@@ -51,6 +53,11 @@ void print_usage() {
     << "  --state-dir <path>            Runtime state dir (default: /var/lib/axon/agent)\n"
     << "  --action-manifest-dir <path>  Action manifest dir (default: /etc/axon/actions.d)\n"
     << "  --action-command-dir <path>   Approved action command dir (default: /opt/axon/actions)\n"
+    << "  --keystone-url <url>          Enable Keystone action sync/polling against this URL\n"
+    << "  --keystone-token <token>      Optional Keystone bearer token\n"
+    << "  --keystone-robot-id <id>      Robot ID for Keystone sync (default: active profile ID)\n"
+    << "  --action-poll-interval-sec <n>       Keystone pending poll interval (default: 5)\n"
+    << "  --action-catalog-sync-interval-sec <n>  Catalog sync interval (default: 60)\n"
     << "  --help                        Show this help\n";
 }
 
@@ -69,6 +76,13 @@ int main(int argc, char** argv) {
   const auto action_manifest_dir =
     get_arg(argc, argv, "--action-manifest-dir", "/etc/axon/actions.d");
   const auto action_command_dir = get_arg(argc, argv, "--action-command-dir", "/opt/axon/actions");
+  const auto keystone_url = get_arg(argc, argv, "--keystone-url", "");
+  const auto keystone_token = get_arg(argc, argv, "--keystone-token", "");
+  const auto keystone_robot_id = get_arg(argc, argv, "--keystone-robot-id", "");
+  const auto action_poll_interval_sec =
+    std::stoi(get_arg(argc, argv, "--action-poll-interval-sec", "5"));
+  const auto action_catalog_sync_interval_sec =
+    std::stoi(get_arg(argc, argv, "--action-catalog-sync-interval-sec", "60"));
 
   std::signal(SIGINT, handle_signal);
   std::signal(SIGTERM, handle_signal);
@@ -86,11 +100,27 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  std::unique_ptr<axon::agent::KeystoneActionSync> action_sync;
+  if (!keystone_url.empty()) {
+    axon::agent::KeystoneActionSyncConfig sync_config;
+    sync_config.enabled = true;
+    sync_config.base_url = keystone_url;
+    sync_config.auth_token = keystone_token;
+    sync_config.robot_id = keystone_robot_id;
+    sync_config.poll_interval = std::chrono::seconds(action_poll_interval_sec);
+    sync_config.catalog_sync_interval = std::chrono::seconds(action_catalog_sync_interval_sec);
+    action_sync = std::make_unique<axon::agent::KeystoneActionSync>(service, sync_config);
+    action_sync->start();
+  }
+
   std::cout << "axon-agent listening on http://" << host << ":" << port << std::endl;
   while (!g_should_exit) {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
 
+  if (action_sync) {
+    action_sync->stop();
+  }
   server.stop();
   return 0;
 }
