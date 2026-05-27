@@ -57,7 +57,9 @@ TEST_F(FileScannerTest, FindExistingFiles) {
   EXPECT_EQ(result->task_id, "task_001");
   EXPECT_EQ(result->mcap_path.filename().string(), "task_001.mcap");
   EXPECT_EQ(result->json_path.filename().string(), "task_001.json");
-  EXPECT_EQ(result->checksum_sha256.size(), 64);
+  EXPECT_EQ(
+    result->checksum_sha256, "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+  );
 }
 
 TEST_F(FileScannerTest, FindMissingMcap) {
@@ -199,7 +201,9 @@ TEST_F(FileScannerTest, ScanAllMcapOnlyUsesDoneMarker) {
 
   ASSERT_EQ(results.size(), 1);
   EXPECT_EQ(results[0].task_id, "task_001");
-  EXPECT_EQ(results[0].checksum_sha256.size(), 64);
+  EXPECT_EQ(
+    results[0].checksum_sha256, "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+  );
 }
 
 TEST_F(FileScannerTest, EmptyDirectory) {

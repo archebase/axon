@@ -43,7 +43,7 @@ public:
   void send_status();
 
 private:
-  void enqueue(const FileGroup& group, int priority);
+  bool enqueue(const FileGroup& group, int priority);
   void on_upload_started(
     const std::string& task_id, const std::vector<std::string>& files, uint64_t total_bytes
   );
