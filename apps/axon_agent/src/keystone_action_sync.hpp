@@ -25,8 +25,10 @@ struct KeystoneActionSyncConfig {
   std::string base_url;
   std::string auth_token;
   std::string robot_id;
+  std::string websocket_url;
   int pending_limit = 10;
   std::chrono::milliseconds http_timeout{3000};
+  std::chrono::milliseconds websocket_reconnect_interval{5000};
   std::chrono::milliseconds catalog_sync_interval{60000};
   std::chrono::milliseconds poll_interval{5000};
   std::chrono::milliseconds min_backoff{1000};
@@ -79,6 +81,8 @@ private:
   std::string parse_error_;
 };
 
+class KeystoneActionNotificationClient;
+
 class KeystoneActionSync {
 public:
   KeystoneActionSync(
@@ -96,6 +100,7 @@ public:
 
   bool sync_catalog_once(std::string* error);
   bool poll_once(std::string* error);
+  bool handle_notification_once(const nlohmann::json& notification, std::string* error);
   nlohmann::json status_to_json() const;
 
 private:
@@ -108,6 +113,13 @@ private:
   bool process_request(
     const std::string& robot_id, const nlohmann::json& pending, std::string* error
   );
+  bool process_request_id(
+    const std::string& robot_id, const std::string& request_id, std::string* error
+  );
+  bool execute_detail(
+    const std::string& robot_id, const std::string& request_id, const nlohmann::json& detail,
+    std::string* error
+  );
   void record_success(const std::string& timestamp_field);
   void record_failure(const std::string& error);
   std::chrono::milliseconds current_backoff() const;
@@ -115,12 +127,14 @@ private:
   AgentService& service_;
   KeystoneActionSyncConfig config_;
   std::unique_ptr<KeystoneActionTransport> transport_;
+  std::unique_ptr<KeystoneActionNotificationClient> notification_client_;
   std::unique_ptr<std::thread> thread_;
   std::atomic<bool> running_{false};
 
   mutable std::mutex stats_mutex_;
   std::uint64_t catalog_sync_count_ = 0;
   std::uint64_t poll_count_ = 0;
+  std::uint64_t notification_count_ = 0;
   std::uint64_t action_requests_executed_ = 0;
   std::uint64_t status_updates_sent_ = 0;
   std::uint64_t consecutive_failures_ = 0;
@@ -128,6 +142,7 @@ private:
   std::string last_error_;
   std::string last_catalog_sync_at_;
   std::string last_poll_at_;
+  std::string last_notification_at_;
 };
 
 std::string keystone_action_sync_now_iso8601();
