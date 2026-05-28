@@ -114,6 +114,9 @@ int main(int argc, char** argv) {
     sync_config.catalog_sync_interval = std::chrono::seconds(action_catalog_sync_interval_sec);
     action_sync = std::make_unique<axon::agent::KeystoneActionSync>(service, sync_config);
     action_sync->start();
+    service.set_action_sync_status_provider([sync = action_sync.get()]() {
+      return sync->status_to_json();
+    });
   }
 
   std::cout << "axon-agent listening on http://" << host << ":" << port << std::endl;
@@ -123,6 +126,7 @@ int main(int argc, char** argv) {
 
   if (action_sync) {
     action_sync->stop();
+    service.set_action_sync_status_provider({});
   }
   server.stop();
   return 0;

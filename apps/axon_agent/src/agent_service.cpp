@@ -73,9 +73,11 @@ std::string connect_host_for_bind_host(const std::string& host) {
   return host;
 }
 
-std::string endpoint_url(const std::string& host, std::uint16_t port) {
+std::string endpoint_url(
+  const std::string& host, std::uint16_t port, const std::string& rpc_path = "/rpc/state"
+) {
   std::ostringstream stream;
-  stream << "http://" << host << ":" << port << "/rpc/state";
+  stream << "http://" << host << ":" << port << rpc_path;
   return stream.str();
 }
 
@@ -165,9 +167,11 @@ RecorderRpcEndpoint load_recorder_rpc_endpoint(const std::filesystem::path& reco
   }
 }
 
-nlohmann::json fetch_recorder_rpc_state(
-  const RecorderRpcEndpoint& endpoint, std::chrono::milliseconds timeout
+nlohmann::json fetch_recorder_rpc(
+  const RecorderRpcEndpoint& endpoint, std::chrono::milliseconds timeout,
+  const std::string& rpc_path
 ) {
+  const auto url = endpoint_url(endpoint.connect_host, endpoint.port, rpc_path);
   nlohmann::json result = {
     {"configured", endpoint.configured},
     {"queryable", endpoint.queryable},
@@ -175,7 +179,8 @@ nlohmann::json fetch_recorder_rpc_state(
     {"bind_host", endpoint.bind_host},
     {"connect_host", endpoint.connect_host},
     {"port", endpoint.port},
-    {"url", endpoint.url},
+    {"url", url},
+    {"rpc_path", rpc_path},
     {"config_path", path_string(endpoint.config_path)},
     {"reachable", false},
   };
@@ -196,7 +201,7 @@ nlohmann::json fetch_recorder_rpc_state(
     const auto resolved = resolver.resolve(endpoint.connect_host, std::to_string(endpoint.port));
     stream.connect(resolved);
 
-    http::request<http::empty_body> request{http::verb::get, "/rpc/state", 11};
+    http::request<http::empty_body> request{http::verb::get, rpc_path, 11};
     request.set(http::field::host, endpoint.connect_host + ":" + std::to_string(endpoint.port));
     request.set(http::field::user_agent, "axon-agent/" AXON_AGENT_VERSION);
     if (!endpoint.auth_token.empty()) {
@@ -217,7 +222,7 @@ nlohmann::json fetch_recorder_rpc_state(
 
     auto parsed = nlohmann::json::parse(response.body(), nullptr, false);
     if (parsed.is_discarded()) {
-      result["last_error"] = "recorder /rpc/state returned invalid JSON";
+      result["last_error"] = "recorder " + rpc_path + " returned invalid JSON";
       result["body"] = response.body();
       return result;
     }
@@ -257,6 +262,12 @@ nlohmann::json fetch_recorder_rpc_state(
     result["last_error"] = ex.what();
     return result;
   }
+}
+
+nlohmann::json fetch_recorder_rpc_state(
+  const RecorderRpcEndpoint& endpoint, std::chrono::milliseconds timeout
+) {
+  return fetch_recorder_rpc(endpoint, timeout, "/rpc/state");
 }
 
 nlohmann::json build_components_state(const std::optional<RobotProfile>& active_profile) {
@@ -404,6 +415,68 @@ RpcResponse AgentService::get_report() {
     {"action_executions", action_executions_.to_json()},
   };
   return response;
+}
+
+RpcResponse AgentService::get_recorder_status() {
+  std::optional<RobotProfile> active_profile;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto* profile = profiles_.active_profile();
+    if (profile != nullptr) {
+      active_profile = *profile;
+    }
+  }
+
+  if (!active_profile.has_value()) {
+    return {
+      false,
+      "no active profile selected",
+      {{"configured", false}, {"queryable", false}, {"reachable", false}}
+    };
+  }
+
+  const auto endpoint = load_recorder_rpc_endpoint(active_profile->recorder_yaml);
+  auto data = fetch_recorder_rpc(endpoint, std::chrono::milliseconds(700), "/rpc/status");
+  const bool reachable = data.value("reachable", false);
+  const bool success = reachable && data.value("success", false);
+  std::string message = data.value("message", std::string());
+  if (message.empty()) {
+    message = success ? "recorder status fetched"
+                      : data.value("last_error", std::string("recorder status unavailable"));
+  }
+  return {success, message, data};
+}
+
+void AgentService::set_action_sync_status_provider(std::function<nlohmann::json()> provider) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  action_sync_status_provider_ = std::move(provider);
+}
+
+RpcResponse AgentService::get_action_sync_status() {
+  std::function<nlohmann::json()> provider;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    provider = action_sync_status_provider_;
+  }
+
+  if (!provider) {
+    return {
+      true,
+      "action sync disabled",
+      {
+        {"enabled", false},
+        {"running", false},
+        {"websocket_enabled", false},
+        {"websocket_connected", false},
+      },
+    };
+  }
+
+  try {
+    return {true, "action sync status fetched", provider()};
+  } catch (const std::exception& ex) {
+    return {false, ex.what(), {{"enabled", true}, {"running", false}, {"last_error", ex.what()}}};
+  }
 }
 
 RpcResponse AgentService::list_actions() {
