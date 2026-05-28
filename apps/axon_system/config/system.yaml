@@ -14,6 +14,8 @@ sampling:
   disk_ms: 5000
 
 disk_paths:
+  # Missing paths are reported as unavailable and make /health degraded. Keep
+  # /axon for production recorders; adjust this list on development machines.
   - id: state_dir
     path: /var/lib/axon/system
   - id: recording_data

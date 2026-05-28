@@ -18,6 +18,7 @@ cmake --build build --target axon_system test_system_service test_resource_colle
 
 ```bash
 ./build/axon_system/axon-system --config apps/axon_system/config/system.yaml --state-dir /tmp/axon-system
+./build/axon_system/axon-system --version
 curl http://127.0.0.1:8091/health
 curl http://127.0.0.1:8091/rpc/state
 curl http://127.0.0.1:8091/rpc/metrics
@@ -29,6 +30,11 @@ curl -X POST http://127.0.0.1:8091/rpc/quit
 Metrics use bytes for memory, disk, and network counters; network rates use
 bytes per second; CPU usage is reported as a percentage. The service
 intentionally has no ROS or middleware dependencies.
+
+Configured `disk_paths` are part of service health. A missing path is reported
+as unavailable and moves `/health` to `degraded`; keep `/axon` on production
+recorders, and adjust `disk_paths` on development machines where that mount does
+not exist.
 
 By default, `axon-system` loads `/etc/axon/system.yaml` when it exists. CLI
 arguments such as `--host`, `--port`, and `--state-dir` override the config

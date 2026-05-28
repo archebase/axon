@@ -5,6 +5,7 @@
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <nlohmann/json.hpp>
 
 #include <array>
 #include <chrono>
@@ -73,6 +74,33 @@ int main() {
       http::read(stream, buffer, response);
       require(response.result() == http::status::ok, "health status");
       require(response.body().find("\"success\": true") != std::string::npos, "health body");
+    }
+
+    {
+      boost::asio::io_context io_context;
+      beast::tcp_stream stream(io_context);
+      stream.expires_after(std::chrono::seconds(1));
+      stream.connect(resolve_loopback(io_context, server.port()));
+
+      http::request<http::empty_body> request{http::verb::get, "/rpc/metrics", 11};
+      request.set(http::field::host, "127.0.0.1");
+      http::write(stream, request);
+
+      beast::flat_buffer buffer;
+      http::response<http::string_body> response;
+      http::read(stream, buffer, response);
+      require(response.result() == http::status::ok, "metrics status");
+
+      const auto body = nlohmann::json::parse(response.body());
+      require(body.value("success", false), "metrics success");
+      require(body.contains("data") && body["data"].is_object(), "metrics data");
+      const auto& data = body["data"];
+      require(data.contains("cpu"), "metrics cpu missing");
+      require(data.contains("memory"), "metrics memory missing");
+      require(data.contains("disk"), "metrics disk missing");
+      require(data.contains("network"), "metrics network missing");
+      require(data.contains("processes"), "metrics processes missing");
+      require(data.contains("sample_cadence_ms"), "metrics sample cadence missing");
     }
 
     {
