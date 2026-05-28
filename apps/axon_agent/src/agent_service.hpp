@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <string>
 
@@ -34,6 +35,9 @@ public:
   bool initialize(std::string* error);
   RpcResponse get_state();
   RpcResponse get_report();
+  RpcResponse get_recorder_status();
+  void set_action_sync_status_provider(std::function<nlohmann::json()> provider);
+  RpcResponse get_action_sync_status();
   RpcResponse list_actions();
   std::string resolve_robot_id(const std::string& configured_robot_id);
   nlohmann::json build_keystone_action_catalog(const std::string& robot_id);
@@ -78,6 +82,7 @@ private:
   ActionExecutor action_executor_;
   AdapterLoader adapter_loader_;
   ProcessManager processes_;
+  std::function<nlohmann::json()> action_sync_status_provider_;
   std::filesystem::path state_dir_;
   std::chrono::steady_clock::time_point started_at_ = std::chrono::steady_clock::now();
   std::string started_at_iso_;

@@ -182,6 +182,12 @@ RpcResponse HttpServer::route_rpc(
   if (path == "report" && method == "GET") {
     return service_.get_report();
   }
+  if (path == "recorder/status" && method == "GET") {
+    return service_.get_recorder_status();
+  }
+  if (path == "action-sync/status" && method == "GET") {
+    return service_.get_action_sync_status();
+  }
   if (path == "actions" && method == "GET") {
     return service_.list_actions();
   }

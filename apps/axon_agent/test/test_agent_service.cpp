@@ -157,6 +157,37 @@ managed_processes:
       robot["health"]["status"].get<std::string>() == "disabled", "robot health status mismatch"
     );
 
+    response = service.get_recorder_status();
+    require(!response.success, "recorder status should fail when recorder is not running");
+    require(response.data["queryable"].get<bool>(), "recorder status should be queryable");
+    require(!response.data["reachable"].get<bool>(), "recorder status should not be reachable");
+    require(
+      response.data["rpc_path"].get<std::string>() == "/rpc/status",
+      "recorder status rpc_path mismatch"
+    );
+
+    response = service.get_action_sync_status();
+    require(response.success, "disabled action sync status should be successful");
+    require(!response.data["enabled"].get<bool>(), "action sync should default to disabled");
+    require(!response.data["running"].get<bool>(), "disabled action sync should not run");
+
+    service.set_action_sync_status_provider([]() {
+      return nlohmann::json{
+        {"enabled", true},
+        {"running", true},
+        {"websocket_enabled", true},
+        {"websocket_connected", true},
+        {"catalog_sync_count", 2},
+        {"poll_count", 3},
+        {"notification_count", 4},
+      };
+    });
+    response = service.get_action_sync_status();
+    require(response.success, "provided action sync status should be successful");
+    require(response.data["enabled"].get<bool>(), "provided action sync should be enabled");
+    require(response.data["websocket_connected"].get<bool>(), "websocket status mismatch");
+    require(response.data["catalog_sync_count"].get<int>() == 2, "catalog sync count mismatch");
+
     response = service.execute_action(
       {{"request_id", "missing-request"}, {"action_id", "missing_action"}, {"args", {}}}
     );
