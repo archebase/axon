@@ -65,7 +65,9 @@ private:
   void schedule_reconnect();
 
   void start_ping_timer();
+  void start_ping_timeout_timer();
   void on_ping_timer(beast::error_code ec);
+  void on_pong();
 
   WsConfig config_;
   net::strand<net::io_context::executor_type> strand_;
@@ -79,6 +81,7 @@ private:
 
   net::steady_timer reconnect_timer_;
   net::steady_timer ping_timer_;
+  net::steady_timer ping_timeout_timer_;
   std::atomic<bool> ping_pending_{false};
 
   uint32_t reconnect_attempt_{0};

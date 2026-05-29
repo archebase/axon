@@ -677,6 +677,9 @@ bool ConfigParser::parse_rpc(const YAML::Node& node, RpcModeConfig& rpc) {
     if (ws["ping_interval_ms"]) {
       rpc.ws_client.ping_interval_ms = ws["ping_interval_ms"].as<int>();
     }
+    if (ws["ping_timeout_ms"]) {
+      rpc.ws_client.ping_timeout_ms = ws["ping_timeout_ms"].as<int>();
+    }
     if (ws["time_gap_check_enabled"]) {
       rpc.ws_client.time_gap_check_enabled = ws["time_gap_check_enabled"].as<bool>();
     }
@@ -764,6 +767,11 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
   }
 
   const auto& time_gap = config.rpc.ws_client;
+  if (time_gap.ping_interval_ms < 0 || time_gap.ping_timeout_ms < 0) {
+    error_msg = "WebSocket ping interval and timeout must be >= 0";
+    return false;
+  }
+
   if (time_gap.time_gap_warning_threshold_ms < 0 || time_gap.time_gap_critical_threshold_ms < 0 ||
       time_gap.time_gap_max_round_trip_ms < 0 || time_gap.time_gap_stale_after_ms < 0) {
     error_msg = "Keystone time-gap thresholds must be >= 0";

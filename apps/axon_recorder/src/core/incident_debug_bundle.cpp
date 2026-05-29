@@ -285,6 +285,8 @@ nlohmann::json IncidentDebugBundleWriter::safe_recorder_config_json(
 
   j["rpc"]["mode"] = config->rpc.mode == RpcMode::WS_CLIENT ? "ws_client" : "http_server";
   j["rpc"]["ws_client"]["url"] = config->rpc.ws_client.url;
+  j["rpc"]["ws_client"]["ping_interval_ms"] = config->rpc.ws_client.ping_interval_ms;
+  j["rpc"]["ws_client"]["ping_timeout_ms"] = config->rpc.ws_client.ping_timeout_ms;
   j["rpc"]["ws_client"]["time_gap_check_enabled"] = config->rpc.ws_client.time_gap_check_enabled;
   j["rpc"]["ws_client"]["time_gap_warning_threshold_ms"] =
     config->rpc.ws_client.time_gap_warning_threshold_ms;

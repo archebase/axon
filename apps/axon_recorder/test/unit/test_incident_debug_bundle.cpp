@@ -86,6 +86,8 @@ TEST_F(IncidentDebugBundleTest, CreatesBundleManifestAndRedactsSensitiveFields) 
   RecorderConfig recorder_config;
   recorder_config.recording.sidecar_json_enabled = false;
   recorder_config.rpc.ws_client.auth_token = "also_must_not_appear";
+  recorder_config.rpc.ws_client.ping_interval_ms = 12000;
+  recorder_config.rpc.ws_client.ping_timeout_ms = 3000;
 
   IncidentDebugBundleRequest request;
   request.config.enabled = true;
@@ -116,6 +118,8 @@ TEST_F(IncidentDebugBundleTest, CreatesBundleManifestAndRedactsSensitiveFields) 
 
   EXPECT_EQ(manifest["artifacts"]["sidecar"]["enabled"], false);
   EXPECT_EQ(manifest["config"]["task_config"]["task_id"], "task_001");
+  EXPECT_EQ(manifest["config"]["recorder_config"]["rpc"]["ws_client"]["ping_interval_ms"], 12000);
+  EXPECT_EQ(manifest["config"]["recorder_config"]["rpc"]["ws_client"]["ping_timeout_ms"], 3000);
   EXPECT_EQ(manifest["diagnostics"]["api_token"], "[REDACTED]");
   EXPECT_EQ(manifest["diagnostics"]["nested"]["access_key"], "[REDACTED]");
   EXPECT_EQ(manifest["diagnostics"]["nested"]["safe"], "visible");

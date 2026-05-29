@@ -217,6 +217,7 @@ struct WsClientConfig {
   int reconnect_max_delay_ms = 60000;         // Maximum reconnect delay
   double reconnect_jitter_factor = 0.2;       // Jitter factor for reconnection
   int ping_interval_ms = 30000;               // Ping interval for keepalive
+  int ping_timeout_ms = 10000;                // Pong wait timeout before reconnect
   bool time_gap_check_enabled = true;         // Compare Keystone message time with local time
   int64_t time_gap_warning_threshold_ms = 1000;
   int64_t time_gap_critical_threshold_ms = 5000;

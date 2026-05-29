@@ -209,6 +209,8 @@ rpc:
   ws_client:
     url: ws://keystone:8090/rpc
     auth_token: keep_me_secret
+    ping_interval_ms: 12000
+    ping_timeout_ms: 3000
     time_gap_check_enabled: true
     time_gap_warning_threshold_ms: 250
     time_gap_critical_threshold_ms: 1000
@@ -227,6 +229,8 @@ rpc:
   EXPECT_EQ(config.rpc.mode, RpcMode::WS_CLIENT);
   EXPECT_EQ(config.rpc.ws_client.url, "ws://keystone:8090/rpc");
   EXPECT_EQ(config.rpc.ws_client.auth_token, "keep_me_secret");
+  EXPECT_EQ(config.rpc.ws_client.ping_interval_ms, 12000);
+  EXPECT_EQ(config.rpc.ws_client.ping_timeout_ms, 3000);
   EXPECT_TRUE(config.rpc.ws_client.time_gap_check_enabled);
   EXPECT_EQ(config.rpc.ws_client.time_gap_warning_threshold_ms, 250);
   EXPECT_EQ(config.rpc.ws_client.time_gap_critical_threshold_ms, 1000);
@@ -312,6 +316,18 @@ TEST_F(ConfigParserTest, ValidatePassesWithValidConfig) {
 
   std::string error_msg;
   EXPECT_TRUE(ConfigParser::validate(config, error_msg));
+}
+
+TEST_F(ConfigParserTest, ValidateFailsWithNegativeWsClientKeepalive) {
+  RecorderConfig config;
+  config.dataset.path = "/data/recordings";
+  config.dataset.mode = "create";
+  config.subscriptions.push_back({"/camera/image", "sensor_msgs/Image", 100, 100});
+  config.rpc.ws_client.ping_timeout_ms = -1;
+
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "WebSocket ping interval and timeout must be >= 0");
 }
 
 TEST_F(ConfigParserTest, ValidateFailsWithEmptyDatasetPath) {

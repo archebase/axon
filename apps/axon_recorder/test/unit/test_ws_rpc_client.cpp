@@ -159,6 +159,7 @@ TEST_F(WsRpcClientTest, ConfigDefaults) {
   EXPECT_EQ(config.reconnect_max_delay_ms, 60000);
   EXPECT_DOUBLE_EQ(config.reconnect_jitter_factor, 0.2);
   EXPECT_EQ(config.ping_interval_ms, 30000);
+  EXPECT_EQ(config.ping_timeout_ms, 10000);
   EXPECT_TRUE(config.time_gap_check_enabled);
   EXPECT_EQ(config.time_gap_warning_threshold_ms, 1000);
   EXPECT_EQ(config.time_gap_critical_threshold_ms, 5000);

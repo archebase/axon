@@ -32,11 +32,14 @@ WsRpcClient::WsRpcClient(net::io_context& ioc, const WsClientConfig& config)
     , resolver_(strand_)
     , ws_(strand_)
     , reconnect_timer_(strand_)
-    , ping_timer_(strand_) {
-  // Set up control callback for pong handling
-  ws_.control_callback([](beast::websocket::frame_type type, beast::string_view) {
+    , ping_timer_(strand_)
+    , ping_timeout_timer_(strand_) {
+  // Set up control callback for pong handling.
+  ws_.control_callback([this](beast::websocket::frame_type type, beast::string_view) {
     if (type == beast::websocket::frame_type::pong) {
-      // Pong received, connection is alive
+      net::dispatch(strand_, [this]() {
+        this->on_pong();
+      });
     }
   });
 }
@@ -75,6 +78,8 @@ void WsRpcClient::stop() {
     state_ = ConnectionState::kStopped;
     reconnect_timer_.cancel();
     ping_timer_.cancel();
+    ping_timeout_timer_.cancel();
+    ping_pending_ = false;
 
     beast::error_code ec;
     if (ws_.is_open()) {
@@ -347,6 +352,7 @@ void WsRpcClient::on_handshake(beast::error_code ec) {
 
   AXON_LOG_INFO("WebSocket connected successfully");
   connected_ = true;
+  ping_pending_ = false;
   reconnect_attempt_ = 0;
   reconnect_scheduled_ = false;
   state_ = ConnectionState::kOpen;
@@ -726,6 +732,8 @@ void WsRpcClient::on_disconnect(beast::error_code ec) {
     }
 
     ping_timer_.cancel();
+    ping_timeout_timer_.cancel();
+    ping_pending_ = false;
 
     beast::error_code close_ec;
     if (ws_.is_open()) {
@@ -799,17 +807,64 @@ void WsRpcClient::start_ping_timer() {
       return;
     }
 
-    // Send ping frame
+    if (ping_pending_.load()) {
+      return;
+    }
+
+    const bool wait_for_pong = config_.ping_timeout_ms > 0;
+    if (wait_for_pong) {
+      ping_pending_ = true;
+    }
+
+    // Send ping frame. The completion only means the ping was written; liveness
+    // is confirmed by the control callback receiving a pong.
     ws_.async_ping(beast::websocket::ping_data{}, [this](beast::error_code ping_ec) {
       if (ping_ec) {
         AXON_LOG_WARN("WebSocket ping failed" << kv("error", ping_ec.message()));
+        ping_timeout_timer_.cancel();
+        ping_pending_ = false;
         on_disconnect(ping_ec);
         return;
       }
-      // Schedule next ping
-      start_ping_timer();
+      if (config_.ping_timeout_ms > 0) {
+        if (ping_pending_.load()) {
+          start_ping_timeout_timer();
+        }
+      } else {
+        start_ping_timer();
+      }
     });
   });
+}
+
+void WsRpcClient::start_ping_timeout_timer() {
+  ping_timeout_timer_.expires_after(std::chrono::milliseconds(config_.ping_timeout_ms));
+  ping_timeout_timer_.async_wait([this](beast::error_code ec) {
+    if (ec || stopped_ || !connected_) {
+      return;
+    }
+
+    if (!ping_pending_.exchange(false)) {
+      return;
+    }
+
+    AXON_LOG_WARN("WebSocket pong timeout" << kv("timeout_ms", config_.ping_timeout_ms));
+    beast::error_code timeout_ec = net::error::timed_out;
+    on_disconnect(timeout_ec);
+  });
+}
+
+void WsRpcClient::on_pong() {
+  if (stopped_ || !connected_) {
+    return;
+  }
+
+  if (!ping_pending_.exchange(false)) {
+    return;
+  }
+
+  ping_timeout_timer_.cancel();
+  start_ping_timer();
 }
 
 bool WsRpcClient::parse_url(

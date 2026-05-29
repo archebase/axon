@@ -107,6 +107,7 @@ void print_usage(const char* program_name) {
     << "      reconnect_initial_delay_ms: 1000\n"
     << "      reconnect_max_delay_ms: 60000\n"
     << "      ping_interval_ms: 30000\n"
+    << "      ping_timeout_ms: 10000\n"
     << "  subscriptions:\n"
     << "    - name: /camera/image\n"
     << "      message_type: sensor_msgs/msg/Image\n"

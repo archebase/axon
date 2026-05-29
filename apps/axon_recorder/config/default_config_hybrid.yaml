@@ -79,6 +79,7 @@ rpc:
     reconnect_max_delay_ms: 60000
     reconnect_jitter_factor: 0.2
     ping_interval_ms: 30000
+    ping_timeout_ms: 10000
     time_gap_check_enabled: true
     time_gap_warning_threshold_ms: 1000
     time_gap_critical_threshold_ms: 5000

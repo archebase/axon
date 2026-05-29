@@ -204,6 +204,7 @@ rpc:
 
     # Keepalive ping interval (0 to disable)
     ping_interval_ms: 30000
+    ping_timeout_ms: 10000
 
     # Keystone/local clock gap diagnostics, exposed in /rpc/status.
     time_gap_check_enabled: true
