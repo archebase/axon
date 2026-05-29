@@ -4,6 +4,7 @@
 
 #include "worker_thread_pool.hpp"
 
+#include <algorithm>
 #include <chrono>
 
 // Clock utilities
@@ -34,6 +35,10 @@ void WorkerThreadPool::set_drop_callback(DropCallback callback) {
   drop_callback_ = std::move(callback);
 }
 
+void WorkerThreadPool::set_latency_batch_handler(LatencyBatchMessageHandler callback) {
+  latency_batch_handler_ = std::move(callback);
+}
+
 namespace {
 // Reject obviously invalid BatchConfig values; fall back to defaults.
 WorkerThreadPool::BatchConfig normalize_batch_config(WorkerThreadPool::BatchConfig cfg) {
@@ -44,6 +49,15 @@ WorkerThreadPool::BatchConfig normalize_batch_config(WorkerThreadPool::BatchConf
     cfg.flush_interval_ms = 0;
   }
   return cfg;
+}
+
+template<typename T>
+void update_atomic_max(std::atomic<T>& target, T value) {
+  T current = target.load(std::memory_order_relaxed);
+  while (current < value && !target.compare_exchange_weak(
+                              current, value, std::memory_order_relaxed, std::memory_order_relaxed
+                            )) {
+  }
 }
 }  // namespace
 
@@ -212,6 +226,13 @@ void WorkerThreadPool::start() {
   paused_.store(false, std::memory_order_release);
   stopping_.store(false, std::memory_order_release);
 
+  if (config_.use_writer_batching && latency_batch_handler_) {
+    writer_running_.store(true, std::memory_order_release);
+    writer_thread_ = std::thread(&WorkerThreadPool::writer_thread_func, this);
+  } else if (config_.use_writer_batching && !latency_batch_handler_) {
+    AXON_LOG_WARN("Writer batching requested but no batch handler was installed");
+  }
+
   std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
 
   for (auto& [topic, context] : topic_contexts_) {
@@ -263,6 +284,14 @@ void WorkerThreadPool::stop() {
     if (context->worker_thread.joinable()) {
       context->worker_thread.join();
     }
+  }
+
+  if (writer_running_.load(std::memory_order_acquire)) {
+    writer_running_.store(false, std::memory_order_release);
+    writer_queue_cv_.notify_all();
+  }
+  if (writer_thread_.joinable()) {
+    writer_thread_.join();
   }
 
   stopping_.store(false, std::memory_order_release);
@@ -438,6 +467,33 @@ WorkerThreadPool::get_queue_depths() const {
   return depths;
 }
 
+WorkerThreadPool::WriterBatchStatsSnapshot WorkerThreadPool::get_writer_batch_stats() const {
+  WriterBatchStatsSnapshot stats;
+  stats.enabled = config_.use_writer_batching;
+  stats.batches_written = writer_batches_written_.load(std::memory_order_relaxed);
+  stats.messages_written = writer_messages_written_.load(std::memory_order_relaxed);
+  stats.bytes_written = writer_bytes_written_.load(std::memory_order_relaxed);
+  stats.partial_failures = writer_partial_failures_.load(std::memory_order_relaxed);
+  stats.queue_overflows = writer_queue_overflows_.load(std::memory_order_relaxed);
+  stats.flush_by_messages = writer_flush_by_messages_.load(std::memory_order_relaxed);
+  stats.flush_by_bytes = writer_flush_by_bytes_.load(std::memory_order_relaxed);
+  stats.flush_by_time = writer_flush_by_time_.load(std::memory_order_relaxed);
+  stats.flush_by_stop = writer_flush_by_stop_.load(std::memory_order_relaxed);
+  stats.total_write_duration_ns = writer_total_write_duration_ns_.load(std::memory_order_relaxed);
+  stats.max_write_duration_ns = writer_max_write_duration_ns_.load(std::memory_order_relaxed);
+  stats.last_batch_messages = writer_last_batch_messages_.load(std::memory_order_relaxed);
+  stats.last_batch_bytes = writer_last_batch_bytes_.load(std::memory_order_relaxed);
+  stats.max_batch_messages = writer_max_batch_messages_.load(std::memory_order_relaxed);
+  stats.max_batch_bytes = writer_max_batch_bytes_.load(std::memory_order_relaxed);
+  stats.queue_capacity = std::max<size_t>(1, config_.writer_queue_capacity);
+  stats.max_queue_depth = writer_max_queue_depth_.load(std::memory_order_relaxed);
+  {
+    std::lock_guard<std::mutex> lock(writer_queue_mutex_);
+    stats.queue_depth = writer_queue_.size();
+  }
+  return stats;
+}
+
 void WorkerThreadPool::reset_stats() {
   std::unique_lock<std::shared_mutex> lock(contexts_mutex_);
 
@@ -448,6 +504,26 @@ void WorkerThreadPool::reset_stats() {
     context->stats.bytes_received.store(0, std::memory_order_relaxed);
     context->stats.bytes_written.store(0, std::memory_order_relaxed);
   }
+  reset_writer_batch_stats();
+}
+
+void WorkerThreadPool::reset_writer_batch_stats() {
+  writer_batches_written_.store(0, std::memory_order_relaxed);
+  writer_messages_written_.store(0, std::memory_order_relaxed);
+  writer_bytes_written_.store(0, std::memory_order_relaxed);
+  writer_partial_failures_.store(0, std::memory_order_relaxed);
+  writer_queue_overflows_.store(0, std::memory_order_relaxed);
+  writer_flush_by_messages_.store(0, std::memory_order_relaxed);
+  writer_flush_by_bytes_.store(0, std::memory_order_relaxed);
+  writer_flush_by_time_.store(0, std::memory_order_relaxed);
+  writer_flush_by_stop_.store(0, std::memory_order_relaxed);
+  writer_total_write_duration_ns_.store(0, std::memory_order_relaxed);
+  writer_max_write_duration_ns_.store(0, std::memory_order_relaxed);
+  writer_last_batch_messages_.store(0, std::memory_order_relaxed);
+  writer_last_batch_bytes_.store(0, std::memory_order_relaxed);
+  writer_max_batch_messages_.store(0, std::memory_order_relaxed);
+  writer_max_batch_bytes_.store(0, std::memory_order_relaxed);
+  writer_max_queue_depth_.store(0, std::memory_order_relaxed);
 }
 
 std::vector<std::string> WorkerThreadPool::get_topics() const {
@@ -466,6 +542,231 @@ std::vector<std::string> WorkerThreadPool::get_topics() const {
 size_t WorkerThreadPool::topic_count() const {
   std::shared_lock<std::shared_mutex> lock(contexts_mutex_);
   return topic_contexts_.size();
+}
+
+bool WorkerThreadPool::submit_to_writer_batcher(
+  const std::shared_ptr<TopicContext>& context, MessageItem&& item, uint32_t sequence
+) {
+  if (!context) {
+    return false;
+  }
+
+  const size_t queue_capacity = std::max<size_t>(1, config_.writer_queue_capacity);
+  size_t queue_depth = 0;
+  {
+    std::unique_lock<std::mutex> lock(writer_queue_mutex_);
+
+    if (!writer_running_.load(std::memory_order_acquire)) {
+      return false;
+    }
+
+    queue_depth = writer_queue_.size();
+    if (queue_depth >= queue_capacity) {
+      writer_queue_overflows_.fetch_add(1, std::memory_order_relaxed);
+      queue_depth = writer_queue_.size();
+    } else {
+      WriterBatchItem queued;
+      queued.context = context;
+      queued.item = std::move(item);
+      queued.sequence = sequence;
+      writer_queue_.push_back(std::move(queued));
+      update_atomic_max(writer_max_queue_depth_, writer_queue_.size());
+      lock.unlock();
+      writer_queue_cv_.notify_one();
+      return true;
+    }
+  }
+
+  const uint64_t total_dropped = context->stats.dropped.fetch_add(1, std::memory_order_relaxed) + 1;
+  AXON_LOG_ERROR(
+    "Writer queue full, dropping message" << axon::logging::kv("topic", context->topic_name)
+                                          << axon::logging::kv("queue_depth", queue_depth)
+                                          << axon::logging::kv("queue_capacity", queue_capacity)
+                                          << axon::logging::kv("topic_total_dropped", total_dropped)
+  );
+  if (drop_callback_) {
+    drop_callback_(context->topic_name, item.message_type, total_dropped);
+  }
+  writer_queue_cv_.notify_one();
+  return false;
+}
+
+void WorkerThreadPool::flush_writer_batch(
+  std::vector<WriterBatchItem>& batch, WriterFlushReason reason
+) {
+  if (batch.empty()) {
+    return;
+  }
+
+  size_t batch_bytes = 0;
+  for (const auto& queued : batch) {
+    batch_bytes += queued.item.raw_data.size();
+  }
+
+  std::vector<BatchMessageView> views;
+  views.reserve(batch.size());
+  for (const auto& queued : batch) {
+    if (!queued.context) {
+      continue;
+    }
+    BatchMessageView view;
+    view.topic = &queued.context->topic_name;
+    view.message_type = &queued.item.message_type;
+    view.timestamp_ns = queued.item.timestamp_ns;
+    view.data = queued.item.raw_data.data();
+    view.data_size = queued.item.raw_data.size();
+    view.sequence = queued.sequence;
+    view.publish_time_ns = queued.item.publish_time_ns;
+    view.receive_time_ns = queued.item.receive_time_ns;
+    view.enqueue_time_ns = queued.item.enqueue_time_ns;
+    view.dequeue_time_ns = queued.item.dequeue_time_ns;
+    views.push_back(view);
+  }
+
+  size_t written_count = 0;
+  const uint64_t write_start_ns = get_steady_clock_ns();
+  try {
+    if (latency_batch_handler_) {
+      written_count = latency_batch_handler_(views);
+    }
+  } catch (const std::exception& e) {
+    AXON_LOG_ERROR("Writer batch exception" << axon::logging::kv("error", e.what()));
+  } catch (...) {
+    AXON_LOG_ERROR("Writer batch unknown exception");
+  }
+  const uint64_t write_duration_ns = get_steady_clock_ns() - write_start_ns;
+
+  written_count = std::min(written_count, batch.size());
+  writer_batches_written_.fetch_add(1, std::memory_order_relaxed);
+  writer_messages_written_.fetch_add(written_count, std::memory_order_relaxed);
+  writer_total_write_duration_ns_.fetch_add(write_duration_ns, std::memory_order_relaxed);
+  writer_last_batch_messages_.store(batch.size(), std::memory_order_relaxed);
+  writer_last_batch_bytes_.store(batch_bytes, std::memory_order_relaxed);
+  update_atomic_max(writer_max_write_duration_ns_, write_duration_ns);
+  update_atomic_max(writer_max_batch_messages_, batch.size());
+  update_atomic_max(writer_max_batch_bytes_, batch_bytes);
+
+  switch (reason) {
+    case WriterFlushReason::Messages:
+      writer_flush_by_messages_.fetch_add(1, std::memory_order_relaxed);
+      break;
+    case WriterFlushReason::Bytes:
+      writer_flush_by_bytes_.fetch_add(1, std::memory_order_relaxed);
+      break;
+    case WriterFlushReason::Time:
+      writer_flush_by_time_.fetch_add(1, std::memory_order_relaxed);
+      break;
+    case WriterFlushReason::Stop:
+      writer_flush_by_stop_.fetch_add(1, std::memory_order_relaxed);
+      break;
+  }
+
+  for (size_t i = 0; i < written_count; ++i) {
+    auto& queued = batch[i];
+    if (!queued.context) {
+      continue;
+    }
+    queued.context->stats.written.fetch_add(1, std::memory_order_relaxed);
+    const size_t item_bytes = queued.item.raw_data.size();
+    queued.context->stats.bytes_written.fetch_add(item_bytes, std::memory_order_relaxed);
+    writer_bytes_written_.fetch_add(item_bytes, std::memory_order_relaxed);
+  }
+
+  if (written_count < batch.size()) {
+    writer_partial_failures_.fetch_add(1, std::memory_order_relaxed);
+    AXON_LOG_WARN(
+      "Writer batch partially written" << axon::logging::kv("written", written_count)
+                                       << axon::logging::kv("batch_size", batch.size())
+    );
+  }
+
+  batch.clear();
+}
+
+void WorkerThreadPool::writer_thread_func() {
+  const size_t max_messages = std::max<size_t>(1, config_.writer_batch_max_messages);
+  const size_t max_bytes = config_.writer_batch_max_bytes;
+  const auto flush_interval =
+    std::chrono::milliseconds(std::max(0, config_.writer_batch_flush_interval_ms));
+
+  std::vector<WriterBatchItem> batch;
+  batch.reserve(max_messages);
+  size_t batch_bytes = 0;
+  auto first_item_time = std::chrono::steady_clock::now();
+
+  auto can_take = [&](const WriterBatchItem& item) {
+    if (batch.empty()) {
+      return true;
+    }
+    if (batch.size() >= max_messages) {
+      return false;
+    }
+    return max_bytes == 0 || batch_bytes + item.item.raw_data.size() <= max_bytes;
+  };
+
+  auto take_available = [&]() {
+    bool took = false;
+    while (!writer_queue_.empty() && can_take(writer_queue_.front())) {
+      if (batch.empty()) {
+        first_item_time = std::chrono::steady_clock::now();
+      }
+      batch_bytes += writer_queue_.front().item.raw_data.size();
+      batch.push_back(std::move(writer_queue_.front()));
+      writer_queue_.pop_front();
+      took = true;
+    }
+  };
+
+  while (true) {
+    bool should_flush = false;
+    WriterFlushReason flush_reason = WriterFlushReason::Time;
+    {
+      std::unique_lock<std::mutex> lock(writer_queue_mutex_);
+      if (!writer_running_.load(std::memory_order_acquire) && writer_queue_.empty() &&
+          batch.empty()) {
+        break;
+      }
+
+      if (batch.empty()) {
+        writer_queue_cv_.wait(lock, [this]() {
+          return !writer_running_.load(std::memory_order_acquire) || !writer_queue_.empty();
+        });
+        take_available();
+      } else if (batch.size() < max_messages && (max_bytes == 0 || batch_bytes < max_bytes) &&
+                 writer_running_.load(std::memory_order_acquire)) {
+        const auto deadline = first_item_time + flush_interval;
+        if (flush_interval.count() > 0 && writer_queue_.empty()) {
+          writer_queue_cv_.wait_until(lock, deadline, [this]() {
+            return !writer_running_.load(std::memory_order_acquire) || !writer_queue_.empty();
+          });
+        }
+        take_available();
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (!batch.empty()) {
+        if (!writer_running_.load(std::memory_order_acquire)) {
+          should_flush = true;
+          flush_reason = WriterFlushReason::Stop;
+        } else if (batch.size() >= max_messages) {
+          should_flush = true;
+          flush_reason = WriterFlushReason::Messages;
+        } else if ((max_bytes > 0 && batch_bytes >= max_bytes) ||
+                   (!writer_queue_.empty() && !can_take(writer_queue_.front()))) {
+          should_flush = true;
+          flush_reason = WriterFlushReason::Bytes;
+        } else if (flush_interval.count() == 0 || now - first_item_time >= flush_interval) {
+          should_flush = true;
+          flush_reason = WriterFlushReason::Time;
+        }
+      }
+    }
+
+    if (should_flush) {
+      flush_writer_batch(batch, flush_reason);
+      batch_bytes = 0;
+    }
+  }
 }
 
 void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context) {
@@ -487,7 +788,9 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
     uint32_t seq = context->stats.sequence.fetch_add(1, std::memory_order_relaxed);
     bool success = false;
     try {
-      if (context->latency_handler) {
+      if (config_.use_writer_batching && latency_batch_handler_ && context->latency_handler) {
+        success = submit_to_writer_batcher(context, std::move(item), seq);
+      } else if (context->latency_handler) {
         success = context->latency_handler(
           topic,
           item.message_type,
@@ -519,7 +822,8 @@ void WorkerThreadPool::worker_thread_func(std::shared_ptr<TopicContext> context)
       AXON_LOG_ERROR("Worker unknown exception" << axon::logging::kv("topic", topic));
     }
 
-    if (success) {
+    if (success &&
+        !(config_.use_writer_batching && latency_batch_handler_ && context->latency_handler)) {
       context->stats.written.fetch_add(1, std::memory_order_relaxed);
       context->stats.bytes_written.fetch_add(item.raw_data.size(), std::memory_order_relaxed);
     }

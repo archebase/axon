@@ -8,6 +8,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <atomic>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <thread>
@@ -73,16 +74,24 @@ public:
     return node_;
   }
 
+  // Executor thread count selected at start(); 0 before the executor is running.
+  size_t get_executor_thread_count() const {
+    return executor_thread_count_;
+  }
+
 private:
   bool ensure_subscription_manager();
+  size_t resolve_executor_thread_count() const;
 
   rclcpp::Node::SharedPtr node_;
   std::unique_ptr<SubscriptionManager> subscription_manager_;
-  std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
+  std::unique_ptr<rclcpp::executors::MultiThreadedExecutor> executor_;
   std::thread executor_thread_;
 
   std::atomic<bool> initialized_;
   std::atomic<bool> spinning_;
+  size_t configured_executor_threads_;
+  size_t executor_thread_count_;
 };
 
 }  // namespace ros2_plugin

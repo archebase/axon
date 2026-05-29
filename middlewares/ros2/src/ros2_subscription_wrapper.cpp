@@ -71,6 +71,11 @@ bool SubscriptionManager::subscribe(
     void* captured_filter = nullptr;  // No compression filter available
 #endif
 
+    auto callback_group =
+      node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions subscription_options;
+    subscription_options.callback_group = callback_group;
+
     auto subscription = node_->create_generic_subscription(
       topic_name,
       message_type,
@@ -128,7 +133,8 @@ bool SubscriptionManager::subscribe(
                                                  << kv("error", e.what())
           );
         }
-      }
+      },
+      subscription_options
     );
 
     if (!subscription) {
@@ -139,6 +145,7 @@ bool SubscriptionManager::subscribe(
     // Store subscription info with callback and filter
     SubscriptionInfo info;
     info.subscription = subscription;
+    info.callback_group = callback_group;
     info.callback = callback;
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
     info.compression_filter = compression_filter;
@@ -190,6 +197,11 @@ bool SubscriptionManager::subscribe_v2(
     }
     void* captured_filter = nullptr;
 #endif
+
+    auto callback_group =
+      node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions subscription_options;
+    subscription_options.callback_group = callback_group;
 
     auto subscription = node_->create_generic_subscription(
       topic_name,
@@ -271,7 +283,8 @@ bool SubscriptionManager::subscribe_v2(
                                                       << kv("error", e.what())
           );
         }
-      }
+      },
+      subscription_options
     );
 
     if (!subscription) {
@@ -281,6 +294,7 @@ bool SubscriptionManager::subscribe_v2(
 
     SubscriptionInfo info;
     info.subscription = subscription;
+    info.callback_group = callback_group;
     // v2 does not retain the v1 std::function callback; that slot is unused here.
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
     info.compression_filter = compression_filter;

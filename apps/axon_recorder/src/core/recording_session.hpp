@@ -135,6 +135,19 @@ public:
   );
 
   /**
+   * Write a batch of messages to the MCAP file.
+   * Thread-safe: serialized by the underlying writer.
+   *
+   * @param items Array of write-ready MCAP batch items
+   * @param count Number of items in the array
+   * @param written_out Optional count of successfully written prefix items
+   * @return true when every item was written, false on first failure
+   */
+  bool write_batch(
+    const mcap_wrapper::BatchItem* items, size_t count, size_t* written_out = nullptr
+  );
+
+  /**
    * Get the channel ID for a topic with a specific message type.
    *
    * @param topic Topic name

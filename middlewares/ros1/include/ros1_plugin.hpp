@@ -8,6 +8,7 @@
 #include <ros/ros.h>
 
 #include <atomic>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -97,8 +98,14 @@ public:
     return node_handle_;
   }
 
+  // AsyncSpinner thread count selected at start(); 0 before spinning.
+  size_t get_spinner_thread_count() const {
+    return spinner_thread_count_;
+  }
+
 private:
   void ensure_subscription_manager();
+  size_t resolve_spinner_thread_count() const;
 
   ros::NodeHandlePtr node_handle_;
   std::unique_ptr<SubscriptionManager> subscription_manager_;
@@ -109,6 +116,8 @@ private:
 
   std::atomic<bool> initialized_;
   std::atomic<bool> spinning_;
+  size_t configured_spinner_threads_;
+  size_t spinner_thread_count_;
 };
 
 }  // namespace ros1_plugin

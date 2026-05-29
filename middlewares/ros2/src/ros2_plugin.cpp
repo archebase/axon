@@ -6,6 +6,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <cstring>
 
 // Define component name for logging
@@ -16,9 +19,90 @@ using axon::logging::kv;
 
 namespace ros2_plugin {
 
+namespace {
+
+size_t read_thread_count(const nlohmann::json& value) {
+  if (value.is_number_unsigned()) {
+    return value.get<size_t>();
+  }
+  if (value.is_number_integer()) {
+    const auto signed_value = value.get<int64_t>();
+    return signed_value > 0 ? static_cast<size_t>(signed_value) : 0;
+  }
+  return 0;
+}
+
+void apply_config_object(
+  const nlohmann::json& config, std::string& node_name, std::string& namespace_str,
+  size_t& executor_threads
+) {
+  if (!config.is_object()) {
+    return;
+  }
+
+  if (config.contains("node_name") && config["node_name"].is_string()) {
+    node_name = config["node_name"].get<std::string>();
+  }
+
+  if (config.contains("namespace") && config["namespace"].is_string()) {
+    namespace_str = config["namespace"].get<std::string>();
+  }
+
+  for (const char* key : {"executor_threads", "executor_thread_count", "num_threads"}) {
+    if (config.contains(key)) {
+      executor_threads = read_thread_count(config[key]);
+    }
+  }
+
+  if (config.contains("executor") && config["executor"].is_object()) {
+    const auto& executor = config["executor"];
+    for (const char* key : {"threads", "thread_count", "num_threads"}) {
+      if (executor.contains(key)) {
+        executor_threads = read_thread_count(executor[key]);
+      }
+    }
+  }
+}
+
+void apply_embedded_plugin_config(
+  const nlohmann::json& root, std::string& node_name, std::string& namespace_str,
+  size_t& executor_threads
+) {
+  if (!root.contains("plugin") || !root["plugin"].is_object()) {
+    return;
+  }
+
+  const auto& plugin = root["plugin"];
+  if (!plugin.contains("config")) {
+    return;
+  }
+
+  if (plugin["config"].is_object()) {
+    apply_config_object(plugin["config"], node_name, namespace_str, executor_threads);
+    return;
+  }
+
+  if (!plugin["config"].is_string()) {
+    return;
+  }
+
+  const auto config_text = plugin["config"].get<std::string>();
+  if (config_text.empty()) {
+    return;
+  }
+
+  apply_config_object(
+    nlohmann::json::parse(config_text), node_name, namespace_str, executor_threads
+  );
+}
+
+}  // namespace
+
 Ros2Plugin::Ros2Plugin()
     : initialized_(false)
-    , spinning_(false) {}
+    , spinning_(false)
+    , configured_executor_threads_(0)
+    , executor_thread_count_(0) {}
 
 Ros2Plugin::~Ros2Plugin() {
   stop();
@@ -46,17 +130,15 @@ bool Ros2Plugin::init(const char* config_json) {
     // Parse configuration
     std::string node_name = "axon_ros2_plugin";
     std::string namespace_str = "";
+    configured_executor_threads_ = 0;
 
     if (config_json && std::strlen(config_json) > 0) {
       auto config = nlohmann::json::parse(config_json);
-
-      if (config.contains("node_name")) {
-        node_name = config["node_name"];
+      apply_config_object(config, node_name, namespace_str, configured_executor_threads_);
+      if (config.contains("ros2")) {
+        apply_config_object(config["ros2"], node_name, namespace_str, configured_executor_threads_);
       }
-
-      if (config.contains("namespace")) {
-        namespace_str = config["namespace"];
-      }
+      apply_embedded_plugin_config(config, node_name, namespace_str, configured_executor_threads_);
     }
 
     // Initialize ROS2
@@ -94,6 +176,21 @@ bool Ros2Plugin::init(const char* config_json) {
   }
 }
 
+size_t Ros2Plugin::resolve_executor_thread_count() const {
+  if (configured_executor_threads_ > 0) {
+    return configured_executor_threads_;
+  }
+
+  const size_t hardware_threads =
+    std::max<size_t>(2, static_cast<size_t>(std::thread::hardware_concurrency()));
+  size_t desired_threads = 2;
+  if (subscription_manager_) {
+    desired_threads =
+      std::max<size_t>(desired_threads, subscription_manager_->get_subscribed_topics().size());
+  }
+  return std::min(desired_threads, hardware_threads);
+}
+
 bool Ros2Plugin::start() {
   if (!initialized_.load()) {
     AXON_LOG_ERROR("ROS2 plugin not initialized");
@@ -106,19 +203,40 @@ bool Ros2Plugin::start() {
   }
 
   try {
-    // Create executor
-    executor_ = std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
+    executor_thread_count_ = resolve_executor_thread_count();
+    rclcpp::ExecutorOptions executor_options;
+    executor_ = std::make_unique<rclcpp::executors::MultiThreadedExecutor>(
+      executor_options, executor_thread_count_
+    );
     executor_->add_node(node_);
 
-    // Start executor in separate thread using lambda
     spinning_.store(true);
     executor_thread_ = std::thread([this]() {
-      while (spinning_.load() && rclcpp::ok()) {
-        executor_->spin_once(std::chrono::milliseconds(100));
+      try {
+        executor_->spin();
+      } catch (const std::exception& e) {
+        AXON_LOG_ERROR("ROS2 executor spin failed: " << kv("error", e.what()));
       }
+      spinning_.store(false);
     });
 
-    AXON_LOG_INFO("ROS2 plugin spinning");
+    const auto spin_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (!executor_->is_spinning() && std::chrono::steady_clock::now() < spin_deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (!executor_->is_spinning()) {
+      AXON_LOG_ERROR("ROS2 executor did not enter spinning state");
+      spinning_.store(false);
+      executor_->cancel();
+      if (executor_thread_.joinable()) {
+        executor_thread_.join();
+      }
+      executor_.reset();
+      executor_thread_count_ = 0;
+      return false;
+    }
+
+    AXON_LOG_INFO("ROS2 plugin spinning: " << kv("executor_threads", executor_thread_count_));
     return true;
 
   } catch (const std::exception& e) {
@@ -168,6 +286,7 @@ bool Ros2Plugin::stop_session() {
   }
 
   executor_.reset();
+  executor_thread_count_ = 0;
 
   // Clear per-session subscriptions while preserving the node for the next recording.
   subscription_manager_.reset();

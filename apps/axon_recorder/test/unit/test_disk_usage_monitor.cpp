@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 
 #include "../src/core/disk_usage_monitor.hpp"
 
@@ -97,6 +98,24 @@ TEST_F(DiskUsageMonitorTest, ReportsHardLimitForCurrentTaskSize) {
   EXPECT_EQ(snapshot.state, DiskUsageState::HARD_LIMIT);
   EXPECT_EQ(snapshot.current_task_bytes, 5 * 1024);
   EXPECT_EQ(snapshot.reason, "current task size reached hard limit");
+}
+
+TEST_F(DiskUsageMonitorTest, ReportsHardLimitForPhysicalSafetyMargin) {
+  std::error_code ec;
+  auto space = fs::space(test_dir_, ec);
+  ASSERT_FALSE(ec);
+
+  DiskUsageLimitConfig limits;
+  limits.warn_usage_bytes = 0;
+  limits.hard_limit_bytes = 0;
+  limits.physical_safety_margin_bytes = space.available + 1;
+  DiskUsageMonitor monitor(limits, {{"recording_output", test_dir_}});
+
+  auto snapshot = monitor.snapshot();
+
+  EXPECT_EQ(snapshot.state, DiskUsageState::HARD_LIMIT);
+  EXPECT_TRUE(snapshot.hard_limit_reached());
+  EXPECT_EQ(snapshot.reason, "physical disk available space below safety margin");
 }
 
 TEST_F(DiskUsageMonitorTest, CleanupRemovesOldCompletedFilesButKeepsActiveRecording) {
