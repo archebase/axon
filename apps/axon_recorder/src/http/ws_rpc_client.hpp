@@ -133,6 +133,8 @@ private:
 
   // Keepalive
   void start_ping_timer();
+  void start_ping_timeout_timer();
+  void on_pong();
 
   // URL parsing
   static bool parse_url(
@@ -165,6 +167,7 @@ private:
   // Timers
   net::steady_timer reconnect_timer_;
   net::steady_timer ping_timer_;
+  net::steady_timer ping_timeout_timer_;
 
   // State
   std::atomic<bool> connected_{false};
@@ -172,6 +175,7 @@ private:
   uint32_t reconnect_attempt_{0};
   bool reconnect_scheduled_{false};
   ConnectionState state_{ConnectionState::kStopped};
+  std::atomic<bool> ping_pending_{false};
 
   // Callbacks
   RpcCallbacks callbacks_;

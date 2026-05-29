@@ -39,6 +39,8 @@ factory_id: "test_factory"
   EXPECT_EQ(config.device_id, "test_device");
   EXPECT_EQ(config.factory_id, "test_factory");
   EXPECT_EQ(config.ws.url, "ws://localhost:8090/transfer");
+  EXPECT_EQ(config.ws.ping_interval_ms.count(), 30000);
+  EXPECT_EQ(config.ws.ping_timeout_ms.count(), 10000);
   EXPECT_EQ(config.scanner.data_dir, "/tmp/axon/recording");
   EXPECT_TRUE(config.scanner.require_json_sidecar);
   EXPECT_EQ(config.scanner.completion_marker_suffix, ".done");
@@ -59,6 +61,7 @@ factory_id: "factory_a"
 ws:
   url: "ws://fleet.example.com:9090/transfer"
   ping_interval_ms: 15000
+  ping_timeout_ms: 4000
   reconnect:
     initial_delay_ms: 500
     max_delay_ms: 30000
@@ -85,6 +88,7 @@ uploader:
   EXPECT_EQ(config.factory_id, "factory_a");
   EXPECT_EQ(config.ws.url, "ws://fleet.example.com:9090/transfer");
   EXPECT_EQ(config.ws.ping_interval_ms.count(), 15000);
+  EXPECT_EQ(config.ws.ping_timeout_ms.count(), 4000);
   EXPECT_EQ(config.ws.reconnect.initial_delay_ms.count(), 500);
   EXPECT_EQ(config.ws.reconnect.max_delay_ms.count(), 30000);
   EXPECT_EQ(config.scanner.data_dir, "/data/recordings");
