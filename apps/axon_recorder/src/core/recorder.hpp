@@ -70,6 +70,7 @@ struct SubscriptionConfig {
   // Batch writing configuration
   size_t batch_size = 1;        // Number of messages to batch before writing (1 = immediate)
   int flush_interval_ms = 100;  // Maximum time to wait before flushing (ms)
+  size_t qos_depth = 10;        // ROS middleware subscription history depth
 
   // Depth compression configuration
   struct DepthCompression {

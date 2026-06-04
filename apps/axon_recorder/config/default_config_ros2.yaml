@@ -49,6 +49,8 @@ dataset:
 # High-frequency subscriptions (IMU, camera): Use larger batches (100-5000)
 # Low-frequency subscriptions (status, diagnostics): Use small batches (1-10)
 # Control signals: Use batch_size=1 for immediate persistence
+# Optional qos_depth controls ROS2 subscription history depth. It is separate
+# from dataset.queue_size, which controls Axon's per-topic worker queue.
 subscriptions:
   # IMU data - high frequency (5 seconds of data per batch)
   - name: /imu/data

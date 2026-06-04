@@ -5,6 +5,7 @@
 #ifndef ROS2_PLUGIN_SUBSCRIPTION_WRAPPER_HPP
 #define ROS2_PLUGIN_SUBSCRIPTION_WRAPPER_HPP
 
+#include <nlohmann/json.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <functional>
@@ -68,6 +69,8 @@ struct SubscribeOptions {
   SubscribeOptions()
       : qos(10) {}
 };
+
+void apply_subscribe_qos_options(SubscribeOptions& options, const nlohmann::json& opts);
 
 class SubscriptionManager {
 public:

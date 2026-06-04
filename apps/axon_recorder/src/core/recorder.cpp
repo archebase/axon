@@ -2256,8 +2256,9 @@ bool AxonRecorder::setup_subscriptions() {
       }
 
       std::string options_json;
-      if (sub.depth_compression.enabled) {
+      {
         nlohmann::json opts;
+        opts["qos_depth"] = sub.qos_depth;
         opts["depth_compression"]["enabled"] = sub.depth_compression.enabled;
         opts["depth_compression"]["level"] = sub.depth_compression.level;
         options_json = opts.dump();
