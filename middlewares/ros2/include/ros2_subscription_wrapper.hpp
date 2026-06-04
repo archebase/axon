@@ -86,10 +86,9 @@ public:
   /**
    * Subscribe with a zero-copy (ABI v1.2) callback.
    *
-   * Fast path (no depth compression): retains the rclcpp::SerializedMessage
-   * shared_ptr and hands the recorder a pointer into its `buffer` along with
-   * a release function that drops the shared_ptr. No payload copy happens
-   * between rcl and the recorder's worker queue.
+   * Fast path (no depth compression): copies the rclcpp::SerializedMessage
+   * payload into plugin-owned storage before returning from the ROS callback,
+   * then hands the recorder that owned buffer plus a release function.
    *
    * Compression path (depth_compression.enabled): transparently falls back
    * to the v1.x copy semantics internally (the compressor allocates a new
