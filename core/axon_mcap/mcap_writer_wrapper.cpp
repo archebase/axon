@@ -65,22 +65,30 @@ static mcap::Compression to_mcap_compression(Compression compression) {
   }
 }
 
+CompressionLevel compression_level_from_legacy_int(int level) {
+  if (level <= 0) {
+    return CompressionLevel::Default;
+  }
+
+  switch (level) {
+    case 1:
+      return CompressionLevel::Fastest;
+    case 2:
+      return CompressionLevel::Fast;
+    case 3:
+      return CompressionLevel::Default;
+    case 4:
+      return CompressionLevel::Slow;
+    default:
+      return CompressionLevel::Slowest;
+  }
+}
+
 // Convert our compression level enum to MCAP's CompressionLevel.
-//
-// Legacy path: if options.compression_level is non-zero, clamp it into the
-// enum range (0..4) and use that. This keeps backward compatibility with
-// callers that historically passed values like `3` meaning "Slow-ish".
 static mcap::CompressionLevel resolve_compression_level(const McapWriterOptions& options) {
-  int level = options.compression_level;
-  if (level == 0) {
-    level = static_cast<int>(options.compression_preset);
-  }
-  if (level < 0) {
-    level = 0;
-  }
-  if (level > 4) {
-    level = 4;
-  }
+  const auto level = options.compression_level == 0
+                       ? options.compression_preset
+                       : compression_level_from_legacy_int(options.compression_level);
   return static_cast<mcap::CompressionLevel>(level);
 }
 

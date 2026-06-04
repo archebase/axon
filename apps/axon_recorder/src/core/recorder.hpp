@@ -129,9 +129,8 @@ struct RecordingConfig {
   std::string profile = "ros2";
   std::string compression = "zstd";
   WriterBatchConfig writer_batch;
-  // Compression preset, range 0-4 (applies to both zstd and lz4).
-  // Maps to axon::mcap_wrapper::CompressionLevel: 0=Default, 1=Fastest,
-  // 2=Fast, 3=Default, 4=Slow/Slowest. Values >4 are clamped to 4.
+  // Compression preset used by recorder YAML/CLI (applies to both zstd and lz4).
+  // 0=Default, 1=Fastest, 2=Fast, 3=Default, 4=Slow, >=5=Slowest.
   // NOT the native zstd/lz4 1-19 / 1-12 range.
   int compression_level = 3;
 

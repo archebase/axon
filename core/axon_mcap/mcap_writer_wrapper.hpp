@@ -44,6 +44,15 @@ enum class Compression { None, Zstd, Lz4 };
 enum class CompressionLevel { Fastest = 0, Fast = 1, Default = 2, Slow = 3, Slowest = 4 };
 
 /**
+ * Convert recorder/CLI legacy compression_level values to MCAP presets.
+ *
+ * The recorder historically documents `compression_level: 3` as its default
+ * balanced setting. MCAP's enum value 3 is Slow, so direct enum casts turn the
+ * documented default into an unexpectedly expensive compression path.
+ */
+CompressionLevel compression_level_from_legacy_int(int level);
+
+/**
  * Configuration options for MCAP writer
  */
 struct McapWriterOptions {
@@ -58,9 +67,8 @@ struct McapWriterOptions {
   /// compatibility and overrides this when non-zero (see `.cpp`).
   CompressionLevel compression_preset = CompressionLevel::Default;
 
-  /// Legacy compression level. 0 means "use compression_preset". Non-zero
-  /// values are clamped into the CompressionLevel enum range (0..4) for
-  /// backward compatibility with code that passes raw integers like 3.
+  /// Legacy recorder/CLI compression level. 0 means "use compression_preset".
+  /// Non-zero values are translated by compression_level_from_legacy_int().
   int compression_level = 0;
 
   /// Chunk size in bytes (default 4MB)
