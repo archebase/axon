@@ -89,7 +89,11 @@ target_compile_options(axon_agent PRIVATE -Wall -Wextra -Wpedantic)
 set_target_properties(axon_agent PROPERTIES OUTPUT_NAME "axon-agent")
 
 install(TARGETS axon_agent RUNTIME DESTINATION bin)
-install(DIRECTORY examples/robots DESTINATION share/axon_agent/examples)
+install(
+    DIRECTORY examples/robots
+    DESTINATION share/axon_agent/examples
+    PATTERN "*.so" EXCLUDE
+)
 install(
     DIRECTORY ${AXON_ROBOT_ADAPTER_INTERFACE_DIR}/include
     DESTINATION share/axon_agent/plugin_interface/robot_adapter
