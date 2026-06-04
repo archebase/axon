@@ -1093,7 +1093,11 @@ package-plugins:
 # package-all: Build all packages in Docker (core + plugins for all distros)
 .PHONY: package-all
 package-all:
-	@bash $(PACKAGE_DIR)/scripts/build-all-in-docker-parallel.sh
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		$(PACKAGE_DIR)/scripts/build-in-docker.sh all; \
+	else \
+		bash $(PACKAGE_DIR)/scripts/build-all-in-docker-parallel.sh; \
+	fi
 
 # package-clean: Clean package build artifacts
 .PHONY: package-clean

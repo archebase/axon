@@ -65,7 +65,7 @@ fi
 for distro in humble jazzy rolling; do
     if [ -d "/opt/ros/$distro" ]; then
         eval "has_ros2_${distro}=1"
-        log_info "Detected: ROS2 ${distro^}"
+        log_info "Detected: ROS2 ${distro}"
     fi
 done
 
@@ -73,7 +73,7 @@ if [ "$has_ros2_humble" -eq 0 ] && [ "$has_ros2_jazzy" -eq 0 ] && [ "$has_ros2_r
     # Check via environment variables
     if [ -n "$ROS_DISTRO" ]; then
         eval "has_ros2_${ROS_DISTRO}=1"
-        log_info "Detected: ROS2 ${ROS_DISTRO^} (from environment)"
+        log_info "Detected: ROS2 ${ROS_DISTRO} (from environment)"
     fi
 fi
 
@@ -120,7 +120,7 @@ if [ -n "$ROS_DISTRO" ] || [ "$has_ros2_humble" -eq 1 ] || [ "$has_ros2_jazzy" -
 
     # Verify the distro is available
     if [ -d "/opt/ros/$active_ros_distro" ]; then
-        log_section "Building ROS2 ${active_ros_distro^} Plugin"
+        log_section "Building ROS2 ${active_ros_distro} Plugin"
 
         # Source the environment if not already sourced
         if [ -z "$ROS_DISTRO" ]; then
@@ -129,9 +129,9 @@ if [ -n "$ROS_DISTRO" ] || [ "$has_ros2_humble" -eq 1 ] || [ "$has_ros2_jazzy" -
         fi
 
         if ROS_DISTRO="$active_ros_distro" "${SCRIPT_DIR}/build-ros2.sh"; then
-            log_info "ROS2 ${active_ros_distro^} plugin built successfully"
+            log_info "ROS2 ${active_ros_distro} plugin built successfully"
         else
-            log_warn "Failed to build ROS2 ${active_ros_distro^} plugin (continuing)"
+            log_warn "Failed to build ROS2 ${active_ros_distro} plugin (continuing)"
         fi
     else
         log_warn "ROS2 ${active_ros_distro} not available, skipping ROS2 plugin"

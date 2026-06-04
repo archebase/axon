@@ -7,6 +7,7 @@ set -eu
 mirror="${1:-default}"
 default_mirror="http://archive.ubuntu.com/ubuntu"
 ubuntu_mirror="$default_mirror"
+ubuntu_ports_mirror="http://ports.ubuntu.com/ubuntu-ports"
 ros1_mirror="http://packages.ros.org/ros/ubuntu"
 ros2_mirror="http://packages.ros.org/ros2/ubuntu"
 strip_ros_sources=0
@@ -29,8 +30,23 @@ case "$mirror" in
         ;;
 esac
 
+if [ "$ubuntu_mirror" = "$default_mirror" ]; then
+    ubuntu_ports_mirror="http://ports.ubuntu.com/ubuntu-ports"
+else
+    case "$ubuntu_mirror" in
+        *-ports|*/ubuntu-ports) ubuntu_ports_mirror="$ubuntu_mirror" ;;
+        *) ubuntu_ports_mirror="${ubuntu_mirror}-ports" ;;
+    esac
+fi
+
 mkdir -p /etc/apt
 printf "%s\n" "$ubuntu_mirror" > /etc/apt/axon-ubuntu-mirror-url
+mkdir -p /etc/apt/apt.conf.d
+cat > /etc/apt/apt.conf.d/80axon-retries <<EOF
+Acquire::Retries "5";
+Acquire::http::Timeout "60";
+Acquire::https::Timeout "60";
+EOF
 
 if [ "$ubuntu_mirror" = "$default_mirror" ]; then
     echo "Using default Ubuntu apt mirror."
@@ -48,8 +64,8 @@ rewrite_file() {
         -e "s|https://archive.ubuntu.com/ubuntu/|${ubuntu_mirror}/|g" \
         -e "s|http://security.ubuntu.com/ubuntu/|${ubuntu_mirror}/|g" \
         -e "s|https://security.ubuntu.com/ubuntu/|${ubuntu_mirror}/|g" \
-        -e "s|http://ports.ubuntu.com/ubuntu-ports/|${ubuntu_mirror}-ports/|g" \
-        -e "s|https://ports.ubuntu.com/ubuntu-ports/|${ubuntu_mirror}-ports/|g" \
+        -e "s|http://ports.ubuntu.com/ubuntu-ports/|${ubuntu_ports_mirror}/|g" \
+        -e "s|https://ports.ubuntu.com/ubuntu-ports/|${ubuntu_ports_mirror}/|g" \
         -e "s|http://packages.ros.org/ros/ubuntu/|${ros1_mirror}/|g" \
         -e "s|https://packages.ros.org/ros/ubuntu/|${ros1_mirror}/|g" \
         -e "s|http://packages.ros.org/ros2/ubuntu/|${ros2_mirror}/|g" \
@@ -58,8 +74,8 @@ rewrite_file() {
         -e "s|https://archive.ubuntu.com/ubuntu|${ubuntu_mirror}|g" \
         -e "s|http://security.ubuntu.com/ubuntu|${ubuntu_mirror}|g" \
         -e "s|https://security.ubuntu.com/ubuntu|${ubuntu_mirror}|g" \
-        -e "s|http://ports.ubuntu.com/ubuntu-ports|${ubuntu_mirror}-ports|g" \
-        -e "s|https://ports.ubuntu.com/ubuntu-ports|${ubuntu_mirror}-ports|g" \
+        -e "s|http://ports.ubuntu.com/ubuntu-ports|${ubuntu_ports_mirror}|g" \
+        -e "s|https://ports.ubuntu.com/ubuntu-ports|${ubuntu_ports_mirror}|g" \
         -e "s|http://packages.ros.org/ros/ubuntu|${ros1_mirror}|g" \
         -e "s|https://packages.ros.org/ros/ubuntu|${ros1_mirror}|g" \
         -e "s|http://packages.ros.org/ros2/ubuntu|${ros2_mirror}|g" \
