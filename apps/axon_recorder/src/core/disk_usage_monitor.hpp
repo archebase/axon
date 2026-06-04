@@ -27,6 +27,7 @@ struct DiskUsageLimitConfig {
   uint64_t warn_usage_bytes = 0;
   uint64_t hard_limit_bytes = 0;
   uint64_t max_task_size_bytes = 0;
+  uint64_t physical_safety_margin_bytes = 0;
 };
 
 struct DiskUsagePathConfig {
@@ -55,6 +56,7 @@ struct DiskUsageSnapshot {
   uint64_t warn_usage_bytes = 0;
   uint64_t hard_limit_bytes = 0;
   uint64_t max_task_size_bytes = 0;
+  uint64_t physical_safety_margin_bytes = 0;
   uint64_t current_task_bytes = 0;
   std::vector<DiskUsagePathSnapshot> paths;
 

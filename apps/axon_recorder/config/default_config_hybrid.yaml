@@ -9,6 +9,11 @@ plugins:
   - path: "/usr/local/lib/axon/plugins/libaxon_ros2_plugin.so"
   - path: "/usr/local/lib/axon/plugins/libaxon_udp.so"
 
+ros2:
+  # 0 = auto: min(number of subscribed ROS topics, CPU cores), minimum 2.
+  # Set to 1 to force the old effectively single-threaded behavior.
+  executor_threads: 0
+
 dataset:
   path: /tmp/axon/recording
   output_file: recording.mcap
@@ -18,12 +23,21 @@ recording:
   profile: ros2
   compression: zstd
   compression_level: 3
+  writer_batch:
+    enabled: true
+    max_messages: 256
+    max_bytes_mb: 8
+    flush_interval_ms: 20
+    queue_capacity: 4096
   max_disk_usage_gb: 100
   disk_usage:
     enabled: true
     warn_usage_gb: 80
     hard_limit_gb: 100
     max_task_size_gb: 0
+    physical_safety_margin_gb: 2
+    physical_check_interval_ms: 1000
+    physical_check_interval_gb: 0.5
     cleanup_enabled: false
     cleanup_target_gb: 80
     cleanup_min_age_sec: 3600

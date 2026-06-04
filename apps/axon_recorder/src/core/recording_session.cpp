@@ -284,6 +284,30 @@ bool RecordingSession::write(
   return success;
 }
 
+bool RecordingSession::write_batch(
+  const mcap_wrapper::BatchItem* items, size_t count, size_t* written_out
+) {
+  if (written_out) {
+    *written_out = 0;
+  }
+  if (count == 0 || items == nullptr) {
+    return true;
+  }
+  if (!is_open()) {
+    return false;
+  }
+
+  size_t written = 0;
+  bool success = writer_->write_batch(items, count, &written);
+  if (written_out) {
+    *written_out = written;
+  }
+  if (written > 0) {
+    messages_written_.fetch_add(written, std::memory_order_relaxed);
+  }
+  return success;
+}
+
 uint16_t RecordingSession::get_channel_id(
   const std::string& topic, const std::string& message_type
 ) const {

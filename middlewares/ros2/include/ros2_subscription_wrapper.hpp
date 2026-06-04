@@ -108,6 +108,7 @@ private:
   rclcpp::Node::SharedPtr node_;
   struct SubscriptionInfo {
     rclcpp::GenericSubscription::SharedPtr subscription;
+    rclcpp::CallbackGroup::SharedPtr callback_group;
     MessageCallback callback;
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
     std::shared_ptr<DepthCompressionFilter> compression_filter;

@@ -132,6 +132,7 @@ TEST_F(Ros1PluginTest, StartAfterInitSucceeds) {
   bool result = plugin.start();
   EXPECT_TRUE(result);
   EXPECT_TRUE(plugin.is_running());
+  EXPECT_GE(plugin.get_spinner_thread_count(), 2u);
 
   // Clean up
   EXPECT_TRUE(plugin.stop());
@@ -402,6 +403,43 @@ TEST_F(Ros1PluginTest, InitWithCustomNodeName) {
   // but we can verify the NodeHandle is valid
 
   // Clean up
+  EXPECT_TRUE(plugin.stop());
+}
+
+TEST_F(Ros1PluginTest, ConfiguresSpinnerThreadsFromRos1Section) {
+  Ros1Plugin plugin;
+
+  const char* config_json = R"({
+    "ros1": {
+      "spinner_threads": 3
+    }
+  })";
+
+  ASSERT_TRUE(plugin.init(config_json));
+  ASSERT_TRUE(plugin.start());
+
+  EXPECT_EQ(plugin.get_spinner_thread_count(), 3u);
+
+  EXPECT_TRUE(plugin.stop());
+}
+
+TEST_F(Ros1PluginTest, EmbeddedPluginConfigOverridesSpinnerThreads) {
+  Ros1Plugin plugin;
+
+  const char* config_json = R"({
+    "ros1": {
+      "spinner_threads": 2
+    },
+    "plugin": {
+      "config": "{\"node_name\":\"embedded_ros1_node\",\"spinner_threads\":4}"
+    }
+  })";
+
+  ASSERT_TRUE(plugin.init(config_json));
+  ASSERT_TRUE(plugin.start());
+
+  EXPECT_EQ(plugin.get_spinner_thread_count(), 4u);
+
   EXPECT_TRUE(plugin.stop());
 }
 

@@ -364,6 +364,42 @@ TEST_F(RecordingSessionTest, WriteMultipleMessages) {
   }
 }
 
+TEST_F(RecordingSessionTest, WriteBatchUpdatesStatistics) {
+  RecordingSession session;
+  auto path = get_test_path("test_batch_messages.mcap");
+
+  McapWriterOptions options;
+  ASSERT_TRUE(session.open(path, options));
+
+  uint16_t schema_id = session.register_schema("std_msgs/msg/String", "ros2msg", "string data");
+  uint16_t channel_id = session.register_channel("/test", "std_msgs/msg/String", "cdr", schema_id);
+
+  std::vector<std::string> payloads = {"message 0", "message 1", "message 2"};
+  std::vector<BatchItem> items;
+  items.reserve(payloads.size());
+
+  uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                         std::chrono::system_clock::now().time_since_epoch()
+  )
+                         .count();
+
+  for (size_t i = 0; i < payloads.size(); ++i) {
+    BatchItem item;
+    item.channel_id = channel_id;
+    item.sequence = static_cast<uint32_t>(i);
+    item.log_time_ns = timestamp + i;
+    item.publish_time_ns = timestamp + i;
+    item.data = payloads[i].data();
+    item.data_size = payloads[i].size();
+    items.push_back(item);
+  }
+
+  size_t written = 0;
+  EXPECT_TRUE(session.write_batch(items.data(), items.size(), &written));
+  EXPECT_EQ(written, items.size());
+  EXPECT_EQ(session.get_stats().messages_written, items.size());
+}
+
 // ============================================================================
 // Statistics Tests
 // ============================================================================

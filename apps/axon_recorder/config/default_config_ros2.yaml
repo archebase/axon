@@ -18,6 +18,15 @@ plugin:
   config: ""
 
 # ============================================================================
+# ROS2 Middleware Configuration
+# ============================================================================
+ros2:
+  # MultiThreadedExecutor thread count.
+  # 0 = auto: min(number of subscribed topics, CPU cores), with a minimum of 2.
+  # Set to 1 to force the old effectively single-threaded behavior.
+  executor_threads: 0
+
+# ============================================================================
 # Dataset Configuration
 # ============================================================================
 dataset:
@@ -108,6 +117,16 @@ recording:
   # 5 presets. See core/axon_mcap/mcap_writer_wrapper.hpp.
   compression_level: 3
 
+  # Mixed-topic writer batching. Topic workers remain per-topic serial, while
+  # this writer queue coalesces messages from multiple topics into one MCAP
+  # write_batch() call for better sustained disk throughput.
+  writer_batch:
+    enabled: true
+    max_messages: 256
+    max_bytes_mb: 8
+    flush_interval_ms: 20
+    queue_capacity: 4096
+
   # Disk usage limits for recorder-managed local storage.
   # The monitor sums files under dataset.path plus enabled upload backlog paths.
   # max_disk_usage_gb remains as a backward-compatible hard limit alias.
@@ -117,6 +136,9 @@ recording:
     warn_usage_gb: 80
     hard_limit_gb: 100
     max_task_size_gb: 0        # 0 disables per-task size limit
+    physical_safety_margin_gb: 2
+    physical_check_interval_ms: 1000
+    physical_check_interval_gb: 0.5
     cleanup_enabled: false     # Delete oldest completed .mcap/.json files before refusing start
     cleanup_target_gb: 80
     cleanup_min_age_sec: 3600

@@ -46,7 +46,8 @@ bool SubscriptionManager::subscribe(
   try {
     // Use topic_tools::ShapeShifter to subscribe to any message type
     // This is the ROS1 equivalent of ROS2's GenericSubscription
-    auto subscriber = node_handle_->subscribe<topic_tools::ShapeShifter>(
+    ros::SubscribeOptions subscribe_options;
+    subscribe_options.init<topic_tools::ShapeShifter>(
       topic_name,
       queue_size,
       [topic_name,
@@ -81,6 +82,9 @@ bool SubscriptionManager::subscribe(
         }
       }
     );
+    subscribe_options.allow_concurrent_callbacks = false;
+
+    auto subscriber = node_handle_->subscribe(subscribe_options);
 
     if (!subscriber) {
       AXON_LOG_ERROR("Failed to create subscription for: " << kv("topic", topic_name));
@@ -134,7 +138,8 @@ bool SubscriptionManager::subscribe(
 
   try {
     // Use topic_tools::ShapeShifter to subscribe to any message type
-    auto subscriber = node_handle_->subscribe<topic_tools::ShapeShifter>(
+    ros::SubscribeOptions subscribe_options;
+    subscribe_options.init<topic_tools::ShapeShifter>(
       topic_name,
       queue_size,
       [topic_name, message_type, callback, depth_filter](
@@ -174,6 +179,9 @@ bool SubscriptionManager::subscribe(
         }
       }
     );
+    subscribe_options.allow_concurrent_callbacks = false;
+
+    auto subscriber = node_handle_->subscribe(subscribe_options);
 
     if (!subscriber) {
       AXON_LOG_ERROR("Failed to create subscription for: " << kv("topic", topic_name));
@@ -256,7 +264,8 @@ bool SubscriptionManager::subscribe_v2(
 #endif
 
   try {
-    auto subscriber = node_handle_->subscribe<topic_tools::ShapeShifter>(
+    ros::SubscribeOptions subscribe_options;
+    subscribe_options.init<topic_tools::ShapeShifter>(
       topic_name,
       queue_size,
       [topic_name,
@@ -341,6 +350,9 @@ bool SubscriptionManager::subscribe_v2(
         }
       }
     );
+    subscribe_options.allow_concurrent_callbacks = false;
+
+    auto subscriber = node_handle_->subscribe(subscribe_options);
 
     if (!subscriber) {
       AXON_LOG_ERROR("Failed to create subscription (v2) for: " << kv("topic", topic_name));

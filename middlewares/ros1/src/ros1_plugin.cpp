@@ -6,7 +6,11 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <optional>
+#include <thread>
 
 // Define component name for logging
 #define AXON_LOG_COMPONENT "ros1_plugin"
@@ -16,9 +20,90 @@ using axon::logging::kv;
 
 namespace ros1_plugin {
 
+namespace {
+
+size_t read_thread_count(const nlohmann::json& value) {
+  if (value.is_number_unsigned()) {
+    return value.get<size_t>();
+  }
+  if (value.is_number_integer()) {
+    const auto signed_value = value.get<int64_t>();
+    return signed_value > 0 ? static_cast<size_t>(signed_value) : 0;
+  }
+  return 0;
+}
+
+void apply_config_object(
+  const nlohmann::json& config, std::string& node_name, std::string& namespace_str,
+  size_t& spinner_threads
+) {
+  if (!config.is_object()) {
+    return;
+  }
+
+  if (config.contains("node_name") && config["node_name"].is_string()) {
+    node_name = config["node_name"].get<std::string>();
+  }
+
+  if (config.contains("namespace") && config["namespace"].is_string()) {
+    namespace_str = config["namespace"].get<std::string>();
+  }
+
+  for (const char* key : {"spinner_threads", "spinner_thread_count", "num_threads"}) {
+    if (config.contains(key)) {
+      spinner_threads = read_thread_count(config[key]);
+    }
+  }
+
+  if (config.contains("spinner") && config["spinner"].is_object()) {
+    const auto& spinner = config["spinner"];
+    for (const char* key : {"threads", "thread_count", "num_threads"}) {
+      if (spinner.contains(key)) {
+        spinner_threads = read_thread_count(spinner[key]);
+      }
+    }
+  }
+}
+
+void apply_embedded_plugin_config(
+  const nlohmann::json& root, std::string& node_name, std::string& namespace_str,
+  size_t& spinner_threads
+) {
+  if (!root.contains("plugin") || !root["plugin"].is_object()) {
+    return;
+  }
+
+  const auto& plugin = root["plugin"];
+  if (!plugin.contains("config")) {
+    return;
+  }
+
+  if (plugin["config"].is_object()) {
+    apply_config_object(plugin["config"], node_name, namespace_str, spinner_threads);
+    return;
+  }
+
+  if (!plugin["config"].is_string()) {
+    return;
+  }
+
+  const auto config_text = plugin["config"].get<std::string>();
+  if (config_text.empty()) {
+    return;
+  }
+
+  apply_config_object(
+    nlohmann::json::parse(config_text), node_name, namespace_str, spinner_threads
+  );
+}
+
+}  // namespace
+
 Ros1Plugin::Ros1Plugin()
     : initialized_(false)
-    , spinning_(false) {}
+    , spinning_(false)
+    , configured_spinner_threads_(0)
+    , spinner_thread_count_(0) {}
 
 Ros1Plugin::~Ros1Plugin() {
   stop();
@@ -40,17 +125,15 @@ bool Ros1Plugin::init(const char* config_json) {
     // Parse configuration
     node_name_ = "axon_ros1_plugin";
     namespace_ = "";
+    configured_spinner_threads_ = 0;
 
     if (config_json && std::strlen(config_json) > 0) {
       auto config = nlohmann::json::parse(config_json);
-
-      if (config.contains("node_name")) {
-        node_name_ = config["node_name"];
+      apply_config_object(config, node_name_, namespace_, configured_spinner_threads_);
+      if (config.contains("ros1")) {
+        apply_config_object(config["ros1"], node_name_, namespace_, configured_spinner_threads_);
       }
-
-      if (config.contains("namespace")) {
-        namespace_ = config["namespace"];
-      }
+      apply_embedded_plugin_config(config, node_name_, namespace_, configured_spinner_threads_);
     }
 
     // Initialize ROS1 if not already initialized. The recorder process owns
@@ -88,6 +171,21 @@ bool Ros1Plugin::init(const char* config_json) {
   }
 }
 
+size_t Ros1Plugin::resolve_spinner_thread_count() const {
+  if (configured_spinner_threads_ > 0) {
+    return configured_spinner_threads_;
+  }
+
+  const size_t hardware_threads =
+    std::max<size_t>(2, static_cast<size_t>(std::thread::hardware_concurrency()));
+  size_t desired_threads = 2;
+  if (subscription_manager_) {
+    desired_threads =
+      std::max<size_t>(desired_threads, subscription_manager_->get_subscribed_topics().size());
+  }
+  return std::min(desired_threads, hardware_threads);
+}
+
 bool Ros1Plugin::start() {
   if (!initialized_.load()) {
     AXON_LOG_ERROR("ROS1 plugin not initialized");
@@ -102,15 +200,15 @@ bool Ros1Plugin::start() {
   try {
     ensure_subscription_manager();
 
-    // Create async spinner with 1 thread
-    // ROS1 uses AsyncSpinner instead of SingleThreadedExecutor
-    async_spinner_ = std::make_unique<ros::AsyncSpinner>(1);
+    spinner_thread_count_ = resolve_spinner_thread_count();
+    async_spinner_ =
+      std::make_unique<ros::AsyncSpinner>(static_cast<uint32_t>(spinner_thread_count_));
 
     // Start spinning
     spinning_.store(true);
     async_spinner_->start();
 
-    AXON_LOG_INFO("ROS1 plugin spinning");
+    AXON_LOG_INFO("ROS1 plugin spinning: " << kv("spinner_threads", spinner_thread_count_));
     return true;
 
   } catch (const std::exception& e) {
@@ -155,6 +253,7 @@ bool Ros1Plugin::stop_session() {
     }
 
     async_spinner_.reset();
+    spinner_thread_count_ = 0;
   }
 
   // Clear per-session subscriptions while preserving the NodeHandle and ROS

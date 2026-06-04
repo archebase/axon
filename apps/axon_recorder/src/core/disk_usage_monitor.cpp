@@ -119,6 +119,8 @@ nlohmann::json DiskUsageSnapshot::to_json() const {
   j["hard_limit_gb"] = bytes_to_gb(hard_limit_bytes);
   j["max_task_size_bytes"] = max_task_size_bytes;
   j["max_task_size_gb"] = bytes_to_gb(max_task_size_bytes);
+  j["physical_safety_margin_bytes"] = physical_safety_margin_bytes;
+  j["physical_safety_margin_gb"] = bytes_to_gb(physical_safety_margin_bytes);
   j["current_task_bytes"] = current_task_bytes;
   j["current_task_gb"] = bytes_to_gb(current_task_bytes);
 
@@ -163,6 +165,7 @@ DiskUsageSnapshot DiskUsageMonitor::snapshot(uint64_t current_task_bytes) const 
   snapshot.warn_usage_bytes = limits_.warn_usage_bytes;
   snapshot.hard_limit_bytes = limits_.hard_limit_bytes;
   snapshot.max_task_size_bytes = limits_.max_task_size_bytes;
+  snapshot.physical_safety_margin_bytes = limits_.physical_safety_margin_bytes;
   snapshot.current_task_bytes = current_task_bytes;
 
   if (!limits_.enabled) {
@@ -193,6 +196,16 @@ DiskUsageSnapshot DiskUsageMonitor::snapshot(uint64_t current_task_bytes) const 
     snapshot.state = DiskUsageState::HARD_LIMIT;
     snapshot.reason = "monitored disk usage reached hard limit";
     return snapshot;
+  }
+
+  if (limits_.physical_safety_margin_bytes > 0) {
+    for (const auto& path : snapshot.paths) {
+      if (path.capacity_bytes > 0 && path.available_bytes <= limits_.physical_safety_margin_bytes) {
+        snapshot.state = DiskUsageState::HARD_LIMIT;
+        snapshot.reason = "physical disk available space below safety margin";
+        return snapshot;
+      }
+    }
   }
 
   if (limits_.warn_usage_bytes > 0 && snapshot.total_used_bytes >= limits_.warn_usage_bytes) {

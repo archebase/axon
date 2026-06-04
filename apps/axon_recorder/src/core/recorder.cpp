@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -57,6 +58,40 @@ nlohmann::json buffer_pool_stats_json() {
   j["release_freed"] = pool_stats.release_freed;
   j["resident_bytes"] = pool_stats.resident_bytes;
   j["hit_rate"] = pool_stats.hit_rate();
+  return j;
+}
+
+nlohmann::json writer_batch_stats_json(const WorkerThreadPool::WriterBatchStatsSnapshot& stats) {
+  nlohmann::json j;
+  j["enabled"] = stats.enabled;
+  j["batches_written"] = stats.batches_written;
+  j["messages_written"] = stats.messages_written;
+  j["bytes_written"] = stats.bytes_written;
+  j["partial_failures"] = stats.partial_failures;
+  j["queue_overflows"] = stats.queue_overflows;
+  j["total_write_duration_ns"] = stats.total_write_duration_ns;
+  j["max_write_duration_ns"] = stats.max_write_duration_ns;
+  j["avg_write_duration_ms"] = stats.batches_written > 0
+                                 ? static_cast<double>(stats.total_write_duration_ns) /
+                                     static_cast<double>(stats.batches_written) / 1'000'000.0
+                                 : 0.0;
+  j["last_batch_messages"] = stats.last_batch_messages;
+  j["last_batch_bytes"] = stats.last_batch_bytes;
+  j["max_batch_messages"] = stats.max_batch_messages;
+  j["max_batch_bytes"] = stats.max_batch_bytes;
+  j["queue_depth"] = stats.queue_depth;
+  j["queue_capacity"] = stats.queue_capacity;
+  j["queue_utilization"] =
+    stats.queue_capacity > 0
+      ? static_cast<double>(stats.queue_depth) / static_cast<double>(stats.queue_capacity) * 100.0
+      : 0.0;
+  j["max_queue_depth"] = stats.max_queue_depth;
+  j["flush_reasons"] = {
+    {"messages", stats.flush_by_messages},
+    {"bytes", stats.flush_by_bytes},
+    {"time", stats.flush_by_time},
+    {"stop", stats.flush_by_stop},
+  };
   return j;
 }
 
@@ -199,6 +234,11 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
   pool_config.queue_capacity_per_topic = config_.queue_capacity;
   pool_config.worker_idle_sleep_us = 50;
   pool_config.use_adaptive_backoff = true;
+  pool_config.use_writer_batching = config_.recording.writer_batch.enabled;
+  pool_config.writer_batch_max_messages = config_.recording.writer_batch.max_messages;
+  pool_config.writer_batch_max_bytes = config_.recording.writer_batch.max_bytes;
+  pool_config.writer_batch_flush_interval_ms = config_.recording.writer_batch.flush_interval_ms;
+  pool_config.writer_queue_capacity = config_.recording.writer_batch.queue_capacity;
 
   worker_pool_ = std::make_unique<WorkerThreadPool>(pool_config);
 
@@ -208,6 +248,13 @@ bool AxonRecorder::initialize(const RecorderConfig& config) {
       report_message_drop(topic, message_type, total_dropped);
     }
   );
+  if (config_.recording.writer_batch.enabled) {
+    worker_pool_->set_latency_batch_handler(
+      [this](const std::vector<WorkerThreadPool::BatchMessageView>& messages) -> size_t {
+        return this->latency_batch_message_handler(messages);
+      }
+    );
+  }
 
   http_callback_client_ = std::make_shared<HttpCallbackClient>();
 
@@ -312,6 +359,8 @@ DiskUsageLimitConfig AxonRecorder::make_disk_usage_limits() const {
   limits.warn_usage_bytes = gb_to_bytes(config_.recording.disk_usage.warn_usage_gb);
   limits.hard_limit_bytes = gb_to_bytes(config_.recording.disk_usage.hard_limit_gb);
   limits.max_task_size_bytes = gb_to_bytes(config_.recording.disk_usage.max_task_size_gb);
+  limits.physical_safety_margin_bytes =
+    gb_to_bytes(config_.recording.disk_usage.physical_safety_margin_gb);
   return limits;
 }
 
@@ -357,6 +406,8 @@ nlohmann::json AxonRecorder::get_disk_usage_status_json() const {
       current_task_bytes = recording_session_->get_stats().bytes_written;
     }
   }
+  current_task_bytes =
+    std::max(current_task_bytes, disk_task_bytes_budget_.load(std::memory_order_relaxed));
   return collect_disk_usage_snapshot(current_task_bytes).to_json();
 }
 
@@ -426,6 +477,8 @@ nlohmann::json AxonRecorder::build_incident_diagnostic_snapshot() const {
     j["latency"] = latency_monitor_->get_stats_json();
   }
   if (worker_pool_) {
+    j["writer_batch"] = writer_batch_stats_json(worker_pool_->get_writer_batch_stats());
+
     nlohmann::json topic_counts = nlohmann::json::object();
     for (const auto& topic_name : worker_pool_->get_topics()) {
       auto ts = worker_pool_->get_topic_stats(topic_name);
@@ -592,6 +645,7 @@ bool AxonRecorder::ensure_disk_capacity_before_start(const std::string& output_f
   {
     std::lock_guard<std::mutex> lock(disk_usage_mutex_);
     last_disk_check_time_ = std::chrono::steady_clock::now();
+    last_disk_sample_task_bytes_ = 0;
     last_disk_usage_snapshot_ = snapshot;
   }
 
@@ -609,6 +663,10 @@ bool AxonRecorder::ensure_disk_capacity_before_start(const std::string& output_f
 }
 
 bool AxonRecorder::ensure_disk_capacity_before_write(size_t next_write_bytes) {
+  return ensure_disk_capacity_before_write_batch(static_cast<uint64_t>(next_write_bytes));
+}
+
+bool AxonRecorder::ensure_disk_capacity_before_write_batch(uint64_t next_write_bytes) {
   if (!config_.recording.disk_usage.enabled) {
     return true;
   }
@@ -616,29 +674,52 @@ bool AxonRecorder::ensure_disk_capacity_before_write(size_t next_write_bytes) {
     return false;
   }
 
-  uint64_t current_task_bytes = next_write_bytes;
+  const auto limits = make_disk_usage_limits();
+  uint64_t previous_task_bytes = disk_task_bytes_budget_.load(std::memory_order_acquire);
+  uint64_t current_task_bytes = previous_task_bytes;
+  while (true) {
+    current_task_bytes = previous_task_bytes + next_write_bytes;
+    if (current_task_bytes < previous_task_bytes) {
+      current_task_bytes = std::numeric_limits<uint64_t>::max();
+    }
+    if (limits.max_task_size_bytes > 0 && current_task_bytes >= limits.max_task_size_bytes) {
+      auto snapshot = collect_disk_usage_snapshot(current_task_bytes);
+      trip_disk_hard_limit(snapshot);
+      return false;
+    }
+    if (disk_task_bytes_budget_.compare_exchange_weak(
+          previous_task_bytes,
+          current_task_bytes,
+          std::memory_order_acq_rel,
+          std::memory_order_acquire
+        )) {
+      break;
+    }
+  }
+
   std::string active_output_path;
   if (recording_session_) {
-    auto stats = recording_session_->get_stats();
-    current_task_bytes += stats.bytes_written;
     active_output_path = recording_session_->get_path();
   }
 
-  const auto limits = make_disk_usage_limits();
-  if (limits.max_task_size_bytes > 0 && current_task_bytes >= limits.max_task_size_bytes) {
-    auto snapshot = collect_disk_usage_snapshot(current_task_bytes);
-    trip_disk_hard_limit(snapshot);
-    return false;
-  }
-
   const auto now = std::chrono::steady_clock::now();
+  const auto sample_interval =
+    std::chrono::milliseconds(std::max(0, config_.recording.disk_usage.physical_check_interval_ms));
+  const uint64_t sample_bytes =
+    gb_to_bytes(config_.recording.disk_usage.physical_check_interval_gb);
   {
     std::lock_guard<std::mutex> lock(disk_usage_mutex_);
-    if (last_disk_check_time_ != std::chrono::steady_clock::time_point{} &&
-        now - last_disk_check_time_ < std::chrono::seconds(1)) {
+    const bool time_due = last_disk_check_time_ == std::chrono::steady_clock::time_point{} ||
+                          sample_interval.count() <= 0 ||
+                          now - last_disk_check_time_ >= sample_interval;
+    const bool bytes_due =
+      sample_bytes > 0 && (current_task_bytes < last_disk_sample_task_bytes_ ||
+                           current_task_bytes - last_disk_sample_task_bytes_ >= sample_bytes);
+    if (!time_due && !bytes_due) {
       return true;
     }
     last_disk_check_time_ = now;
+    last_disk_sample_task_bytes_ = current_task_bytes;
   }
 
   auto snapshot = collect_disk_usage_snapshot(current_task_bytes);
@@ -691,9 +772,11 @@ bool AxonRecorder::start() {
 
   disk_warn_logged_.store(false, std::memory_order_release);
   disk_hard_limit_reached_.store(false, std::memory_order_release);
+  disk_task_bytes_budget_.store(0, std::memory_order_release);
   {
     std::lock_guard<std::mutex> lock(disk_usage_mutex_);
     last_disk_check_time_ = {};
+    last_disk_sample_task_bytes_ = 0;
     last_disk_usage_snapshot_ = DiskUsageSnapshot{};
   }
 
@@ -1095,6 +1178,8 @@ RpcCallbacks AxonRecorder::make_rpc_callbacks() {
         topic_counts[topic_name] = t;
       }
       j["topic_message_counts"] = topic_counts;
+
+      j["writer_batch"] = writer_batch_stats_json(worker_pool_->get_writer_batch_stats());
     }
 
     j["buffer_pool"] = buffer_pool_stats_json();
@@ -1920,6 +2005,90 @@ bool AxonRecorder::latency_message_handler(
   }
 
   return success;
+}
+
+size_t AxonRecorder::latency_batch_message_handler(
+  const std::vector<WorkerThreadPool::BatchMessageView>& messages
+) {
+  if (!recording_session_ || messages.empty()) {
+    return 0;
+  }
+
+  std::vector<mcap_wrapper::BatchItem> write_items;
+  write_items.reserve(messages.size());
+
+  uint64_t batch_payload_bytes = 0;
+  for (const auto& message : messages) {
+    const uint64_t next_payload_bytes = batch_payload_bytes + message.data_size;
+    batch_payload_bytes = next_payload_bytes < batch_payload_bytes
+                            ? std::numeric_limits<uint64_t>::max()
+                            : next_payload_bytes;
+  }
+  if (!ensure_disk_capacity_before_write_batch(batch_payload_bytes)) {
+    return 0;
+  }
+
+  for (const auto& message : messages) {
+    if (!message.topic || !message.message_type) {
+      break;
+    }
+
+    const std::string& topic = *message.topic;
+    const std::string& message_type = *message.message_type;
+    const uint64_t msg_time_ns = static_cast<uint64_t>(message.timestamp_ns);
+    const uint64_t mcap_time_ns = apply_monotonic_timestamp_for_topic(topic, msg_time_ns);
+    uint16_t channel_id = recording_session_->get_or_create_channel(topic, message_type);
+    if (channel_id == 0) {
+      break;
+    }
+
+    mcap_wrapper::BatchItem item;
+    item.channel_id = channel_id;
+    item.sequence = message.sequence;
+    item.log_time_ns = mcap_time_ns;
+    item.publish_time_ns = mcap_time_ns;
+    item.data = message.data;
+    item.data_size = message.data_size;
+    write_items.push_back(item);
+  }
+
+  if (write_items.empty()) {
+    return 0;
+  }
+
+  size_t written = 0;
+  recording_session_->write_batch(write_items.data(), write_items.size(), &written);
+  const uint64_t write_time_ns = get_steady_clock_ns();
+  written = std::min(written, write_items.size());
+
+  for (size_t i = 0; i < written; ++i) {
+    const auto& message = messages[i];
+    if (!message.topic || !message.message_type) {
+      continue;
+    }
+
+    const std::string& topic = *message.topic;
+    const SubscriptionConfig* sub_config = get_subscription_config(topic);
+    if (sub_config) {
+      recording_session_->update_topic_stats(topic, sub_config->message_type);
+    }
+
+    if (latency_monitor_) {
+      const uint64_t msg_time_ns = static_cast<uint64_t>(message.timestamp_ns);
+      LatencyRecord record;
+      record.topic = topic;
+      record.publish_time_ns =
+        (message.publish_time_ns > 0) ? message.publish_time_ns : msg_time_ns;
+      record.receive_time_ns = message.receive_time_ns;
+      record.enqueue_time_ns = message.enqueue_time_ns;
+      record.dequeue_time_ns = message.dequeue_time_ns;
+      record.write_time_ns = write_time_ns;
+      record.record_time_ns = write_time_ns;
+      latency_monitor_->record(record);
+    }
+  }
+
+  return written;
 }
 
 bool AxonRecorder::register_topics() {

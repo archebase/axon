@@ -364,6 +364,288 @@ TEST_F(WorkerThreadPoolTest, SequenceNumbers) {
   }
 }
 
+TEST_F(WorkerThreadPoolTest, MixedTopicWriterBatching) {
+  WorkerThreadPool::Config config;
+  config.queue_capacity_per_topic = 1024;
+  config.worker_idle_sleep_us = 10;
+  config.use_writer_batching = true;
+  config.writer_batch_max_messages = 4;
+  config.writer_batch_max_bytes = 0;
+  config.writer_batch_flush_interval_ms = 1000;
+  config.writer_queue_capacity = 16;
+
+  WorkerThreadPool pool(config);
+
+  std::atomic<size_t> handled{0};
+  std::mutex batches_mutex;
+  std::vector<std::vector<std::string>> batches;
+
+  pool.set_latency_batch_handler(
+    [&](const std::vector<WorkerThreadPool::BatchMessageView>& messages) -> size_t {
+      std::vector<std::string> topics;
+      topics.reserve(messages.size());
+      for (const auto& message : messages) {
+        if (message.topic) {
+          topics.push_back(*message.topic);
+        }
+      }
+      {
+        std::lock_guard<std::mutex> lock(batches_mutex);
+        batches.push_back(std::move(topics));
+      }
+      handled.fetch_add(messages.size(), std::memory_order_relaxed);
+      return messages.size();
+    }
+  );
+
+  auto should_not_run = [](
+                          const std::string&,
+                          const std::string&,
+                          int64_t,
+                          const uint8_t*,
+                          size_t,
+                          uint32_t,
+                          uint64_t,
+                          uint64_t,
+                          uint64_t,
+                          uint64_t
+                        ) {
+    ADD_FAILURE() << "Per-message latency handler should be bypassed by writer batching";
+    return false;
+  };
+
+  ASSERT_TRUE(pool.create_topic_worker("/topic1", should_not_run));
+  ASSERT_TRUE(pool.create_topic_worker("/topic2", should_not_run));
+  pool.start();
+
+  for (int i = 0; i < 2; ++i) {
+    MessageItem item1(i, "test_type", {static_cast<uint8_t>(i)});
+    EXPECT_TRUE(pool.try_push("/topic1", std::move(item1)));
+
+    MessageItem item2(i, "test_type", {static_cast<uint8_t>(i + 2)});
+    EXPECT_TRUE(pool.try_push("/topic2", std::move(item2)));
+  }
+
+  auto start = std::chrono::steady_clock::now();
+  while (handled.load(std::memory_order_relaxed) < 4) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(5));
+  }
+
+  pool.stop();
+
+  auto aggregate = pool.get_aggregate_stats();
+  EXPECT_EQ(aggregate.total_received, 4u);
+  EXPECT_EQ(aggregate.total_written, 4u);
+
+  auto stats = pool.get_writer_batch_stats();
+  EXPECT_TRUE(stats.enabled);
+  EXPECT_EQ(stats.batches_written, 1u);
+  EXPECT_EQ(stats.messages_written, 4u);
+  EXPECT_EQ(stats.bytes_written, 4u);
+  EXPECT_EQ(stats.partial_failures, 0u);
+  EXPECT_EQ(stats.queue_overflows, 0u);
+  EXPECT_EQ(stats.flush_by_messages, 1u);
+  EXPECT_EQ(stats.flush_by_bytes, 0u);
+  EXPECT_EQ(stats.flush_by_time, 0u);
+  EXPECT_EQ(stats.last_batch_messages, 4u);
+  EXPECT_EQ(stats.last_batch_bytes, 4u);
+  EXPECT_EQ(stats.max_batch_messages, 4u);
+  EXPECT_EQ(stats.max_batch_bytes, 4u);
+  EXPECT_EQ(stats.queue_depth, 0u);
+  EXPECT_EQ(stats.queue_capacity, 16u);
+  EXPECT_GT(stats.max_queue_depth, 0u);
+
+  bool saw_mixed_batch = false;
+  {
+    std::lock_guard<std::mutex> lock(batches_mutex);
+    for (const auto& batch : batches) {
+      bool saw_topic1 = false;
+      bool saw_topic2 = false;
+      for (const auto& topic : batch) {
+        saw_topic1 = saw_topic1 || topic == "/topic1";
+        saw_topic2 = saw_topic2 || topic == "/topic2";
+      }
+      saw_mixed_batch = saw_mixed_batch || (saw_topic1 && saw_topic2);
+    }
+  }
+  EXPECT_TRUE(saw_mixed_batch);
+}
+
+TEST_F(WorkerThreadPoolTest, MixedTopicWriterBatchingTracksPartialFailure) {
+  WorkerThreadPool::Config config;
+  config.queue_capacity_per_topic = 1024;
+  config.worker_idle_sleep_us = 10;
+  config.use_writer_batching = true;
+  config.writer_batch_max_messages = 4;
+  config.writer_batch_max_bytes = 0;
+  config.writer_batch_flush_interval_ms = 1000;
+  config.writer_queue_capacity = 16;
+
+  WorkerThreadPool pool(config);
+
+  std::atomic<size_t> handled{0};
+  pool.set_latency_batch_handler(
+    [&](const std::vector<WorkerThreadPool::BatchMessageView>& messages) -> size_t {
+      handled.fetch_add(messages.size(), std::memory_order_relaxed);
+      return 2;
+    }
+  );
+
+  auto should_not_run = [](
+                          const std::string&,
+                          const std::string&,
+                          int64_t,
+                          const uint8_t*,
+                          size_t,
+                          uint32_t,
+                          uint64_t,
+                          uint64_t,
+                          uint64_t,
+                          uint64_t
+                        ) {
+    ADD_FAILURE() << "Per-message latency handler should be bypassed by writer batching";
+    return false;
+  };
+
+  ASSERT_TRUE(pool.create_topic_worker("/topic1", should_not_run));
+  pool.start();
+
+  for (int i = 0; i < 4; ++i) {
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
+    EXPECT_TRUE(pool.try_push("/topic1", std::move(item)));
+  }
+
+  auto start = std::chrono::steady_clock::now();
+  while (handled.load(std::memory_order_relaxed) < 4) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(5));
+  }
+
+  pool.stop();
+
+  auto aggregate = pool.get_aggregate_stats();
+  EXPECT_EQ(aggregate.total_received, 4u);
+  EXPECT_EQ(aggregate.total_written, 2u);
+  EXPECT_EQ(aggregate.total_bytes_written, 2u);
+
+  auto stats = pool.get_writer_batch_stats();
+  EXPECT_TRUE(stats.enabled);
+  EXPECT_EQ(stats.batches_written, 1u);
+  EXPECT_EQ(stats.messages_written, 2u);
+  EXPECT_EQ(stats.bytes_written, 2u);
+  EXPECT_EQ(stats.partial_failures, 1u);
+  EXPECT_EQ(stats.queue_overflows, 0u);
+  EXPECT_EQ(stats.flush_by_messages, 1u);
+  EXPECT_EQ(stats.last_batch_messages, 4u);
+  EXPECT_EQ(stats.last_batch_bytes, 4u);
+  EXPECT_EQ(stats.max_batch_messages, 4u);
+  EXPECT_EQ(stats.max_batch_bytes, 4u);
+
+  pool.reset_stats();
+  auto reset_stats = pool.get_writer_batch_stats();
+  EXPECT_EQ(reset_stats.batches_written, 0u);
+  EXPECT_EQ(reset_stats.messages_written, 0u);
+  EXPECT_EQ(reset_stats.bytes_written, 0u);
+  EXPECT_EQ(reset_stats.partial_failures, 0u);
+  EXPECT_EQ(reset_stats.queue_overflows, 0u);
+  EXPECT_EQ(reset_stats.max_queue_depth, 0u);
+}
+
+TEST_F(WorkerThreadPoolTest, MixedTopicWriterBatchingDropsWhenWriterQueueFull) {
+  WorkerThreadPool::Config config;
+  config.queue_capacity_per_topic = 1024;
+  config.worker_idle_sleep_us = 10;
+  config.use_writer_batching = true;
+  config.writer_batch_max_messages = 1;
+  config.writer_batch_max_bytes = 0;
+  config.writer_batch_flush_interval_ms = 1000;
+  config.writer_queue_capacity = 1;
+
+  WorkerThreadPool pool(config);
+
+  std::atomic<bool> handler_started{false};
+  std::atomic<bool> release_handler{false};
+  std::atomic<size_t> handled{0};
+  pool.set_latency_batch_handler(
+    [&](const std::vector<WorkerThreadPool::BatchMessageView>& messages) -> size_t {
+      handler_started.store(true, std::memory_order_release);
+      while (!release_handler.load(std::memory_order_acquire)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      handled.fetch_add(messages.size(), std::memory_order_relaxed);
+      return messages.size();
+    }
+  );
+
+  std::atomic<uint64_t> drop_count{0};
+  pool.set_drop_callback([&](const std::string&, const std::string&, uint64_t total_dropped) {
+    drop_count.store(total_dropped, std::memory_order_relaxed);
+  });
+
+  auto should_not_run = [](
+                          const std::string&,
+                          const std::string&,
+                          int64_t,
+                          const uint8_t*,
+                          size_t,
+                          uint32_t,
+                          uint64_t,
+                          uint64_t,
+                          uint64_t,
+                          uint64_t
+                        ) {
+    ADD_FAILURE() << "Per-message latency handler should be bypassed by writer batching";
+    return false;
+  };
+
+  ASSERT_TRUE(pool.create_topic_worker("/topic1", should_not_run));
+  pool.start();
+
+  MessageItem first(0, "test_type", {0x00});
+  EXPECT_TRUE(pool.try_push("/topic1", std::move(first)));
+
+  auto start = std::chrono::steady_clock::now();
+  while (!handler_started.load(std::memory_order_acquire)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    if (std::chrono::steady_clock::now() - start >= std::chrono::seconds(5)) {
+      release_handler.store(true, std::memory_order_release);
+      pool.stop();
+      FAIL() << "Timed out waiting for writer batch handler";
+    }
+  }
+
+  for (int i = 1; i < 4; ++i) {
+    MessageItem item(i, "test_type", {static_cast<uint8_t>(i)});
+    EXPECT_TRUE(pool.try_push("/topic1", std::move(item)));
+  }
+
+  start = std::chrono::steady_clock::now();
+  while (drop_count.load(std::memory_order_relaxed) == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    if (std::chrono::steady_clock::now() - start >= std::chrono::seconds(5)) {
+      release_handler.store(true, std::memory_order_release);
+      pool.stop();
+      FAIL() << "Timed out waiting for writer queue overflow";
+    }
+  }
+
+  release_handler.store(true, std::memory_order_release);
+  pool.stop();
+
+  auto aggregate = pool.get_aggregate_stats();
+  EXPECT_EQ(aggregate.total_received, 4u);
+  EXPECT_GT(aggregate.total_dropped, 0u);
+  EXPECT_LT(aggregate.total_written, aggregate.total_received);
+  EXPECT_GE(handled.load(std::memory_order_relaxed), 1u);
+
+  auto stats = pool.get_writer_batch_stats();
+  EXPECT_TRUE(stats.enabled);
+  EXPECT_GT(stats.queue_overflows, 0u);
+  EXPECT_EQ(stats.queue_depth, 0u);
+  EXPECT_EQ(stats.queue_capacity, 1u);
+}
+
 // ============================================================================
 // Enhanced Coverage Tests (Phase 4)
 // ============================================================================

@@ -99,10 +99,24 @@ struct DiskUsageConfig {
   double warn_usage_gb = 80.0;
   double hard_limit_gb = 100.0;
   double max_task_size_gb = 0.0;  // 0 disables per-task limit
+  double physical_safety_margin_gb = 2.0;
+  int physical_check_interval_ms = 1000;
+  double physical_check_interval_gb = 0.5;
   bool cleanup_enabled = false;
   double cleanup_target_gb = 80.0;
   int cleanup_min_age_sec = 3600;
   bool cleanup_upload_backlog = false;
+};
+
+/**
+ * Mixed-topic writer batching configuration.
+ */
+struct WriterBatchConfig {
+  bool enabled = false;
+  size_t max_messages = 256;
+  size_t max_bytes = 8 * 1024 * 1024;
+  int flush_interval_ms = 20;
+  size_t queue_capacity = 4096;
 };
 
 /**
@@ -114,6 +128,7 @@ struct RecordingConfig {
   DiskUsageConfig disk_usage;
   std::string profile = "ros2";
   std::string compression = "zstd";
+  WriterBatchConfig writer_batch;
   // Compression preset, range 0-4 (applies to both zstd and lz4).
   // Maps to axon::mcap_wrapper::CompressionLevel: 0=Default, 1=Fastest,
   // 2=Fast, 3=Default, 4=Slow/Slowest. Values >4 are clamped to 4.
@@ -515,6 +530,9 @@ private:
     const uint8_t* data, size_t data_size, uint32_t sequence, uint64_t publish_time_ns,
     uint64_t receive_time_ns, uint64_t enqueue_time_ns, uint64_t dequeue_time_ns
   );
+  size_t latency_batch_message_handler(
+    const std::vector<WorkerThreadPool::BatchMessageView>& messages
+  );
 
   /**
    * Handle state transition callbacks
@@ -588,6 +606,7 @@ private:
   void maybe_create_incident_bundle(const std::string& output_path);
   bool ensure_disk_capacity_before_start(const std::string& output_file);
   bool ensure_disk_capacity_before_write(size_t next_write_bytes);
+  bool ensure_disk_capacity_before_write_batch(uint64_t next_write_bytes);
   bool maybe_cleanup_disk_usage(
     const std::string& active_output_path, DiskUsageSnapshot& snapshot
   ) const;
@@ -693,9 +712,11 @@ private:
 
   mutable std::mutex disk_usage_mutex_;
   std::chrono::steady_clock::time_point last_disk_check_time_{};
+  uint64_t last_disk_sample_task_bytes_ = 0;
   DiskUsageSnapshot last_disk_usage_snapshot_;
   std::atomic<bool> disk_warn_logged_{false};
   std::atomic<bool> disk_hard_limit_reached_{false};
+  std::atomic<uint64_t> disk_task_bytes_budget_{0};
 
   // Per-topic rate limiting state for drop reporting
   struct DropReportState {

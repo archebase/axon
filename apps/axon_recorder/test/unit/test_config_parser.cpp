@@ -101,10 +101,19 @@ subscriptions:
 
 recording:
   max_disk_usage_gb: 50.0
+  writer_batch:
+    enabled: true
+    max_messages: 128
+    max_bytes_mb: 16
+    flush_interval_ms: 25
+    queue_capacity: 2048
   disk_usage:
     warn_usage_gb: 40.0
     hard_limit_gb: 50.0
     max_task_size_gb: 5.0
+    physical_safety_margin_gb: 1.5
+    physical_check_interval_ms: 750
+    physical_check_interval_gb: 0.25
     cleanup_enabled: true
     cleanup_target_gb: 35.0
     cleanup_min_age_sec: 300
@@ -168,10 +177,18 @@ upload:
   EXPECT_DOUBLE_EQ(config.recording.disk_usage.warn_usage_gb, 40.0);
   EXPECT_DOUBLE_EQ(config.recording.disk_usage.hard_limit_gb, 50.0);
   EXPECT_DOUBLE_EQ(config.recording.disk_usage.max_task_size_gb, 5.0);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.physical_safety_margin_gb, 1.5);
+  EXPECT_EQ(config.recording.disk_usage.physical_check_interval_ms, 750);
+  EXPECT_DOUBLE_EQ(config.recording.disk_usage.physical_check_interval_gb, 0.25);
   EXPECT_TRUE(config.recording.disk_usage.cleanup_enabled);
   EXPECT_DOUBLE_EQ(config.recording.disk_usage.cleanup_target_gb, 35.0);
   EXPECT_EQ(config.recording.disk_usage.cleanup_min_age_sec, 300);
   EXPECT_TRUE(config.recording.disk_usage.cleanup_upload_backlog);
+  EXPECT_TRUE(config.recording.writer_batch.enabled);
+  EXPECT_EQ(config.recording.writer_batch.max_messages, 128u);
+  EXPECT_EQ(config.recording.writer_batch.max_bytes, 16u * 1024u * 1024u);
+  EXPECT_EQ(config.recording.writer_batch.flush_interval_ms, 25);
+  EXPECT_EQ(config.recording.writer_batch.queue_capacity, 2048u);
 
   // Logging config
   EXPECT_TRUE(config.logging.console_enabled);

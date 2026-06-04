@@ -164,6 +164,7 @@ TEST_F(Ros2PluginTest, StartAfterInitSucceeds) {
   bool result = plugin.start();
   EXPECT_TRUE(result);
   EXPECT_TRUE(plugin.is_running());
+  EXPECT_GE(plugin.get_executor_thread_count(), 2u);
 
   // Clean up
   EXPECT_TRUE(plugin.stop());
@@ -504,6 +505,46 @@ TEST_F(Ros2PluginTest, InitWithCustomNodeName) {
   EXPECT_EQ(node_name, "custom_axon_plugin");
 
   // Clean up
+  EXPECT_TRUE(plugin.stop());
+}
+
+TEST_F(Ros2PluginTest, ConfiguresExecutorThreadsFromRos2Section) {
+  Ros2Plugin plugin;
+
+  const char* config_json = R"({
+    "ros2": {
+      "executor_threads": 3
+    }
+  })";
+
+  ASSERT_TRUE(plugin.init(config_json));
+  ASSERT_TRUE(plugin.start());
+
+  EXPECT_EQ(plugin.get_executor_thread_count(), 3u);
+
+  EXPECT_TRUE(plugin.stop());
+}
+
+TEST_F(Ros2PluginTest, EmbeddedPluginConfigOverridesExecutorThreads) {
+  Ros2Plugin plugin;
+
+  const char* config_json = R"({
+    "ros2": {
+      "executor_threads": 2
+    },
+    "plugin": {
+      "config": "{\"node_name\":\"embedded_ros2_node\",\"executor_threads\":4}"
+    }
+  })";
+
+  ASSERT_TRUE(plugin.init(config_json));
+  auto node = plugin.get_node();
+  ASSERT_NE(node, nullptr);
+  EXPECT_EQ(std::string(node->get_name()), "embedded_ros2_node");
+
+  ASSERT_TRUE(plugin.start());
+  EXPECT_EQ(plugin.get_executor_thread_count(), 4u);
+
   EXPECT_TRUE(plugin.stop());
 }
 

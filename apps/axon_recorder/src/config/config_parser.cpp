@@ -283,11 +283,24 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
 
     // Recording
     node["recording"]["max_disk_usage_gb"] = config.recording.max_disk_usage_gb;
+    node["recording"]["writer_batch"]["enabled"] = config.recording.writer_batch.enabled;
+    node["recording"]["writer_batch"]["max_messages"] = config.recording.writer_batch.max_messages;
+    node["recording"]["writer_batch"]["max_bytes"] = config.recording.writer_batch.max_bytes;
+    node["recording"]["writer_batch"]["flush_interval_ms"] =
+      config.recording.writer_batch.flush_interval_ms;
+    node["recording"]["writer_batch"]["queue_capacity"] =
+      config.recording.writer_batch.queue_capacity;
     node["recording"]["disk_usage"]["enabled"] = config.recording.disk_usage.enabled;
     node["recording"]["disk_usage"]["warn_usage_gb"] = config.recording.disk_usage.warn_usage_gb;
     node["recording"]["disk_usage"]["hard_limit_gb"] = config.recording.disk_usage.hard_limit_gb;
     node["recording"]["disk_usage"]["max_task_size_gb"] =
       config.recording.disk_usage.max_task_size_gb;
+    node["recording"]["disk_usage"]["physical_safety_margin_gb"] =
+      config.recording.disk_usage.physical_safety_margin_gb;
+    node["recording"]["disk_usage"]["physical_check_interval_ms"] =
+      config.recording.disk_usage.physical_check_interval_ms;
+    node["recording"]["disk_usage"]["physical_check_interval_gb"] =
+      config.recording.disk_usage.physical_check_interval_gb;
     node["recording"]["disk_usage"]["cleanup_enabled"] =
       config.recording.disk_usage.cleanup_enabled;
     node["recording"]["disk_usage"]["cleanup_target_gb"] =
@@ -417,6 +430,18 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
     if (disk_node["max_task_size_gb"]) {
       recording.disk_usage.max_task_size_gb = disk_node["max_task_size_gb"].as<double>();
     }
+    if (disk_node["physical_safety_margin_gb"]) {
+      recording.disk_usage.physical_safety_margin_gb =
+        disk_node["physical_safety_margin_gb"].as<double>();
+    }
+    if (disk_node["physical_check_interval_ms"]) {
+      recording.disk_usage.physical_check_interval_ms =
+        disk_node["physical_check_interval_ms"].as<int>();
+    }
+    if (disk_node["physical_check_interval_gb"]) {
+      recording.disk_usage.physical_check_interval_gb =
+        disk_node["physical_check_interval_gb"].as<double>();
+    }
     if (disk_node["cleanup_enabled"]) {
       recording.disk_usage.cleanup_enabled = disk_node["cleanup_enabled"].as<bool>();
     }
@@ -450,6 +475,32 @@ bool ConfigParser::parse_recording(const YAML::Node& node, RecordingConfig& reco
   }
   if (node["profile"]) {
     recording.profile = node["profile"].as<std::string>();
+  }
+  if (node["writer_batch"]) {
+    const auto& batch_node = node["writer_batch"];
+    if (batch_node.IsMap()) {
+      if (batch_node["enabled"]) {
+        recording.writer_batch.enabled = batch_node["enabled"].as<bool>();
+      }
+      if (batch_node["max_messages"]) {
+        recording.writer_batch.max_messages = batch_node["max_messages"].as<size_t>();
+      }
+      if (batch_node["max_bytes"]) {
+        recording.writer_batch.max_bytes = batch_node["max_bytes"].as<size_t>();
+      }
+      if (batch_node["max_bytes_mb"]) {
+        recording.writer_batch.max_bytes =
+          batch_node["max_bytes_mb"].as<size_t>() * 1024ULL * 1024ULL;
+      }
+      if (batch_node["flush_interval_ms"]) {
+        recording.writer_batch.flush_interval_ms = batch_node["flush_interval_ms"].as<int>();
+      }
+      if (batch_node["queue_capacity"]) {
+        recording.writer_batch.queue_capacity = batch_node["queue_capacity"].as<size_t>();
+      }
+    } else if (batch_node.IsScalar()) {
+      recording.writer_batch.enabled = batch_node.as<bool>();
+    }
   }
 
   // Parse schema search paths for message definition resolution
@@ -736,6 +787,22 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
     }
   }
 
+  const auto& writer_batch = config.recording.writer_batch;
+  if (writer_batch.enabled) {
+    if (writer_batch.max_messages == 0) {
+      error_msg = "recording.writer_batch.max_messages must be > 0";
+      return false;
+    }
+    if (writer_batch.flush_interval_ms < 0) {
+      error_msg = "recording.writer_batch.flush_interval_ms must be >= 0";
+      return false;
+    }
+    if (writer_batch.queue_capacity == 0) {
+      error_msg = "recording.writer_batch.queue_capacity must be > 0";
+      return false;
+    }
+  }
+
   if (config.dataset.mode != "create" && config.dataset.mode != "append") {
     error_msg = "Dataset mode must be 'create' or 'append'";
     return false;
@@ -744,8 +811,14 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
   const auto& disk = config.recording.disk_usage;
   if (disk.enabled) {
     if (disk.warn_usage_gb < 0.0 || disk.hard_limit_gb < 0.0 || disk.max_task_size_gb < 0.0 ||
+        disk.physical_safety_margin_gb < 0.0 || disk.physical_check_interval_gb < 0.0 ||
         disk.cleanup_target_gb < 0.0) {
       error_msg = "Disk usage thresholds must be >= 0";
+      return false;
+    }
+
+    if (disk.physical_check_interval_ms < 0) {
+      error_msg = "Disk usage physical_check_interval_ms must be >= 0";
       return false;
     }
 

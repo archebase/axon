@@ -9,6 +9,7 @@
 #include <buffer_pool.hpp>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -177,6 +178,34 @@ public:
   )>;
 
   /**
+   * Read-only view over a dequeued message for mixed-topic writer batching.
+   * The pointed-to strings and data remain valid only for the duration of the
+   * batch handler call.
+   */
+  struct BatchMessageView {
+    const std::string* topic = nullptr;
+    const std::string* message_type = nullptr;
+    int64_t timestamp_ns = 0;
+    const uint8_t* data = nullptr;
+    size_t data_size = 0;
+    uint32_t sequence = 0;
+    uint64_t publish_time_ns = 0;
+    uint64_t receive_time_ns = 0;
+    uint64_t enqueue_time_ns = 0;
+    uint64_t dequeue_time_ns = 0;
+  };
+
+  /**
+   * Callback type for mixed-topic batch processing.
+   *
+   * Returns the number of messages successfully written from the front of
+   * `messages`. Returning less than messages.size() marks the suffix as not
+   * written; ownership of all payloads is still released by the worker pool.
+   */
+  using LatencyBatchMessageHandler =
+    std::function<size_t(const std::vector<BatchMessageView>& messages)>;
+
+  /**
    * Callback type for message drop notifications.
    * Called by try_push() when a message is dropped due to queue full.
    * Must be lightweight — invoked on the plugin callback thread (hot path).
@@ -202,11 +231,31 @@ public:
     /// Whether to use adaptive backoff when idle
     bool use_adaptive_backoff;
 
+    /// Enable a single mixed-topic writer batcher for latency-aware handlers
+    bool use_writer_batching;
+
+    /// Maximum messages per writer batch
+    size_t writer_batch_max_messages;
+
+    /// Maximum payload bytes per writer batch (0 disables byte cap)
+    size_t writer_batch_max_bytes;
+
+    /// Maximum time to wait for a partial writer batch before flushing
+    int writer_batch_flush_interval_ms;
+
+    /// Maximum messages waiting in the central writer queue
+    size_t writer_queue_capacity;
+
     /// Default constructor with default values
     Config()
         : queue_capacity_per_topic(4096)
         , worker_idle_sleep_us(50)
-        , use_adaptive_backoff(true) {}
+        , use_adaptive_backoff(true)
+        , use_writer_batching(false)
+        , writer_batch_max_messages(256)
+        , writer_batch_max_bytes(8 * 1024 * 1024)
+        , writer_batch_flush_interval_ms(20)
+        , writer_queue_capacity(4096) {}
   };
 
   /**
@@ -248,6 +297,13 @@ public:
    * Must be called before start(). Not thread-safe with try_push().
    */
   void set_drop_callback(DropCallback callback);
+
+  /**
+   * Set the mixed-topic batch handler. Used only when Config::use_writer_batching
+   * is true and a topic worker was created with LatencyMessageHandler.
+   * Must be called before start(). Not thread-safe with running workers.
+   */
+  void set_latency_batch_handler(LatencyBatchMessageHandler callback);
 
   // Non-copyable, non-movable
   WorkerThreadPool(const WorkerThreadPool&) = delete;
@@ -387,6 +443,30 @@ public:
   };
   std::unordered_map<std::string, QueueDepthInfo> get_queue_depths() const;
 
+  struct WriterBatchStatsSnapshot {
+    bool enabled = false;
+    uint64_t batches_written = 0;
+    uint64_t messages_written = 0;
+    uint64_t bytes_written = 0;
+    uint64_t partial_failures = 0;
+    uint64_t queue_overflows = 0;
+    uint64_t flush_by_messages = 0;
+    uint64_t flush_by_bytes = 0;
+    uint64_t flush_by_time = 0;
+    uint64_t flush_by_stop = 0;
+    uint64_t total_write_duration_ns = 0;
+    uint64_t max_write_duration_ns = 0;
+    size_t last_batch_messages = 0;
+    size_t last_batch_bytes = 0;
+    size_t max_batch_messages = 0;
+    size_t max_batch_bytes = 0;
+    size_t queue_depth = 0;
+    size_t queue_capacity = 0;
+    size_t max_queue_depth = 0;
+  };
+
+  WriterBatchStatsSnapshot get_writer_batch_stats() const;
+
   /**
    * Reset all statistics to zero.
    * Called after recording finishes to clear stats for the next session.
@@ -428,14 +508,29 @@ private:
     TopicContext& operator=(TopicContext&&) = delete;
   };
 
+  struct WriterBatchItem {
+    std::shared_ptr<TopicContext> context;
+    MessageItem item;
+    uint32_t sequence = 0;
+  };
+
+  enum class WriterFlushReason { Messages, Bytes, Time, Stop };
+
   /**
    * Worker thread function for a specific topic.
    * Takes shared_ptr to context to prevent use-after-free.
    */
   void worker_thread_func(std::shared_ptr<TopicContext> context);
+  void writer_thread_func();
+  bool submit_to_writer_batcher(
+    const std::shared_ptr<TopicContext>& context, MessageItem&& item, uint32_t sequence
+  );
+  void flush_writer_batch(std::vector<WriterBatchItem>& batch, WriterFlushReason reason);
+  void reset_writer_batch_stats();
 
   Config config_;
   DropCallback drop_callback_;
+  LatencyBatchMessageHandler latency_batch_handler_;
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};
   std::atomic<bool> stopping_{false};  // Prevent concurrent stop() calls
@@ -448,6 +543,29 @@ private:
   // modifications during iteration
   mutable std::shared_mutex contexts_mutex_;
   std::unordered_map<std::string, std::shared_ptr<TopicContext>> topic_contexts_;
+
+  std::thread writer_thread_;
+  std::atomic<bool> writer_running_{false};
+  mutable std::mutex writer_queue_mutex_;
+  std::condition_variable writer_queue_cv_;
+  std::deque<WriterBatchItem> writer_queue_;
+
+  std::atomic<uint64_t> writer_batches_written_{0};
+  std::atomic<uint64_t> writer_messages_written_{0};
+  std::atomic<uint64_t> writer_bytes_written_{0};
+  std::atomic<uint64_t> writer_partial_failures_{0};
+  std::atomic<uint64_t> writer_queue_overflows_{0};
+  std::atomic<uint64_t> writer_flush_by_messages_{0};
+  std::atomic<uint64_t> writer_flush_by_bytes_{0};
+  std::atomic<uint64_t> writer_flush_by_time_{0};
+  std::atomic<uint64_t> writer_flush_by_stop_{0};
+  std::atomic<uint64_t> writer_total_write_duration_ns_{0};
+  std::atomic<uint64_t> writer_max_write_duration_ns_{0};
+  std::atomic<size_t> writer_last_batch_messages_{0};
+  std::atomic<size_t> writer_last_batch_bytes_{0};
+  std::atomic<size_t> writer_max_batch_messages_{0};
+  std::atomic<size_t> writer_max_batch_bytes_{0};
+  std::atomic<size_t> writer_max_queue_depth_{0};
 };
 
 }  // namespace recorder
