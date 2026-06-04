@@ -94,6 +94,7 @@ subscriptions:
     message_type: sensor_msgs/Image
     batch_size: 50
     flush_interval_ms: 500
+    qos_depth: 64
   - name: /imu/data
     message_type: sensor_msgs/Imu
     batch_size: 200
@@ -170,8 +171,10 @@ upload:
   EXPECT_EQ(config.subscriptions[0].topic_name, "/camera/image");
   EXPECT_EQ(config.subscriptions[0].batch_size, 50);
   EXPECT_EQ(config.subscriptions[0].flush_interval_ms, 500);
+  EXPECT_EQ(config.subscriptions[0].qos_depth, 64u);
   EXPECT_EQ(config.subscriptions[1].topic_name, "/imu/data");
   EXPECT_EQ(config.subscriptions[1].batch_size, 200);
+  EXPECT_EQ(config.subscriptions[1].qos_depth, 10u);
 
   EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 50.0);
   EXPECT_DOUBLE_EQ(config.recording.disk_usage.warn_usage_gb, 40.0);
@@ -293,6 +296,7 @@ subscriptions:
   // Subscription defaults
   EXPECT_EQ(config.subscriptions[0].batch_size, 1);           // Default batch size
   EXPECT_EQ(config.subscriptions[0].flush_interval_ms, 100);  // Default flush interval
+  EXPECT_EQ(config.subscriptions[0].qos_depth, 10u);
 
   // Recording defaults
   EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 100.0);
@@ -433,6 +437,54 @@ TEST_F(ConfigParserTest, ValidateFailsWithZeroBatchSize) {
   EXPECT_EQ(error_msg, "Subscription batch_size must be > 0");
 }
 
+TEST_F(ConfigParserTest, ValidateFailsWithZeroQosDepth) {
+  RecorderConfig config;
+  config.dataset.path = "/data";
+  config.dataset.mode = "create";
+  config.subscriptions.push_back({"/test", "std_msgs/String", 100, 100, 0});
+
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Subscription qos_depth must be > 0");
+}
+
+TEST_F(ConfigParserTest, NegativeQosDepthValidatesAsInvalid) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+subscriptions:
+  - name: /test
+    message_type: std_msgs/String
+    qos_depth: -1
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  ASSERT_TRUE(parser.load_from_string(yaml, config));
+  ASSERT_EQ(config.subscriptions.size(), 1);
+  EXPECT_EQ(config.subscriptions[0].qos_depth, 0u);
+
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Subscription qos_depth must be > 0");
+}
+
+TEST_F(ConfigParserTest, OversizedQosDepthFailsToParse) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+subscriptions:
+  - name: /test
+    message_type: std_msgs/String
+    qos_depth: 9223372036854775808
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  EXPECT_FALSE(parser.load_from_string(yaml, config));
+  EXPECT_FALSE(parser.get_last_error().empty());
+}
+
 TEST_F(ConfigParserTest, ValidateFailsWithInvalidMode) {
   RecorderConfig config;
   config.dataset.path = "/data";
@@ -501,6 +553,7 @@ TEST_F(ConfigParserTest, SaveToFile) {
   config.dataset.mode = "create";
 
   config.subscriptions.push_back({"/test_topic", "std_msgs/String", 50, 500});
+  config.subscriptions[0].qos_depth = 32;
   config.recording.max_disk_usage_gb = 75.0;
 
   auto path = (test_dir_ / "saved_config.yaml").string();
@@ -510,6 +563,11 @@ TEST_F(ConfigParserTest, SaveToFile) {
 
   // Verify file was created
   EXPECT_TRUE(fs::exists(path));
+
+  RecorderConfig loaded;
+  EXPECT_TRUE(parser.load_from_file(path, loaded));
+  ASSERT_EQ(loaded.subscriptions.size(), 1);
+  EXPECT_EQ(loaded.subscriptions[0].qos_depth, 32u);
 }
 
 // ============================================================================

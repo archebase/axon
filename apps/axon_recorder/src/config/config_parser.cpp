@@ -278,6 +278,7 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
       subscription_node["message_type"] = subscription.message_type;
       subscription_node["batch_size"] = subscription.batch_size;
       subscription_node["flush_interval_ms"] = subscription.flush_interval_ms;
+      subscription_node["qos_depth"] = subscription.qos_depth;
       node["subscriptions"].push_back(subscription_node);
     }
 
@@ -358,6 +359,10 @@ bool ConfigParser::parse_subscriptions(
     }
     if (subscription_node["flush_interval_ms"]) {
       subscription.flush_interval_ms = subscription_node["flush_interval_ms"].as<int>();
+    }
+    if (subscription_node["qos_depth"]) {
+      const auto qos_depth = subscription_node["qos_depth"].as<long long>();
+      subscription.qos_depth = qos_depth > 0 ? static_cast<size_t>(qos_depth) : 0;
     }
     // Parse depth_compression section (can be boolean or object)
     if (subscription_node["depth_compression"]) {
@@ -783,6 +788,10 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
     }
     if (subscription.batch_size == 0) {
       error_msg = "Subscription batch_size must be > 0";
+      return false;
+    }
+    if (subscription.qos_depth == 0) {
+      error_msg = "Subscription qos_depth must be > 0";
       return false;
     }
   }

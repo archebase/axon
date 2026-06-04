@@ -223,6 +223,17 @@ TEST_F(McapWriterTest, CompressionZstd) {
   EXPECT_GT(fs::file_size(test_file_), 0);
 }
 
+TEST_F(McapWriterTest, LegacyCompressionLevelMappingMatchesRecorderDocs) {
+  EXPECT_EQ(compression_level_from_legacy_int(-1), CompressionLevel::Default);
+  EXPECT_EQ(compression_level_from_legacy_int(0), CompressionLevel::Default);
+  EXPECT_EQ(compression_level_from_legacy_int(1), CompressionLevel::Fastest);
+  EXPECT_EQ(compression_level_from_legacy_int(2), CompressionLevel::Fast);
+  EXPECT_EQ(compression_level_from_legacy_int(3), CompressionLevel::Default);
+  EXPECT_EQ(compression_level_from_legacy_int(4), CompressionLevel::Slow);
+  EXPECT_EQ(compression_level_from_legacy_int(5), CompressionLevel::Slowest);
+  EXPECT_EQ(compression_level_from_legacy_int(99), CompressionLevel::Slowest);
+}
+
 TEST_F(McapWriterTest, ThreadSafety) {
   McapWriterWrapper writer;
 

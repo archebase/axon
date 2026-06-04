@@ -62,14 +62,15 @@ List of topics to record with batching settings:
 - `message_type`: ROS message type
 - `batch_size`: Number of messages to batch before writing
 - `flush_interval_ms`: Maximum time to wait before flushing (ms)
+- `qos_depth`: ROS2 subscription history depth (default `10`). This controls
+  the middleware QoS queue, not the recorder's `dataset.queue_size` worker queue.
 
 ### Recording
 - `profile`: ROS profile (`ros1` or `ros2`)
 - `compression`: MCAP compression (`none`, `zstd`, `lz4`)
-- `compression_level`: Compression level preset, range **0-4** (applies to both zstd and lz4).
-  Maps to MCAP's `CompressionLevel` enum: `0`=Default, `1`=Fastest, `2`=Fast, `3`=Default, `4`=Slow/Slowest.
-  Values greater than 4 are silently clamped. This is *not* the native zstd (1-19) or lz4 (1-12)
-  range — the underlying MCAP C++ library only exposes 5 presets.
+- `compression_level`: Compression level preset (applies to both zstd and lz4).
+  Maps recorder/CLI values to MCAP presets: `0`=Default, `1`=Fastest, `2`=Fast, `3`=Default, `4`=Slow, `>=5`=Slowest.
+  This is *not* the native zstd (1-19) or lz4 (1-12) range; the underlying MCAP C++ library only exposes 5 presets.
 - `max_disk_usage_gb`: Backward-compatible alias for `disk_usage.hard_limit_gb`
 - `disk_usage`: Recorder-managed disk budget
   - `enabled`: Enable warn/hard disk guard checks

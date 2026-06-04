@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MulanPSL-2.0
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -257,6 +258,40 @@ TEST(Ros2PluginExportTest, DescriptorAdvertisesAbi13) {
   EXPECT_EQ(descriptor->abi_version_minor, 3U);
   EXPECT_NE(descriptor->vtable->reserved[0], nullptr);
   EXPECT_NE(descriptor->vtable->reserved[1], nullptr);
+}
+
+TEST(Ros2PluginExportTest, AppliesQosDepthFromOptionsJson) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"qos_depth": 42})"));
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, 42u);
+  EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+}
+
+TEST(Ros2PluginExportTest, AppliesLegacyQueueSizeAsQosDepth) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"queue_size": 24})"));
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, 24u);
+}
+
+TEST(Ros2PluginExportTest, ZeroQosDepthFallsBackToDefault) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"qos_depth": 0})"));
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, 10u);
+}
+
+TEST(Ros2PluginExportTest, AppliesBestEffortReliability) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"qos_reliable": false})"));
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, 10u);
+  EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
 }
 
 /**

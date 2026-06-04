@@ -30,6 +30,32 @@ using axon::logging::kv;
 
 using namespace ros2_plugin;
 
+namespace ros2_plugin {
+
+void apply_subscribe_qos_options(SubscribeOptions& options, const nlohmann::json& opts) {
+  size_t qos_depth = 10;
+  if (opts.contains("qos_depth")) {
+    qos_depth = opts["qos_depth"].get<size_t>();
+  } else if (opts.contains("queue_size")) {
+    qos_depth = opts["queue_size"].get<size_t>();
+  }
+  if (qos_depth == 0) {
+    qos_depth = 10;
+  }
+
+  options.qos = rclcpp::QoS(rclcpp::KeepLast(qos_depth));
+  const bool reliable =
+    opts.contains("qos_reliable") ? opts["qos_reliable"].get<bool>() : opts.value("reliable", true);
+  if (reliable) {
+    options.qos.reliable();
+  } else {
+    options.qos.best_effort();
+  }
+  options.qos.durability_volatile();
+}
+
+}  // namespace ros2_plugin
+
 // =============================================================================
 // Error codes (matching what the loader expects)
 // =============================================================================
@@ -178,6 +204,7 @@ static int32_t axon_subscribe(
   if (options_json && strlen(options_json) > 0) {
     try {
       nlohmann::json opts = nlohmann::json::parse(options_json);
+      apply_subscribe_qos_options(options, opts);
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
       if (opts.contains("depth_compression")) {
         auto dc = opts["depth_compression"];
@@ -192,7 +219,6 @@ static int32_t axon_subscribe(
         );
       }
 #else
-      (void)options;  // Suppress unused warning when depth compression is disabled
       if (opts.contains("depth_compression") && opts["depth_compression"].value("enabled", false)) {
         AXON_LOG_WARN(
           "Depth compression requested for "
@@ -258,6 +284,7 @@ static int32_t axon_subscribe_v2(
   if (options_json && strlen(options_json) > 0) {
     try {
       nlohmann::json opts = nlohmann::json::parse(options_json);
+      apply_subscribe_qos_options(options, opts);
 #ifdef AXON_ENABLE_DEPTH_COMPRESSION
       if (opts.contains("depth_compression")) {
         auto dc = opts["depth_compression"];
@@ -267,7 +294,14 @@ static int32_t axon_subscribe_v2(
         options.depth_compression = dc_config;
       }
 #else
-      (void)options;
+      if (opts.contains("depth_compression") && opts["depth_compression"].value("enabled", false)) {
+        AXON_LOG_WARN(
+          "Depth compression requested (v2) for "
+          << kv("topic", topic_name)
+          << " but not enabled at build time. "
+             "Rebuild with -DAXON_ENABLE_DEPTH_COMPRESSION=ON to enable."
+        );
+      }
 #endif
     } catch (const std::exception& e) {
       AXON_LOG_WARN(

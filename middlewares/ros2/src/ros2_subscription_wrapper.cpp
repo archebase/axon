@@ -259,21 +259,27 @@ bool SubscriptionManager::subscribe_v2(
           }
 #endif
 
-          // Zero-copy pass-through: hand the recorder a pointer into the rcl
-          // buffer and a holder that keeps the SerializedMessage alive. The
-          // release function deletes the heap-allocated shared_ptr holder,
-          // which in turn drops the last refcount (or whatever the refcount
-          // is at that point) on the SerializedMessage.
-          auto* holder = new std::shared_ptr<rclcpp::SerializedMessage>(msg);
+          // Copy the serialized payload into plugin-owned storage before
+          // returning from the ROS callback. Holding the rclcpp
+          // SerializedMessage in Axon's queues can exhaust DDS/rclcpp receive
+          // buffers when recorder batching or writer backlog retains many
+          // messages, throttling high-rate topics before they reach Axon.
           const auto& raw = msg->get_rcl_serialized_message();
+          auto* holder = new std::vector<uint8_t>();
+          if (raw.buffer != nullptr && raw.buffer_length > 0) {
+            holder->assign(raw.buffer, raw.buffer + raw.buffer_length);
+          }
+          if (holder->empty()) {
+            holder->resize(1);
+          }
           callback(
             topic_name,
             message_type,
-            raw.buffer,
+            holder->data(),
             raw.buffer_length,
             timestamp,
             +[](void* p) {
-              delete static_cast<std::shared_ptr<rclcpp::SerializedMessage>*>(p);
+              delete static_cast<std::vector<uint8_t>*>(p);
             },
             holder
           );
