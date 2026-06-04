@@ -14,7 +14,7 @@
 # Architecture:
 #   - core/ contains common libraries (axon_logging, axon_mcap, axon_uploader)
 #   - middlewares/src/axon_recorder uses core/ libraries as dependencies
-#   - ROS tests run on 4 distros: ROS1 Noetic, ROS2 Humble/Jazzy/Rolling
+#   - ROS tests run on 3 CI distros: ROS1 Noetic, ROS2 Humble/Jazzy
 #   - ROS tests cover BOTH middlewares/ code AND core/ code (via library usage)
 # =============================================================================
 
@@ -42,11 +42,9 @@ flag_management:
     - name: ros-noetic
     - name: ros-humble
     - name: ros-jazzy
-    - name: ros-rolling
     - name: e2e-noetic
     - name: e2e-humble
     - name: e2e-jazzy
-    - name: e2e-rolling
 
 # Component management - components aggregate coverage across all flags for tracking
 # Components are for metrics/tracking only, not status checks

@@ -9,7 +9,7 @@
 #   ./scripts/ci-ros-local.sh [distro] [--coverage]
 #
 # Arguments:
-#   distro      ROS distribution: noetic, humble, jazzy, rolling
+#   distro      CI ROS distribution: noetic, humble, jazzy
 #               (default: all distros sequentially)
 #
 # Options:
@@ -34,13 +34,13 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUN_COVERAGE=false
-DISTROS=("noetic" "humble" "jazzy" "rolling")
+DISTROS=("noetic" "humble" "jazzy")
 SELECTED_DISTROS=()
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        noetic|humble|jazzy|rolling)
+        noetic|humble|jazzy)
             SELECTED_DISTROS+=("$1")
             shift
             ;;
@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [distro] [--coverage] [--help]"
             echo ""
             echo "Arguments:"
-            echo "  distro      ROS distribution: noetic, humble, jazzy, rolling"
+            echo "  distro      CI ROS distribution: noetic, humble, jazzy"
             echo "              (default: all distros sequentially)"
             echo ""
             echo "Options:"

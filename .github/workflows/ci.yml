@@ -23,7 +23,7 @@
 #   ┌───────────────┐   ┌───────────────┐
 #   │ Build Images  │   │ C++ Integr.   │
 #   │ (shared,      │   │ Tests +cov    │
-#   │  4 distros)   │   │               │
+#   │  3 distros)   │   │               │
 #   └───────┬───────┘   └───────────────┘
 #           │
 #      ┌────┴────┐
@@ -127,7 +127,7 @@ jobs:
 
   # ===========================================================================
   # Stage 1: Build Docker Images (shared for ROS and E2E tests)
-  # Builds all ROS distributions once, used by both tests-ros and e2e-tests
+  # Builds all CI ROS distributions once, used by both tests-ros and e2e-tests
   # ===========================================================================
   build-images:
     name: Build Images

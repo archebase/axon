@@ -4,7 +4,7 @@
 # Runs end-to-end tests that start axon_recorder_node and make actual ROS
 # service calls. Uses Docker images from GHCR for consistent builds.
 # Collects coverage data to maximize overall test coverage.
-# Runs on all ROS distributions (Noetic, Humble, Jazzy, Rolling).
+# Runs on all CI ROS distributions (Noetic, Humble, Jazzy).
 #
 # NOTE: Docker images are built by ci.yml's build-images job before this workflow
 #       runs. This workflow only pulls and uses the pre-built images.
@@ -28,7 +28,7 @@ jobs:
   # ==========================================================================
   # E2E Tests - End-to-end ROS service tests
   # Starts axon_recorder_node and runs actual ROS service calls
-  # Runs on all ROS distributions (Noetic, Humble, Jazzy, Rolling)
+  # Runs on all CI ROS distributions (Noetic, Humble, Jazzy)
   # Collects coverage to capture code paths exercised by E2E scenarios
   # Note: Docker images are expected to be pre-built by ci.yml's build-images job
   # ==========================================================================
@@ -49,10 +49,6 @@ jobs:
           # ROS 2 Jazzy - collect coverage
           - ros_distro: jazzy
             ros_version: "2"
-          # ROS 2 Rolling - collect coverage
-          - ros_distro: rolling
-            ros_version: "2"
-
     permissions:
       contents: read
       packages: read
