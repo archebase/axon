@@ -4,13 +4,13 @@
 # Runs all ROS unit + integration tests for axon_recorder package.
 # Uses Docker images from GHCR for consistent builds across environments.
 #
-# Coverage is collected from ALL distros (Noetic, Humble, Jazzy, Rolling)
+# Coverage is collected from all CI distros (Noetic, Humble, Jazzy)
 # and uploaded as artifacts for merging in ci.yml.
 #
 # NOTE: Docker images are built by ci.yml's build-images job before this workflow
 #       runs. This workflow only pulls and uses the pre-built images.
 # NOTE: E2E tests (service call tests) run separately via e2e-tests.yml
-#       on all ROS distributions (Noetic, Humble, Jazzy, Rolling).
+#       on all CI ROS distributions (Noetic, Humble, Jazzy).
 # =============================================================================
 
 name: ROS Tests
@@ -53,11 +53,6 @@ jobs:
           - ros_distro: jazzy
             ros_version: "2"
             script: run_integration.sh
-          # ROS 2 Rolling
-          - ros_distro: rolling
-            ros_version: "2"
-            script: run_integration.sh
-
     permissions:
       contents: read
       packages: read

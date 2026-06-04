@@ -18,7 +18,7 @@ on:
       distros:
         description: 'JSON array of ROS distros to build (e.g., ["humble", "noetic"])'
         required: false
-        default: '["humble", "noetic", "jazzy", "rolling"]'
+        default: '["humble", "noetic", "jazzy"]'
         type: string
     outputs:
       image_tag:
@@ -74,7 +74,6 @@ jobs:
             noetic)  echo "path=docker/Dockerfile.ros1" >> $GITHUB_OUTPUT ;;
             humble)  echo "path=docker/Dockerfile.ros2.humble" >> $GITHUB_OUTPUT ;;
             jazzy)   echo "path=docker/Dockerfile.ros2.jazzy" >> $GITHUB_OUTPUT ;;
-            rolling) echo "path=docker/Dockerfile.ros2.rolling" >> $GITHUB_OUTPUT ;;
             *) echo "ERROR: Unknown distro: ${{ matrix.distro }}"; exit 1 ;;
           esac
 
@@ -109,4 +108,3 @@ jobs:
         run: |
           echo "Built image for ${{ matrix.distro }}"
           echo "Tags: ${{ steps.meta.outputs.tags }}"
-

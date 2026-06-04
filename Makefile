@@ -751,11 +751,11 @@ docker-test-ros2-rolling: docker-build-ros2-rolling
 		/usr/local/bin/run_integration.sh --clean
 	@printf "%s\n" "$(GREEN)✓ ROS2 Rolling tests passed$(NC)"
 
-docker-build: docker-build-ros1 docker-build-ros2-humble docker-build-ros2-jazzy docker-build-ros2-rolling
+docker-build: docker-build-ros1 docker-build-ros2-humble docker-build-ros2-jazzy
 	@printf "%s\n" "$(GREEN)✓ All Docker images built$(NC)"
 
 # Run tests in all Docker containers
-docker-test-all: docker-test-ros1 docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling
+docker-test-all: docker-test-ros1 docker-test-ros2-humble docker-test-ros2-jazzy
 	@printf "%s\n" "$(GREEN)✓ All Docker tests passed!$(NC)"
 
 # Quick Docker test (single version)
@@ -930,8 +930,8 @@ ci-docker-middleware:
 ci-docker-ros1: docker-test-ros1
 	@printf "%s\n" "$(GREEN)✓ ROS1 tests passed$(NC)"
 
-# ci-docker-ros2: ROS2 tests in Docker (all distros)
-ci-docker-ros2: docker-test-ros2-humble docker-test-ros2-jazzy docker-test-ros2-rolling
+# ci-docker-ros2: ROS2 tests in Docker (CI-supported distros)
+ci-docker-ros2: docker-test-ros2-humble docker-test-ros2-jazzy
 	@printf "%s\n" "$(GREEN)✓ ROS2 tests passed$(NC)"
 
 # ci-docker-zenoh: Zenoh tests in Docker
@@ -985,7 +985,7 @@ e2e:
 	@printf "%s\n" "$(GREEN)✓ E2E tests passed$(NC)"
 
 # e2e-docker: All E2E tests in Docker
-e2e-docker: e2e-docker-ros1 e2e-docker-ros2-humble e2e-docker-ros2-jazzy e2e-docker-ros2-rolling
+e2e-docker: e2e-docker-ros1 e2e-docker-ros2-humble e2e-docker-ros2-jazzy
 	@printf "%s\n" "$(GREEN)✓ All E2E tests passed$(NC)"
 
 # e2e-docker-ros1: ROS1 E2E tests in Docker

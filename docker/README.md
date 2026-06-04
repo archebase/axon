@@ -24,7 +24,6 @@ docker-compose -f docker-compose.test.yml run test-ros2-humble /bin/bash
 | `test-ros1` | ROS 1 Noetic |
 | `test-ros2-humble` | ROS 2 Humble |
 | `test-ros2-jazzy` | ROS 2 Jazzy |
-| `test-ros2-rolling` | ROS 2 Rolling |
 
 ## CI ↔ Local Docker Mapping
 
