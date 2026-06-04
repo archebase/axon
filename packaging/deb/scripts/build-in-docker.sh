@@ -67,9 +67,28 @@ docker_info_proxy_field() {
     printf "%s" "$value"
 }
 
+use_docker_info_proxy_fallback() {
+    local mode="${AXON_PACKAGE_USE_DOCKER_INFO_PROXY:-auto}"
+    local host_os=""
+
+    case "$mode" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        0|false|FALSE|no|NO|off|OFF) return 1 ;;
+    esac
+
+    host_os="$(uname -s 2>/dev/null || true)"
+    [ "$host_os" != "Darwin" ]
+}
+
 proxy_for_container() {
     local proxy="$1"
 
+    if [ -n "$proxy" ]; then
+        case "$proxy" in
+            *://*) ;;
+            *) proxy="http://${proxy}" ;;
+        esac
+    fi
     proxy="${proxy//\/\/127.0.0.1/\/\/host.docker.internal}"
     proxy="${proxy//\/\/localhost/\/\/host.docker.internal}"
     proxy="${proxy//\/\/\[::1\]/\/\/host.docker.internal}"
@@ -142,7 +161,7 @@ configure_docker_proxy_args() {
         host_no_proxy="$(first_non_empty_env NO_PROXY no_proxy NOPROXY || true)"
     fi
 
-    if [ -z "$host_http_proxy" ] && [ -z "$host_https_proxy" ] && [ -z "$host_all_proxy" ]; then
+    if [ -z "$host_http_proxy" ] && [ -z "$host_https_proxy" ] && [ -z "$host_all_proxy" ] && use_docker_info_proxy_fallback; then
         host_http_proxy="$(docker_info_proxy_field HTTPProxy)"
         host_https_proxy="$(docker_info_proxy_field HTTPSProxy)"
         if [ -z "$host_no_proxy" ]; then
@@ -263,39 +282,52 @@ case "$BUILD_TYPE" in
         ;;
     all)
         log_section "Building All Packages in Docker"
+        overall_status=0
 
         # Build standalone packages for all Ubuntu versions
         for ubuntu_distro in focal jammy noble; do
             if [ -f "${DOCKER_DIR}/Dockerfile.package-standalone-${ubuntu_distro}" ]; then
-                log_section "Building Standalone Packages for Ubuntu ${ubuntu_distro^}"
-                "$0" "standalone-${ubuntu_distro}" || log_warn "Failed to build standalone for ${ubuntu_distro}"
+                log_section "Building Standalone Packages for Ubuntu ${ubuntu_distro}"
+                if ! "$0" "standalone-${ubuntu_distro}"; then
+                    log_warn "Failed to build standalone for ${ubuntu_distro}"
+                    overall_status=1
+                fi
             fi
         done
 
         # Build ROS2 packages if Dockerfile exists
         for distro in humble jazzy; do
             if [ -f "${DOCKER_DIR}/Dockerfile.package-ros2.${distro}" ]; then
-                log_section "Building ROS2 ${distro^} Packages"
-                "$0" --distro "$distro" || log_warn "Failed to build ROS2 ${distro}"
+                log_section "Building ROS2 ${distro} Packages"
+                if ! "$0" --distro "$distro"; then
+                    log_warn "Failed to build ROS2 ${distro}"
+                    overall_status=1
+                fi
             fi
         done
 
         # Build ROS1 packages if Dockerfile exists
         if [ -f "${DOCKER_DIR}/Dockerfile.package-ros1" ]; then
             log_section "Building ROS1 Noetic Packages"
-            "$0" ros1 || log_warn "Failed to build ROS1 packages"
+            if ! "$0" ros1; then
+                log_warn "Failed to build ROS1 packages"
+                overall_status=1
+            fi
         fi
 
         # Build UDP plugin for all Ubuntu versions
         for ubuntu_distro in focal jammy noble; do
             if [ -f "${DOCKER_DIR}/Dockerfile.package-standalone-${ubuntu_distro}" ]; then
-                log_section "Building UDP Plugin for Ubuntu ${ubuntu_distro^}"
-                "$0" "udp-${ubuntu_distro}" || log_warn "Failed to build UDP plugin for ${ubuntu_distro}"
+                log_section "Building UDP Plugin for Ubuntu ${ubuntu_distro}"
+                if ! "$0" "udp-${ubuntu_distro}"; then
+                    log_warn "Failed to build UDP plugin for ${ubuntu_distro}"
+                    overall_status=1
+                fi
             fi
         done
 
         log_section "All Docker Builds Complete"
-        exit 0
+        exit "$overall_status"
         ;;
     --distro)
         # Allow specifying distro directly

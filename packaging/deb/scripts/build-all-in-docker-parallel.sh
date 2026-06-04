@@ -71,9 +71,28 @@ docker_info_proxy_field() {
     printf "%s" "$value"
 }
 
+use_docker_info_proxy_fallback() {
+    local mode="${AXON_PACKAGE_USE_DOCKER_INFO_PROXY:-auto}"
+    local host_os=""
+
+    case "$mode" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        0|false|FALSE|no|NO|off|OFF) return 1 ;;
+    esac
+
+    host_os="$(uname -s 2>/dev/null || true)"
+    [ "$host_os" != "Darwin" ]
+}
+
 proxy_for_container() {
     local proxy="$1"
 
+    if [ -n "$proxy" ]; then
+        case "$proxy" in
+            *://*) ;;
+            *) proxy="http://${proxy}" ;;
+        esac
+    fi
     proxy="${proxy//\/\/127.0.0.1/\/\/host.docker.internal}"
     proxy="${proxy//\/\/localhost/\/\/host.docker.internal}"
     proxy="${proxy//\/\/\[::1\]/\/\/host.docker.internal}"
@@ -133,7 +152,7 @@ configure_package_proxy_env() {
     host_all_proxy="$(first_non_empty_env ALL_PROXY all_proxy ALLPROXY || true)"
     host_no_proxy="$(first_non_empty_env NO_PROXY no_proxy NOPROXY || true)"
 
-    if [ -z "$host_http_proxy" ] && [ -z "$host_https_proxy" ] && [ -z "$host_all_proxy" ]; then
+    if [ -z "$host_http_proxy" ] && [ -z "$host_https_proxy" ] && [ -z "$host_all_proxy" ] && use_docker_info_proxy_fallback; then
         host_http_proxy="$(docker_info_proxy_field HTTPProxy)"
         host_https_proxy="$(docker_info_proxy_field HTTPSProxy)"
         host_no_proxy="${host_no_proxy:-$(docker_info_proxy_field NoProxy)}"
@@ -229,6 +248,7 @@ latest_log_line() {
 
 print_progress_snapshot() {
     local distro=""
+    local i=0
     local state=""
     local latest=""
     local status_value=""
@@ -244,9 +264,10 @@ print_progress_snapshot() {
     printf "%-10s %-8s %s\n" "Distro" "Status" "Latest output"
     printf "%-10s %-8s %s\n" "------" "------" "-------------"
 
-    for distro in "${distros[@]}"; do
-        if [ -f "${status_files[$distro]}" ]; then
-            status_value="$(cat "${status_files[$distro]}" 2>/dev/null || echo 1)"
+    for ((i = 0; i < ${#distros[@]}; i++)); do
+        distro="${distros[$i]}"
+        if [ -f "${status_files[$i]}" ]; then
+            status_value="$(cat "${status_files[$i]}" 2>/dev/null || echo 1)"
             if [ "$status_value" -eq 0 ]; then
                 state="PASS"
             else
@@ -256,7 +277,7 @@ print_progress_snapshot() {
             state="RUNNING"
         fi
 
-        latest="$(latest_log_line "${logs[$distro]}")"
+        latest="$(latest_log_line "${logs[$i]}")"
         printf "%-10s %-8s %s\n" "$distro" "$state" "$latest"
     done
 }
@@ -264,11 +285,13 @@ print_progress_snapshot() {
 monitor_progress() {
     local completed=0
     local distro=""
+    local i=0
 
     while true; do
         completed=0
-        for distro in "${distros[@]}"; do
-            if [ -f "${status_files[$distro]}" ]; then
+        for ((i = 0; i < ${#distros[@]}; i++)); do
+            distro="${distros[$i]}"
+            if [ -f "${status_files[$i]}" ]; then
                 completed=$((completed + 1))
             fi
         done
@@ -293,10 +316,10 @@ configure_package_apt_mirror_env
 mkdir -p "${OUTPUT_DIR}" "${LOG_DIR}"
 
 distros=(focal jammy noble)
-declare -A pids
-declare -A logs
-declare -A status_files
-declare -A statuses
+pids=()
+logs=()
+status_files=()
+statuses=()
 
 log_section "Building all packages in Docker"
 log_info "Running Ubuntu distro builds in parallel: ${distros[*]}"
@@ -309,11 +332,12 @@ if [ "${AXON_PACKAGE_APT_MIRROR}" != "default" ] && [ "${AXON_PACKAGE_APT_MIRROR
     log_info "Using ${AXON_PACKAGE_APT_MIRROR} Ubuntu apt mirror for Docker package builds."
 fi
 
-for distro in "${distros[@]}"; do
+for ((i = 0; i < ${#distros[@]}; i++)); do
+    distro="${distros[$i]}"
     log_file="${LOG_DIR}/${distro}.log"
     status_file="${LOG_DIR}/${distro}.status"
-    logs["$distro"]="$log_file"
-    status_files["$distro"]="$status_file"
+    logs[$i]="$log_file"
+    status_files[$i]="$status_file"
     rm -f "$status_file"
     (
         echo "Log file: ${log_file}"
@@ -324,19 +348,20 @@ for distro in "${distros[@]}"; do
         echo "$status" > "$status_file"
         exit "$status"
     ) >"$log_file" 2>&1 &
-    pids["$distro"]=$!
-    log_info "Started ${distro} build (pid ${pids[$distro]}, log ${log_file})"
+    pids[$i]=$!
+    log_info "Started ${distro} build (pid ${pids[$i]}, log ${log_file})"
 done
 
 print_progress_snapshot
 monitor_progress
 
 overall_status=0
-for distro in "${distros[@]}"; do
-    if wait "${pids[$distro]}"; then
-        statuses["$distro"]=0
+for ((i = 0; i < ${#distros[@]}; i++)); do
+    distro="${distros[$i]}"
+    if wait "${pids[$i]}"; then
+        statuses[$i]=0
     else
-        statuses["$distro"]=$?
+        statuses[$i]=$?
         overall_status=1
     fi
 done
@@ -346,20 +371,21 @@ log_section "Package Build Summary"
 printf "%-10s %-8s %-10s %s\n" "Distro" "Status" "Packages" "Log"
 printf "%-10s %-8s %-10s %s\n" "------" "------" "--------" "---"
 
-for distro in "${distros[@]}"; do
+for ((i = 0; i < ${#distros[@]}; i++)); do
+    distro="${distros[$i]}"
     distro_output="${OUTPUT_DIR}/${distro}"
     package_count=0
     if [ -d "$distro_output" ]; then
         package_count="$(find "$distro_output" -maxdepth 1 -name '*.deb' -type f 2>/dev/null | wc -l | tr -d ' ')"
     fi
 
-    if [ "${statuses[$distro]}" -eq 0 ]; then
+    if [ "${statuses[$i]}" -eq 0 ]; then
         status_label="PASS"
     else
         status_label="FAIL"
     fi
 
-    printf "%-10s %-8s %-10s %s\n" "$distro" "$status_label" "$package_count" "${logs[$distro]}"
+    printf "%-10s %-8s %-10s %s\n" "$distro" "$status_label" "$package_count" "${logs[$i]}"
 done
 
 echo ""

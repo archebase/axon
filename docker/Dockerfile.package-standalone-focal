@@ -39,9 +39,20 @@ RUN apt-get update && apt-get install -y \
     vim-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable focal-backports for debhelper 13
+# Enable focal-backports for debhelper 13. Ubuntu arm64 packages live on ports.
 RUN ubuntu_mirror="$(cat /etc/apt/axon-ubuntu-mirror-url)" && \
-    add-apt-repository -y "deb ${ubuntu_mirror} focal-backports main universe" && \
+    case "$(dpkg --print-architecture)" in \
+        amd64|i386) backports_mirror="${ubuntu_mirror}" ;; \
+        *) \
+            if [ "${ubuntu_mirror}" = "http://archive.ubuntu.com/ubuntu" ]; then \
+                backports_mirror="http://ports.ubuntu.com/ubuntu-ports"; \
+            elif echo "${ubuntu_mirror}" | grep -Eq '(-ports|/ubuntu-ports)$'; then \
+                backports_mirror="${ubuntu_mirror}"; \
+            else \
+                backports_mirror="${ubuntu_mirror}-ports"; \
+            fi ;; \
+    esac && \
+    add-apt-repository -y "deb ${backports_mirror} focal-backports main universe" && \
     apt-get update && \
     apt-get install -y -t focal-backports debhelper && \
     rm -rf /var/lib/apt/lists/*
