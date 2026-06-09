@@ -102,6 +102,195 @@ std::string to_lower_ascii(std::string value) {
   return value;
 }
 
+std::string trim_ascii(std::string value) {
+  auto not_space = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+  value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+  return value;
+}
+
+std::string normalize_qos_policy_token(std::string value) {
+  value = trim_ascii(std::move(value));
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    if (c == '-' || std::isspace(c)) {
+      return '_';
+    }
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+bool json_has_value(const nlohmann::json& object, const char* key) {
+  if (!object.is_object() || !object.contains(key) || object[key].is_null()) {
+    return false;
+  }
+  if (object[key].is_string()) {
+    return !trim_ascii(object[key].get<std::string>()).empty();
+  }
+  return true;
+}
+
+bool json_field_is_auto(const nlohmann::json& object, const char* key) {
+  return json_has_value(object, key) && object[key].is_string() &&
+         normalize_qos_policy_token(object[key].get<std::string>()) == "auto";
+}
+
+std::optional<size_t> parse_optional_qos_depth_json(
+  const nlohmann::json& object, const char* key, bool* depth_auto = nullptr
+) {
+  if (!json_has_value(object, key)) {
+    return std::nullopt;
+  }
+  if (json_field_is_auto(object, key)) {
+    if (depth_auto != nullptr) {
+      *depth_auto = true;
+    }
+    return std::nullopt;
+  }
+  long long depth = 0;
+  if (object[key].is_string()) {
+    depth = std::stoll(trim_ascii(object[key].get<std::string>()));
+  } else {
+    depth = object[key].get<long long>();
+  }
+  return depth > 0 ? std::optional<size_t>(static_cast<size_t>(depth)) : std::optional<size_t>(0);
+}
+
+std::optional<std::string> parse_optional_qos_policy_json(
+  const nlohmann::json& object, const char* key
+) {
+  if (!json_has_value(object, key)) {
+    return std::nullopt;
+  }
+  return normalize_qos_policy_token(object[key].get<std::string>());
+}
+
+std::optional<std::string> parse_optional_qos_reliability_json(
+  const nlohmann::json& object, const char* key
+) {
+  if (!json_has_value(object, key)) {
+    return std::nullopt;
+  }
+  if (object[key].is_boolean()) {
+    return object[key].get<bool>() ? std::optional<std::string>("reliable")
+                                   : std::optional<std::string>("best_effort");
+  }
+  return normalize_qos_policy_token(object[key].get<std::string>());
+}
+
+RosQosConfig qos_config_from_json_object(const nlohmann::json& object) {
+  RosQosConfig qos;
+  if (!object.is_object()) {
+    return qos;
+  }
+
+  const nlohmann::json* qos_source = &object;
+  if (object.contains("qos") && object["qos"].is_object()) {
+    qos_source = &object["qos"];
+  }
+
+  if (auto mode = parse_optional_qos_policy_json(*qos_source, "mode")) {
+    qos.mode = mode;
+    qos.auto_mode = *mode == "auto";
+  }
+  if (auto depth = parse_optional_qos_depth_json(*qos_source, "depth", &qos.depth_auto)) {
+    qos.depth = depth;
+  }
+  if (auto depth = parse_optional_qos_depth_json(*qos_source, "qos_depth", &qos.depth_auto)) {
+    qos.depth = depth;
+  }
+  if (auto reliability = parse_optional_qos_reliability_json(*qos_source, "reliability")) {
+    qos.reliability = reliability;
+  }
+  if (auto reliability = parse_optional_qos_reliability_json(*qos_source, "reliable")) {
+    qos.reliability = reliability;
+  }
+  if (auto reliability = parse_optional_qos_reliability_json(object, "qos_reliable")) {
+    qos.reliability = reliability;
+  }
+  if (auto durability = parse_optional_qos_policy_json(*qos_source, "durability")) {
+    qos.durability = durability;
+  }
+  if (auto history = parse_optional_qos_policy_json(*qos_source, "history")) {
+    qos.history = history;
+  }
+
+  return qos;
+}
+
+nlohmann::json qos_config_to_json(const RosQosConfig& qos) {
+  nlohmann::json out = nlohmann::json::object();
+  if (qos.mode.has_value()) {
+    out["mode"] = *qos.mode;
+  } else if (qos.auto_mode) {
+    out["mode"] = "auto";
+  }
+  if (qos.depth_auto) {
+    out["depth"] = "auto";
+  }
+  if (qos.depth.has_value()) {
+    out["depth"] = *qos.depth;
+  }
+  if (qos.reliability.has_value()) {
+    out["reliability"] = *qos.reliability;
+  }
+  if (qos.durability.has_value()) {
+    out["durability"] = *qos.durability;
+  }
+  if (qos.history.has_value()) {
+    out["history"] = *qos.history;
+  }
+  return out;
+}
+
+void apply_qos_override(SubscriptionConfig& subscription, const RosQosConfig& qos) {
+  if (qos.auto_mode) {
+    subscription.qos.mode = qos.mode.value_or("auto");
+    subscription.qos.auto_mode = true;
+  } else if (qos.mode.has_value()) {
+    subscription.qos.mode = qos.mode;
+  }
+  if (qos.depth_auto) {
+    subscription.qos.depth_auto = true;
+  }
+  if (qos.depth.has_value()) {
+    subscription.qos_depth = *qos.depth;
+    subscription.qos.depth = qos.depth;
+  }
+  if (qos.reliability.has_value()) {
+    subscription.qos.reliability = qos.reliability;
+  }
+  if (qos.durability.has_value()) {
+    subscription.qos.durability = qos.durability;
+  }
+  if (qos.history.has_value()) {
+    subscription.qos.history = qos.history;
+  }
+}
+
+nlohmann::json subscription_options_json(const SubscriptionConfig& subscription) {
+  nlohmann::json opts;
+  opts["qos_depth"] = subscription.qos_depth;
+
+  if (subscription.qos.has_overrides()) {
+    opts["qos"] = qos_config_to_json(subscription.qos);
+    if (!subscription.qos.auto_mode && !opts["qos"].contains("depth")) {
+      opts["qos"]["depth"] = subscription.qos_depth;
+    }
+    if (subscription.qos.reliability == "reliable") {
+      opts["qos_reliable"] = true;
+    } else if (subscription.qos.reliability == "best_effort") {
+      opts["qos_reliable"] = false;
+    }
+  }
+
+  opts["depth_compression"]["enabled"] = subscription.depth_compression.enabled;
+  opts["depth_compression"]["level"] = subscription.depth_compression.level;
+  return opts;
+}
+
 std::string severity_to_level_string(axon::logging::severity_level level) {
   switch (level) {
     case axon::logging::severity_level::debug:
@@ -156,7 +345,36 @@ TaskConfig task_config_from_json(const nlohmann::json& config_json) {
   }
   if (config_json.contains("topics")) {
     for (const auto& topic : config_json["topics"]) {
-      config.topics.push_back(topic.get<std::string>());
+      if (topic.is_string()) {
+        config.topics.push_back(topic.get<std::string>());
+      } else if (topic.is_object()) {
+        const std::string topic_name = topic.contains("name") ? topic["name"].get<std::string>()
+                                                              : topic.value("topic", std::string{});
+        if (!topic_name.empty()) {
+          config.topics.push_back(topic_name);
+          RosQosConfig qos = qos_config_from_json_object(topic);
+          if (qos.has_overrides()) {
+            config.topic_qos.push_back({topic_name, std::move(qos)});
+          }
+        }
+      }
+    }
+  }
+  if (config_json.contains("topic_qos")) {
+    for (const auto& topic_qos_json : config_json["topic_qos"]) {
+      if (!topic_qos_json.is_object()) {
+        continue;
+      }
+      const std::string topic_name = topic_qos_json.contains("name")
+                                       ? topic_qos_json["name"].get<std::string>()
+                                       : topic_qos_json.value("topic", std::string{});
+      if (topic_name.empty()) {
+        continue;
+      }
+      RosQosConfig qos = qos_config_from_json_object(topic_qos_json);
+      if (qos.has_overrides()) {
+        config.topic_qos.push_back({topic_name, std::move(qos)});
+      }
     }
   }
   return config;
@@ -892,10 +1110,13 @@ bool AxonRecorder::start() {
     recording_session_->set_task_config(task_config_.value());
   }
 
+  current_session_subscriptions_ = build_session_subscriptions();
+
   // Register topics with MCAP and create topic workers
   if (!register_topics()) {
     set_error_helper("Failed to register topics");
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    current_session_subscriptions_.clear();
     recording_session_.reset();
     return false;
   }
@@ -904,6 +1125,7 @@ bool AxonRecorder::start() {
   if (!setup_subscriptions()) {
     set_error_helper("Failed to setup subscriptions: " + get_last_error());
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    current_session_subscriptions_.clear();
     recording_session_.reset();
     return false;
   }
@@ -912,6 +1134,7 @@ bool AxonRecorder::start() {
   if (!state_manager_.transition(RecorderState::READY, RecorderState::RECORDING, error_msg)) {
     set_error_helper("State transition to RECORDING failed: " + error_msg);
     state_manager_.transition_to(RecorderState::IDLE, error_msg);
+    current_session_subscriptions_.clear();
     recording_session_.reset();
     return false;
   }
@@ -935,6 +1158,7 @@ bool AxonRecorder::start() {
     if (st != AXON_SUCCESS) {
       set_error_helper(std::string("Plugin start failed (") + name + "): " + status_to_string(st));
       state_manager_.transition_to(RecorderState::IDLE, error_msg);
+      current_session_subscriptions_.clear();
       recording_session_.reset();
       return false;
     }
@@ -1064,6 +1288,7 @@ void AxonRecorder::stop() {
 
     recording_session_.reset();
   }
+  current_session_subscriptions_.clear();
 
   // 5. Keep plugins loaded until AxonRecorder destruction.
 
@@ -2091,6 +2316,40 @@ size_t AxonRecorder::latency_batch_message_handler(
   return written;
 }
 
+std::vector<SubscriptionConfig> AxonRecorder::build_session_subscriptions() const {
+  std::vector<SubscriptionConfig> subscriptions = config_.subscriptions;
+  if (!task_config_.has_value() || task_config_->topic_qos.empty()) {
+    return subscriptions;
+  }
+
+  for (const auto& topic_qos : task_config_->topic_qos) {
+    if (topic_qos.topic_name.empty() || !topic_qos.qos.has_overrides()) {
+      continue;
+    }
+
+    bool matched = false;
+    for (auto& subscription : subscriptions) {
+      if (subscription.topic_name == topic_qos.topic_name) {
+        apply_qos_override(subscription, topic_qos.qos);
+        matched = true;
+      }
+    }
+    if (!matched) {
+      AXON_LOG_WARN(
+        "Task QoS override does not match a configured subscription"
+        << axon::logging::kv("topic", topic_qos.topic_name)
+      );
+    }
+  }
+
+  return subscriptions;
+}
+
+const std::vector<SubscriptionConfig>& AxonRecorder::active_subscriptions() const {
+  return current_session_subscriptions_.empty() ? config_.subscriptions
+                                                : current_session_subscriptions_;
+}
+
 bool AxonRecorder::register_topics() {
   if (!recording_session_) {
     set_error_helper("No active recording session");
@@ -2103,7 +2362,7 @@ bool AxonRecorder::register_topics() {
   std::unordered_set<std::string> seen_subscription_keys;
 
   // Register schemas and channels for all subscriptions
-  for (const auto& sub : config_.subscriptions) {
+  for (const auto& sub : active_subscriptions()) {
     std::string sub_key = sub.topic_name;
     sub_key.push_back('\0');
     sub_key += sub.message_type;
@@ -2225,7 +2484,7 @@ bool AxonRecorder::setup_subscriptions() {
 
   bool need_ros = false;
   bool need_udp = false;
-  for (const auto& sub : config_.subscriptions) {
+  for (const auto& sub : active_subscriptions()) {
     if (sub.message_type == "axon_udp/json") {
       need_udp = true;
     } else {
@@ -2250,19 +2509,12 @@ bool AxonRecorder::setup_subscriptions() {
       );
     }
 
-    for (const auto& sub : config_.subscriptions) {
+    for (const auto& sub : active_subscriptions()) {
       if (sub.message_type == "axon_udp/json") {
         continue;
       }
 
-      std::string options_json;
-      {
-        nlohmann::json opts;
-        opts["qos_depth"] = sub.qos_depth;
-        opts["depth_compression"]["enabled"] = sub.depth_compression.enabled;
-        opts["depth_compression"]["level"] = sub.depth_compression.level;
-        options_json = opts.dump();
-      }
+      std::string options_json = subscription_options_json(sub).dump();
 
       AxonStatus status = AXON_ERROR_INTERNAL;
       if (ros_subscribe_v2 != nullptr) {
@@ -2303,7 +2555,7 @@ bool AxonRecorder::setup_subscriptions() {
     }
 
     const SubscriptionConfig* first_udp = nullptr;
-    for (const auto& sub : config_.subscriptions) {
+    for (const auto& sub : active_subscriptions()) {
       if (sub.message_type == "axon_udp/json") {
         first_udp = &sub;
         break;
@@ -2333,7 +2585,7 @@ bool AxonRecorder::setup_subscriptions() {
 const SubscriptionConfig* AxonRecorder::get_subscription_config(
   const std::string& topic_name
 ) const {
-  for (const auto& sub : config_.subscriptions) {
+  for (const auto& sub : active_subscriptions()) {
     if (sub.topic_name == topic_name) {
       return &sub;
     }

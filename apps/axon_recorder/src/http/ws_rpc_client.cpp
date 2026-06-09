@@ -26,6 +26,35 @@ using axon::logging::kv;
 namespace axon {
 namespace recorder {
 
+namespace {
+
+nlohmann::json qos_config_to_json(const RosQosConfig& qos) {
+  nlohmann::json out = nlohmann::json::object();
+  if (qos.mode.has_value()) {
+    out["mode"] = *qos.mode;
+  } else if (qos.auto_mode) {
+    out["mode"] = "auto";
+  }
+  if (qos.depth_auto) {
+    out["depth"] = "auto";
+  }
+  if (qos.depth.has_value()) {
+    out["depth"] = *qos.depth;
+  }
+  if (qos.reliability.has_value()) {
+    out["reliability"] = *qos.reliability;
+  }
+  if (qos.durability.has_value()) {
+    out["durability"] = *qos.durability;
+  }
+  if (qos.history.has_value()) {
+    out["history"] = *qos.history;
+  }
+  return out;
+}
+
+}  // namespace
+
 WsRpcClient::WsRpcClient(net::io_context& ioc, const WsClientConfig& config)
     : config_(config)
     , strand_(net::make_strand(ioc))
@@ -236,6 +265,13 @@ void WsRpcClient::send_config_update(const TaskConfig& config) {
   }
   if (!config.topics.empty()) {
     data["topics"] = config.topics;
+  }
+  if (!config.topic_qos.empty()) {
+    nlohmann::json topic_qos = nlohmann::json::array();
+    for (const auto& item : config.topic_qos) {
+      topic_qos.push_back({{"name", item.topic_name}, {"qos", qos_config_to_json(item.qos)}});
+    }
+    data["topic_qos"] = topic_qos;
   }
   msg["data"] = data;
 

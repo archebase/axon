@@ -64,6 +64,10 @@ using MessageCallbackV2 = std::function<void(
 struct SubscribeOptions {
   rclcpp::QoS qos;
   std::optional<DepthCompressionConfig> depth_compression;  // Depth compression config (optional)
+  bool qos_depth_auto = false;
+  bool qos_reliability_auto = false;
+  bool qos_durability_auto = false;
+  bool qos_history_auto = false;
 
   // Default constructor
   SubscribeOptions()
@@ -71,6 +75,11 @@ struct SubscribeOptions {
 };
 
 void apply_subscribe_qos_options(SubscribeOptions& options, const nlohmann::json& opts);
+
+SubscribeOptions resolve_auto_qos_options(
+  const rclcpp::Node::SharedPtr& node, const std::string& topic_name,
+  const std::string& message_type, const SubscribeOptions& options
+);
 
 class SubscriptionManager {
 public:

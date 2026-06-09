@@ -410,6 +410,46 @@ TEST_F(RpcHandlersTest, ConfigSuccess) {
   EXPECT_EQ("new_task_123", response.data["task_id"]);
 }
 
+TEST_F(RpcHandlersTest, ConfigAcceptsTopicQos) {
+  current_state_ = "idle";
+  RpcCallbacks callbacks = create_mock_callbacks();
+  callbacks.set_config = [&](const std::string& task_id, const nlohmann::json& config) -> bool {
+    EXPECT_EQ(task_id, "new_task_123");
+    if (!config["topics"][0].is_object()) {
+      return false;
+    }
+    EXPECT_EQ(config["topics"][0]["name"], "/camera/image");
+    EXPECT_EQ(config["topics"][0]["qos"]["depth"], 32);
+    EXPECT_EQ(config["topic_qos"][0]["name"], "/lidar/scan");
+    EXPECT_EQ(config["topic_qos"][0]["qos"]["mode"], "auto");
+    EXPECT_EQ(config["topic_qos"][0]["qos"]["reliability"], "auto");
+    current_state_ = "ready";
+    return true;
+  };
+
+  nlohmann::json params;
+  nlohmann::json topics = nlohmann::json::array();
+  topics.push_back(
+    {{"name", "/camera/image"},
+     {"qos", {{"depth", 32}, {"reliability", ""}, {"durability", ""}, {"history", ""}}}}
+  );
+  nlohmann::json topic_qos = nlohmann::json::array();
+  topic_qos.push_back(
+    {{"name", "/lidar/scan"}, {"qos", {{"mode", "auto"}, {"reliability", "auto"}}}}
+  );
+  params["task_config"] = {
+    {"task_id", "new_task_123"},
+    {"device_id", "robot_01"},
+    {"topics", topics},
+    {"topic_qos", topic_qos}
+  };
+
+  RpcResponse response = handle_rpc_config(callbacks, params);
+
+  EXPECT_TRUE(response.success);
+  EXPECT_EQ("Task configuration set successfully", response.message);
+}
+
 TEST_F(RpcHandlersTest, ConfigMissingTaskConfig) {
   RpcCallbacks callbacks = create_mock_callbacks();
   callbacks.set_config = [&](const std::string&, const nlohmann::json&) -> bool {
@@ -540,6 +580,13 @@ TEST_F(RpcHandlersTest, GetStateSuccess) {
   current_config_->device_id = "robot_01";
   current_config_->scene = "warehouse";
   current_config_->topics = {"/camera/image", "/lidar/scan"};
+  TopicQosConfig topic_qos;
+  topic_qos.topic_name = "/lidar/scan";
+  topic_qos.qos.mode = "auto";
+  topic_qos.qos.auto_mode = true;
+  topic_qos.qos.depth = 64;
+  topic_qos.qos.reliability = "best_effort";
+  current_config_->topic_qos.push_back(topic_qos);
 
   RpcCallbacks callbacks = create_mock_callbacks();
 
@@ -553,6 +600,9 @@ TEST_F(RpcHandlersTest, GetStateSuccess) {
   EXPECT_EQ("test_task_123", response.data["task_config"]["task_id"]);
   EXPECT_EQ("robot_01", response.data["task_config"]["device_id"]);
   EXPECT_EQ("warehouse", response.data["task_config"]["scene"]);
+  EXPECT_EQ("/lidar/scan", response.data["task_config"]["topic_qos"][0]["name"]);
+  EXPECT_EQ("auto", response.data["task_config"]["topic_qos"][0]["qos"]["mode"]);
+  EXPECT_EQ(64, response.data["task_config"]["topic_qos"][0]["qos"]["depth"]);
   EXPECT_TRUE(response.data.contains("version"));
 }
 

@@ -62,8 +62,16 @@ List of topics to record with batching settings:
 - `message_type`: ROS message type
 - `batch_size`: Number of messages to batch before writing
 - `flush_interval_ms`: Maximum time to wait before flushing (ms)
-- `qos_depth`: ROS2 subscription history depth (default `10`). This controls
-  the middleware QoS queue, not the recorder's `dataset.queue_size` worker queue.
+- `qos_depth`: Backward-compatible ROS2 subscription history depth (default `10`).
+- `qos`: Optional ROS2 QoS object. Any empty field falls back to the default.
+  - `mode`: `auto` to detect publisher QoS when available
+  - `depth`: History depth, or `auto` (default `10`)
+  - `reliability`: `reliable`, `best_effort`, or `auto` (default `reliable`)
+  - `durability`: `volatile`, `transient_local`, or `auto` (default `volatile`)
+  - `history`: `keep_last`, `keep_all`, or `auto` (default `keep_last`)
+
+QoS depth controls the ROS2 middleware queue, not the recorder's
+`dataset.queue_size` worker queue.
 
 ### Recording
 - `profile`: ROS profile (`ros1` or `ros2`)

@@ -6,6 +6,7 @@
 #define AXON_RECORDER_TASK_CONFIG_HPP
 
 #include <chrono>
+#include <cstddef>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -13,6 +14,26 @@
 
 namespace axon {
 namespace recorder {
+
+struct RosQosConfig {
+  std::optional<std::string> mode;
+  bool auto_mode = false;
+  bool depth_auto = false;
+  std::optional<size_t> depth;
+  std::optional<std::string> reliability;
+  std::optional<std::string> durability;
+  std::optional<std::string> history;
+
+  bool has_overrides() const {
+    return mode.has_value() || auto_mode || depth_auto || depth.has_value() ||
+           reliability.has_value() || durability.has_value() || history.has_value();
+  }
+};
+
+struct TopicQosConfig {
+  std::string topic_name;
+  RosQosConfig qos;
+};
 
 /**
  * TaskConfig holds all metadata for a recording task pushed from the server.
@@ -35,6 +56,7 @@ struct TaskConfig {
 
   // Topic Selection
   std::vector<std::string> topics;
+  std::vector<TopicQosConfig> topic_qos;
 
   // Server Callback Integration
   std::string start_callback_url;

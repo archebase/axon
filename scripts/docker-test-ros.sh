@@ -32,6 +32,8 @@ BUILD_IMAGE=false
 CLEAN_BUILD=false
 DISTRO=""
 
+source "${SCRIPT_DIR}/docker-apt-mirror-common.sh"
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -93,13 +95,18 @@ echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}Docker ROS Tests - ${DISTRO}${NC}"
 echo -e "${BLUE}=============================================${NC}"
 echo ""
+configure_axon_docker_apt_mirror
+echo -e "Docker apt mirror: ${YELLOW}${AXON_DOCKER_APT_MIRROR}${NC}"
+echo ""
 
 # Build Docker image if requested or not exists
 if [ "$BUILD_IMAGE" = true ] || ! docker image inspect ${IMAGE_NAME} &>/dev/null; then
     echo -e "${YELLOW}Building Docker image for ${DISTRO}...${NC}"
     DOCKER_BUILDKIT=1 docker build \
+        --network=host \
         -f "${PROJECT_ROOT}/${DOCKERFILE}" \
         -t ${IMAGE_NAME} \
+        "${DOCKER_APT_MIRROR_BUILD_ARGS[@]}" \
         "${PROJECT_ROOT}" || {
         echo -e "${RED}Build failed. See docker/TROUBLESHOOTING.md${NC}"
         exit 1

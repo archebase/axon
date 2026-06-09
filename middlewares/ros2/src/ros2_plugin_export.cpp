@@ -5,12 +5,16 @@
 // ROS2 Plugin C ABI Export
 // Direct C interface without shared ABI header dependency
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <vector>
 
 // JSON library
@@ -32,26 +36,157 @@ using namespace ros2_plugin;
 
 namespace ros2_plugin {
 
+std::string trim_ascii(std::string value) {
+  auto not_space = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+  value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+  return value;
+}
+
+std::string normalize_qos_policy_token(std::string value) {
+  value = trim_ascii(std::move(value));
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    if (c == '-' || std::isspace(c)) {
+      return '_';
+    }
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+bool json_has_value(const nlohmann::json& object, const char* key) {
+  if (!object.is_object() || !object.contains(key) || object[key].is_null()) {
+    return false;
+  }
+  if (object[key].is_string()) {
+    return !trim_ascii(object[key].get<std::string>()).empty();
+  }
+  return true;
+}
+
+bool json_field_is_auto(const nlohmann::json& object, const char* key) {
+  return json_has_value(object, key) && object[key].is_string() &&
+         normalize_qos_policy_token(object[key].get<std::string>()) == "auto";
+}
+
+std::optional<size_t> read_qos_depth(const nlohmann::json& object, const char* key) {
+  if (!json_has_value(object, key)) {
+    return std::nullopt;
+  }
+  if (json_field_is_auto(object, key)) {
+    return std::nullopt;
+  }
+  long long depth = 0;
+  if (object[key].is_string()) {
+    depth = std::stoll(trim_ascii(object[key].get<std::string>()));
+  } else {
+    depth = object[key].get<long long>();
+  }
+  return depth > 0 ? std::optional<size_t>(static_cast<size_t>(depth)) : std::optional<size_t>(0);
+}
+
+std::optional<std::string> read_qos_policy(const nlohmann::json& object, const char* key) {
+  if (!json_has_value(object, key)) {
+    return std::nullopt;
+  }
+  return normalize_qos_policy_token(object[key].get<std::string>());
+}
+
+std::optional<bool> read_qos_reliable(const nlohmann::json& object, const char* key) {
+  if (!json_has_value(object, key)) {
+    return std::nullopt;
+  }
+  if (object[key].is_boolean()) {
+    return object[key].get<bool>();
+  }
+  const std::string reliability = normalize_qos_policy_token(object[key].get<std::string>());
+  if (reliability == "reliable") {
+    return true;
+  }
+  if (reliability == "best_effort") {
+    return false;
+  }
+  return std::nullopt;
+}
+
 void apply_subscribe_qos_options(SubscribeOptions& options, const nlohmann::json& opts) {
   size_t qos_depth = 10;
-  if (opts.contains("qos_depth")) {
-    qos_depth = opts["qos_depth"].get<size_t>();
-  } else if (opts.contains("queue_size")) {
-    qos_depth = opts["queue_size"].get<size_t>();
+  const nlohmann::json* qos_opts = &opts;
+  if (opts.contains("qos") && opts["qos"].is_object()) {
+    qos_opts = &opts["qos"];
+  }
+
+  const bool auto_mode = read_qos_policy(*qos_opts, "mode").value_or(std::string{}) == "auto";
+  if (auto_mode) {
+    options.qos_depth_auto = true;
+    options.qos_reliability_auto = true;
+    options.qos_durability_auto = true;
+    options.qos_history_auto = true;
+  }
+
+  if (json_field_is_auto(*qos_opts, "depth") || json_field_is_auto(*qos_opts, "qos_depth")) {
+    options.qos_depth_auto = true;
+  }
+  if (auto depth = read_qos_depth(*qos_opts, "depth")) {
+    options.qos_depth_auto = false;
+    qos_depth = *depth;
+  } else if (auto depth = read_qos_depth(*qos_opts, "qos_depth")) {
+    options.qos_depth_auto = false;
+    qos_depth = *depth;
+  } else if (auto depth = read_qos_depth(opts, "qos_depth")) {
+    qos_depth = *depth;
+  } else if (auto depth = read_qos_depth(opts, "queue_size")) {
+    qos_depth = *depth;
   }
   if (qos_depth == 0) {
     qos_depth = 10;
   }
 
-  options.qos = rclcpp::QoS(rclcpp::KeepLast(qos_depth));
-  const bool reliable =
-    opts.contains("qos_reliable") ? opts["qos_reliable"].get<bool>() : opts.value("reliable", true);
+  const std::string history = read_qos_policy(*qos_opts, "history").value_or("keep_last");
+  if (history == "auto") {
+    options.qos_history_auto = true;
+  } else if (json_has_value(*qos_opts, "history")) {
+    options.qos_history_auto = false;
+  }
+  if (history == "keep_all") {
+    options.qos = rclcpp::QoS(rclcpp::KeepAll());
+  } else {
+    options.qos = rclcpp::QoS(rclcpp::KeepLast(qos_depth));
+  }
+
+  bool reliable = true;
+  if (json_field_is_auto(*qos_opts, "reliability") || json_field_is_auto(*qos_opts, "reliable")) {
+    options.qos_reliability_auto = true;
+  } else if (auto qos_reliable = read_qos_reliable(*qos_opts, "reliability")) {
+    options.qos_reliability_auto = false;
+    reliable = *qos_reliable;
+  } else if (auto qos_reliable = read_qos_reliable(*qos_opts, "reliable")) {
+    options.qos_reliability_auto = false;
+    reliable = *qos_reliable;
+  } else if (auto qos_reliable = read_qos_reliable(opts, "qos_reliable")) {
+    reliable = *qos_reliable;
+  } else if (auto legacy_reliable = read_qos_reliable(opts, "reliable")) {
+    reliable = *legacy_reliable;
+  }
   if (reliable) {
     options.qos.reliable();
   } else {
     options.qos.best_effort();
   }
-  options.qos.durability_volatile();
+
+  const std::string durability = read_qos_policy(*qos_opts, "durability").value_or("volatile");
+  if (durability == "auto") {
+    options.qos_durability_auto = true;
+  } else if (json_has_value(*qos_opts, "durability")) {
+    options.qos_durability_auto = false;
+  }
+  if (durability == "transient_local") {
+    options.qos.transient_local();
+  } else {
+    options.qos.durability_volatile();
+  }
 }
 
 }  // namespace ros2_plugin

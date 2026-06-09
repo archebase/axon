@@ -294,6 +294,116 @@ TEST(Ros2PluginExportTest, AppliesBestEffortReliability) {
   EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
 }
 
+TEST(Ros2PluginExportTest, AppliesNestedQosOptions) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(
+    options,
+    nlohmann::json::parse(
+      R"({"qos":{"depth":64,"reliability":"best_effort","durability":"transient_local"}})"
+    )
+  );
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, 64u);
+  EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
+  EXPECT_EQ(qos.durability, RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+}
+
+TEST(Ros2PluginExportTest, BlankNestedQosFallsBackToDefaults) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(
+    options,
+    nlohmann::json::parse(R"({"qos":{"depth":"","reliability":"","durability":"","history":""}})")
+  );
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, 10u);
+  EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+  EXPECT_EQ(qos.durability, RMW_QOS_POLICY_DURABILITY_VOLATILE);
+}
+
+TEST(Ros2PluginExportTest, AppliesKeepAllHistory) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"qos":{"history":"keep_all"}})"));
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.history, RMW_QOS_POLICY_HISTORY_KEEP_ALL);
+}
+
+TEST(Ros2PluginExportTest, ParsesAutoQosMode) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"qos":{"mode":"auto"}})"));
+
+  EXPECT_TRUE(options.qos_depth_auto);
+  EXPECT_TRUE(options.qos_reliability_auto);
+  EXPECT_TRUE(options.qos_durability_auto);
+  EXPECT_TRUE(options.qos_history_auto);
+}
+
+TEST(Ros2PluginExportTest, ExplicitQosFieldsOverrideAutoMode) {
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(
+    options,
+    nlohmann::json::parse(
+      R"({"qos":{"mode":"auto","depth":64,"reliability":"reliable","durability":"auto"}})"
+    )
+  );
+
+  const auto& qos = options.qos.get_rmw_qos_profile();
+  EXPECT_FALSE(options.qos_depth_auto);
+  EXPECT_FALSE(options.qos_reliability_auto);
+  EXPECT_TRUE(options.qos_durability_auto);
+  EXPECT_TRUE(options.qos_history_auto);
+  EXPECT_EQ(qos.depth, 64u);
+  EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+}
+
+TEST_F(Ros2PluginTest, AutoQosFallsBackByTopicTypeWhenNoPublisherExists) {
+  auto node = std::make_shared<rclcpp::Node>("auto_qos_fallback_node");
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"qos":{"mode":"auto"}})"));
+
+  const auto resolved =
+    resolve_auto_qos_options(node, "/camera/image", "sensor_msgs/msg/Image", options);
+  const auto& qos = resolved.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, 10u);
+  EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
+  EXPECT_EQ(qos.durability, RMW_QOS_POLICY_DURABILITY_VOLATILE);
+  EXPECT_EQ(qos.history, RMW_QOS_POLICY_HISTORY_KEEP_LAST);
+}
+
+TEST_F(Ros2PluginTest, AutoQosUsesPublisherEndpointQos) {
+  const std::string topic = "/axon_auto_qos_test";
+  auto pub_node = std::make_shared<rclcpp::Node>("auto_qos_pub_node");
+  auto sub_node = std::make_shared<rclcpp::Node>("auto_qos_sub_node");
+
+  rclcpp::QoS publisher_qos(rclcpp::KeepLast(7));
+  publisher_qos.best_effort();
+  publisher_qos.transient_local();
+  auto publisher = pub_node->create_generic_publisher(topic, "std_msgs/msg/String", publisher_qos);
+  ASSERT_NE(publisher, nullptr);
+
+  for (int i = 0; i < 50; ++i) {
+    if (!sub_node->get_publishers_info_by_topic(topic).empty()) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  const auto publisher_infos = sub_node->get_publishers_info_by_topic(topic);
+  ASSERT_FALSE(publisher_infos.empty());
+  const auto& endpoint_qos = publisher_infos.front().qos_profile().get_rmw_qos_profile();
+
+  ros2_plugin::SubscribeOptions options;
+  apply_subscribe_qos_options(options, nlohmann::json::parse(R"({"qos":{"mode":"auto"}})"));
+
+  const auto resolved = resolve_auto_qos_options(sub_node, topic, "std_msgs/msg/String", options);
+  const auto& qos = resolved.qos.get_rmw_qos_profile();
+  EXPECT_EQ(qos.depth, endpoint_qos.depth > 0 ? endpoint_qos.depth : 10u);
+  EXPECT_EQ(qos.reliability, RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT);
+  EXPECT_EQ(qos.durability, RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+  EXPECT_EQ(qos.history, RMW_QOS_POLICY_HISTORY_KEEP_LAST);
+}
+
 /**
  * @brief Test stop without explicit start (cleanup in destructor)
  */

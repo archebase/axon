@@ -1,5 +1,10 @@
 FROM ros:jazzy-ros-base
 
+ARG AXON_APT_MIRROR=default
+COPY docker/scripts/setup-apt-mirror.sh /usr/local/bin/setup-apt-mirror.sh
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh && \
+    /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
+
 # =============================================================================
 # IMPORTANT: When adding new dependencies here, also update:
 #   .github/workflows/ci.yml -> ADDITIONAL_DEBS
@@ -26,9 +31,10 @@ RUN apt-get update && apt-get install -y \
 
 # Install clang-format-21 from LLVM repository
 RUN . /etc/os-release && \
+    LLVM_APT_MIRROR="$(cat /etc/apt/axon-llvm-mirror-url 2>/dev/null || echo https://apt.llvm.org)" && \
     wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
         gpg --dearmor -o /usr/share/keyrings/apt.llvm.org.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-21 main" > \
+    echo "deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] ${LLVM_APT_MIRROR}/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-21 main" > \
         /etc/apt/sources.list.d/llvm-21.list && \
     apt-get update && \
     apt-get install -y clang-format-21 && \

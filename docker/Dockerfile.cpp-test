@@ -12,6 +12,11 @@
 
 FROM ubuntu:22.04
 
+ARG AXON_APT_MIRROR=default
+COPY docker/scripts/setup-apt-mirror.sh /usr/local/bin/setup-apt-mirror.sh
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh && \
+    /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
+
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -107,9 +112,10 @@ RUN apt-get update && apt-get install -y \
     lsb-release wget software-properties-common gnupg \
     && rm -rf /var/lib/apt/lists/*
 RUN . /etc/os-release && \
+    LLVM_APT_MIRROR="$(cat /etc/apt/axon-llvm-mirror-url 2>/dev/null || echo https://apt.llvm.org)" && \
     wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
         gpg --dearmor -o /usr/share/keyrings/apt.llvm.org.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-21 main" > \
+    echo "deb [signed-by=/usr/share/keyrings/apt.llvm.org.gpg] ${LLVM_APT_MIRROR}/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-21 main" > \
         /etc/apt/sources.list.d/llvm-21.list && \
     apt-get update && apt-get install -y \
     clang-format-21 \
