@@ -10,6 +10,7 @@ ubuntu_mirror="$default_mirror"
 ubuntu_ports_mirror="http://ports.ubuntu.com/ubuntu-ports"
 ros1_mirror="http://packages.ros.org/ros/ubuntu"
 ros2_mirror="http://packages.ros.org/ros2/ubuntu"
+llvm_mirror="https://apt.llvm.org"
 strip_ros_sources=0
 
 case "$mirror" in
@@ -19,6 +20,7 @@ case "$mirror" in
         ubuntu_mirror="http://mirrors.tuna.tsinghua.edu.cn/ubuntu"
         ros1_mirror="http://mirrors.tuna.tsinghua.edu.cn/ros/ubuntu"
         ros2_mirror="http://mirrors.tuna.tsinghua.edu.cn/ros2/ubuntu"
+        llvm_mirror="https://mirrors.tuna.tsinghua.edu.cn/llvm-apt"
         strip_ros_sources=1
         ;;
     http://*|https://*)
@@ -41,6 +43,7 @@ fi
 
 mkdir -p /etc/apt
 printf "%s\n" "$ubuntu_mirror" > /etc/apt/axon-ubuntu-mirror-url
+printf "%s\n" "$llvm_mirror" > /etc/apt/axon-llvm-mirror-url
 mkdir -p /etc/apt/apt.conf.d
 cat > /etc/apt/apt.conf.d/80axon-retries <<EOF
 Acquire::Retries "5";
@@ -54,6 +57,7 @@ if [ "$ubuntu_mirror" = "$default_mirror" ]; then
 fi
 
 echo "Using Ubuntu apt mirror: ${ubuntu_mirror}"
+echo "Using LLVM apt mirror: ${llvm_mirror}"
 
 rewrite_file() {
     file="$1"
@@ -80,6 +84,7 @@ rewrite_file() {
         -e "s|https://packages.ros.org/ros/ubuntu|${ros1_mirror}|g" \
         -e "s|http://packages.ros.org/ros2/ubuntu|${ros2_mirror}|g" \
         -e "s|https://packages.ros.org/ros2/ubuntu|${ros2_mirror}|g" \
+        -e "s|https://apt.llvm.org|${llvm_mirror}|g" \
         "$file"
 
     if [ "$strip_ros_sources" -eq 1 ] && { grep -Fq "$ros1_mirror" "$file" || grep -Fq "$ros2_mirror" "$file"; }; then
