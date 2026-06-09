@@ -99,6 +99,12 @@ subscriptions:
     message_type: sensor_msgs/Imu
     batch_size: 200
     flush_interval_ms: 100
+    qos:
+      mode: auto
+      depth: 24
+      reliability: best-effort
+      durability: transient_local
+      history: keep_last
 
 recording:
   max_disk_usage_gb: 50.0
@@ -172,9 +178,16 @@ upload:
   EXPECT_EQ(config.subscriptions[0].batch_size, 50);
   EXPECT_EQ(config.subscriptions[0].flush_interval_ms, 500);
   EXPECT_EQ(config.subscriptions[0].qos_depth, 64u);
+  EXPECT_FALSE(config.subscriptions[0].qos.has_overrides());
   EXPECT_EQ(config.subscriptions[1].topic_name, "/imu/data");
   EXPECT_EQ(config.subscriptions[1].batch_size, 200);
-  EXPECT_EQ(config.subscriptions[1].qos_depth, 10u);
+  EXPECT_TRUE(config.subscriptions[1].qos.auto_mode);
+  EXPECT_EQ(config.subscriptions[1].qos.mode.value(), "auto");
+  EXPECT_EQ(config.subscriptions[1].qos_depth, 24u);
+  EXPECT_EQ(config.subscriptions[1].qos.depth.value(), 24u);
+  EXPECT_EQ(config.subscriptions[1].qos.reliability.value(), "best_effort");
+  EXPECT_EQ(config.subscriptions[1].qos.durability.value(), "transient_local");
+  EXPECT_EQ(config.subscriptions[1].qos.history.value(), "keep_last");
 
   EXPECT_DOUBLE_EQ(config.recording.max_disk_usage_gb, 50.0);
   EXPECT_DOUBLE_EQ(config.recording.disk_usage.warn_usage_gb, 40.0);
@@ -323,6 +336,60 @@ subscriptions:
   EXPECT_EQ(config.upload.retry.max_retries, 5);
   EXPECT_EQ(config.upload.num_workers, 2);
   EXPECT_TRUE(config.upload.delete_after_upload);
+}
+
+TEST_F(ConfigParserTest, BlankQosFieldsFallBackToDefaults) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+subscriptions:
+  - name: /test
+    message_type: std_msgs/String
+    qos_depth:
+    qos:
+      depth:
+      reliability:
+      durability:
+      history:
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  ASSERT_TRUE(parser.load_from_string(yaml, config));
+  ASSERT_EQ(config.subscriptions.size(), 1);
+  EXPECT_EQ(config.subscriptions[0].qos_depth, 10u);
+  EXPECT_FALSE(config.subscriptions[0].qos.has_overrides());
+
+  std::string error_msg;
+  EXPECT_TRUE(ConfigParser::validate(config, error_msg));
+}
+
+TEST_F(ConfigParserTest, AutoQosFieldsArePreserved) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+subscriptions:
+  - name: /test
+    message_type: sensor_msgs/msg/Image
+    qos:
+      depth: auto
+      reliability: auto
+      durability: auto
+      history: auto
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  ASSERT_TRUE(parser.load_from_string(yaml, config));
+  ASSERT_EQ(config.subscriptions.size(), 1);
+  EXPECT_TRUE(config.subscriptions[0].qos.has_overrides());
+  EXPECT_TRUE(config.subscriptions[0].qos.depth_auto);
+  EXPECT_EQ(config.subscriptions[0].qos.reliability.value(), "auto");
+  EXPECT_EQ(config.subscriptions[0].qos.durability.value(), "auto");
+  EXPECT_EQ(config.subscriptions[0].qos.history.value(), "auto");
+
+  std::string error_msg;
+  EXPECT_TRUE(ConfigParser::validate(config, error_msg));
 }
 
 // ============================================================================
@@ -483,6 +550,26 @@ subscriptions:
   RecorderConfig config;
   EXPECT_FALSE(parser.load_from_string(yaml, config));
   EXPECT_FALSE(parser.get_last_error().empty());
+}
+
+TEST_F(ConfigParserTest, InvalidQosReliabilityFailsValidation) {
+  const std::string yaml = R"(
+dataset:
+  path: /data
+subscriptions:
+  - name: /test
+    message_type: std_msgs/String
+    qos:
+      reliability: maybe
+)";
+
+  ConfigParser parser;
+  RecorderConfig config;
+  ASSERT_TRUE(parser.load_from_string(yaml, config));
+
+  std::string error_msg;
+  EXPECT_FALSE(ConfigParser::validate(config, error_msg));
+  EXPECT_EQ(error_msg, "Subscription qos.reliability must be 'reliable', 'best_effort', or 'auto'");
 }
 
 TEST_F(ConfigParserTest, ValidateFailsWithInvalidMode) {

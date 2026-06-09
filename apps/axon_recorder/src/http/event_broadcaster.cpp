@@ -11,6 +11,35 @@
 namespace axon {
 namespace recorder {
 
+namespace {
+
+nlohmann::json qos_config_to_json(const RosQosConfig& qos) {
+  nlohmann::json out = nlohmann::json::object();
+  if (qos.mode.has_value()) {
+    out["mode"] = *qos.mode;
+  } else if (qos.auto_mode) {
+    out["mode"] = "auto";
+  }
+  if (qos.depth_auto) {
+    out["depth"] = "auto";
+  }
+  if (qos.depth.has_value()) {
+    out["depth"] = *qos.depth;
+  }
+  if (qos.reliability.has_value()) {
+    out["reliability"] = *qos.reliability;
+  }
+  if (qos.durability.has_value()) {
+    out["durability"] = *qos.durability;
+  }
+  if (qos.history.has_value()) {
+    out["history"] = *qos.history;
+  }
+  return out;
+}
+
+}  // namespace
+
 EventBroadcaster::EventBroadcaster(WebSocketServer& ws_server)
     : ws_server_(ws_server)
     , stats_running_(false) {}
@@ -68,12 +97,20 @@ void EventBroadcaster::broadcast_config_change(const TaskConfig* config) {
 
   if (config != nullptr) {
     data["action"] = "set";
-    data["task_config"] = {
+    nlohmann::json task_config = {
       {"task_id", config->task_id},
       {"device_id", config->device_id},
       {"scene", config->scene},
       {"topics", config->topics}
     };
+    if (!config->topic_qos.empty()) {
+      nlohmann::json topic_qos = nlohmann::json::array();
+      for (const auto& item : config->topic_qos) {
+        topic_qos.push_back({{"name", item.topic_name}, {"qos", qos_config_to_json(item.qos)}});
+      }
+      task_config["topic_qos"] = topic_qos;
+    }
+    data["task_config"] = task_config;
   } else {
     data["action"] = "clear";
   }

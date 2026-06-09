@@ -4,7 +4,10 @@
 
 #include "rpc_handlers.hpp"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
+#include <cstdlib>
 #include <vector>
 
 #include "../config/task_config.hpp"
@@ -73,6 +76,201 @@ void validate_string_array_field(
   }
 }
 
+std::string trim_ascii(std::string value) {
+  auto not_space = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+  value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+  return value;
+}
+
+std::string normalize_qos_policy_token(std::string value) {
+  value = trim_ascii(std::move(value));
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    if (c == '-' || std::isspace(c)) {
+      return '_';
+    }
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+bool json_field_has_value(const nlohmann::json& object, const std::string& field) {
+  if (!object.is_object() || !object.contains(field) || object[field].is_null()) {
+    return false;
+  }
+  if (object[field].is_string()) {
+    return !trim_ascii(object[field].get<std::string>()).empty();
+  }
+  return true;
+}
+
+bool parse_positive_depth(const nlohmann::json& value, long long& depth) {
+  if (value.is_number_integer() || value.is_number_unsigned()) {
+    depth = value.get<long long>();
+    return true;
+  }
+  if (!value.is_string()) {
+    return false;
+  }
+  const std::string text = trim_ascii(value.get<std::string>());
+  if (text.empty()) {
+    depth = 0;
+    return true;
+  }
+  char* end = nullptr;
+  depth = std::strtoll(text.c_str(), &end, 10);
+  return end != nullptr && *end == '\0';
+}
+
+bool json_value_is_auto(const nlohmann::json& value) {
+  return value.is_string() && normalize_qos_policy_token(value.get<std::string>()) == "auto";
+}
+
+void validate_qos_depth_field(
+  const nlohmann::json& object, const std::string& field, const std::string& prefix,
+  std::vector<ValidationError>& errors
+) {
+  if (!json_field_has_value(object, field)) {
+    return;
+  }
+  if (json_value_is_auto(object[field])) {
+    return;
+  }
+  long long depth = 0;
+  if (!parse_positive_depth(object[field], depth) || depth <= 0) {
+    errors.push_back({prefix + field, "invalid_value", prefix + field + " must be > 0 or auto"});
+  }
+}
+
+void validate_qos_policy_field(
+  const nlohmann::json& object, const std::string& field, const std::string& prefix,
+  const std::vector<std::string>& allowed, std::vector<ValidationError>& errors
+) {
+  if (!json_field_has_value(object, field)) {
+    return;
+  }
+  if (!object[field].is_string()) {
+    errors.push_back({prefix + field, "invalid_type", prefix + field + " must be a string"});
+    return;
+  }
+  const std::string normalized = normalize_qos_policy_token(object[field].get<std::string>());
+  if (std::find(allowed.begin(), allowed.end(), normalized) == allowed.end()) {
+    errors.push_back({prefix + field, "invalid_value", prefix + field + " has unsupported value"});
+  }
+}
+
+void validate_qos_reliability_field(
+  const nlohmann::json& object, const std::string& field, const std::string& prefix,
+  std::vector<ValidationError>& errors
+) {
+  if (!json_field_has_value(object, field)) {
+    return;
+  }
+  if (object[field].is_boolean()) {
+    return;
+  }
+  validate_qos_policy_field(object, field, prefix, {"reliable", "best_effort", "auto"}, errors);
+}
+
+void validate_qos_object(
+  const nlohmann::json& object, const std::string& prefix, std::vector<ValidationError>& errors
+) {
+  if (!object.is_object()) {
+    errors.push_back({prefix, "invalid_type", prefix + " must be an object"});
+    return;
+  }
+
+  const nlohmann::json* qos_source = &object;
+  std::string qos_prefix = prefix;
+  if (object.contains("qos")) {
+    if (object["qos"].is_null()) {
+      return;
+    }
+    if (!object["qos"].is_object()) {
+      errors.push_back({prefix + "qos", "invalid_type", prefix + "qos must be an object"});
+      return;
+    }
+    qos_source = &object["qos"];
+    qos_prefix = prefix + "qos.";
+  }
+
+  validate_qos_policy_field(*qos_source, "mode", qos_prefix, {"auto"}, errors);
+  validate_qos_depth_field(*qos_source, "depth", qos_prefix, errors);
+  validate_qos_depth_field(*qos_source, "qos_depth", qos_prefix, errors);
+  validate_qos_reliability_field(*qos_source, "reliability", qos_prefix, errors);
+  validate_qos_reliability_field(*qos_source, "reliable", qos_prefix, errors);
+  validate_qos_reliability_field(object, "qos_reliable", prefix, errors);
+  validate_qos_policy_field(
+    *qos_source, "durability", qos_prefix, {"volatile", "transient_local", "auto"}, errors
+  );
+  validate_qos_policy_field(
+    *qos_source, "history", qos_prefix, {"keep_last", "keep_all", "auto"}, errors
+  );
+}
+
+void validate_topics_field(const nlohmann::json& object, std::vector<ValidationError>& errors) {
+  if (!object.contains("topics")) {
+    return;
+  }
+  if (!object["topics"].is_array()) {
+    errors.push_back({"topics", "invalid_type", "topics must be an array"});
+    return;
+  }
+  for (size_t i = 0; i < object["topics"].size(); ++i) {
+    const auto& item = object["topics"][i];
+    const std::string prefix = "topics[" + std::to_string(i) + "].";
+    if (item.is_string()) {
+      continue;
+    }
+    if (!item.is_object()) {
+      errors.push_back(
+        {"topics[" + std::to_string(i) + "]",
+         "invalid_type",
+         "topics entries must be strings or objects"}
+      );
+      continue;
+    }
+    if (!json_field_has_value(item, "name") && !json_field_has_value(item, "topic")) {
+      errors.push_back({prefix + "name", "missing_required", prefix + "name is required"});
+    } else if ((item.contains("name") && !item["name"].is_string()) ||
+               (item.contains("topic") && !item["topic"].is_string())) {
+      errors.push_back({prefix + "name", "invalid_type", prefix + "name must be a string"});
+    }
+    validate_qos_object(item, prefix, errors);
+  }
+}
+
+void validate_topic_qos_field(const nlohmann::json& object, std::vector<ValidationError>& errors) {
+  if (!object.contains("topic_qos")) {
+    return;
+  }
+  if (!object["topic_qos"].is_array()) {
+    errors.push_back({"topic_qos", "invalid_type", "topic_qos must be an array"});
+    return;
+  }
+  for (size_t i = 0; i < object["topic_qos"].size(); ++i) {
+    const auto& item = object["topic_qos"][i];
+    const std::string prefix = "topic_qos[" + std::to_string(i) + "].";
+    if (!item.is_object()) {
+      errors.push_back(
+        {"topic_qos[" + std::to_string(i) + "]",
+         "invalid_type",
+         "topic_qos entries must be objects"}
+      );
+      continue;
+    }
+    if (!json_field_has_value(item, "name") && !json_field_has_value(item, "topic")) {
+      errors.push_back({prefix + "name", "missing_required", prefix + "name is required"});
+    } else if ((item.contains("name") && !item["name"].is_string()) ||
+               (item.contains("topic") && !item["topic"].is_string())) {
+      errors.push_back({prefix + "name", "invalid_type", prefix + "name must be a string"});
+    }
+    validate_qos_object(item, prefix, errors);
+  }
+}
+
 std::vector<ValidationError> validate_task_config_json(const nlohmann::json& config_json) {
   std::vector<ValidationError> errors;
   if (!config_json.is_object()) {
@@ -98,9 +296,35 @@ std::vector<ValidationError> validate_task_config_json(const nlohmann::json& con
     require_string_field(config_json, field, errors, false);
   }
   validate_string_array_field(config_json, "skills", errors);
-  validate_string_array_field(config_json, "topics", errors);
+  validate_topics_field(config_json, errors);
+  validate_topic_qos_field(config_json, errors);
 
   return errors;
+}
+
+nlohmann::json qos_config_to_public_json(const RosQosConfig& qos) {
+  nlohmann::json out = nlohmann::json::object();
+  if (qos.mode.has_value()) {
+    out["mode"] = *qos.mode;
+  } else if (qos.auto_mode) {
+    out["mode"] = "auto";
+  }
+  if (qos.depth_auto) {
+    out["depth"] = "auto";
+  }
+  if (qos.depth.has_value()) {
+    out["depth"] = *qos.depth;
+  }
+  if (qos.reliability.has_value()) {
+    out["reliability"] = *qos.reliability;
+  }
+  if (qos.durability.has_value()) {
+    out["durability"] = *qos.durability;
+  }
+  if (qos.history.has_value()) {
+    out["history"] = *qos.history;
+  }
+  return out;
 }
 
 nlohmann::json task_config_to_public_json(const TaskConfig& task_config) {
@@ -115,6 +339,15 @@ nlohmann::json task_config_to_public_json(const TaskConfig& task_config) {
   config_json["factory"] = task_config.factory;
   config_json["operator_name"] = task_config.operator_name;
   config_json["topics"] = task_config.topics;
+  if (!task_config.topic_qos.empty()) {
+    nlohmann::json topic_qos = nlohmann::json::array();
+    for (const auto& item : task_config.topic_qos) {
+      topic_qos.push_back(
+        {{"name", item.topic_name}, {"qos", qos_config_to_public_json(item.qos)}}
+      );
+    }
+    config_json["topic_qos"] = topic_qos;
+  }
   return config_json;
 }
 

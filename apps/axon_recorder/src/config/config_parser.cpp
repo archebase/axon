@@ -6,7 +6,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 #include "../core/recorder.hpp"
@@ -39,6 +42,150 @@ void apply_sidecar_generation_mode(RecordingConfig& recording, std::string mode)
   }
   recording.sidecar_generation_mode = mode;
   recording.sidecar_json_enabled = mode != "none";
+}
+
+std::string trim_ascii(std::string value) {
+  auto not_space = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+  value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+  return value;
+}
+
+std::string normalize_qos_policy_token(std::string value) {
+  value = trim_ascii(std::move(value));
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    if (c == '-' || std::isspace(c)) {
+      return '_';
+    }
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+bool yaml_node_has_value(const YAML::Node& node) {
+  if (!node || node.IsNull()) {
+    return false;
+  }
+  if (!node.IsScalar()) {
+    return true;
+  }
+  return !trim_ascii(node.as<std::string>()).empty();
+}
+
+bool is_auto_qos_token(const YAML::Node& node) {
+  return yaml_node_has_value(node) && node.IsScalar() &&
+         normalize_qos_policy_token(node.as<std::string>()) == "auto";
+}
+
+std::optional<size_t> parse_optional_qos_depth(const YAML::Node& node) {
+  if (!yaml_node_has_value(node)) {
+    return std::nullopt;
+  }
+  const auto depth = node.as<long long>();
+  return depth > 0 ? std::optional<size_t>(static_cast<size_t>(depth)) : std::optional<size_t>(0);
+}
+
+void parse_optional_nested_qos_depth(const YAML::Node& node, RosQosConfig& qos, size_t& qos_depth) {
+  if (!yaml_node_has_value(node)) {
+    return;
+  }
+  if (is_auto_qos_token(node)) {
+    qos.depth_auto = true;
+    return;
+  }
+  const auto depth = node.as<long long>();
+  qos.depth =
+    depth > 0 ? std::optional<size_t>(static_cast<size_t>(depth)) : std::optional<size_t>(0);
+  qos_depth = *qos.depth;
+}
+
+std::optional<std::string> parse_optional_qos_policy(const YAML::Node& node) {
+  if (!yaml_node_has_value(node)) {
+    return std::nullopt;
+  }
+  return normalize_qos_policy_token(node.as<std::string>());
+}
+
+std::optional<std::string> parse_optional_qos_reliability(const YAML::Node& node) {
+  if (!yaml_node_has_value(node)) {
+    return std::nullopt;
+  }
+  try {
+    return node.as<bool>() ? std::optional<std::string>("reliable")
+                           : std::optional<std::string>("best_effort");
+  } catch (...) {
+  }
+  return normalize_qos_policy_token(node.as<std::string>());
+}
+
+void parse_ros_qos_node(const YAML::Node& node, RosQosConfig& qos, size_t& qos_depth) {
+  if (!node || !node.IsMap()) {
+    return;
+  }
+  if (auto mode = parse_optional_qos_policy(node["mode"])) {
+    qos.mode = mode;
+    qos.auto_mode = *mode == "auto";
+  }
+  if (node["depth"]) {
+    parse_optional_nested_qos_depth(node["depth"], qos, qos_depth);
+  }
+  if (node["qos_depth"]) {
+    parse_optional_nested_qos_depth(node["qos_depth"], qos, qos_depth);
+  }
+  if (auto reliability = parse_optional_qos_reliability(node["reliability"])) {
+    qos.reliability = reliability;
+  }
+  if (auto reliability = parse_optional_qos_reliability(node["reliable"])) {
+    qos.reliability = reliability;
+  }
+  if (auto durability = parse_optional_qos_policy(node["durability"])) {
+    qos.durability = durability;
+  }
+  if (auto history = parse_optional_qos_policy(node["history"])) {
+    qos.history = history;
+  }
+}
+
+bool valid_qos_reliability(const std::string& value) {
+  return value == "reliable" || value == "best_effort" || value == "auto";
+}
+
+bool valid_qos_durability(const std::string& value) {
+  return value == "volatile" || value == "transient_local" || value == "auto";
+}
+
+bool valid_qos_history(const std::string& value) {
+  return value == "keep_last" || value == "keep_all" || value == "auto";
+}
+
+bool validate_ros_qos_config(const RosQosConfig& qos, std::string& error_msg) {
+  if (qos.mode.has_value() && *qos.mode != "auto") {
+    error_msg = "Subscription qos.mode must be 'auto'";
+    return false;
+  }
+  if (qos.depth.has_value() && *qos.depth == 0) {
+    error_msg = "Subscription qos.depth must be > 0";
+    return false;
+  }
+  if (qos.depth_auto && qos.depth.has_value()) {
+    error_msg = "Subscription qos.depth cannot be both auto and numeric";
+    return false;
+  }
+  if (qos.reliability.has_value() && !valid_qos_reliability(*qos.reliability)) {
+    error_msg = "Subscription qos.reliability must be 'reliable', 'best_effort', or 'auto'";
+    return false;
+  }
+  if (qos.durability.has_value() && !valid_qos_durability(*qos.durability)) {
+    error_msg = "Subscription qos.durability must be 'volatile', 'transient_local', or 'auto'";
+    return false;
+  }
+  if (qos.history.has_value() && !valid_qos_history(*qos.history)) {
+    error_msg = "Subscription qos.history must be 'keep_last', 'keep_all', or 'auto'";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -279,6 +426,30 @@ bool ConfigParser::save_to_file(const std::string& path, const RecorderConfig& c
       subscription_node["batch_size"] = subscription.batch_size;
       subscription_node["flush_interval_ms"] = subscription.flush_interval_ms;
       subscription_node["qos_depth"] = subscription.qos_depth;
+      if (subscription.qos.has_overrides()) {
+        YAML::Node qos_node;
+        if (subscription.qos.mode.has_value()) {
+          qos_node["mode"] = *subscription.qos.mode;
+        } else if (subscription.qos.auto_mode) {
+          qos_node["mode"] = "auto";
+        }
+        if (subscription.qos.depth_auto) {
+          qos_node["depth"] = "auto";
+        }
+        if (subscription.qos.depth.has_value()) {
+          qos_node["depth"] = *subscription.qos.depth;
+        }
+        if (subscription.qos.reliability.has_value()) {
+          qos_node["reliability"] = *subscription.qos.reliability;
+        }
+        if (subscription.qos.durability.has_value()) {
+          qos_node["durability"] = *subscription.qos.durability;
+        }
+        if (subscription.qos.history.has_value()) {
+          qos_node["history"] = *subscription.qos.history;
+        }
+        subscription_node["qos"] = qos_node;
+      }
       node["subscriptions"].push_back(subscription_node);
     }
 
@@ -360,9 +531,17 @@ bool ConfigParser::parse_subscriptions(
     if (subscription_node["flush_interval_ms"]) {
       subscription.flush_interval_ms = subscription_node["flush_interval_ms"].as<int>();
     }
-    if (subscription_node["qos_depth"]) {
-      const auto qos_depth = subscription_node["qos_depth"].as<long long>();
-      subscription.qos_depth = qos_depth > 0 ? static_cast<size_t>(qos_depth) : 0;
+    if (auto qos_depth = parse_optional_qos_depth(subscription_node["qos_depth"])) {
+      subscription.qos_depth = *qos_depth;
+    }
+    if (auto reliability = parse_optional_qos_reliability(subscription_node["qos_reliable"])) {
+      subscription.qos.reliability = reliability;
+    }
+    if (auto reliability = parse_optional_qos_reliability(subscription_node["reliable"])) {
+      subscription.qos.reliability = reliability;
+    }
+    if (subscription_node["qos"]) {
+      parse_ros_qos_node(subscription_node["qos"], subscription.qos, subscription.qos_depth);
     }
     // Parse depth_compression section (can be boolean or object)
     if (subscription_node["depth_compression"]) {
@@ -792,6 +971,9 @@ bool ConfigParser::validate(const RecorderConfig& config, std::string& error_msg
     }
     if (subscription.qos_depth == 0) {
       error_msg = "Subscription qos_depth must be > 0";
+      return false;
+    }
+    if (!validate_ros_qos_config(subscription.qos, error_msg)) {
       return false;
     }
   }

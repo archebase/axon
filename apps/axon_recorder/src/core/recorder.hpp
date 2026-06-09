@@ -77,6 +77,9 @@ struct SubscriptionConfig {
     bool enabled = false;
     std::string level = "medium";  // fast, medium, max
   } depth_compression;
+
+  // Optional ROS QoS overrides. Empty fields keep the middleware default.
+  RosQosConfig qos;
 };
 
 /**
@@ -550,6 +553,16 @@ private:
   bool setup_subscriptions();
 
   /**
+   * Build per-session subscriptions by applying task-scoped overrides.
+   */
+  std::vector<SubscriptionConfig> build_session_subscriptions() const;
+
+  /**
+   * Subscriptions active for the current recording session.
+   */
+  const std::vector<SubscriptionConfig>& active_subscriptions() const;
+
+  /**
    * Load and initialize middleware plugin for the recorder process lifetime.
    */
   bool ensure_plugin_loaded();
@@ -656,6 +669,9 @@ private:
 
   // Task configuration for metadata injection
   std::optional<TaskConfig> task_config_;
+
+  // Subscriptions resolved for the active session, including task QoS overrides.
+  std::vector<SubscriptionConfig> current_session_subscriptions_;
 
   // Worker thread pool manages per-topic workers
   // Use unique_ptr with placement new for late initialization with custom config
