@@ -1,5 +1,8 @@
 # Axon Recorder Configuration for ROS2 (Humble/Jazzy/Rolling)
-# Usage: ./axon_recorder --config config/default_config_ros2.yaml
+# This sample is also suitable as a Keystone recorder.yaml template. After
+# axon_config register renders it, the recorder connects back to Keystone in
+# WebSocket RPC client mode. For local-only panel workflows, change rpc.mode
+# to http_server and use a concrete rpc.ws_client.url when needed.
 
 # ============================================================================
 # Plugin Configuration
@@ -46,6 +49,7 @@ dataset:
 # ============================================================================
 # Subscription Configuration
 # ============================================================================
+# Edit this section for each robot type before uploading the template to Keystone.
 # High-frequency subscriptions (IMU, camera): Use larger batches (100-5000)
 # Low-frequency subscriptions (status, diagnostics): Use small batches (1-10)
 # Control signals: Use batch_size=1 for immediate persistence
@@ -223,16 +227,16 @@ http_server:
 # RPC Mode Configuration
 # ============================================================================
 # Unified configuration for HTTP server and WebSocket client modes
-# mode: "http_server" (default) or "ws_client"
+# mode: "ws_client" for Keystone-rendered templates, or "http_server" for local panel control
 # - http_server: Start HTTP RPC server on local port (for axon_panel)
 # - ws_client: Connect as WebSocket client to keystone server (for fleet management)
 rpc:
-  mode: http_server
+  mode: ws_client
 
   # WebSocket client configuration (only used when mode: ws_client)
   ws_client:
-    # WebSocket server URL (e.g., ws://keystone:8090/rpc or wss://keystone:8090/rpc)
-    url: ws://localhost:8090/rpc
+    # Filled by axon_config register from the Keystone registration context.
+    url: "{{ recorder_rpc_url }}"
 
     # Optional JWT token for authentication during handshake
     auth_token: ""

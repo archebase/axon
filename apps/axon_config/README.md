@@ -75,6 +75,16 @@ Nested JSON values can also be addressed with dotted names, for example
 `{{ endpoints.transfer_ws_url }}`. Unknown placeholders fail the command and leave
 existing rendered configs unchanged.
 
+The repository samples are Keystone-ready starting points:
+
+- `apps/axon_recorder/config/default_config_ros1.yaml` -> Keystone `recorder.yaml`
+- `apps/axon_recorder/config/default_config_ros2.yaml` -> Keystone `recorder.yaml`
+- `apps/axon_transfer/config/transfer_config.yaml` -> Keystone `transfer.yaml`
+
+For a new robot type, edit the recorder `subscriptions` list for the ROS profile and adjust
+the transfer S3 destination if needed. The registration identity and WebSocket URLs are
+filled by `axon-config` after the device registers.
+
 ## Refreshing Configs
 
 Use `refresh` after a device has already been registered and `/etc/axon/device.json`
