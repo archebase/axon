@@ -27,6 +27,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUN_COVERAGE=false
 IMAGE_NAME="axon:cpp-test"
 
+source "${SCRIPT_DIR}/docker-apt-mirror-common.sh"
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -55,14 +57,19 @@ echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}Docker C++ Library Tests${NC}"
 echo -e "${BLUE}=============================================${NC}"
 echo ""
+configure_axon_docker_apt_mirror
+echo -e "Docker apt mirror: ${YELLOW}${AXON_DOCKER_APT_MIRROR}${NC}"
+echo ""
 
 # Build Docker image if not exists
 if ! docker image inspect ${IMAGE_NAME} &>/dev/null; then
     echo -e "${YELLOW}Building C++ test Docker image...${NC}"
     DOCKER_BUILDKIT=1 docker build \
+        --network=host \
         -f "${PROJECT_ROOT}/docker/Dockerfile.cpp-test" \
         -t ${IMAGE_NAME} \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
+        "${DOCKER_APT_MIRROR_BUILD_ARGS[@]}" \
         "${PROJECT_ROOT}"
     echo -e "${GREEN}✓ C++ test image built${NC}"
 else

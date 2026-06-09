@@ -4,6 +4,11 @@
 
 FROM ubuntu:22.04
 
+ARG AXON_APT_MIRROR=default
+COPY docker/scripts/setup-apt-mirror.sh /usr/local/bin/setup-apt-mirror.sh
+RUN chmod +x /usr/local/bin/setup-apt-mirror.sh && \
+    /usr/local/bin/setup-apt-mirror.sh "${AXON_APT_MIRROR}"
+
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 

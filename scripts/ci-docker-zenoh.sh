@@ -29,6 +29,8 @@ DOCKER_IMAGE="axon:zenoh"
 RUN_COVERAGE=false
 RUN_INTEGRATION=false
 
+source "${SCRIPT_DIR}/docker-apt-mirror-common.sh"
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -62,6 +64,9 @@ echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}Axon Zenoh Plugin Local CI${NC}"
 echo -e "${BLUE}=============================================${NC}"
 echo ""
+configure_axon_docker_apt_mirror
+echo -e "Docker apt mirror: ${YELLOW}${AXON_DOCKER_APT_MIRROR}${NC}"
+echo ""
 
 # =============================================================================
 # Step 1: Build Docker Image
@@ -69,7 +74,11 @@ echo ""
 echo -e "${YELLOW}Step 1: Building Zenoh Docker image...${NC}"
 if ! docker image inspect ${DOCKER_IMAGE} &>/dev/null; then
     echo -e "${YELLOW}Building new image...${NC}"
-    docker build -f "${PROJECT_ROOT}/docker/Dockerfile.zenoh" -t ${DOCKER_IMAGE} "${PROJECT_ROOT}"
+    docker build --network=host \
+        "${DOCKER_APT_MIRROR_BUILD_ARGS[@]}" \
+        -f "${PROJECT_ROOT}/docker/Dockerfile.zenoh" \
+        -t ${DOCKER_IMAGE} \
+        "${PROJECT_ROOT}"
 else
     echo -e "${GREEN}Docker image already exists. Use 'docker rmi ${DOCKER_IMAGE}' to rebuild.${NC}"
 fi
@@ -83,6 +92,7 @@ echo -e "${YELLOW}Step 2: Running Zenoh plugin unit tests...${NC}"
 if [ "$RUN_COVERAGE" = true ]; then
     echo -e "${BLUE}Running with coverage instrumentation...${NC}"
     docker run --rm \
+        --network host \
         -v "${PROJECT_ROOT}:/workspace/axon" \
         ${DOCKER_IMAGE} \
         bash -c "
@@ -120,6 +130,7 @@ if [ "$RUN_COVERAGE" = true ]; then
 else
     echo -e "${BLUE}Running without coverage...${NC}"
     docker run --rm \
+        --network host \
         -v "${PROJECT_ROOT}:/workspace/axon" \
         ${DOCKER_IMAGE} \
         bash -c "
