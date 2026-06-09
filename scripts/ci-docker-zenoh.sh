@@ -97,9 +97,9 @@ if [ "$RUN_COVERAGE" = true ]; then
         ${DOCKER_IMAGE} \
         bash -c "
             cd /workspace/axon && \
-            rm -rf build && \
-            mkdir -p build && cd build && \
-            cmake .. \
+            rm -rf build/zenoh && \
+            mkdir -p build/zenoh && cd build/zenoh && \
+            cmake ../.. \
                 -DCMAKE_BUILD_TYPE=Debug \
                 -DAXON_ENABLE_COVERAGE=ON \
                 -DAXON_BUILD_ZENOH_PLUGIN=ON \
@@ -135,9 +135,9 @@ else
         ${DOCKER_IMAGE} \
         bash -c "
             cd /workspace/axon && \
-            rm -rf build && \
-            mkdir -p build && cd build && \
-            cmake .. \
+            rm -rf build/zenoh && \
+            mkdir -p build/zenoh && cd build/zenoh && \
+            cmake ../.. \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DAXON_BUILD_ZENOH_PLUGIN=ON \
                 -DAXON_BUILD_ROS1_PLUGIN=OFF \
