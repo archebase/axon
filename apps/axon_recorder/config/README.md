@@ -1,24 +1,34 @@
 # Axon Recorder Configuration Files
 
-This directory contains configuration files for the Axon recorder.
+This directory contains configuration files for the Axon recorder. The ROS1 and ROS2
+samples are also Keystone-ready `recorder.yaml` templates for `axon_config register`.
 
 ## Configuration Files
 
 ### ROS1 Configuration
 - **[default_config_ros1.yaml](default_config_ros1.yaml)** - Default configuration for ROS1 (Noetic)
   - Sets `profile: ros1`
+  - Sets `rpc.mode: ws_client` and fills the RPC URL during registration
   - Use with ROS1 plugin: `libaxon_ros1_plugin.so`
 
 ### ROS2 Configuration
 - **[default_config_ros2.yaml](default_config_ros2.yaml)** - Default configuration for ROS2 (Humble/Jazzy/Rolling)
   - Sets `profile: ros2`
+  - Sets `rpc.mode: ws_client` and fills the RPC URL during registration
   - Use with ROS2 plugin: `libaxon_ros2_plugin.so`
 
 ## Usage
 
-### Method 1: Plugin path in config file (Recommended)
+### Method 1: Keystone Template Workflow
 
-Set the `plugin.path` in the config file:
+Edit the `subscriptions` list for the robot type, then upload the file to Keystone as
+`recorder.yaml`. `axon_config register` renders the WebSocket RPC URL and writes the final
+config to `/etc/axon/recorder.yaml`.
+
+### Method 2: Plugin path in config file
+
+Set the `plugin.path` in the config file. For local-only runs without Keystone, also change
+`rpc.mode` to `http_server` or replace `rpc.ws_client.url` with a concrete WebSocket URL:
 
 ```bash
 # ROS1
@@ -28,7 +38,7 @@ Set the `plugin.path` in the config file:
 ./axon_recorder --config config/default_config_ros2.yaml
 ```
 
-### Method 2: Plugin path via command line
+### Method 3: Plugin path via command line
 
 ```bash
 # ROS1

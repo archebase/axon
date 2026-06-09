@@ -4,6 +4,10 @@
 recording directory, persists upload state in SQLite, uploads MCAP files to S3-compatible storage,
 and reports operator-facing status over the fleet WebSocket.
 
+`config/transfer_config.yaml` is also a Keystone-ready `transfer.yaml` template. `axon_config`
+renders the device identity and fleet WebSocket base URL after registration; edit the S3 destination
+and scanner settings per deployment before uploading it to Keystone.
+
 ## Completion Contract
 
 The scanner supports two completion modes:

@@ -1,13 +1,17 @@
 # Axon Transfer Configuration
 # S3 transfer daemon for fleet management
+# This sample is suitable as a Keystone transfer.yaml template. axon_config
+# register renders the identity and WebSocket fields from the registration
+# context before writing /etc/axon/transfer.yaml.
 
 # Device identification
-device_id: "robot_01"
-factory_id: "factory_a"
+device_id: "{{ device_id }}"
+factory_id: "{{ factory_id }}"
 
 # WebSocket client configuration
 ws:
-  url: "ws://fleet.factory-a.local:8090/transfer"
+  # axon-transfer appends /<device_id> to this base URL at runtime.
+  url: "{{ transfer_ws_url }}"
   ping_interval_ms: 30000
   ping_timeout_ms: 10000
   reconnect:
