@@ -57,6 +57,8 @@ subscriptions:
     message_type: sensor_msgs/msg/Imu
     batch_size: 500
     flush_interval_ms: 1000
+    qos:
+      mode: auto
   - name: /udp/gps
     message_type: axon_udp/json
     batch_size: 1

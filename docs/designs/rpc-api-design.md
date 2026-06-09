@@ -93,6 +93,15 @@ Content-Type: application/json
     "factory": "factory_shenzhen",
     "operator_name": "operator_001",
     "topics": ["/camera/image", "/lidar/scan", "/odom"],
+    "topic_qos": [
+      {
+        "name": "/lidar/scan",
+        "qos": {
+          "mode": "auto",
+          "depth": 64
+        }
+      }
+    ],
     "start_callback_url": "http://server.example.com/api/v1/tasks/123/start",
     "finish_callback_url": "http://server.example.com/api/v1/tasks/123/finish",
     "user_token": "eyJhbGciOiJIUzI1NiIs..."
@@ -141,7 +150,8 @@ Content-Type: application/json
 | `skills` | array | No | List of associated skills |
 | `factory` | string | No | Factory identifier (identifies the factory producing the data) |
 | `operator_name` | string | No | Operator identifier |
-| `topics` | array | No | List of topics to record |
+| `topics` | array | No | List of topics to record. Entries may be strings or objects with `name` and optional `qos`. |
+| `topic_qos` | array | No | Per-topic ROS2 QoS overrides. Empty QoS fields fall back to defaults; `mode: auto` or per-field `auto` enables ROS2 publisher QoS detection. |
 | `start_callback_url` | string | No | Start recording callback URL |
 | `finish_callback_url` | string | No | Finish recording callback URL |
 | `user_token` | string | No | JWT token for callback authentication |

@@ -49,53 +49,72 @@ dataset:
 # High-frequency subscriptions (IMU, camera): Use larger batches (100-5000)
 # Low-frequency subscriptions (status, diagnostics): Use small batches (1-10)
 # Control signals: Use batch_size=1 for immediate persistence
-# Optional qos_depth controls ROS2 subscription history depth. It is separate
-# from dataset.queue_size, which controls Axon's per-topic worker queue.
+# Optional ROS2 QoS overrides can be set per topic. Use mode: auto to follow
+# publisher QoS when available. Leave any field empty to keep the middleware
+# default (depth=10, reliability=reliable, durability=volatile,
+# history=keep_last). QoS depth is separate from dataset.queue_size, which
+# controls Axon's per-topic worker queue.
 subscriptions:
   # IMU data - high frequency (5 seconds of data per batch)
   - name: /imu/data
     message_type: sensor_msgs/msg/Imu
     batch_size: 5000
     flush_interval_ms: 5000
+    qos:
+      mode: auto
 
   # Camera 0 - RGB and Depth (10 seconds of data per batch at 30fps)
   - name: /camera0/rgb
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+    qos:
+      mode: auto
 
   - name: /camera0/depth
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+    qos:
+      mode: auto
 
   # Camera 1 - RGB and Depth
   - name: /camera1/rgb
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+    qos:
+      mode: auto
 
   - name: /camera1/depth
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+    qos:
+      mode: auto
 
   # Camera 2 - RGB and Depth
   - name: /camera2/rgb
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+    qos:
+      mode: auto
 
   - name: /camera2/depth
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+    qos:
+      mode: auto
 
   # Depth image with compression (16UC1 -> CompressedImage)
   - name: /camera/camera/depth/image_rect_raw
     message_type: sensor_msgs/msg/Image
     batch_size: 300
     flush_interval_ms: 10000
+    qos:
+      mode: auto
     depth_compression: true
 
 # ============================================================================
