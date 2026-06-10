@@ -140,6 +140,18 @@ managed_processes:
       recorder["health_check"]["timeout_ms"].get<int>() == 250, "recorder health timeout mismatch"
     );
 
+    const auto& transfer = processes["transfer"];
+    require(
+      transfer["stdout_log"].get<std::string>() ==
+        (std::filesystem::path("/tmp/axon-agent/logs") / "demo_robot_transfer.stdout.log").string(),
+      "transfer default stdout_log mismatch"
+    );
+    require(
+      transfer["stderr_log"].get<std::string>() ==
+        (std::filesystem::path("/tmp/axon-agent/logs") / "demo_robot_transfer.stderr.log").string(),
+      "transfer default stderr_log mismatch"
+    );
+
     const auto& robot = processes["robot_startup"];
     require(
       robot["working_directory"].get<std::string>() == (profile_dir / "runtime").string(),

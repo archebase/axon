@@ -9,5 +9,7 @@ AXON_AGENT_PORT=8090
 # contain adapter.yaml and optional recorder.yaml / transfer.yaml files.
 AXON_AGENT_PROFILE_PATH=/opt/axon/robots
 
-# Runtime state, active_profile.json, child pid files, metadata, and logs.
+# Runtime state, active_profile.json, child pid files, and metadata.
+# Managed process stdout/stderr defaults to /tmp/axon-agent/logs unless a
+# profile explicitly sets stdout_log/stderr_log.
 AXON_AGENT_STATE_DIR=/var/lib/axon/agent

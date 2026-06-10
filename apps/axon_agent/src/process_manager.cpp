@@ -88,6 +88,10 @@ bool parse_http_url(const std::string& url, HttpUrl* output, std::string* error)
   return true;
 }
 
+std::filesystem::path default_transient_log_dir() {
+  return std::filesystem::path("/tmp") / "axon-agent" / "logs";
+}
+
 }  // namespace
 
 ProcessManager::ProcessManager(std::filesystem::path state_dir)
@@ -794,7 +798,7 @@ std::filesystem::path ProcessManager::default_log_file(
 ) const {
   const auto pid_file =
     config.pid_file.empty() ? default_pid_file(config.process_id) : config.pid_file;
-  return state_dir_ / "logs" / (pid_file.stem().string() + "." + stream + ".log");
+  return default_transient_log_dir() / (pid_file.stem().string() + "." + stream + ".log");
 }
 
 }  // namespace agent
