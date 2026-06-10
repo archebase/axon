@@ -112,7 +112,7 @@ process:
     timeout_ms: 500
 ```
 
-`adapter.yaml` 下的 `managed_processes.<process_id>` 使用同一组字段。`working_directory` 的相对路径按 profile 根目录解析；`pid_file`、`metadata_file`、`stdout_log`、`stderr_log` 的相对路径按 agent `state_dir` 解析。未配置 `pid_file`、`metadata_file` 和日志路径时，agent 会自动按 `profile_id + process_id` 生成隔离路径。
+`adapter.yaml` 下的 `managed_processes.<process_id>` 使用同一组字段。`working_directory` 的相对路径按 profile 根目录解析；`pid_file`、`metadata_file`、`stdout_log`、`stderr_log` 的相对路径按 agent `state_dir` 解析。未配置 `pid_file`、`metadata_file` 时，agent 会自动按 `profile_id + process_id` 生成隔离路径；未配置日志路径时，stdout/stderr 默认保存到 `/tmp/axon-agent/logs/<profile_id>_<process_id>.<stdout|stderr>.log`，避免一次性子进程日志长期积累在持久 state 目录。
 
 `health_check.type` 首版支持 `process`、`http`、`none`。`process` 只检查被管理进程 pid 是否仍在运行；`http` 支持 `url`、`timeout_ms` 和 `expected_status`，用于 recorder/transfer 等带本地 HTTP 端口的组件；`none` 用于明确关闭健康检查。
 
